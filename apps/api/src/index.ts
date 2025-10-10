@@ -1,15 +1,21 @@
 // apps/api/src/index.ts
+import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { clerkPlugin, getAuth } from "@clerk/fastify";
-import { PrismaClient } from "@prisma/client";
+//import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { githubRoutes } from "./routes/github"; 
 import { testRoutes } from "./routes/tests";
+import runRoutes from "./routes/run";
+import { prisma } from "./prisma"; 
+
+
+
 
 
 const app = Fastify({ logger: true });
-const prisma = new PrismaClient();
+//const prisma = new PrismaClient();
 
 app.register(cors, { origin: ["http://localhost:5173"], credentials: true });
 
@@ -19,6 +25,23 @@ app.register(clerkPlugin, {
 });
 app.register(githubRoutes);  
 app.register(testRoutes);
+app.get("/runner/debug/:id", async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const [db] = await prisma.$queryRawUnsafe<{ current_database: string }[]>(
+    "select current_database()"
+  );
+  const proj = await prisma.project.findUnique({
+    where: { id },
+    select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
+  });
+  return {
+    currentDb: db?.current_database,
+    project: proj,
+    databaseUrl: (process.env.DATABASE_URL || "").replace(/:\/\/.*@/, "://***@").split("?")[0],
+  };
+});
+
+app.register(runRoutes, { prefix: "/runner" });
 
 app.get("/health", async () => ({ ok: true }));
 
@@ -136,6 +159,31 @@ app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
   return reply.code(204).send();
 });
 // Get a single project I own
+app.ready(() => {
+  console.log(app.printRoutes());   // shows every route path
+});
+// --- TEMP: list & seed helpers ---
+app.get("/runner/debug/list", async () => {
+  return await prisma.project.findMany({
+    select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+});
+
+app.post("/runner/seed-project", async (req, reply) => {
+  const id = "cmgglhqyx0001z5n41vcvj9s1"; // the one in your screenshot
+  const repoUrl = "https://github.com/farmerj50/coding-framework";
+  const seeded = await prisma.project.upsert({
+    where: { id },
+    update: { repoUrl },
+    create: { id, name: "justicpath", repoUrl, ownerId: "dev-seed" },
+    select: { id: true, name: true, repoUrl: true, ownerId: true },
+  });
+  return { seeded };
+});
+
+
 
 
 

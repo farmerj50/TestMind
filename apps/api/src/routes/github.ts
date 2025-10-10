@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import fetch from "node-fetch";
+//import fetch from "node-fetch";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma";
 
