@@ -9,10 +9,8 @@ import { githubRoutes } from "./routes/github";
 import { testRoutes } from "./routes/tests";
 import runRoutes from "./routes/run";
 import { prisma } from "./prisma"; 
-
-
-
-
+import reportsRoutes from "./routes/reports";
+import integrationsRoutes from "./routes/integrations";
 
 const app = Fastify({ logger: true });
 //const prisma = new PrismaClient();
@@ -183,8 +181,8 @@ app.post("/runner/seed-project", async (req, reply) => {
   return { seeded };
 });
 
-
-
+app.register(reportsRoutes, { prefix: "/" });
+app.register(integrationsRoutes, { prefix: "/" });
 
 
 app.listen({ host: "0.0.0.0", port: Number(process.env.PORT) || 8787 });

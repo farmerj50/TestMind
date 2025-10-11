@@ -1,36 +1,34 @@
 import { useAuth } from "@clerk/clerk-react";
 
+const DEFAULT_BASE = "http://localhost:8787";
+
 export function useApi() {
   const { getToken } = useAuth();
-  const base = import.meta.env.VITE_API_URL;
+  const BASE = (import.meta.env.VITE_API_URL as string) || DEFAULT_BASE;
 
-  async function apiFetch<T = any>(
-    path: string,
-    init: RequestInit & { body?: any } = {}
-  ): Promise<T> {
-    const token = await getToken();
-    const hasBody = init.body !== undefined && init.body !== null;
+  async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
+    // robust join: exactly one slash between base and path
+    const baseWithSlash = BASE.endsWith("/") ? BASE : BASE + "/";
+    const cleanPath = path.replace(/^\//, "");
+    const url = new URL(cleanPath, baseWithSlash).toString();
 
-    const res = await fetch(`${base}${path}`, {
-      method: init.method ?? "GET",
+    const token = await getToken().catch(() => undefined);
+
+    const res = await fetch(url, {
       credentials: "include",
+      ...init,
       headers: {
-        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+        "Content-Type": "application/json",
+        ...(init?.headers as Record<string, string> | undefined),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.headers || {}),
       },
-      body: hasBody
-        ? typeof init.body === "string"
-          ? init.body
-          : JSON.stringify(init.body)
-        : undefined,
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(text || res.statusText);
+      throw new Error(text || `${res.status} ${res.statusText}`);
     }
-    return (await res.json()) as T;
+    return res.json() as Promise<T>;
   }
 
   return { apiFetch };
