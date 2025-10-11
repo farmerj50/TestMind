@@ -8,6 +8,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TestPriority {
+  low
+  medium
+  high
+}
+
+enum TestCaseStatus {
+  draft
+  active
+  archived
+}
+
+enum TestResultStatus {
+  passed
+  failed
+  skipped
+  error
+}
+
+enum TestRunStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
 model User {
   id        String    @id
   projects  Project[]
@@ -23,6 +49,8 @@ model Project {
   createdAt DateTime @default(now())
 
   testRuns TestRun[]
+  suites   TestSuite[]
+  cases    TestCase[]
 }
 
 model GitAccount {
@@ -37,13 +65,6 @@ model GitAccount {
   @@index([userId])
 }
 
-enum TestRunStatus {
-  queued
-  running
-  succeeded
-  failed
-}
-
 model TestRun {
   id         String        @id @default(cuid())
   projectId  String
@@ -54,6 +75,61 @@ model TestRun {
   createdAt  DateTime      @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
+  issueUrl   String?
+
+  results TestResult[]
 
   @@index([projectId, createdAt])
+}
+
+model TestSuite {
+  id        String      @id @default(cuid())
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id])
+  name      String
+  parentId  String?
+  parent    TestSuite?  @relation("SuiteChildren", fields: [parentId], references: [id])
+  children  TestSuite[] @relation("SuiteChildren")
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  cases TestCase[]
+
+  @@index([projectId, parentId, order])
+}
+
+model TestCase {
+  id        String         @id @default(cuid())
+  projectId String
+  project   Project        @relation(fields: [projectId], references: [id])
+  suiteId   String?
+  suite     TestSuite?     @relation(fields: [suiteId], references: [id])
+  key       String         @default(cuid())
+  title     String
+  priority  TestPriority   @default(medium)
+  status    TestCaseStatus @default(active)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  results TestResult[]
+
+  @@unique([projectId, key])
+  @@index([projectId, suiteId])
+}
+
+model TestResult {
+  id    String  @id @default(cuid())
+  runId String
+  run   TestRun @relation(fields: [runId], references: [id])
+
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id])
+
+  status     TestResultStatus
+  durationMs Int?
+  message    String?
+  createdAt  DateTime         @default(now())
+
+  @@index([runId, testCaseId])
 }

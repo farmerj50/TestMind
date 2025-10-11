@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Trash2, Pencil } from "lucide-react";
 import { validateProject } from "@/lib/validation";
 import ConnectGitHubCard from "@/components/ConnectGitHubCard";
-
+import ReportSummary from "@/components/ReportSummary";
+import RecentRunsTable from "@/components/RecentRunsTable";
+import RunNowButton from "@/components/RunNowButton";
 
 type Project = {
   id: string;
@@ -30,6 +32,7 @@ export default function DashboardPage() {
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [formErrors, setFormErrors] = useState<{ name?: string; repoUrl?: string }>({});
+  const [refreshKey, setRefreshKey] = useState(0);
 
   async function load() {
     setErr(null);
@@ -53,13 +56,12 @@ export default function DashboardPage() {
     e.preventDefault();
     setErr(null);
 
-    // client-side validation
     const v = validateProject({ name, repoUrl });
     if (!v.ok) {
       setFormErrors(v.errors);
-      return; // stop if invalid
+      return;
     }
-    setFormErrors({}); // clear any previous errors
+    setFormErrors({});
 
     try {
       await apiFetch<{ project: Project }>("/projects", {
@@ -100,101 +102,126 @@ export default function DashboardPage() {
       </p>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-  {/* New project */}
-  <div className="rounded-lg border bg-white p-4">
-    <h2 className="mb-3 text-sm font-medium text-slate-800">New project</h2>
-    <form onSubmit={createProject} className="space-y-3">
-      <div>
-        <label className="text-xs text-slate-600">Project name</label>
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. checkout-flow"
-        />
-        {formErrors.name && (
-          <p className="mt-1 text-xs text-rose-600">{formErrors.name}</p>
-        )}
-      </div>
+        {/* New project */}
+        <div className="rounded-lg border bg-white p-4">
+          <h2 className="mb-3 text-sm font-medium text-slate-800">New project</h2>
+          <form onSubmit={createProject} className="space-y-3">
+            <div>
+              <label className="text-xs text-slate-600">Project name</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. checkout-flow"
+              />
+              {formErrors.name && (
+                <p className="mt-1 text-xs text-rose-600">{formErrors.name}</p>
+              )}
+            </div>
 
-      <div>
-        <label className="text-xs text-slate-600">Repository URL</label>
-        <Input
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-          placeholder="https://github.com/acme/checkout"
-        />
-        {formErrors.repoUrl && (
-          <p className="mt-1 text-xs text-rose-600">{formErrors.repoUrl}</p>
-        )}
-      </div>
+            <div>
+              <label className="text-xs text-slate-600">Repository URL</label>
+              <Input
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/acme/checkout"
+              />
+              {formErrors.repoUrl && (
+                <p className="mt-1 text-xs text-rose-600">{formErrors.repoUrl}</p>
+              )}
+            </div>
 
-      {err && (
-        <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {err}
+            {err && (
+              <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {err}
+              </div>
+            )}
+
+            <Button type="submit">Create project</Button>
+          </form>
         </div>
-      )}
 
-      <Button type="submit">Create project</Button>
-    </form>
-  </div>
+        {/* GitHub connect / repo picker */}
+        <ConnectGitHubCard onPickRepo={(url) => setRepoUrl(url)} />
 
-  {/* GitHub connect / repo picker */}
-  <ConnectGitHubCard onPickRepo={(url) => setRepoUrl(url)} />
+        {/* Reporting summary */}
+        <div className="rounded-lg border bg-white p-4 md:col-span-2 xl:col-span-1">
+          <h2 className="mb-3 text-sm font-medium text-slate-800">Test run summary</h2>
+          <ReportSummary refreshKey={refreshKey} />
+        </div>
 
-  {/* My projects */}
-  <div className="rounded-lg border bg-white p-4 xl:col-span-1 md:col-span-2">
-    <h2 className="mb-3 text-sm font-medium text-slate-800">Your projects</h2>
+        {/* My projects */}
+        <div className="rounded-lg border bg-white p-4 xl:col-span-1 md:col-span-2">
+          <h2 className="mb-3 text-sm font-medium text-slate-800">Your projects</h2>
 
-    {loading ? (
-      <div className="text-sm text-slate-500">Loading…</div>
-    ) : projects.length === 0 ? (
-      <div className="text-sm text-slate-500">
-        No projects yet. Create your first project on the left.
+          {loading ? (
+            <div className="text-sm text-slate-500">Loading…</div>
+          ) : projects.length === 0 ? (
+            <div className="text-sm text-slate-500">
+              No projects yet. Create your first project on the left.
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {projects.map((p) => (
+                <li key={p.id} className="flex items-start justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <Link
+                      to={`/projects/${p.id}`}
+                      className="block truncate font-medium text-slate-900 hover:underline"
+                      title="Edit project"
+                    >
+                      {p.name}
+                    </Link>
+                    <a
+                      href={p.repoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="break-all text-xs text-slate-500 underline"
+                    >
+                      {p.repoUrl}
+                    </a>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex shrink-0 items-center gap-1">
+                    <RunNowButton
+                      projectId={p.id}
+                      onDone={() => setRefreshKey((k) => k + 1)}
+                    />
+
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      title="Edit"
+                      aria-label="Edit project"
+                    >
+                      <Link to={`/projects/${p.id}`}>
+                        <Pencil className="h-4 w-4" />
+                      </Link>
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Delete"
+                      aria-label="Delete project"
+                      onClick={() => deleteProject(p.id, p.name)}
+                    >
+                      <Trash2 className="h-4 w-4 text-rose-600" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Recent runs */}
+        <div className="rounded-lg border bg-white p-4 md:col-span-2 xl:col-span-2">
+          <h2 className="mb-3 text-sm font-medium text-slate-800">Recent runs</h2>
+          <RecentRunsTable refreshKey={refreshKey} />
+        </div>
       </div>
-    ) : (
-      <ul className="divide-y">
-        {projects.map((p) => (
-          <li key={p.id} className="flex items-start justify-between gap-3 py-2">
-            <div className="min-w-0">
-              <Link
-                to={`/projects/${p.id}`}
-                className="block truncate font-medium text-slate-900 hover:underline"
-                title="Edit project"
-              >
-                {p.name}
-              </Link>
-              <a
-                href={p.repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="break-all text-xs text-slate-500 underline"
-              >
-                {p.repoUrl}
-              </a>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              <Button asChild variant="ghost" size="icon" title="Edit">
-                <Link to={`/projects/${p.id}`}>
-                  <Pencil className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                title="Delete"
-                onClick={() => deleteProject(p.id, p.name)}
-              >
-                <Trash2 className="h-4 w-4 text-rose-600" />
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
-    )}
-  </div>
-</div>
-
     </div>
   );
 }
