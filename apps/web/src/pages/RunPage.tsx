@@ -5,6 +5,8 @@ import { useApi } from "@/lib/api";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
+import RunResults from "@/components/RunResults";
+import RunLogs from "@/components/RunLogs";
 
 type TestRunStatus = "queued" | "running" | "succeeded" | "failed";
 type Run = {
@@ -113,6 +115,18 @@ export default function RunPage() {
           <div className="space-y-1">
             <div>Summary: {run.summary || "—"}</div>
             <div>Error: {run.error || "—"}</div>
+          </div>
+          <hr className="my-4" />
+
+          <div className="space-y-6">
+            <section>
+              <div className="mb-2 font-medium text-slate-800">Results</div>
+              <RunResults runId={run.id} active={!done} />
+            </section>
+            <section>
+              <div className="mb-2 font-medium text-slate-800">Logs</div>
+              <RunLogs runId={run.id} />
+            </section>
           </div>
 
           {/* GitHub Issue Actions */}

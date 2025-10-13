@@ -3,17 +3,21 @@ import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { clerkPlugin, getAuth } from "@clerk/fastify";
-//import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { githubRoutes } from "./routes/github"; 
+
+import { githubRoutes } from "./routes/github";
 import { testRoutes } from "./routes/tests";
 import runRoutes from "./routes/run";
-import { prisma } from "./prisma"; 
 import reportsRoutes from "./routes/reports";
 import integrationsRoutes from "./routes/integrations";
+import { prisma } from "./prisma";
+
+// ✅ single source of truth for plan typing + limits
+import { getLimitsForPlan } from "./config/plans";
+import type { PlanTier } from "./config/plans";
+
 
 const app = Fastify({ logger: true });
-//const prisma = new PrismaClient();
 
 app.register(cors, { origin: ["http://localhost:5173"], credentials: true });
 
@@ -21,8 +25,13 @@ app.register(clerkPlugin, {
   publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
   secretKey: process.env.CLERK_SECRET_KEY!,
 });
-app.register(githubRoutes);  
+
+app.register(githubRoutes);
 app.register(testRoutes);
+app.register(runRoutes, { prefix: "/runner" });
+app.register(reportsRoutes, { prefix: "/" });
+app.register(integrationsRoutes, { prefix: "/" });
+
 app.get("/runner/debug/:id", async (req, reply) => {
   const { id } = req.params as { id: string };
   const [db] = await prisma.$queryRawUnsafe<{ current_database: string }[]>(
@@ -38,8 +47,6 @@ app.get("/runner/debug/:id", async (req, reply) => {
     databaseUrl: (process.env.DATABASE_URL || "").replace(/:\/\/.*@/, "://***@").split("?")[0],
   };
 });
-
-app.register(runRoutes, { prefix: "/runner" });
 
 app.get("/health", async () => ({ ok: true }));
 
@@ -101,6 +108,7 @@ app.post("/projects", async (req, reply) => {
     return reply.code(400).send({ error: parsed.error.flatten() });
   }
 
+  // ensure user row exists; rely on @default(free) for plan
   await prisma.user.upsert({
     where: { id: userId },
     update: {},
@@ -156,11 +164,11 @@ app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
   await prisma.project.delete({ where: { id } });
   return reply.code(204).send();
 });
-// Get a single project I own
+
+// debug helpers
 app.ready(() => {
-  console.log(app.printRoutes());   // shows every route path
+  console.log(app.printRoutes());
 });
-// --- TEMP: list & seed helpers ---
 app.get("/runner/debug/list", async () => {
   return await prisma.project.findMany({
     select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
@@ -170,7 +178,7 @@ app.get("/runner/debug/list", async () => {
 });
 
 app.post("/runner/seed-project", async (req, reply) => {
-  const id = "cmgglhqyx0001z5n41vcvj9s1"; // the one in your screenshot
+  const id = "cmgglhqyx0001z5n41vcvj9s1";
   const repoUrl = "https://github.com/farmerj50/coding-framework";
   const seeded = await prisma.project.upsert({
     where: { id },
@@ -181,8 +189,46 @@ app.post("/runner/seed-project", async (req, reply) => {
   return { seeded };
 });
 
-app.register(reportsRoutes, { prefix: "/" });
-app.register(integrationsRoutes, { prefix: "/" });
+// --- Billing / Plan ---
+app.get("/billing/me", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
 
+  // rely on DB default for plan; narrow shape for TS
+  const user = (await prisma.user.upsert({
+    where: { id: userId },
+    update: {},
+    create: { id: userId },
+    select: { id: true, plan: true, createdAt: true },
+  })) as { id: string; plan: PlanTier; createdAt: Date };
+
+  return { plan: user.plan, limits: getLimitsForPlan(user.plan) };
+});
+
+// Dev-only helper to switch plans
+app.patch("/billing/me", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  if (process.env.ALLOW_PLAN_PATCH !== "true") {
+    return reply.code(403).send({ error: "Plan switching disabled" });
+  }
+
+  const allowed = ["free", "pro", "enterprise"] as const;
+  type Body = { plan?: (typeof allowed)[number] };
+
+  const { plan } = (req.body ?? {}) as Body;
+  if (!plan || !allowed.includes(plan)) {
+    return reply.code(400).send({ error: "Invalid plan" });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { plan },
+    select: { plan: true },
+  });
+
+  return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
+});
 
 app.listen({ host: "0.0.0.0", port: Number(process.env.PORT) || 8787 });
