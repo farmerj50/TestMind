@@ -1,68 +1,49 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 
 type Summary = {
   counts: { queued: number; running: number; succeeded: number; failed: number; total: number };
   lastRun?: {
-    id: string; status: "queued"|"running"|"succeeded"|"failed";
-    createdAt: string; startedAt?: string|null; finishedAt?: string|null;
-    projectId: string; summary?: string|null; error?: string|null;
+    id: string;
+    status: "queued"|"running"|"succeeded"|"failed";
+    createdAt: string;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+    projectId: string;
+    summary?: string | null;
+    error?: string | null;
   } | null;
 };
 
-export default function ReportSummary({ projectId, refreshKey }: { projectId?: string; refreshKey?: number }) {
+export default function ReportSummary({
+  projectId,
+  refreshKey,
+}: { projectId?: string; refreshKey?: number }) {
   const { apiFetch } = useApi();
   const [data, setData] = useState<Summary | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const timerRef = useRef<number | null>(null);
-
-   const idleTriesRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    const stop = () => {
-      if (timerRef.current) { window.clearTimeout(timerRef.current); timerRef.current = null; }
-    };
-    const schedule = (ms = 4000) => {
-      stop();
-      timerRef.current = window.setTimeout(load, ms) as unknown as number;
-    };
-
-    const load = async () => {
+    (async () => {
       try {
-        const bust = `_=${Date.now()}`;
-        const q = projectId ? `?projectId=${encodeURIComponent(projectId)}&${bust}` : `?${bust}`;
-        const res = await apiFetch<Summary>(`/reports/summary${q}`, { cache: "no-store" });
-        if (cancelled) return;
-
-        setData(res);
-        setErr(null);
-
-        const hasActive = (res.counts.running ?? 0) > 0 || (res.counts.queued ?? 0) > 0;
-
-        if (hasActive) {
-          idleTriesRef.current = 0;           // reset idle window while active
-          schedule(4000);
-        } else if (idleTriesRef.current < 3) { // keep polling a bit after activity
-          idleTriesRef.current += 1;
-          schedule(4000);
-        } else {
-          stop();
+        const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+        const res = await apiFetch<Summary>(`/reports/summary${q}`);
+        if (!cancelled) {
+          setData(res);
+          setErr(null);
         }
       } catch (e: any) {
         if (!cancelled) setErr(e.message ?? "Failed to load summary");
-        // retry on transient error
-        schedule(4000);
       }
-    };
+    })();
 
-    idleTriesRef.current = 0;
-    load();
-    return () => { cancelled = true; stop(); };
-  }, [projectId, refreshKey, apiFetch]);
-  
+    return () => { cancelled = true; };
+    // IMPORTANT: intentionally DO NOT include apiFetch (stable enough),
+    // and DO NOT set up any setInterval here
+  }, [projectId, refreshKey]);
 
   if (err) return <div className="text-sm text-rose-600">{err}</div>;
   if (!data) return <div className="text-sm text-slate-500">Loading summary…</div>;
@@ -88,8 +69,14 @@ export default function ReportSummary({ projectId, refreshKey }: { projectId?: s
         </div>
         <div className="mt-4 text-xs text-slate-500">
           {lastRun ? (
-            <>Last run <span className="font-mono">{lastRun.id.slice(0, 8)}</span> — <span className="font-medium">{lastRun.status}</span> at {new Date(lastRun.createdAt).toLocaleString()}</>
-          ) : "No runs yet."}
+            <>
+              Last run <span className="font-mono">{lastRun.id.slice(0, 8)}</span> —{" "}
+              <span className="font-medium">{lastRun.status}</span> at{" "}
+              {new Date(lastRun.createdAt).toLocaleString()}
+            </>
+          ) : (
+            "No runs yet."
+          )}
         </div>
       </CardContent>
     </Card>

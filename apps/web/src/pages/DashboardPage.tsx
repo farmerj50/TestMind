@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
 
   // form state
   const [name, setName] = useState("");
@@ -49,6 +50,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
+    apiFetch<{ plan: string }>("/billing/me")
+      .then((d) => setPlan(d.plan))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -93,6 +97,11 @@ export default function DashboardPage() {
           TM
         </div>
         <div className="text-slate-700">TestMind</div>
+        {plan && (
+          <span className="ml-2 rounded-full border px-2 py-0.5 text-xs text-slate-600 bg-white">
+            {plan}
+          </span>
+        )}
       </header>
 
       <h1 className="text-2xl font-semibold">Dashboard</h1>
