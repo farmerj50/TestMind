@@ -1,0 +1,11 @@
+{
+  "name": "tm-playwright-ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:pw": "npx playwright test -c playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.2"
+  }
+}
