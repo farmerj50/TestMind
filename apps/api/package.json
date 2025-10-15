@@ -12,10 +12,13 @@
   "dependencies": {
     "@clerk/fastify": "^1.0.51",
     "@fastify/cors": "^8.4.0",
+    "@playwright/test": "^1.56.0",
     "@prisma/client": "^5.22.0",
+    "archiver": "^7.0.1",
     "dotenv": "^16.4.5",
     "execa": "^9.6.0",
     "fastify": "^4.26.2",
+    "globby": "^15.0.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

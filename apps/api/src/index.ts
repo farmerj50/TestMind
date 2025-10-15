@@ -15,6 +15,7 @@ import { prisma } from "./prisma";
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans";
 import type { PlanTier } from "./config/plans";
+import testmindRoutes from './testmind/routes';
 
 
 const app = Fastify({ logger: true });
@@ -31,6 +32,7 @@ app.register(testRoutes);
 app.register(runRoutes, { prefix: "/runner" });
 app.register(reportsRoutes, { prefix: "/" });
 app.register(integrationsRoutes, { prefix: "/" });
+app.register(testmindRoutes, { prefix: "/tm" });
 
 app.get("/runner/debug/:id", async (req, reply) => {
   const { id } = req.params as { id: string };
