@@ -81,10 +81,12 @@ export interface TestCase {
 
 export interface TestPlan {
   baseUrl: string;
-  // simple target list (kept flexible)
-  targets: { name?: string; url?: string }[];
-  // the codegen reads from .cases (not .testCases)
+  // keep both, but prefer `cases`
   cases: TestCase[];
+  testCases?: TestCase[]; // <— optional, legacy
+  components?: Component[];          // make these optional if you like
+  requirements?: Requirement[];      // "
   meta?: Record<string, any>;
 }
+
 

@@ -41,7 +41,15 @@ function toPlaywright(tc: TestCase): string {
   return lines.join("\n");
 }
 
-export async function writePlaywrightSpecs(plan: TestPlan) {
+export async function writePlaywrightSpecs(
+  plan: TestPlan,
+  opts?: { projectSlug?: string }
+) {
+  const project = (opts?.projectSlug ?? "default").toLowerCase();
+  const outRoot = path.resolve(
+    process.cwd(),
+    `apps/api/testmind-generated/${project}/playwright-ts/tests`
+  );
   // nuke old files (gets rid of route_*.spec.ts from previous writer)
   await fs.rm(outRoot, { recursive: true, force: true });
   await fs.mkdir(outRoot, { recursive: true });

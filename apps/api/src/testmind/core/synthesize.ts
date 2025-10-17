@@ -1,4 +1,49 @@
+import { discoverSite } from "../discover.js";
+import { generatePlan } from "../pipeline/generate-plan.js";
+import { writePlaywrightSpecs } from "../pipeline/codegen.js";
+import type {
+  Env as EnvT,
+  Component as ComponentT,
+  Requirement as RequirementT,
+  Persona as PersonaT,
+} from "./plan.js";
+
+export async function runOnce(params: {
+  baseUrl: string;
+  persona?: PersonaT;
+  project?: string; // slug for output folder
+}) {
+  const { baseUrl, persona = "sdet", project = "default" } = params;
+  if (!baseUrl) throw new Error("baseUrl is required");
+
+  const env: EnvT = { baseUrl };
+  const component: ComponentT = { id: project, type: "UI" };
+  const requirement: RequirementT = { id: "R1", title: "Generated plan", priority: "P1" };
+  const risks = { likelihood: 0.3, impact: 0.5 };
+
+  const discovered = await discoverSite(baseUrl);
+  const patternInput = { component, requirement, risks, discovered, env };
+
+  const plan = generatePlan(patternInput, persona);
+
+  console.log("[tm] baseUrl:", baseUrl);
+  console.log("[tm] routes:", discovered.routes.length);
+  console.log("[tm] cases:", plan.cases.length);
+
+  await writePlaywrightSpecs(plan, { projectSlug: project });
+
+  return { routes: discovered.routes.length, cases: plan.cases.length };
+}
+
+// Optional: run from CLI for quick testing
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runOnce({ baseUrl: process.env.TM_BASE_URL ?? "https://example.com", project: "cli" })
+    .catch((e) => { console.error(e); process.exit(1); });
+}
+
+
 // apps/api/src/testmind/core/plan.ts
+
 export type Persona = 'manual' | 'sdet' | 'automation';
 
 export interface Env {

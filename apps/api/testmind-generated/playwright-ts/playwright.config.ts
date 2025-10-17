@@ -1,8 +1,8 @@
-import { defineConfig } from '@playwright/test';
-export default defineConfig({
-  testDir: './tests',
+/// <reference types="node" />
+import type { PlaywrightTestConfig } from '@playwright/test';
+const config: PlaywrightTestConfig = {
   use: {
-    baseURL: process.env.TM_BASE_URL || "http://localhost:3000",
+    baseURL: process.env.TM_BASE_URL || "https://www.justicepathlaw.com",
   },
-  reporter: [['list']],
-});
+};
+export default config;
