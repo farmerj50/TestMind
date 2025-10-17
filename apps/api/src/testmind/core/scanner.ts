@@ -89,6 +89,7 @@ export async function scanRepoToPlan(repoPath: string, baseUrlInput: string): Pr
       addMatches(paths, text, rrCreateRouterRe);
       addMatches(paths, text, linkHrefRe);
       addMatches(paths, text, linkToRe);
+      console.log('[TM] plan.routes', Array.from(paths).length);
     } catch { /* ignore */ }
   }
 
@@ -148,64 +149,84 @@ export async function scanRepoToPlan(repoPath: string, baseUrlInput: string): Pr
   ] as const;
 
   return {
-    baseUrl: base,
-    targets: [{ name: 'base', url: base }],
-    cases: cases as unknown as TestPlan['cases'], // keep TS happy across repos
-    meta: {
-      guessedUrls: [...urls].slice(0, 10),
-      discoveredPaths: cleaned,
-      strategy: 'code+env+routes+links' + (crawlEnabled ? '+crawl' : ''),
-    },
-  };
+  baseUrl: base,
+  cases: cases as unknown as TestPlan['cases'], // keep TS happy across repos
+  meta: {
+    guessedUrls: [...urls].slice(0, 10),
+    discoveredPaths: cleaned,
+    strategy: 'code+env+routes+links' + (crawlEnabled ? '+crawl' : ''),
+    targets: [{ name: 'base', url: base }], // <— moved here to satisfy TestPlan
+  },
+};
+
 }
 
-// ---- Optional crawl (safe for Node typing) ---------------------------------
-
-// ---- Optional crawl (safe for Node typing) -------------------------------
+// ---- Optional crawl (JS-rendered BFS with Playwright) -----------------------
 async function crawlBaseUrl(baseUrl: string): Promise<string[]> {
-  // Try to get a chromium launcher from either package, but don't require it.
-  let chromium: any;
+  const MAX = Number(process.env.TM_MAX_ROUTES ?? 120);
+
+  // Lazily load a Chromium launcher, but don't hard-depend on it.
+  let launch: any;
   try {
-    // optional dependency; avoid TS2307 when not installed
-    // @ts-ignore
-    ({ chromium } = await import('playwright'));
+    // @ts-ignore - we added a shim so TS doesn't block this
+    ({ chromium: { launch } } = await import('playwright'));
   } catch {
     try {
-      // fallback if only @playwright/test is present
-      // @ts-ignore
-      ({ chromium } = await import('@playwright/test'));
+      // @ts-ignore - fallback works when only @playwright/test is installed
+      ({ chromium: { launch } } = await import('playwright-core'));
     } catch {
-      return []; // no crawler available -> just skip gracefully
+      console.warn('[TM] crawlBaseUrl: playwright not installed, skipping crawl');
+      return [];
     }
   }
 
-  let browser: any;
+  const browser = await launch({ headless: true });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  const origin = new URL(baseUrl).origin;
+  const seenAbs = new Set<string>();
+  const q: string[] = [baseUrl];
+
   try {
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    while (q.length && seenAbs.size < MAX) {
+      const url = q.shift()!;
+      if (seenAbs.has(url)) continue;
+      seenAbs.add(url);
 
-    await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        // Grab hrefs from the current page — no DOM TS types used.
+        const hrefs: string[] = await page.$$eval('a[href]', (as: any[]) =>
+          as
+            .map((a: any) => (a && a.getAttribute ? a.getAttribute('href') : ''))
+            .filter(Boolean)
+        );
 
-    // collect same-origin links (paths) from the landing page
-    const hrefs: string[] = await page.$$eval('a[href^="/"]', (as: any[]) =>
-      as
-        .map((a: any) => (a?.getAttribute ? a.getAttribute('href') : ''))
-        .filter(Boolean)
-        .map((h: string) => h.split('#')[0])
-    );
-
-    const unique = Array.from(new Set(hrefs));
-    const origin = new URL(baseUrl).origin;
-    const MAX = Number(process.env.TM_MAX_ROUTES ?? 15);
-
-    // normalize relative paths to absolute URLs and cap the list
-    return unique
-      .slice(0, MAX)
-      .map((p) => (p.startsWith('http') ? p : origin + p));
-  } catch {
-    return []; // any crawling failure -> just skip
+        for (const href of hrefs) {
+          try {
+            const u = new URL(href, url);
+            if (u.origin !== origin) continue;       // same-origin only
+            const abs = u.toString();
+            if (!seenAbs.has(abs)) q.push(abs);      // BFS queue
+          } catch { /* ignore bad URLs */ }
+        }
+      } catch {
+        // ignore navigation errors; keep crawling
+      }
+    }
   } finally {
-    try { await browser?.close(); } catch {}
+    try { await browser.close(); } catch {}
   }
+
+  // Convert absolute URLs to unique pathnames
+  const paths = Array.from(seenAbs).map(u => {
+    try { return new URL(u).pathname || '/'; } catch { return '/'; }
+  });
+
+  const unique = Array.from(new Set(paths));
+  console.log(`[TM] crawler: visited ${seenAbs.size} pages; ${unique.length} unique paths`);
+  return unique;
 }
+
 

@@ -2,9 +2,10 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
-import { generateAndWrite, runAdapter } from './service';
+// IMPORTANT: ESM-friendly import with .js extension, and both are named exports
+import { generateAndWrite, runAdapter } from './service.js';
 
-type GenerateBody = { repoPath?: string; baseUrl?: string; adapterId?: string };
+type GenerateBody = { repoPath?: string; baseUrl?: string; adapterId?: string; maxRoutes?: number };
 type RunQuery = { baseUrl?: string; adapterId?: string };
 
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
@@ -40,12 +41,20 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     try {
       const {
         repoPath = path.resolve(process.cwd(), '../../'), // monorepo root
-        baseUrl = 'http://localhost:3000',
+        baseUrl,
         adapterId = 'playwright-ts',
+        maxRoutes,
       } = req.body || {};
 
       app.log.info({ repoPath, baseUrl, adapterId }, '[TM] /generate params');
       console.log('[TM] /generate params:', { repoPath, baseUrl, adapterId });
+
+      if (!baseUrl) throw new Error('baseUrl is required');
+
+      if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) {
+        process.env.TM_MAX_ROUTES = String(maxRoutes);
+      }
+      console.log('[TM] TM_MAX_ROUTES:', process.env.TM_MAX_ROUTES);
 
       assertDirExists(repoPath);
       assertUrl(baseUrl);
@@ -69,8 +78,9 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // GET /tm/run/stream
   app.get<{ Querystring: RunQuery }>('/run/stream', async (req, reply: FastifyReply) => {
     try {
-      const { baseUrl = 'http://localhost:3000', adapterId = 'playwright-ts' } = req.query || {};
+      const { baseUrl, adapterId = 'playwright-ts' } = req.query || {};
       app.log.info({ baseUrl, adapterId }, '[TM] /run/stream params');
+      if (!baseUrl) throw new Error('baseUrl is required');
       assertUrl(baseUrl);
 
       const outRoot = path.join(GENERATED_ROOT, adapterId);
@@ -89,7 +99,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
           outRoot,
           adapterId,
           env: { TM_BASE_URL: baseUrl },
-          onLine: (l) => { if (IS_DEV) process.stdout.write(l); send(l); },
+          onLine: (l: string) => { // <- typed param fixes ts(7006)
+            if (IS_DEV) process.stdout.write(l);
+            send(l);
+          },
         });
         send(`[EXIT] code=${exitCode}`);
       } catch (inner) {
