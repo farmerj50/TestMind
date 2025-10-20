@@ -1,6 +1,7 @@
 import { discoverSite } from "../discover.js";
 import { generatePlan } from "../pipeline/generate-plan.js";
-import { writePlaywrightSpecs } from "../pipeline/codegen.js";
+import { writeSpecsFromPlan } from "../pipeline/codegen.js"; 
+import path from "node:path";
 import type {
   Env as EnvT,
   Component as ComponentT,
@@ -30,7 +31,11 @@ export async function runOnce(params: {
   console.log("[tm] routes:", discovered.routes.length);
   console.log("[tm] cases:", plan.cases.length);
 
-  await writePlaywrightSpecs(plan, { projectSlug: project });
+  const outDir = path.resolve(
+  process.cwd(),
+  "src/testmind-generated/playwright-ts/tests"
+);
+await writeSpecsFromPlan(outDir, plan);
 
   return { routes: discovered.routes.length, cases: plan.cases.length };
 }

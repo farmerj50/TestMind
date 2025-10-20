@@ -1,154 +1,203 @@
-// apps/api/src/testmind/discover.ts
-import type { Discovery, FormMeta, FormFieldMeta } from './core/plan.js';
+import { chromium } from 'playwright';
+import { URL } from 'node:url';
 
-const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { 'User-Agent': UA }, redirect: 'follow' as any });
-  if (!res.ok) throw new Error(`fetch ${url} ${res.status}`);
-  return await res.text();
+export type FormFieldMeta = {
+  name: string;
+  type?: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+  pattern?: string;
+};
+
+export type FormMeta = {
+  selector: string;
+  action?: string;
+  fields: FormFieldMeta[];
+  routeHint?: string;
+};
+
+export type RouteScan = {
+  url: string;
+  title?: string;
+  links: string[];
+  buttons: string[];       // selectors for submit/buttons
+  fileInputs: string[];    // names/ids of file inputs
+  fields: FormFieldMeta[];
+};
+
+const ASSET_EXT = /\.(png|jpe?g|gif|svg|webp|ico|css|js|map|pdf|woff2?|ttf|eot)$/i;
+
+function isHtmlLike(href: string) {
+  if (!href) return false;
+  if (ASSET_EXT.test(href)) return false;
+  // keep hash-less, same-origin paths
+  return true;
 }
 
-function absolutize(base: string, href: string): string | null {
-  try {
-    const u = new URL(href, base);
-    const origin = new URL(base).origin;
-    return u.origin === origin ? u.toString() : null;
-  } catch { return null; }
-}
+async function scanPage(url: string): Promise<RouteScan> {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-function pathnameOf(u: string): string {
-  try { return new URL(u).pathname || '/'; } catch { return '/'; }
-}
+  // --- everything DOM-related stays inside the browser context ---
+  const info = await page.evaluate(() => {
+    (globalThis as any).__name ??= (f: any) => f;
+    const documentAny = (globalThis as any).document as any;
+    const locationAny = (globalThis as any).location as any;
+    const URLCtor = (globalThis as any).URL as any;
 
-function dedupePaths(urls: string[]): string[] {
-  const seen = new Set<string>();
-  for (const u of urls) {
-    const p = pathnameOf(u).replace(/\/+$/, '') || '/';
-    seen.add(p || '/');
+    const abs = (u: string) => {
+      try { return new URLCtor(u, locationAny?.href).toString(); } catch { return u; }
+    };
+    const q = (sel: string) => Array.from(documentAny.querySelectorAll(sel) as any[]);
+
+    const links = q('a[href]')
+      .map((a: any) => a.getAttribute?.('href') || '')
+      .filter(Boolean)
+      .map(abs);
+
+    const forms = q('form').map((f: any) => {
+      // fields (TS-safe inside evaluate)
+const fields = Array
+  .from((f as any).querySelectorAll('input, select, textarea') as any[])
+  .map((el: any) => {
+    const name = el.getAttribute?.('name') || el.id || '';
+    const type = (el.type || (el.tagName || '')).toLowerCase();
+    const required = !!el.hasAttribute?.('required');
+    const min = el.min ? Number(el.min) : undefined;
+    const max = el.max ? Number(el.max) : undefined;
+    const pattern = el.pattern || undefined;
+    return { name, type, required, min, max, pattern };
+  })
+  .filter((ff: any) => ff.name);
+
+// submit buttons (TS-safe inside evaluate)
+const btns = Array.from(
+  (f as any).querySelectorAll('button, input[type=submit], [role="button"]') as any[]
+);
+
+// normalize to Playwright-friendly selectors
+const submitSelectors = btns.map((b: any) => {
+  const tag = (b.tagName || '').toUpperCase();
+
+  // inputs of type submit are unambiguous
+  if (tag === 'INPUT' && (b.type || '').toLowerCase() === 'submit') {
+    return 'input[type="submit"]';
   }
-  return Array.from(seen);
-}
 
-/** Parse a very common subset of sitemap.xml into URLs */
-async function fetchSitemapUrls(baseUrl: string, cap = 500): Promise<string[]> {
-  const origin = new URL(baseUrl).origin;
-  const candidates = [
-    new URL('/sitemap.xml', origin).toString(),
-    new URL('/sitemap_index.xml', origin).toString(),
-  ];
+  // prefer text when available for buttons/role=button
+  const t = (b.textContent || '').trim();
+  if (t) return `button:has-text("${t}")`;
 
-  const urls: string[] = [];
-  for (const s of candidates) {
-    try {
-      const xml = await fetchText(s);
-      // <loc>https://example.com/path</loc>
-      const rx = /<loc>\s*([^<]+)\s*<\/loc>/gi;
-      let m: RegExpExecArray | null;
-      while ((m = rx.exec(xml))) {
-        const abs = absolutize(baseUrl, m[1].trim());
-        if (abs) urls.push(abs);
-        if (urls.length >= cap) break;
+  // fallback to generic button selector
+  if (tag === 'BUTTON') return 'button[type="submit"], button';
+
+  // last resort fallback (role=button without text)
+  return '[role="button"]';
+});
+
+
+      const id = f.id;
+      const name = f.getAttribute?.('name');
+      const selector = id ? `form#${id}` : (name ? `form[name="${name}"]` : 'form');
+
+      return { selector, action: f.action || undefined, fields, submitSelectors };
+    });
+
+    const fileInputs = Array
+      .from(documentAny.querySelectorAll('input[type="file"]') as any[])
+      .map((el: any) => el.getAttribute?.('name') || el.id || '')
+      .filter(Boolean);
+
+    const pageButtons = Array
+      .from(documentAny.querySelectorAll('button, input[type=submit]') as any[])
+      .map((b: any) => {
+        if ((b.tagName || '').toUpperCase() === 'INPUT') return 'input[type="submit"]';
+        const t = (b.textContent || '').trim();
+        return t ? `button:has-text("${t}")` : 'button';
+      });
+
+    return {
+      title: String(documentAny.title || ''),
+      links,
+      forms,
+      fileInputs,
+      pageButtons,
+    };
+  });
+  // --- end browser context ---
+
+  await browser.close();
+
+  // normalize links (same origin, html-like)
+  const urlObj = new URL(url);
+  const sameOriginLinks = info.links
+    .map((href: string) => {
+      try { return new URL(href, url).toString(); } catch { return ''; }
+    })
+    .filter(Boolean)
+    .filter((h: string) => {
+      try {
+        const u = new URL(h);
+        return u.origin === urlObj.origin && isHtmlLike(u.pathname);
+      } catch {
+        return false;
       }
-      if (urls.length) break; // first successful sitemap is enough
-    } catch { /* ignore */ }
+    });
+
+  // merge form submit selectors into "buttons" and collect fields
+  const formFields: FormFieldMeta[] = [];
+  const submitSelectors: string[] = [];
+  for (const f of info.forms as Array<{ fields: FormFieldMeta[]; submitSelectors: string[] }>) {
+    formFields.push(...f.fields);
+    submitSelectors.push(...f.submitSelectors);
   }
-  return urls.slice(0, cap);
+
+  return {
+    url,
+    title: info.title || '',
+    links: Array.from(new Set(sameOriginLinks)),
+    buttons: Array.from(new Set([...submitSelectors, ...info.pageButtons])),
+    fileInputs: Array.from(new Set(info.fileInputs)),
+    fields: formFields,
+  };
 }
 
-/** Pragmatic form extractor (same as before) */
-function extractForms(html: string, routePath: string): FormMeta[] {
-  const out: FormMeta[] = [];
-  const formRx = /<form\b[^>]*>([\s\S]*?)<\/form>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = formRx.exec(html))) {
-    const inner = m[1] || '';
-    const fields: FormFieldMeta[] = [];
-    const fieldRx = /<(input|textarea|select)\b[^>]*>/gi;
-    let f: RegExpExecArray | null;
-    while ((f = fieldRx.exec(inner))) {
-      const tag = f[0];
-      const get = (n: string) => {
-        const a = new RegExp(`${n}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
-        return a ? (a[2] ?? a[3] ?? a[4] ?? '').trim() : '';
-      };
-      const name =
-        get('name') || get('id') || get('aria-label') || get('placeholder');
-      if (!name) continue;
-      const type = (get('type') ||
-        (tag.toLowerCase().startsWith('<textarea') ? 'textarea' :
-         tag.toLowerCase().startsWith('<select') ? 'select' : 'text')).toLowerCase();
-      const required = /\brequired\b/i.test(tag);
-      fields.push({ name, type, required });
-    }
-    if (fields.length) {
-      out.push({ selector: 'form', action: '', fields, routeHint: routePath });
-    }
-  }
-  return out;
-}
 
-/** Fast static BFS */
-async function crawlStatic(baseUrl: string, maxPages: number): Promise<string[]> {
-  const seen = new Set<string>();
-  const q: string[] = [baseUrl];
-  while (q.length && seen.size < maxPages) {
-    const url = q.shift()!;
-    if (seen.has(url)) continue;
-    seen.add(url);
-    let html = '';
-    try { html = await fetchText(url); } catch { continue; }
-    const rx = /href\s*=\s*(?:"([^"]+)"|'([^']+)'|([^>\s]+))/gi;
-    let m: RegExpExecArray | null;
-    while ((m = rx.exec(html))) {
-      const href = (m[1] || m[2] || m[3] || '').trim();
-      if (!href) continue;
-      const abs = absolutize(baseUrl, href);
-      if (abs && !seen.has(abs)) q.push(abs);
+export async function discoverSite(baseUrl: string) {
+  const start = new URL(baseUrl);
+  // seed with home + up to 20 internal links (you can grow this / add sitemap later)
+  const first = await scanPage(start.toString());
+
+  const queue = first.links.slice(0, 20);
+  const seen = new Set<string>([first.url]);
+  const scans: RouteScan[] = [first];
+
+  while (queue.length && scans.length < 40) {
+    const next = queue.shift()!;
+    if (seen.has(next)) continue;
+    seen.add(next);
+
+    const s = await scanPage(next);
+    scans.push(s);
+
+    // add more links from this page (breadth-first)
+    for (const l of s.links) {
+      if (!seen.has(l) && scans.length + queue.length < 80) queue.push(l);
     }
   }
-  return Array.from(seen);
-}
 
-/** Add obvious seeds when we discovered too few pages */
-function seedIfThin(baseUrl: string, paths: string[], min = 30): string[] {
-  if (paths.length >= min) return paths;
-  const origin = new URL(baseUrl).origin;
-  const seeds = [
-    '/', '/about', '/contact', '/pricing', '/faq', '/blog', '/posts',
-    '/news', '/careers', '/privacy', '/terms', '/login', '/signup',
-    '/services', '/service', '/team',
-  ];
-  const merged = new Set(paths);
-  for (const p of seeds) merged.add(new URL(p, origin).toString());
-  return Array.from(merged);
-}
+  // also expose compact list of routes for generator
+  const routes = Array.from(new Set(scans.map(s => {
+    try { return new URL(s.url).pathname || '/'; } catch { return '/'; }
+  })));
 
-export async function discoverSite(baseUrl: string): Promise<Discovery> {
-  const MAX = Number(process.env.TM_MAX_ROUTES ?? 200);
-
-  // 1) Sitemap URLs (fast, often big)
-  const fromSitemap = await fetchSitemapUrls(baseUrl, MAX);
-
-  // 2) Static BFS
-  const fromStatic = await crawlStatic(baseUrl, MAX);
-
-  // 3) Merge + dedupe (same-origin, path-normalized)
-  const all = dedupePaths([...fromSitemap, ...fromStatic].map(u => absolutize(baseUrl, u) || u));
-  const seeded = seedIfThin(baseUrl, all, 30); // ensure we have at least ~30 paths
-
-  // 4) Pull basic forms from the first chunk
-  const FORM_SCAN_MAX = 60;
-  const forms: FormMeta[] = [];
-  for (const p of seeded.slice(0, FORM_SCAN_MAX)) {
-    const url = new URL(p, baseUrl).toString();
-    try {
-      const html = await fetchText(url);
-      forms.push(...extractForms(html, p));
-    } catch { /* ignore */ }
-  }
-
-  return { routes: seeded, forms, apis: [] };
+  return {
+    routes,
+    forms: [], // not needed directly anymore; we pass full scans to patterns
+    apis: [],
+    scans,
+  };
 }

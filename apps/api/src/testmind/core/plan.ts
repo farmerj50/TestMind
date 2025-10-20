@@ -1,6 +1,7 @@
-// apps/api/src/testmind/core/plan.ts
+// ✅ Reuse canonical test types from pattern.ts
+import type { TestCase, Step } from "./pattern.js";
 
-export type Persona = 'manual' | 'sdet' | 'automation';
+export type Persona = "manual" | "sdet" | "automation";
 
 export interface Env {
   baseUrl?: string;
@@ -9,17 +10,17 @@ export interface Env {
 // High-level “thing” we’re testing
 export interface Component {
   id: string;
-  type: 'UI' | 'API' | 'Service';
+  type: "UI" | "API" | "Service";
   paths?: string[]; // e.g., ['/checkout', '/login']
 }
 
 export interface Requirement {
   id: string;
   title: string;
-  priority: 'P0' | 'P1' | 'P2';
+  priority: "P0" | "P1" | "P2";
 }
 
-// Discovery artifacts
+// Discovery artifacts (keep if you use them elsewhere)
 export interface FormFieldMeta {
   name: string;
   type?: string;
@@ -28,65 +29,30 @@ export interface FormFieldMeta {
   max?: number;
   pattern?: string;
 }
-
 export interface FormMeta {
-  selector: string;       // CSS for the <form> or container
-  action?: string;        // optional action URL
+  selector: string;
+  action?: string;
   fields: FormFieldMeta[];
-  routeHint?: string;     // page/route this form lives on
+  routeHint?: string;
 }
-
 export interface ApiMeta {
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   auth?: boolean;
 }
-
 export interface Discovery {
   routes: string[];
   forms: FormMeta[];
   apis: ApiMeta[];
 }
 
-// ---------------- test model (ALIGN WITH PATTERNS + CODEGEN) ----------------
-
-export type Step =
-  | { kind: 'goto'; url: string }
-  | { kind: 'click'; by: 'text' | 'selector' | 'role' | 'label'; value: string }
-  // note: fill must have by/value/text
-  | { kind: 'fill'; by: 'label' | 'selector'; value: string; text: string }
-  | { kind: 'expectVisible'; by: 'text' | 'selector'; value: string }
-  | { kind: 'apiCall'; method: string; path: string; expectStatus: number }
-  | { kind: 'waitForIdle' }
-  | { kind: 'assert'; expr: string; message?: string };
-
-export type CaseGroup = {
-  page?: string;                // e.g. "/pricing"
-  feature?: string;             // e.g. "navbar", "forms"
-  type?: string;                // e.g. "happy", "negative", "boundary"
-  priority?: 'P0' | 'P1' | 'P2';
-};
-
-export interface TestCase {
-  id: string;
-  title: string;
-  steps: Step[];
-  // traceability
-  requirementIds?: string[];
-  componentId?: string;
-  // grouping for page-based codegen
-  group?: CaseGroup;
-  tags?: string[];
-}
-
+// ✅ Canonical plan type (matches writer/emitter)
 export interface TestPlan {
   baseUrl: string;
-  // keep both, but prefer `cases`
-  cases: TestCase[];
-  testCases?: TestCase[]; // <— optional, legacy
-  components?: Component[];          // make these optional if you like
-  requirements?: Requirement[];      // "
+  cases: TestCase[];      // what writer/emitter consume
+  testCases?: TestCase[]; // optional back-compat
   meta?: Record<string, any>;
 }
 
-
+// Optional convenience re-exports so other files can import from plan.ts
+export type { TestCase, Step };
