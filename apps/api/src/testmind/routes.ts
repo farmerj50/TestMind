@@ -6,6 +6,7 @@ import fs from 'fs';
 import { generateAndWrite, runAdapter } from './service.js';
 
 type GenerateBody = { repoPath?: string; baseUrl?: string; adapterId?: string; maxRoutes?: number };
+type GenerateQuery = { repoPath?: string; baseUrl?: string; adapterId?: string; maxRoutes?: number };
 type RunQuery = { baseUrl?: string; adapterId?: string };
 
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
@@ -32,10 +33,82 @@ function assertUrl(u: string) {
   try { new URL(u); } catch { throw new Error(`Invalid baseUrl: ${u}`); }
 }
 
+// Render a simple HTML form to collect baseUrl
+function renderGenerateForm(defaultBaseUrl = ''): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Generate tests</title>
+  </head>
+  <body style="font-family:system-ui;max-width:720px;margin:40px auto;padding:0 16px">
+    <h2>Generate tests</h2>
+    <form method="GET" action="/tm/generate" style="display:block;margin-top:16px">
+      <label style="display:block;margin:8px 0 4px">Base URL</label>
+      <input name="baseUrl" placeholder="https://example.com"
+             value="${defaultBaseUrl}"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+      <div style="height:12px"></div>
+      <label style="display:block;margin:8px 0 4px">Adapter</label>
+      <input name="adapterId" value="playwright-ts"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+      <div style="height:16px"></div>
+      <button type="submit" style="padding:8px 12px;border:0;background:#111;color:#fff;border-radius:6px">
+        Generate
+      </button>
+    </form>
+  </body>
+</html>`;
+}
+
 export default async function testmindRoutes(app: FastifyInstance): Promise<void> {
   app.log.info({ GENERATED_ROOT }, '[TM] using generated output root');
 
-  // POST /tm/generate
+  // ----------------------------------------------------------------------------
+  // GET /tm/generate  (shows form if no baseUrl; runs generation if baseUrl given)
+  // ----------------------------------------------------------------------------
+  app.get<{ Querystring: GenerateQuery }>('/generate', async (req, reply) => {
+    const t0 = Date.now();
+    try {
+      const {
+        repoPath = path.resolve(process.cwd(), '../../'),
+        baseUrl,
+        adapterId = 'playwright-ts',
+        maxRoutes,
+      } = (req.query as GenerateQuery) || {};
+
+      // If no baseUrl -> render the HTML form (restores old UX)
+      if (!baseUrl) {
+        reply.type('text/html').send(renderGenerateForm(''));
+        return;
+      }
+
+      app.log.info({ repoPath, baseUrl, adapterId }, '[TM] GET /generate params');
+
+      if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) {
+        process.env.TM_MAX_ROUTES = String(maxRoutes);
+      }
+
+      assertDirExists(repoPath);
+      assertUrl(baseUrl);
+
+      const outRoot = path.join(GENERATED_ROOT, adapterId);
+      fs.mkdirSync(outRoot, { recursive: true });
+
+      const result = await generateAndWrite({ repoPath, outRoot, baseUrl, adapterId });
+
+      const ms = Date.now() - t0;
+      app.log.info({ ms, outRoot }, '[TM] GET /generate OK');
+      return reply.send({ ok: true, adapterId, ...result });
+    } catch (err) {
+      app.log.error(err, '[TM] GET /generate FAILED');
+      return sendError(app, reply, err, 500);
+    }
+  });
+
+  // ----------------------------------------------------------------------------
+  // POST /tm/generate  (API style)
+  // ----------------------------------------------------------------------------
   app.post<{ Body: GenerateBody }>('/generate', async (req, reply) => {
     const t0 = Date.now();
     try {
@@ -46,15 +119,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         maxRoutes,
       } = req.body || {};
 
-      app.log.info({ repoPath, baseUrl, adapterId }, '[TM] /generate params');
-      console.log('[TM] /generate params:', { repoPath, baseUrl, adapterId });
+      app.log.info({ repoPath, baseUrl, adapterId }, '[TM] POST /generate params');
 
       if (!baseUrl) throw new Error('baseUrl is required');
 
       if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) {
         process.env.TM_MAX_ROUTES = String(maxRoutes);
       }
-      console.log('[TM] TM_MAX_ROUTES:', process.env.TM_MAX_ROUTES);
 
       assertDirExists(repoPath);
       assertUrl(baseUrl);
@@ -62,20 +133,20 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const outRoot = path.join(GENERATED_ROOT, adapterId);
       fs.mkdirSync(outRoot, { recursive: true });
 
-      console.log('[TM] calling generateAndWrite', { repoPath, outRoot });
       const result = await generateAndWrite({ repoPath, outRoot, baseUrl, adapterId });
-      console.log('[TM] generateAndWrite OK');
 
       const ms = Date.now() - t0;
-      app.log.info({ ms, outRoot }, '[TM] /generate OK');
+      app.log.info({ ms, outRoot }, '[TM] POST /generate OK');
       return reply.send({ ok: true, adapterId, ...result });
     } catch (err) {
-      console.log('[TM] /generate FAILED in', Date.now() - t0, 'ms');
+      app.log.error(err, '[TM] POST /generate FAILED');
       return sendError(app, reply, err, 500);
     }
   });
 
+  // ----------------------------------------------------------------------------
   // GET /tm/run/stream
+  // ----------------------------------------------------------------------------
   app.get<{ Querystring: RunQuery }>('/run/stream', async (req, reply: FastifyReply) => {
     try {
       const { baseUrl, adapterId = 'playwright-ts' } = req.query || {};
@@ -99,7 +170,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
           outRoot,
           adapterId,
           env: { TM_BASE_URL: baseUrl },
-          onLine: (l: string) => { // <- typed param fixes ts(7006)
+          onLine: (l: string) => {
             if (IS_DEV) process.stdout.write(l);
             send(l);
           },
@@ -116,13 +187,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     }
   });
 
+  // ----------------------------------------------------------------------------
   // GET /tm/generated/list
+  // ----------------------------------------------------------------------------
   app.get('/generated/list', async (req, reply) => {
     try {
       const { adapterId = 'playwright-ts' } = (req.query as any) || {};
       const root = path.join(GENERATED_ROOT, adapterId);
-      console.log('[TM] /generated/list root:', root);
-
       if (!fs.existsSync(root)) return reply.send({ files: [] });
 
       const list: { path: string; size: number }[] = [];
@@ -143,7 +214,9 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     }
   });
 
+  // ----------------------------------------------------------------------------
   // GET /tm/generated/file
+  // ----------------------------------------------------------------------------
   app.get('/generated/file', async (req, reply) => {
     try {
       const { adapterId = 'playwright-ts', file } = (req.query as any) || {};
@@ -151,7 +224,6 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const base = path.join(GENERATED_ROOT, adapterId);
       const abs = path.join(base, file);
-      console.log('[TM] /generated/file read:', abs);
 
       if (!abs.startsWith(base)) return reply.code(400).send({ ok: false, error: 'bad path' });
       if (!fs.existsSync(abs)) return reply.code(404).send({ ok: false, error: 'not found' });
@@ -163,7 +235,9 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     }
   });
 
-  // GET /tm/health (for quick diagnosis)
+  // ----------------------------------------------------------------------------
+  // GET /tm/health
+  // ----------------------------------------------------------------------------
   app.get('/health', async (req, reply) => {
     const repoDefault = path.resolve(process.cwd(), '../../');
     const adapterId = (req.query as any)?.adapterId || 'playwright-ts';

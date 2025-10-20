@@ -1,9 +1,9 @@
 // apps/api/src/testmind/service.ts
 
 import type { TestPlan } from "./core/plan.js";
-import { scanRepoToPlan } from "./core/scanner.js";
-import type { TestAdapter } from "./core/adapter.js";
-import { playwrightTSAdapter } from "./adapters/playwright-ts/generator.js";
+import { discoverSite } from "./discover.js";
+import { generatePlan } from "./pipeline/generate-plan.js";
+import { writeSpecsFromPlan } from "./pipeline/codegen.js";
 import { playwrightTSRunner } from "./adapters/playwright-ts/runner.js";
 
 type Runner = {
@@ -16,60 +16,58 @@ type Runner = {
   ): Promise<number>;
 };
 
-// Registry of supported adapters/runners
-const adapters: Record<string, { adapter: TestAdapter; runner: Runner }> = {
-  "playwright-ts": { adapter: playwrightTSAdapter, runner: playwrightTSRunner },
-};
+const runner: Runner = playwrightTSRunner;
 
 /**
- * Generate tests and write them to the adapter's output folder.
- * Cleans the outRoot first to avoid stale files.
+ * Generate tests and write them to the output folder.
+ * (Adapter params kept for compatibility but not used.)
  */
 export async function generateAndWrite({
-  repoPath,
+  repoPath,   // unused (kept for API compatibility)
   outRoot,
   baseUrl,
-  adapterId,
+  adapterId,  // unused (kept for API compatibility)
 }: {
   repoPath: string;
   outRoot: string;
   baseUrl: string;
   adapterId: string;
 }) {
-  const entry = adapters[adapterId] ?? adapters["playwright-ts"];
-  const { adapter } = entry;
-
-  // Clean output to avoid stale route_#.spec.ts files
   const fs = await import("fs");
+  const path = await import("path");
+
+  // Clean output to avoid stale files
   if (fs.existsSync(outRoot)) {
     await fs.promises.rm(outRoot, { recursive: true, force: true });
   }
-
-  // Build plan + render files
-  const plan: TestPlan = await scanRepoToPlan(repoPath, baseUrl);
-  const files = adapter.render(plan);
-
-  // Write files
-  const path = await import("path");
   await fs.promises.mkdir(outRoot, { recursive: true });
-  for (const f of files) {
-    const full = path.join(outRoot, f.path);
-    await fs.promises.mkdir(path.dirname(full), { recursive: true });
-    await fs.promises.writeFile(full, f.content, "utf8");
-  }
+
+  // Build a plan (same flow as synthesize.ts)
+  const env = { baseUrl };
+  const component = { id: "repo", type: "UI" as const };
+  const requirement = { id: "R1", title: "Generated plan", priority: "P1" as const };
+  const risks = { likelihood: 0.3, impact: 0.5 };
+
+  const discovered = await discoverSite(baseUrl);
+  const patternInput = { component, requirement, risks, discovered, env };
+
+  const plan: TestPlan = generatePlan(patternInput, "sdet");
+
+  // Emit Playwright specs
+  await writeSpecsFromPlan(outRoot, plan);
 
   return {
-    manifest: adapter.manifest?.(plan) ?? { plan },
+    manifest: { plan },
     outRoot,
   };
 }
 
 /**
- * Run the adapter's test runner (Playwright, etc.)
+ * Run the Playwright test runner.
  */
 export async function runAdapter({
   outRoot,
-  adapterId,
+  adapterId, // ignored
   env,
   onLine,
 }: {
@@ -78,8 +76,6 @@ export async function runAdapter({
   env: Record<string, string>;
   onLine: (s: string) => void;
 }) {
-  const entry = adapters[adapterId] ?? adapters["playwright-ts"];
-  const { runner } = entry;
   if (runner.install) await runner.install(outRoot);
   return runner.run(outRoot, env, onLine);
 }

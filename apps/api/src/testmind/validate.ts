@@ -23,15 +23,15 @@ export function validatePlan(
       const label = f.selector ?? 'form';
 
       const hasNegative = cases.some((tc: TestCase) =>
-        tc.title.includes('Negative required') && tc.title.includes(label)
-      );
+  (tc as any).name?.includes('Negative required') && (tc as any).name?.includes(label)
+);
       if (!hasNegative) {
         issues.push(`Form ${label} missing negative-required case`);
       }
 
       const hasBoundary = cases.some((tc: TestCase) =>
-        tc.title.includes('Boundary values') && tc.title.includes(label)
-      );
+  (tc as any).name?.includes('Boundary values') && (tc as any).name?.includes(label)
+);
       if (!hasBoundary) {
         issues.push(`Form ${label} missing boundary case`);
       }
