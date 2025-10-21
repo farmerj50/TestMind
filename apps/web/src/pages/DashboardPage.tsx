@@ -11,6 +11,12 @@ import ConnectGitHubCard from "@/components/ConnectGitHubCard";
 import ReportSummary from "@/components/ReportSummary";
 import RecentRunsTable from "@/components/RecentRunsTable";
 import RunNowButton from "@/components/RunNowButton";
+import AdapterDropdown, { AdapterId } from "@/components/AdapterDropdown";
+import GenerateButton from "@/components/GenerateButton";
+import GeneratedTestsPanel from "@/components/GeneratedTestsPanel";
+
+
+
 
 type Project = {
   id: string;
@@ -21,18 +27,26 @@ type Project = {
 };
 
 export default function DashboardPage() {
+  const [adapterId, setAdapterId] = useState<AdapterId>(
+    (localStorage.getItem("tm-adapterId") as AdapterId) || "playwright-ts"
+  );
   const { user } = useUser();
   const { apiFetch } = useApi();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
 
   // form state
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [formErrors, setFormErrors] = useState<{ name?: string; repoUrl?: string }>({});
   const [refreshKey, setRefreshKey] = useState(0);
+  const [genRefresh, setGenRefresh] = useState(0);
+  useEffect(() => {
+    localStorage.setItem("tm-adapterId", adapterId);
+  }, [adapterId]);
 
   async function load() {
     setErr(null);
@@ -49,6 +63,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
+    apiFetch<{ plan: string }>("/billing/me")
+      .then((d) => setPlan(d.plan))
+      .catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -93,7 +110,18 @@ export default function DashboardPage() {
           TM
         </div>
         <div className="text-slate-700">TestMind</div>
+        {plan && (
+          <span className="ml-2 rounded-full border px-2 py-0.5 text-xs text-slate-600 bg-white">
+            {plan}
+          </span>
+        )}
+        {/* push the framework selector to the far right */}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-slate-500">Framework:</span>
+          <AdapterDropdown value={adapterId} onChange={setAdapterId} />
+        </div>
       </header>
+
 
       <h1 className="text-2xl font-semibold">Dashboard</h1>
       <p className="mt-1 text-slate-600">
@@ -182,7 +210,14 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Actions */}
+
                   <div className="flex shrink-0 items-center gap-1">
+                    {/* Generate tests for this project */}
+                    <GenerateButton
+                      projectId={p.id}
+                      onDone={() => setGenRefresh((k) => k + 1)}
+                      
+                    />
                     <RunNowButton
                       projectId={p.id}
                       onDone={() => setRefreshKey((k) => k + 1)}
@@ -215,6 +250,8 @@ export default function DashboardPage() {
             </ul>
           )}
         </div>
+        {/* Generated tests preview */}
+        <GeneratedTestsPanel key={`${adapterId}:${genRefresh}`} />
 
         {/* Recent runs */}
         <div className="rounded-lg border bg-white p-4 md:col-span-2 xl:col-span-2">
