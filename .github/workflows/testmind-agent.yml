@@ -34,7 +34,7 @@ jobs:
           GITHUB_APP_PRIVATE_KEY_BASE64: ${{ secrets.GITHUB_APP_PRIVATE_KEY_BASE64 }}
           # Fallback to the Actions token:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node apps/agents/runner/bot.js
+        run: pnpm tsx apps/api/src/runner/bot.ts
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
