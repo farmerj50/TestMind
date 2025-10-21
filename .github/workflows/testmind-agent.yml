@@ -55,7 +55,11 @@ jobs:
         run: pnpm i --frozen-lockfile
         
       - name: Install Playwright browsers (and OS deps)
-        run: pnpm exec playwright install --with-deps
+        run: |
+          corepack enable
+          # install CLI temporarily and fetch browsers + Linux deps
+          pnpm dlx playwright@latest install --with-deps
+
 
 
       # When manually run, synthesize an issue_comment payload for the runner
