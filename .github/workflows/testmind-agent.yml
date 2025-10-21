@@ -12,18 +12,15 @@ on:
         required: true
         type: string
       command:
-        description: "Agent command"
+        description: "Agent command (e.g., plan+gen or plan+gen+run)"
         required: false
-        default: "plan+gen+run"
+        default: "plan+gen"
         type: string
 
 jobs:
   run-agent:
-    if: >
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/testmind')) ||
-      github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # Run this job on YOUR machine
+    runs-on: [self-hosted]   # or [self-hosted, Windows, X64] if your runner has those labels
     permissions:
       contents: write
       pull-requests: write
@@ -35,34 +32,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Node only (no pnpm cache here)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
 
-      # Enable pnpm via Corepack and activate version from package.json (fallback latest-9)
       - name: Enable Corepack (pnpm)
         run: |
-          set -e
           corepack enable
-          VER=$(node -p "require('./package.json').packageManager?.split?.('@')[1] || ''")
-          if [ -z "$VER" ]; then VER="latest-9"; fi
-          corepack prepare "pnpm@${VER}" --activate
+          corepack prepare pnpm@9 --activate
           pnpm -v
 
       - name: Install deps
         run: pnpm i --frozen-lockfile
 
-      # Install Playwright CLI temporarily and fetch browsers + Linux deps
-      - name: Install Playwright browsers (and OS deps)
-        run: |
-          corepack enable
-          pnpm dlx playwright@latest install --with-deps
-
-      # When manually run, synthesize an issue_comment payload for the runner
+      # Manual dispatch needs a PR-like payload so bot.ts can read it
       - name: Prepare event payload (manual only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
         run: |
           echo '{ "issue": { "number": '"${TARGET_PR}"' }, "comment": { "body": "/testmind '"${CMD}"'" } }' > event.json
           echo "GITHUB_EVENT_NAME=issue_comment" >> $GITHUB_ENV
@@ -71,34 +58,12 @@ jobs:
           TARGET_PR: ${{ inputs.target_pr }}
           CMD: ${{ inputs.command }}
 
-      # Build & start the app on port 5173, then wait until it's reachable
-      - name: Start web app on :5173
-        run: |
-          set -e
-          # Try common build scripts if present (Vite/Next/etc.)
-          if jq -e '.scripts.build' package.json >/dev/null; then
-            pnpm run build || true
-          fi
-
-          # Try Vite preview, then generic start, then static serve from ./dist
-          (pnpm run preview -- --port 5173 --host \
-            || pnpm run start -- --port 5173 \
-            || npx -y serve -s dist -l 5173) &> web.log &
-
-          # Wait for the server to come up
-          npx -y wait-on http://localhost:5173
-
-      - name: Run TestMind Agent
+      - name: Run TestMind Agent (local URL)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Optional GitHub App creds (only if you use them)
-          GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
-          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GITHUB_APP_INSTALLATION_ID }}
-          GITHUB_APP_PRIVATE_KEY_BASE64: ${{ secrets.GITHUB_APP_PRIVATE_KEY_BASE64 }}
-          # Default Actions token for commenting/committing
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Point the agent's discovery/generation at your running app
-          TEST_BASE_URL: "http://localhost:5173"
+          TEST_BASE_URL: "http://localhost:5173"  # 👈 this is YOUR machine’s app
+          RUN_TESTS: "true"                       # set to "false" if you want plan+gen only
         run: pnpm tsx apps/api/src/runner/bot.ts
 
       - name: Upload Playwright report
