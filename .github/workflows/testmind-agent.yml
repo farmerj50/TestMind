@@ -55,7 +55,8 @@ jobs:
         run: pnpm i --frozen-lockfile
         
       - name: Install Playwright browsers (and OS deps)
-        uses: microsoft/playwright-github-action@v1
+        run: pnpm exec playwright install --with-deps
+
 
       # When manually run, synthesize an issue_comment payload for the runner
       - name: Prepare event payload (manual only)
