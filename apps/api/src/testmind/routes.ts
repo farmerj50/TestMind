@@ -5,8 +5,19 @@ import fs from 'fs';
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
 import { generateAndWrite, runAdapter } from './service.js';
 
-type GenerateBody = { repoPath?: string; baseUrl?: string; adapterId?: string; maxRoutes?: number };
-type GenerateQuery = { repoPath?: string; baseUrl?: string; adapterId?: string; maxRoutes?: number };
+type GenerateCommon = {
+  repoPath?: string;
+  baseUrl?: string;
+  adapterId?: string;
+  maxRoutes?: number;
+  include?: string;      // comma-separated or single glob, e.g. "/*" or "/pricing,/contact"
+  exclude?: string;      // comma-separated or single glob, e.g. "/admin*,/reset*"
+  authEmail?: string;    // optional test user email
+  authPassword?: string; // optional test user password
+};
+
+type GenerateBody = GenerateCommon;
+type GenerateQuery = GenerateCommon;
 type RunQuery = { baseUrl?: string; adapterId?: string };
 
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
@@ -33,7 +44,7 @@ function assertUrl(u: string) {
   try { new URL(u); } catch { throw new Error(`Invalid baseUrl: ${u}`); }
 }
 
-// Render a simple HTML form to collect baseUrl
+// Render a simple HTML form to collect baseUrl and optional knobs
 function renderGenerateForm(defaultBaseUrl = ''): string {
   return `<!doctype html>
 <html>
@@ -48,10 +59,37 @@ function renderGenerateForm(defaultBaseUrl = ''): string {
       <input name="baseUrl" placeholder="https://example.com"
              value="${defaultBaseUrl}"
              style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
       <div style="height:12px"></div>
       <label style="display:block;margin:8px 0 4px">Adapter</label>
       <input name="adapterId" value="playwright-ts"
              style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
+      <div style="height:12px"></div>
+      <label style="display:block;margin:8px 0 4px">Max Routes (optional)</label>
+      <input name="maxRoutes" type="number" placeholder="50"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
+      <div style="height:12px"></div>
+      <label style="display:block;margin:8px 0 4px">Include globs (comma-separated, optional)</label>
+      <input name="include" placeholder="/*,/pricing"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
+      <div style="height:12px"></div>
+      <label style="display:block;margin:8px 0 4px">Exclude globs (comma-separated, optional)</label>
+      <input name="exclude" placeholder="/admin*,/reset*"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
+      <div style="height:12px"></div>
+      <label style="display:block;margin:8px 0 4px">Auth Email (optional)</label>
+      <input name="authEmail" placeholder="test-user@example.com"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
+      <div style="height:12px"></div>
+      <label style="display:block;margin:8px 0 4px">Auth Password (optional)</label>
+      <input name="authPassword" type="password" placeholder="••••••••"
+             style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
+
       <div style="height:16px"></div>
       <button type="submit" style="padding:8px 12px;border:0;background:#111;color:#fff;border-radius:6px">
         Generate
@@ -75,6 +113,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         baseUrl,
         adapterId = 'playwright-ts',
         maxRoutes,
+        include,
+        exclude,
+        authEmail,
+        authPassword,
       } = (req.query as GenerateQuery) || {};
 
       // If no baseUrl -> render the HTML form (restores old UX)
@@ -83,11 +125,16 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         return;
       }
 
-      app.log.info({ repoPath, baseUrl, adapterId }, '[TM] GET /generate params');
+      app.log.info(
+        { repoPath, baseUrl, adapterId, include, exclude, maxRoutes, hasAuth: !!(authEmail && authPassword) },
+        '[TM] GET /generate params'
+      );
 
-      if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) {
-        process.env.TM_MAX_ROUTES = String(maxRoutes);
-      }
+      if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) process.env.TM_MAX_ROUTES = String(maxRoutes);
+      if (include)  process.env.TM_INCLUDE = include;
+      if (exclude)  process.env.TM_EXCLUDE = exclude;
+      if (authEmail)    process.env.E2E_EMAIL = authEmail;
+      if (authPassword) process.env.E2E_PASS  = authPassword;
 
       assertDirExists(repoPath);
       assertUrl(baseUrl);
@@ -95,7 +142,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const outRoot = path.join(GENERATED_ROOT, adapterId);
       fs.mkdirSync(outRoot, { recursive: true });
 
-      const result = await generateAndWrite({ repoPath, outRoot, baseUrl, adapterId });
+      const result = await generateAndWrite({
+        repoPath,
+        outRoot,
+        baseUrl,
+        adapterId,
+        options: { include, exclude, maxRoutes, authEmail, authPassword },
+      });
 
       const ms = Date.now() - t0;
       app.log.info({ ms, outRoot }, '[TM] GET /generate OK');
@@ -117,15 +170,24 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         baseUrl,
         adapterId = 'playwright-ts',
         maxRoutes,
+        include,
+        exclude,
+        authEmail,
+        authPassword,
       } = req.body || {};
 
-      app.log.info({ repoPath, baseUrl, adapterId }, '[TM] POST /generate params');
+      app.log.info(
+        { repoPath, baseUrl, adapterId, include, exclude, maxRoutes, hasAuth: !!(authEmail && authPassword) },
+        '[TM] POST /generate params'
+      );
 
       if (!baseUrl) throw new Error('baseUrl is required');
 
-      if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) {
-        process.env.TM_MAX_ROUTES = String(maxRoutes);
-      }
+      if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) process.env.TM_MAX_ROUTES = String(maxRoutes);
+      if (include)  process.env.TM_INCLUDE = include;
+      if (exclude)  process.env.TM_EXCLUDE = exclude;
+      if (authEmail)    process.env.E2E_EMAIL = authEmail;
+      if (authPassword) process.env.E2E_PASS  = authPassword;
 
       assertDirExists(repoPath);
       assertUrl(baseUrl);
@@ -133,7 +195,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const outRoot = path.join(GENERATED_ROOT, adapterId);
       fs.mkdirSync(outRoot, { recursive: true });
 
-      const result = await generateAndWrite({ repoPath, outRoot, baseUrl, adapterId });
+      const result = await generateAndWrite({
+        repoPath,
+        outRoot,
+        baseUrl,
+        adapterId,
+        options: { include, exclude, maxRoutes, authEmail, authPassword },
+      });
 
       const ms = Date.now() - t0;
       app.log.info({ ms, outRoot }, '[TM] POST /generate OK');
@@ -257,4 +325,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       node: process.version,
     });
   });
+  
 }
+// apps/api/src/testmind/runtime/routes.ts
+export async function discoverRoutesFromRepo(_repoPath: string) {
+  return { routes: ["/", "/pricing", "/login", "/signup", "/case-type-selection"] };
+}
+
