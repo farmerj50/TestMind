@@ -10,7 +10,7 @@ on:
       target_pr:
         description: "PR number to run against (e.g., 1)"
         required: true
-        type: string        # keep as string to avoid type/env casting issues
+        type: string
       command:
         description: "Agent command"
         required: false
@@ -19,7 +19,6 @@ on:
 
 jobs:
   run-agent:
-    # Run on PR events, on /testmind comments, or when manually dispatched
     if: >
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/testmind')) ||
@@ -36,23 +35,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Use pnpm version from package.json: "packageManager"
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
           cache: 'pnpm'
 
-      - name: Show pnpm version
-        run: pnpm --version
+      # Use Corepack so pnpm version comes from package.json: "packageManager"
+      - name: Enable Corepack (pnpm)
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Install deps
         run: pnpm i --frozen-lockfile
 
-      # When manually triggered, create a minimal issue_comment payload
+      # When manual run, synthesize an issue_comment payload for the runner
       - name: Prepare event payload (manual only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
@@ -66,11 +64,11 @@ jobs:
       - name: Run TestMind Agent
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Optional: if you later switch to GitHub App auth, add these secrets
+          # Optional GitHub App creds (if you use them)
           GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
           GITHUB_APP_INSTALLATION_ID: ${{ secrets.GITHUB_APP_INSTALLATION_ID }}
           GITHUB_APP_PRIVATE_KEY_BASE64: ${{ secrets.GITHUB_APP_PRIVATE_KEY_BASE64 }}
-          # Default token provided by Actions is fine for commenting/committing
+          # Default token from Actions is fine
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm tsx apps/api/src/runner/bot.ts
 
