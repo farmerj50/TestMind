@@ -20,6 +20,12 @@ enum TestCaseStatus {
   archived
 }
 
+enum PlanTier {
+  free
+  pro
+  enterprise
+}
+
 enum TestResultStatus {
   passed
   failed
@@ -36,6 +42,7 @@ enum TestRunStatus {
 
 model User {
   id        String    @id
+  plan      PlanTier  @default(free)
   projects  Project[]
   createdAt DateTime  @default(now())
 }
@@ -46,6 +53,7 @@ model Project {
   repoUrl   String
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id])
+  plan      PlanTier @default(free)
   createdAt DateTime @default(now())
 
   testRuns TestRun[]
