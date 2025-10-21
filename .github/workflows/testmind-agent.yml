@@ -35,22 +35,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      # DO NOT set cache: 'pnpm' here; setup-node would try to run pnpm too early.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'pnpm'
 
-      # Use Corepack so pnpm version comes from package.json: "packageManager"
+      # Enable pnpm via Corepack and activate a 9.x build (or read from package.json)
       - name: Enable Corepack (pnpm)
         run: |
           corepack enable
-          pnpm --version
+          # Use the version from package.json: "packageManager": "pnpm@x.y.z"
+          VER=$(node -p "require('./package.json').packageManager?.split?.('@')[1] || ''")
+          if [ -z "$VER" ]; then VER="latest-9"; fi
+          corepack prepare "pnpm@${VER}" --activate
+          pnpm -v
 
       - name: Install deps
         run: pnpm i --frozen-lockfile
 
-      # When manual run, synthesize an issue_comment payload for the runner
+      # When manually run, synthesize an issue_comment payload for the runner
       - name: Prepare event payload (manual only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
@@ -64,11 +68,11 @@ jobs:
       - name: Run TestMind Agent
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Optional GitHub App creds (if you use them)
+          # Optional GitHub App creds (only if you use them)
           GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
           GITHUB_APP_INSTALLATION_ID: ${{ secrets.GITHUB_APP_INSTALLATION_ID }}
           GITHUB_APP_PRIVATE_KEY_BASE64: ${{ secrets.GITHUB_APP_PRIVATE_KEY_BASE64 }}
-          # Default token from Actions is fine
+          # Default Actions token for commenting/committing
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm tsx apps/api/src/runner/bot.ts
 
