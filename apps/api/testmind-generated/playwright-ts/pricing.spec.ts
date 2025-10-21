@@ -1,26 +1,32 @@
 import { test, expect } from '@playwright/test';
 
-// Auto-generated for page /pricing — 4 test(s)
+// Auto-generated for page /pricing — 5 test(s)
 
 test("Page loads: /pricing", async ({ page }) => {
-  await page.goto("https://www.justicepathlaw.com/pricing");
-  await expect(page.getByText("Sign")).toBeVisible();
+  await page.goto("/pricing");
+  await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible();
 });
 
 test("Navigate /pricing → /", async ({ page }) => {
-  await page.goto("https://www.justicepathlaw.com/pricing");
-  await page.goto("https://www.justicepathlaw.com/");
+  await page.goto("/pricing");
+  await page.goto("/");
   await expect(page.getByText("Page")).toBeVisible();
 });
 
 test("Navigate /pricing → /live-chat", async ({ page }) => {
-  await page.goto("https://www.justicepathlaw.com/pricing");
-  await page.goto("https://www.justicepathlaw.com/live-chat");
+  await page.goto("/pricing");
+  await page.goto("/live-chat");
   await expect(page.getByText("live-chat")).toBeVisible();
 });
 
 test("Navigate /pricing → /login", async ({ page }) => {
-  await page.goto("https://www.justicepathlaw.com/pricing");
-  await page.goto("https://www.justicepathlaw.com/login");
+  await page.goto("/pricing");
+  await page.goto("/login");
   await expect(page.getByText("login")).toBeVisible();
+});
+
+test("Navigate /pricing → /signup", async ({ page }) => {
+  await page.goto("/pricing");
+  await page.goto("/signup");
+  await expect(page.getByText("signup")).toBeVisible();
 });
