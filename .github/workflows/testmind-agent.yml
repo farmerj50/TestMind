@@ -19,7 +19,7 @@ on:
 
 jobs:
   run-agent:
-    runs-on: [self-hosted]   # keep your self-hosted runner
+    runs-on: [self-hosted]   # your self-hosted runner (Windows or *nix)
     permissions:
       contents: write
       pull-requests: write
@@ -112,16 +112,16 @@ jobs:
         run: pnpm tsx apps/api/src/runner/bot.ts
 
       # ---- Playwright runner: install ONE version locally and use it ----
-      # Use the same major/minor as the core 'playwright' already in node_modules (logs showed 1.56.0).
+      # Match the core 'playwright' version already present (logs showed 1.56.0).
       - name: Add @playwright/test to workspace [Windows]
         if: runner.os == 'Windows'
         shell: powershell
-        run: pnpm add -D @playwright/test@1.56.0
+        run: pnpm add -Dw @playwright/test@1.56.0
 
       - name: Add @playwright/test to workspace [Unix]
         if: runner.os != 'Windows'
         shell: bash
-        run: pnpm add -D @playwright/test@1.56.0
+        run: pnpm add -Dw @playwright/test@1.56.0
 
       - name: Install Playwright browsers (local) [Windows]
         if: runner.os == 'Windows'
