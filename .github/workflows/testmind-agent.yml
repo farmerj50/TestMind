@@ -67,8 +67,14 @@ jobs:
           RUN_TESTS: "true"                       # agent may still only generate; we run tests explicitly below
         run: pnpm tsx apps/api/src/runner/bot.ts
 
+      - name: Install dependencies
+        run: pnpm install
+
       - name: Install Playwright browsers
-        run: pnpm exec playwright install
+        
+
+      - name: Run Playwright tests
+        run: pnpx playwright test
 
       # Run tests to actually produce the HTML report folder.
       # This is PowerShell for best compatibility with Windows self-hosted runners.
