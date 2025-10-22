@@ -19,7 +19,7 @@ on:
 
 jobs:
   run-agent:
-    runs-on: [self-hosted] # add labels if you have them, e.g. [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64]   # 👈 explicitly mark Windows
     permissions:
       contents: write
       pull-requests: write
@@ -37,27 +37,31 @@ jobs:
           node-version: '20.x'
 
       - name: Enable Corepack (pnpm)
+        shell: pwsh
         run: |
           corepack enable
           corepack prepare pnpm@9 --activate
           pnpm -v
 
       - name: Install deps
+        shell: pwsh
         run: pnpm i --frozen-lockfile
 
-      # Only needed for manual trigger so bot.ts can read a PR-like payload
+      # For manual dispatch (not needed for PRs)
       - name: Prepare event payload (manual only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        shell: bash
+        shell: pwsh
         run: |
-          echo '{ "issue": { "number": '"${TARGET_PR}"' }, "comment": { "body": "/testmind '"${CMD}"'" } }' > event.json
-          echo "GITHUB_EVENT_NAME=issue_comment" >> $GITHUB_ENV
-          echo "GITHUB_EVENT_PATH=$GITHUB_WORKSPACE/event.json" >> $GITHUB_ENV
+          $json = '{ "issue": { "number": ' + $env:TARGET_PR + ' }, "comment": { "body": "/testmind ' + $env:CMD + '" } }'
+          Set-Content -Path event.json -Value $json
+          Add-Content -Path $env:GITHUB_ENV -Value "GITHUB_EVENT_NAME=issue_comment"
+          Add-Content -Path $env:GITHUB_ENV -Value "GITHUB_EVENT_PATH=$env:GITHUB_WORKSPACE\event.json"
         env:
           TARGET_PR: ${{ inputs.target_pr }}
           CMD: ${{ inputs.command }}
 
       - name: Run TestMind Agent (local URL)
+        shell: pwsh
         env:
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -66,24 +70,22 @@ jobs:
           RUN_TESTS: "true"
         run: pnpm tsx apps/api/src/runner/bot.ts
 
-      # ---- Playwright (no repo dependency) ----
-      # Use pnpm dlx so we don't need @playwright/test in package.json
+      # ✅ Use PowerShell instead of bash for Windows
       - name: Install Playwright browsers
-        shell: bash
+        shell: pwsh
         run: |
-          pnpm dlx -y playwright@latest install
+          pnpm dlx playwright@latest install
 
-      # Run tests and force an HTML report
       - name: Run Playwright tests (generated)
         shell: pwsh
-        continue-on-error: true   # still upload report if tests fail
+        continue-on-error: true
         run: |
           if (Test-Path "testmind-generated\playwright.config.ts") {
-            pnpm dlx -y playwright@latest test -c testmind-generated\playwright.config.ts --reporter=html
+            pnpm dlx playwright@latest test -c testmind-generated\playwright.config.ts --reporter=html
           } elseif (Test-Path "testmind-generated") {
-            pnpm dlx -y playwright@latest test testmind-generated --reporter=html
+            pnpm dlx playwright@latest test testmind-generated --reporter=html
           } else {
-            pnpm dlx -y playwright@latest test --reporter=html
+            pnpm dlx playwright@latest test --reporter=html
           }
 
       - name: Upload Playwright report
