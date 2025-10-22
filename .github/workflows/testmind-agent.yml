@@ -19,7 +19,7 @@ on:
 
 jobs:
   run-agent:
-    runs-on: [self-hosted, Windows, X64]   # 👈 explicitly mark Windows
+    runs-on: [self-hosted]               # keep your self-hosted runner
     permissions:
       contents: write
       pull-requests: write
@@ -36,32 +36,64 @@ jobs:
         with:
           node-version: '20.x'
 
-      - name: Enable Corepack (pnpm)
-        shell: pwsh
+      # ----- pnpm/corepack (Windows) -----
+      - name: Enable Corepack (pnpm) [Windows]
+        if: runner.os == 'Windows'
+        shell: powershell
         run: |
           corepack enable
           corepack prepare pnpm@9 --activate
           pnpm -v
 
-      - name: Install deps
-        shell: pwsh
+      # ----- pnpm/corepack (Linux/macOS) -----
+      - name: Enable Corepack (pnpm) [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm -v
+
+      # Install repo deps with pnpm
+      - name: Install deps [Windows]
+        if: runner.os == 'Windows'
+        shell: powershell
         run: pnpm i --frozen-lockfile
 
-      # For manual dispatch (not needed for PRs)
-      - name: Prepare event payload (manual only)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        shell: pwsh
+      - name: Install deps [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
+        run: pnpm i --frozen-lockfile
+
+      # For manual dispatch only
+      - name: Prepare event payload (manual only) [Windows]
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        shell: powershell
         run: |
           $json = '{ "issue": { "number": ' + $env:TARGET_PR + ' }, "comment": { "body": "/testmind ' + $env:CMD + '" } }'
           Set-Content -Path event.json -Value $json
-          Add-Content -Path $env:GITHUB_ENV -Value "GITHUB_EVENT_NAME=issue_comment"
-          Add-Content -Path $env:GITHUB_ENV -Value "GITHUB_EVENT_PATH=$env:GITHUB_WORKSPACE\event.json"
+          "GITHUB_EVENT_NAME=issue_comment" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+          "GITHUB_EVENT_PATH=$env:GITHUB_WORKSPACE\event.json" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
         env:
           TARGET_PR: ${{ inputs.target_pr }}
           CMD: ${{ inputs.command }}
 
-      - name: Run TestMind Agent (local URL)
-        shell: pwsh
+      - name: Prepare event payload (manual only) [Unix]
+        if: github.event_name == 'workflow_dispatch' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          printf '{ "issue": { "number": %s }, "comment": { "body": "/testmind %s" } }' "$TARGET_PR" "$CMD" > event.json
+          echo "GITHUB_EVENT_NAME=issue_comment" >> "$GITHUB_ENV"
+          echo "GITHUB_EVENT_PATH=$GITHUB_WORKSPACE/event.json" >> "$GITHUB_ENV"
+        env:
+          TARGET_PR: ${{ inputs.target_pr }}
+          CMD: ${{ inputs.command }}
+
+      # Run your agent (generates specs into testmind-generated)
+      - name: Run TestMind Agent (local URL) [Windows]
+        if: runner.os == 'Windows'
+        shell: powershell
         env:
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -70,14 +102,32 @@ jobs:
           RUN_TESTS: "true"
         run: pnpm tsx apps/api/src/runner/bot.ts
 
-      # ✅ Use PowerShell instead of bash for Windows
-      - name: Install Playwright browsers
-        shell: pwsh
-        run: |
-          pnpm dlx playwright@latest install
+      - name: Run TestMind Agent (local URL) [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CI: true
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_BASE_URL: "http://localhost:5173"
+          RUN_TESTS: "true"
+        run: pnpm tsx apps/api/src/runner/bot.ts
 
-      - name: Run Playwright tests (generated)
-        shell: pwsh
+      # ----- Playwright install (no repo dependency) -----
+      - name: Install Playwright browsers [Windows]
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: pnpm dlx playwright@latest install
+
+      - name: Install Playwright browsers [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
+        run: pnpm dlx playwright@latest install
+
+      # ----- Run tests to produce HTML report -----
+      - name: Run Playwright tests (generated) [Windows]
+        if: runner.os == 'Windows'
+        shell: powershell
         continue-on-error: true
         run: |
           if (Test-Path "testmind-generated\playwright.config.ts") {
@@ -88,6 +138,21 @@ jobs:
             pnpm dlx playwright@latest test --reporter=html
           }
 
+      - name: Run Playwright tests (generated) [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          if [ -f testmind-generated/playwright.config.ts ]; then
+            pnpm dlx playwright@latest test -c testmind-generated/playwright.config.ts --reporter=html
+          elif [ -d testmind-generated ]; then
+            pnpm dlx playwright@latest test testmind-generated --reporter=html
+          else
+            pnpm dlx playwright@latest test --reporter=html
+          fi
+
+      # ----- Upload artifacts -----
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
