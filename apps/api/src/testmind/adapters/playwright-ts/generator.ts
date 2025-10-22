@@ -28,15 +28,15 @@ export function groupByPage(cases: TestCase[]): Map<string, TestCase[]> {
   return m;
 }
 
-// ------- Emit a single test case -------
-function emitTest(tc: TestCase): string {
-  const body = tc.steps.map(emitStep).join("\n");
-  // De-dupe test titles slightly to avoid Playwright warnings
-  const safeName = tc.name.replace(/\s+/g, " ").trim();
-  return `
-test(${JSON.stringify(safeName)}, async ({ page }) => {
-${body}
-});`.trim();
+// ------- Title de-duper (per file) -------
+function makeUniqTitleFactory() {
+  const seen = new Map<string, number>();
+  return (raw: string) => {
+    const base = raw.replace(/\s+/g, " ").trim(); // normalize whitespace
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base} [${n}]`; // Page loads: /signup [2]
+  };
 }
 
 // ------- Map each step -> Playwright code -------
@@ -46,7 +46,7 @@ function emitStep(s: Step): string {
       return `  await page.goto(${JSON.stringify(s.url)});`;
     case "expect-text":
       return `  await expect(page.getByText(${JSON.stringify(s.text)})).toBeVisible();`;
-    case "expect-visible": // keep legacy mapping working
+    case "expect-visible":
       return `  await expect(page.locator(${JSON.stringify(s.selector)})).toBeVisible();`;
     case "fill":
       return `  await page.locator(${JSON.stringify(s.selector)}).fill(${JSON.stringify(s.value)});`;
@@ -59,9 +59,20 @@ function emitStep(s: Step): string {
   }
 }
 
+// ------- Emit a single test case -------
+function emitTest(tc: TestCase, uniqTitle: (s: string) => string): string {
+  const body = tc.steps.map(emitStep).join("\n");
+  const title = uniqTitle(tc.name);
+  return `
+test(${JSON.stringify(title)}, async ({ page }) => {
+${body}
+});`.trim();
+}
+
 // ------- Emit a whole spec file for one page with ALL its cases -------
 export function emitSpecFile(pagePath: string, tcs: TestCase[]): string {
-  const tests = (tcs ?? []).map(emitTest).join("\n\n");
+  const uniq = makeUniqTitleFactory(); // reset per file
+  const tests = (tcs ?? []).map(tc => emitTest(tc, uniq)).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} — ${tcs?.length ?? 0} test(s)`;
   return `
 import { test, expect } from '@playwright/test';
