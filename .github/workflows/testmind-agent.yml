@@ -19,7 +19,6 @@ on:
 
 jobs:
   run-agent:
-    # Your self-hosted runner
     runs-on: [self-hosted] # add labels if you have them, e.g. [self-hosted, Windows, X64]
     permissions:
       contents: write
@@ -63,31 +62,28 @@ jobs:
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEST_BASE_URL: "http://localhost:5173"  # your local app URL
-          RUN_TESTS: "true"                       # agent may still only generate; we run tests explicitly below
+          TEST_BASE_URL: "http://localhost:5173"
+          RUN_TESTS: "true"
         run: pnpm tsx apps/api/src/runner/bot.ts
 
-      - name: Install dependencies
-        run: pnpm install
-
+      # ---- Playwright (no repo dependency) ----
+      # Use pnpm dlx so we don't need @playwright/test in package.json
       - name: Install Playwright browsers
-        
+        shell: bash
+        run: |
+          pnpm dlx -y playwright@latest install
 
-      - name: Run Playwright tests
-        run: pnpx playwright test
-
-      # Run tests to actually produce the HTML report folder.
-      # This is PowerShell for best compatibility with Windows self-hosted runners.
+      # Run tests and force an HTML report
       - name: Run Playwright tests (generated)
         shell: pwsh
-        continue-on-error: true   # keep going so we can upload the report even on failures
+        continue-on-error: true   # still upload report if tests fail
         run: |
           if (Test-Path "testmind-generated\playwright.config.ts") {
-            pnpm exec playwright test -c testmind-generated\playwright.config.ts --reporter=html
+            pnpm dlx -y playwright@latest test -c testmind-generated\playwright.config.ts --reporter=html
           } elseif (Test-Path "testmind-generated") {
-            pnpm exec playwright test testmind-generated --reporter=html
+            pnpm dlx -y playwright@latest test testmind-generated --reporter=html
           } else {
-            pnpm exec playwright test --reporter=html
+            pnpm dlx -y playwright@latest test --reporter=html
           }
 
       - name: Upload Playwright report
@@ -96,9 +92,8 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report
-          if-no-files-found: error  # ensures we notice if no report was generated
+          if-no-files-found: error
 
-      # Optional: upload Playwright traces (if you turned on tracing in your config)
       - name: Upload Playwright traces (optional)
         if: always()
         uses: actions/upload-artifact@v4
