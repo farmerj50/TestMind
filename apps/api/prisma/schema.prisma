@@ -85,6 +85,14 @@ model TestRun {
   finishedAt DateTime?
   issueUrl   String?
 
+  framework    String?       // "playwright"
+  trigger      String?       // "user" | "schedule" | "webhook"
+  envName      String?
+  paramsJson   Json?
+
+  reportPath String?
+  artifactsJson Json?
+
   results TestResult[]
 
   @@index([projectId, createdAt])

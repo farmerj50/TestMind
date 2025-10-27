@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-// Auto-generated for page /pricing — 5 test(s)
+// Auto-generated for page /pricing — 6 test(s)
 
 test("Page loads: /pricing", async ({ page }) => {
   await page.goto("/pricing");
-  await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible();
+  await expect(page.getByText("testmind-web")).toBeVisible();
 });
 
 test("Navigate /pricing → /", async ({ page }) => {
@@ -13,20 +13,26 @@ test("Navigate /pricing → /", async ({ page }) => {
   await expect(page.getByText("Page")).toBeVisible();
 });
 
-test("Navigate /pricing → /live-chat", async ({ page }) => {
+test("Navigate /pricing → /contact", async ({ page }) => {
   await page.goto("/pricing");
-  await page.goto("/live-chat");
-  await expect(page.getByText("live-chat")).toBeVisible();
+  await page.goto("/contact");
+  await expect(page.getByText("contact")).toBeVisible();
 });
 
-test("Navigate /pricing → /login", async ({ page }) => {
+test("Navigate /pricing → /signin", async ({ page }) => {
   await page.goto("/pricing");
-  await page.goto("/login");
-  await expect(page.getByText("login")).toBeVisible();
+  await page.goto("/signin");
+  await expect(page.getByText("signin")).toBeVisible();
 });
 
 test("Navigate /pricing → /signup", async ({ page }) => {
   await page.goto("/pricing");
   await page.goto("/signup");
   await expect(page.getByText("signup")).toBeVisible();
+});
+
+test("Navigate /pricing → /dashboard", async ({ page }) => {
+  await page.goto("/pricing");
+  await page.goto("/dashboard");
+  await expect(page.getByText("dashboard")).toBeVisible();
 });

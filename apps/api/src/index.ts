@@ -5,6 +5,9 @@ import cors from "@fastify/cors";
 import { clerkPlugin, getAuth } from "@clerk/fastify";
 import { z } from "zod";
 
+import fastifyStatic from "@fastify/static";
+import path from "node:path";
+
 import { githubRoutes } from "./routes/github";
 import { testRoutes } from "./routes/tests";
 import runRoutes from "./routes/run";
@@ -19,6 +22,7 @@ import testmindRoutes from './testmind/routes';
 
 
 const app = Fastify({ logger: true });
+const REPO_ROOT = path.resolve(process.cwd());
 
 app.register(cors, { origin: ["http://localhost:5173"], credentials: true });
 
@@ -33,6 +37,10 @@ app.register(runRoutes, { prefix: "/runner" });
 app.register(reportsRoutes, { prefix: "/" });
 app.register(integrationsRoutes, { prefix: "/" });
 app.register(testmindRoutes, { prefix: "/tm" });
+app.register(fastifyStatic, {
+  root: REPO_ROOT,          // serves repo root so /playwright-report is visible
+  prefix: "/_static/",      // access with /_static/playwright-report/index.html
+});
 
 app.get("/runner/debug/:id", async (req, reply) => {
   const { id } = req.params as { id: string };
