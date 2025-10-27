@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useApi } from "@/lib/api";
-import StatusBadge from "@/components/StatusBadge";
+import { useApi } from "../lib/api";
+import StatusBadge from "../components/StatusBadge";
 
 type Run = {
   id: string;
