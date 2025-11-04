@@ -325,10 +325,51 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       node: process.version,
     });
   });
+
+  app.get('/runs/:id/tests', async (req, reply) => {
+  try {
+    const runId = (req.params as any).id as string;
+    const outDir = path.join(GENERATED_ROOT, runId);
+    const jsonPath = path.join(outDir, 'report.json');
+
+    if (!fs.existsSync(jsonPath)) {
+      return reply.code(404).send({ ok: false, error: 'report.json not found for this run' });
+    }
+
+    const raw = fs.readFileSync(jsonPath, 'utf-8');
+    const report = JSON.parse(raw);
+
+    const rows: Array<{ title: string; file: string; status: string; duration: number }> = [];
+
+    const walk = (node: any, file?: string) => {
+      if (!node) return;
+      if (node.file) file = node.file;
+      if (node.tests) {
+        for (const t of node.tests) {
+          const res = t.results?.[0];
+          rows.push({
+            title: t.titlePath?.join(' › ') || t.title,
+            file: file || t.location?.file || 'unknown',
+            status: res?.status || t.outcome || 'unknown',
+            duration: res?.duration || 0,
+          });
+        }
+      }
+      if (node.suites) node.suites.forEach((s: any) => walk(s, file));
+      if (node.specs) node.specs.forEach((s: any) => walk(s, s.file || file));
+    };
+
+    walk(report);
+    return reply.send({ tests: rows });
+  } catch (err: any) {
+    return sendError(app, reply as any, err, 500);
+  }
+});
   
 }
 // apps/api/src/testmind/runtime/routes.ts
 export async function discoverRoutesFromRepo(_repoPath: string) {
   return { routes: ["/", "/pricing", "/login", "/signup", "/case-type-selection"] };
 }
+
 
