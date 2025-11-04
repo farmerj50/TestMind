@@ -2,6 +2,7 @@
 import { useAuth } from "@clerk/clerk-react";
 
 const DEFAULT_BASE = "http://localhost:8787"; // <- put your real API port
+type ApiInit = RequestInit & { auth?: "include" | "omit" };
 
 export function useApi() {
   const { getToken } = useAuth();
@@ -25,21 +26,33 @@ export function useApi() {
     return new URL(cleanPath, baseWithSlash).toString();
   }
 
-  async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
-    const url = buildUrl(path);
-    const token = await getToken().catch(() => undefined);
+  // keep the rest of the file exactly as-is
 
-    const headers = new Headers(init.headers || {});
-    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+async function apiFetch<T = any>(path: string, init: ApiInit = {}): Promise<T> {
+  const url = buildUrl(path);
 
-    const res = await fetch(url, { ...init, headers, credentials: "include" });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || `${res.status} ${res.statusText}`);
-    }
-    return res.json() as Promise<T>;
+  const method = (init.method ?? "GET").toString().toUpperCase();
+  // Only include auth on non-GET, or when explicitly requested for GET
+  const wantAuth = method !== "GET" ? true : init.auth === "include";
+  const token = wantAuth ? await getToken().catch(() => undefined) : undefined;
+
+  const headers = new Headers(init.headers || {});
+  // Set Content-Type only when there is a body
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(url, { ...init, headers, credentials: "include" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 
   return { apiFetch };
 }
