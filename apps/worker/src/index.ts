@@ -29,10 +29,17 @@ new Worker(
 
     const outDir = path.join(GENERATED_ROOT, runId);
     const htmlReport = path.join(outDir, 'html-report');
+    const resultsDir = path.join(outDir, 'test-results');
+    const jsonReport = path.join(outDir, 'report.json');
 
     await fs.mkdir(htmlReport, { recursive: true });
+    await fs.mkdir(resultsDir, { recursive: true });
 
     try {
+
+      try {
+        await execa('npx', ['playwright', 'install', '--with-deps'], { cwd: projectRoot, stdio: 'inherit' });
+        } catch { /* ignore; test run will surface any real issue */ }
       // run Playwright with HTML report
       await execa(
         'npx',
@@ -40,8 +47,10 @@ new Worker(
           'playwright',
           'test',
           // keep line reporter in logs AND emit html
-          '--reporter=dot,html',
-          `--output=${path.join(outDir, 'test-results')}`,
+          // '--reporter=dot,html',
+          // `--output=${path.join(outDir, 'test-results')}`,
+          `--reporter=dot,html,json=${jsonReport}`,
+          `--output=${resultsDir}`,
         ],
         {
           cwd: projectRoot,
@@ -73,7 +82,8 @@ new Worker(
           error: String(err?.shortMessage || err?.message || err),
         },
       });
-      throw err;
+      // throw err;
+       // Do NOT rethrow: we already marked DB status=failed and we want the job "handled"
     }
   },
   { connection: { url: REDIS_URL } }

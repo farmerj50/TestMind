@@ -61,6 +61,32 @@ export async function parseResults(resultsPath: string): Promise<ParsedCase[]> {
     raw.forEach((n: any) => walk(n));
     return out;
   }
+    // PLAYWRIGHT (json reporter)
+  if (raw && Array.isArray(raw.suites)) {
+    const out: ParsedCase[] = [];
+    const walk = (suite: any) => {
+      for (const t of suite.tests || []) {
+        const last = (t.results || []).slice(-1)[0] || {};
+        const status =
+          t.outcome || last.status || (last.error ? "failed" : "passed");
+        out.push({
+          file: t.location?.file || "unknown",
+          fullName: t.titlePath ? t.titlePath.join(" › ") : t.title,
+          durationMs: last.duration,
+          status: status === "expected" ? "passed"
+                : status === "skipped" ? "skipped"
+                : status === "flaky" ? "passed"
+                : status as any,
+          message: last.error?.message || null,
+        });
+      }
+      for (const s of suite.suites || []) walk(s);
+    };
+    raw.suites.forEach(walk);
+    return out;
+  }
+
 
   return [];
 }
+

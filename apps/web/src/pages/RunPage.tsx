@@ -1,12 +1,12 @@
 // apps/web/src/pages/RunPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useApi } from "@/lib/api";
-import StatusBadge from "@/components/StatusBadge";
-import { Button } from "@/components/ui/button";
+import { useApi } from "../lib/api";
+import StatusBadge from "../components/StatusBadge";
+import { Button } from "../components/ui/button";
 import { ExternalLink } from "lucide-react";
-import RunResults from "@/components/RunResults";
-import RunLogs from "@/components/RunLogs";
+import RunResults from "../components/RunResults";
+import RunLogs from "../components/RunLogs";
 
 type TestRunStatus = "queued" | "running" | "succeeded" | "failed";
 type Run = {

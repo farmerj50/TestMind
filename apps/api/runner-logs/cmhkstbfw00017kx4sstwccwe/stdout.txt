@@ -1,0 +1,2 @@
+[runner] repoRoot=C:\Users\gabby\AppData\Local\Temp\tm-run-e7ec4ac1-c332-4918-addc-f58b20170a85
+[runner] work=C:\Users\gabby\AppData\Local\Temp\tm-run-e7ec4ac1-c332-4918-addc-f58b20170a85\apps\api
