@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApi } from "../lib/api";
 import StatusBadge from "../components/StatusBadge";
 
@@ -21,21 +21,66 @@ export default function RecentRunsTable({
   const [runs, setRuns] = useState<Run[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
+  // single timer handle so we never spawn multiple loops
+  const pollRef = useRef<number | null>(null);
+
+  // cleanup on unmount
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-        const res = await apiFetch<{ runs: Run[] }>(`/reports/recent${q}`);
-        if (!cancelled) setRuns(res.runs);
-      } catch (e: any) {
-        if (!cancelled) setErr(e.message ?? "Failed to load runs");
+    return () => {
+      if (pollRef.current) {
+        window.clearTimeout(pollRef.current);
+        pollRef.current = null;
       }
-    })();
+    };
+  }, []);
 
-    return () => { cancelled = true; };
-    // NOTE: no setInterval here
+  useEffect(() => {
+    // cancel any prior timer when deps change
+    if (pollRef.current) {
+      window.clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const fetchOnce = async () => {
+      const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+      const res = await apiFetch<{ runs: Run[] }>(`/reports/recent${q}`, {
+        signal: controller.signal as any,
+      });
+      if (!cancelled) setRuns(res.runs || []);
+      return res.runs || [];
+    };
+
+    const loop = async () => {
+      try {
+        const list = await fetchOnce();
+        const hasActive = list.some(r => r.status === "queued" || r.status === "running");
+        if (!cancelled && hasActive) {
+          // poll every 1.5s only while active runs exist
+          pollRef.current = window.setTimeout(loop, 1500);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setErr(e?.message ?? "Failed to load runs");
+          // back off on error
+          pollRef.current = window.setTimeout(loop, 3000);
+        }
+      }
+    };
+
+    // initial kick
+    loop();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (pollRef.current) {
+        window.clearTimeout(pollRef.current);
+        pollRef.current = null;
+      }
+    };
   }, [projectId, refreshKey]);
 
   if (err) return <div className="text-sm text-rose-600">{err}</div>;
