@@ -1,17 +1,17 @@
 import { Routes, Route } from "react-router-dom";
-import LandingPage from "@/pages/LandingPage";
-import PricingPage from "@/pages/PricingPage";
-import DashboardPage from "@/pages/DashboardPage";
-import ContactPage from "@/pages/ContactPage";
-import ResetPage from "@/pages/ResetPage";
-import SignInPage from "@/pages/SignInPage";
-import SignUpPage from "@/pages/SignUpPage";
-import ProjectPage from "@/pages/ProjectPage";
-import RunPage from "@/pages/RunPage";            // ⬅️ import this
+import LandingPage from "../pages/LandingPage";
+import PricingPage from "../pages/PricingPage";
+import DashboardPage from "../pages/DashboardPage";
+import ContactPage from "../pages/ContactPage";
+import ResetPage from "../pages/ResetPage";
+import SignInPage from "../pages/SignInPage";
+import SignUpPage from "../pages/SignUpPage";
+import ProjectPage from "../pages/ProjectPage";
+import RunPage from "../pages/RunPage";            // ⬅️ import this
 
-import ProtectedRoute from "@/components/ProtectedRoute";
-import AppLayout from "@/components/layout/AppLayout";
-import BareLayout from "@/components/layout/BareLayout";
+import ProtectedRoute from "../components/ProtectedRoute";
+import AppLayout from "../components/layout/AppLayout";
+import BareLayout from "../components/layout/BareLayout";
 
 function NotFound() {
   return (

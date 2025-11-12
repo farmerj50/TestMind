@@ -1,16 +1,13 @@
-// apps/web/src/components/RunNowButton.tsx
 import { useState } from "react";
-import { Button } from "./ui/button";      // was "@/components/ui/button"
-import { useApi } from "../lib/api";       // was "@/lib/api"
+import { Button } from "./ui/button";
+import { useApi } from "../lib/api";
 import { Play } from "lucide-react";
 
 export default function RunNowButton({
   projectId,
-  appSubdir = "apps/justicepath",         // <- change per project or pass in from parent
   onDone,
 }: {
   projectId: string;
-  appSubdir?: string;
   onDone?: () => void;
 }) {
   const { apiFetch } = useApi();
@@ -19,9 +16,10 @@ export default function RunNowButton({
   async function handleClick() {
     setLoading(true);
     try {
+      // send ONLY the projectId; no subdir defaults from the client
       await apiFetch<{ id: string }>("/runner/run", {
         method: "POST",
-        body: JSON.stringify({ projectId, appSubdir }),  // <- include subdir
+        body: JSON.stringify({ projectId }), // <- no appSubdir here
       });
       onDone?.();
     } catch (e) {

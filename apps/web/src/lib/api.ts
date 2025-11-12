@@ -6,14 +6,10 @@ const DEFAULT_BASE = "http://localhost:8787"; // dev API URL
 type ApiInit = RequestInit & { auth?: "include" | "omit" };
 
 /** Helper used by Run button (sends JSON). */
-export async function startRun(
-  apiFetch: <T = any>(path: string, init?: ApiInit) => Promise<T>,
-  projectId: string,
-  appSubdir?: string
-) {
-  return apiFetch<{ id: string }>("/runner/run", {
+export async function startRun(apiFetch: any, projectId: string) {
+  return apiFetch("/runner/run", {
     method: "POST",
-    body: JSON.stringify({ projectId, appSubdir }), // stringify!
+    body: JSON.stringify({ projectId }),
   });
 }
 

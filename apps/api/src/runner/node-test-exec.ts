@@ -1,129 +1,150 @@
-import fs from "fs/promises";
-import path from "path";
+import path from "node:path";
+import fs from "node:fs/promises";
 import { execa } from "execa";
 
-type Framework = "jest" | "vitest" | "playwright" | null;
+type FindConfigResult = { cwd: string; configPath: string } | null;
 
-export async function detectFramework(workdir: string): Promise<Framework> {
-  const pkgPath = path.join(workdir, "package.json");
-  let pkg: any;
-  try {
-    pkg = JSON.parse(await fs.readFile(pkgPath, "utf8"));
-  } catch {
-    return null;
+async function pathExists(p: string) {
+  try { await fs.stat(p); return true; } catch { return false; }
+}
+
+async function findPlaywrightConfig(workdir: string): Promise<FindConfigResult> {
+  // prefer tm-ci config anywhere in the repo
+  const candidates: string[] = [];
+
+  const exts = ["ts","js","cjs","mjs"];
+  for (const ext of exts) candidates.push(`tm-ci.playwright.config.${ext}`);
+  for (const ext of exts) candidates.push(`playwright.config.${ext}`);
+
+  // Breadth-first walk a shallow tree to avoid heavy recursion:
+  // repo root + common monorepo dirs
+  const roots = [workdir, path.join(workdir, "apps"), path.join(workdir, "packages")];
+  const queues: string[] = [];
+
+  for (const root of roots) {
+    if (!(await pathExists(root))) continue;
+    queues.push(root);
+    // push children one level deep if apps/packages
+    if (root !== workdir) {
+      try {
+        const dirents = await fs.readdir(root, { withFileTypes: true });
+        for (const d of dirents) if (d.isDirectory()) queues.push(path.join(root, d.name));
+      } catch {}
+    }
   }
 
-  const has = (dep: string) =>
-    !!(pkg.dependencies?.[dep] || pkg.devDependencies?.[dep]);
-
-  // scripts must be available before we test them
-  const scr = pkg.scripts || {};
-
-  // ---- Playwright detection ----
-  const hasPWDep = has("@playwright/test");
-  const hasPWCfg =
-    (await exists(path.join(workdir, "playwright.config.ts"))) ||
-    (await exists(path.join(workdir, "playwright.config.js"))) ||
-    (await exists(path.join(workdir, "playwright.config.mjs"))) ||
-    (await exists(path.join(workdir, "playwright.config.cjs")));
-  const hasPWScr =
-    /playwright\s+test/.test(String(scr["test:e2e"] || "")) ||
-    /playwright\s+test/.test(String(scr.test || ""));
-
-  if (hasPWDep || hasPWCfg || hasPWScr) return "playwright";
-
-  // ---- Jest / Vitest detection ----
-  if (has("jest")) return "jest";
-  if (has("vitest")) return "vitest";
-  if (/jest/.test(String(scr.test || ""))) return "jest";
-  if (/vitest/.test(String(scr.test || ""))) return "vitest";
+  for (const dir of queues) {
+    for (const name of candidates) {
+      const p = path.join(dir, name);
+      if (await pathExists(p)) return { cwd: dir, configPath: p };
+    }
+  }
 
   return null;
 }
 
-export async function installDeps(workdir: string) {
-  const hasPnpmLock = await exists(path.join(workdir, "pnpm-lock.yaml"));
-  const hasNpmLock = await exists(path.join(workdir, "package-lock.json"));
-  if (hasPnpmLock) {
-    await execa("pnpm", ["install", "--frozen-lockfile"], {
-      cwd: workdir,
-      env: { CI: "1" },
-      timeout: 12 * 60_000,
-    });
-  } else if (hasNpmLock) {
-    await execa("npm", ["ci"], {
-      cwd: workdir,
-      env: { CI: "1" },
-      timeout: 12 * 60_000,
-    });
-  } else {
-    await execa("npm", ["install", "--no-fund", "--no-audit"], {
-      cwd: workdir,
-      env: { CI: "1" },
-      timeout: 12 * 60_000,
-    });
-  }
-}
-
-async function exists(p: string) {
-  try {
-    await fs.stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export type ExecResult = {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  resultsPath?: string;
+export type RunExecRequest = {
+  workdir: string;              // repo root (temp clone)
+  jsonOutPath: string;          // where to write report.json
+  baseUrl?: string;             // e.g., http://localhost:5173
+  extraGlobs?: string[];              // <--- NEW
+  extraEnv?: Record<string, string>;  // <--- NEW
+  configPath?: string; 
+  sourceRoot?: string;  
 };
 
-export async function runTests(
-  framework: Framework,
-  workdir: string
-): Promise<ExecResult> {
-  if (!framework) {
+export type RunExecResult = {
+  ok: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  resultsPath?: string;         // equals jsonOutPath when present
+  framework: "playwright" | "vitest" | "jest" | "none";
+};
+
+export async function detectFramework(workdir: string): Promise<"playwright"|"vitest"|"jest"|"none"> {
+  // super simple – you already had a version of this
+  for (const ext of ["ts","js","cjs","mjs"]) {
+    if (await pathExists(path.join(workdir, `playwright.config.${ext}`))) return "playwright";
+  }
+  return "playwright"; // we only support PW for now
+}
+
+export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
+  const fw = await detectFramework(req.workdir);
+  if (fw !== "playwright") {
+    return { ok: false, exitCode: 1, stdout: "", stderr: "Unsupported framework", framework: fw };
+  }
+
+  // locate config
+  const found = req.configPath
+    ? { cwd: path.dirname(req.configPath), configPath: req.configPath }
+    : await findPlaywrightConfig(req.workdir);
+
+  if (!found) {
     return {
       ok: false,
+      exitCode: 1,
       stdout: "",
-      stderr:
-        "No supported test framework detected (jest/vitest/playwright)",
+      stderr: `No Playwright config found under ${req.workdir}`,
+      framework: "playwright",
     };
   }
 
-  const resultsPath = path.join(workdir, "tm-results.json");
+  const env = {
+    ...process.env,
+    PW_BASE_URL: req.baseUrl ?? "",
+    TM_BASE_URL: req.baseUrl ?? "",
+    BASE_URL: req.baseUrl ?? "",
+    TM_SOURCE_ROOT: (req as any).extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
+    ...(req as any).extraEnv || {},
+  };
 
-  // ---- Playwright ----
-  if (framework === "playwright") {
-    const { stdout, stderr, exitCode } = await execa(
-      "npx",
-      ["playwright", "test", "--reporter=json"],
-      { cwd: workdir, env: { CI: "1" }, timeout: 30 * 60_000 }
+  const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+  const toPosix = (p: string) => p.replace(/\\/g, "/");
+
+  const args = ["playwright", "test", "--config", found.configPath, "--reporter", "json"];
+  if (req.extraGlobs?.length) args.push(...req.extraGlobs.map(toPosix));
+
+  const proc = await execa(npx, args, {
+    cwd: found.cwd,
+    env,
+    reject: false,
+    timeout: 0,
+    stdio: "pipe",
+  });
+
+  // ---- persist reporter output ----
+  try { await fs.writeFile(req.jsonOutPath, proc.stdout ?? ""); } catch {}
+
+  // ---- guarantee a report exists so UI link never 404s ----
+  try { await fs.mkdir(path.dirname(req.jsonOutPath), { recursive: true }); } catch {}
+  const hasReport = await fs.stat(req.jsonOutPath).then(() => true).catch(() => false);
+  if (!hasReport) {
+    await fs.writeFile(
+      req.jsonOutPath,
+      JSON.stringify(
+        {
+          config: {},
+          suites: [],
+          errors: [{ message: "No tests executed" }],
+          stats: { startTime: new Date().toISOString() },
+        },
+        null,
+        2
+      ),
+      "utf8"
     );
-    try {
-      await fs.writeFile(resultsPath, stdout, "utf8");
-    } catch {}
-    return { ok: exitCode === 0, stdout, stderr, resultsPath };
   }
 
-  // ---- Jest ----
-  if (framework === "jest") {
-    const { stdout, stderr, exitCode } = await execa(
-      "npx",
-      ["jest", "--runInBand", "--testLocationInResults", "--json", `--outputFile=${resultsPath}`],
-      { cwd: workdir, env: { CI: "1" }, timeout: 15 * 60_000 }
-    );
-    return { ok: exitCode === 0, stdout, stderr, resultsPath };
-  }
-
-  // ---- Vitest ----
-  const { stdout, stderr, exitCode } = await execa(
-    "npx",
-    ["vitest", "run", "--reporter=json", `--outputFile=${resultsPath}`],
-    { cwd: workdir, env: { CI: "1" }, timeout: 15 * 60_000 }
-  );
-  return { ok: exitCode === 0, stdout, stderr, resultsPath };
+  // ---- final result ----
+  return {
+    ok: (proc.exitCode ?? 1) === 0,
+    exitCode: proc.exitCode ?? null,
+    stdout: proc.stdout ?? "",
+    stderr: proc.stderr ?? "",
+    resultsPath: req.jsonOutPath,
+    framework: "playwright",
+  };
 }
+

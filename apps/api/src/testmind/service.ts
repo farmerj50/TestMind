@@ -4,6 +4,8 @@ import { discoverSite } from "./discover.js";
 import { generatePlan } from "./pipeline/generate-plan.js";
 import { writeSpecsFromPlan } from "./pipeline/codegen.js";
 import { playwrightTSRunner } from "./adapters/playwright-ts/runner.js";
+import 'dotenv/config';
+
 
 type Runner = {
   id: string;
