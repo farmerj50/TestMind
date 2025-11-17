@@ -12,6 +12,7 @@ import RunPage from "../pages/RunPage";            // ⬅️ import this
 import ProtectedRoute from "../components/ProtectedRoute";
 import AppLayout from "../components/layout/AppLayout";
 import BareLayout from "../components/layout/BareLayout";
+import ProjectSuite from "../pages/ProjectSuite";
 
 function NotFound() {
   return (
@@ -38,6 +39,7 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        
 
         <Route
           path="/projects/:id"
@@ -57,6 +59,15 @@ export default function AppRoutes() {
           }
         />
       </Route>
+        <Route
+    path="/suite/:projectId"
+    element={
+      <ProtectedRoute>
+        <ProjectSuite />
+      </ProtectedRoute>
+    }
+  />
+
 
       {/* Auth-only pages (no sidebar) */}
       <Route element={<BareLayout />}>

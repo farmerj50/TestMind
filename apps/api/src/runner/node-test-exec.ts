@@ -1,35 +1,44 @@
+// apps/api/src/runner/node-test-exec.ts
 import path from "node:path";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import { execa } from "execa";
 
 type FindConfigResult = { cwd: string; configPath: string } | null;
 
 async function pathExists(p: string) {
-  try { await fs.stat(p); return true; } catch { return false; }
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
+// Find tm-ci.playwright.config.* or playwright.config.* under the workdir/apps/packages tree
 async function findPlaywrightConfig(workdir: string): Promise<FindConfigResult> {
-  // prefer tm-ci config anywhere in the repo
   const candidates: string[] = [];
+  const exts = ["ts", "js", "cjs", "mjs"];
 
-  const exts = ["ts","js","cjs","mjs"];
   for (const ext of exts) candidates.push(`tm-ci.playwright.config.${ext}`);
   for (const ext of exts) candidates.push(`playwright.config.${ext}`);
 
-  // Breadth-first walk a shallow tree to avoid heavy recursion:
-  // repo root + common monorepo dirs
   const roots = [workdir, path.join(workdir, "apps"), path.join(workdir, "packages")];
   const queues: string[] = [];
 
   for (const root of roots) {
     if (!(await pathExists(root))) continue;
     queues.push(root);
-    // push children one level deep if apps/packages
+
     if (root !== workdir) {
       try {
         const dirents = await fs.readdir(root, { withFileTypes: true });
-        for (const d of dirents) if (d.isDirectory()) queues.push(path.join(root, d.name));
-      } catch {}
+        for (const d of dirents) {
+          if (d.isDirectory()) queues.push(path.join(root, d.name));
+        }
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -47,10 +56,11 @@ export type RunExecRequest = {
   workdir: string;              // repo root (temp clone)
   jsonOutPath: string;          // where to write report.json
   baseUrl?: string;             // e.g., http://localhost:5173
-  extraGlobs?: string[];              // <--- NEW
-  extraEnv?: Record<string, string>;  // <--- NEW
-  configPath?: string; 
-  sourceRoot?: string;  
+  extraGlobs?: string[];        // (IGNORED for now – we run the whole suite)
+  extraEnv?: Record<string, string>;
+  grep?: string;                // (IGNORED for now)
+  configPath?: string;
+  sourceRoot?: string;
 };
 
 export type RunExecResult = {
@@ -58,25 +68,109 @@ export type RunExecResult = {
   exitCode: number | null;
   stdout: string;
   stderr: string;
-  resultsPath?: string;         // equals jsonOutPath when present
+  resultsPath?: string;
   framework: "playwright" | "vitest" | "jest" | "none";
 };
 
-export async function detectFramework(workdir: string): Promise<"playwright"|"vitest"|"jest"|"none"> {
-  // super simple – you already had a version of this
-  for (const ext of ["ts","js","cjs","mjs"]) {
+export async function detectFramework(workdir: string): Promise<"playwright" | "vitest" | "jest" | "none"> {
+  for (const ext of ["ts", "js", "cjs", "mjs"]) {
     if (await pathExists(path.join(workdir, `playwright.config.${ext}`))) return "playwright";
+    if (await pathExists(path.join(workdir, `tm-ci.playwright.config.${ext}`))) return "playwright";
   }
-  return "playwright"; // we only support PW for now
+  return "playwright";
+}
+
+export async function installDeps(repoRoot: string, workspaceCwd = repoRoot) {
+  const has = (p: string) => fsSync.existsSync(path.join(repoRoot, p));
+
+  let pm: "pnpm" | "yarn" | "npm";
+  let installArgs: string[];
+
+  if (has("pnpm-lock.yaml")) {
+    pm = "pnpm";
+    installArgs = ["install", "--silent"];
+  } else if (has("yarn.lock")) {
+    pm = "yarn";
+    installArgs = ["install", "--silent", "--non-interactive"];
+  } else if (has("package-lock.json")) {
+    pm = "npm";
+    installArgs = ["ci", "--silent"];
+  } else {
+    pm = "npm";
+    installArgs = ["install", "--silent"];
+  }
+
+  await execa(pm, installArgs, { cwd: repoRoot, stdio: "pipe" });
+
+  const canResolve = (pkg: string) => {
+    try {
+      require.resolve(pkg, { paths: [workspaceCwd] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const addPlaywright = async () => {
+    const addArgs =
+      pm === "pnpm"
+        ? ["add", "-Dw", "@playwright/test"]
+        : pm === "yarn"
+        ? ["add", "-D", "@playwright/test"]
+        : ["install", "-D", "@playwright/test"];
+
+    await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
+  };
+
+  if (!canResolve("@playwright/test")) {
+    await addPlaywright();
+  }
+
+  const addDevDependency = async (pkg: string) => {
+    const addArgs =
+      pm === "pnpm"
+        ? ["add", "-Dw", pkg]
+        : pm === "yarn"
+        ? ["add", "-D", pkg]
+        : ["install", "-D", pkg];
+    await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
+  };
+
+  if (!canResolve("allure-playwright")) {
+    await addDevDependency("allure-playwright");
+  }
+
+  if (!canResolve("allure-commandline")) {
+    await addDevDependency("allure-commandline");
+  }
+
+  if (!canResolve("allure-js-commons")) {
+    await addDevDependency("allure-js-commons");
+  }
+
+  try {
+    const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+    await execa(npx, ["-y", "playwright", "install", "--with-deps"], {
+      cwd: workspaceCwd,
+      stdio: "pipe",
+    });
+  } catch {
+    // non-fatal
+  }
 }
 
 export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
   const fw = await detectFramework(req.workdir);
   if (fw !== "playwright") {
-    return { ok: false, exitCode: 1, stdout: "", stderr: "Unsupported framework", framework: fw };
+    return {
+      ok: false,
+      exitCode: 1,
+      stdout: "",
+      stderr: "Unsupported framework",
+      framework: fw,
+    };
   }
 
-  // locate config
   const found = req.configPath
     ? { cwd: path.dirname(req.configPath), configPath: req.configPath }
     : await findPlaywrightConfig(req.workdir);
@@ -96,15 +190,31 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     PW_BASE_URL: req.baseUrl ?? "",
     TM_BASE_URL: req.baseUrl ?? "",
     BASE_URL: req.baseUrl ?? "",
-    TM_SOURCE_ROOT: (req as any).extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
-    ...(req as any).extraEnv || {},
+    TM_SOURCE_ROOT: req.extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
+    PW_JSON_OUTPUT: req.jsonOutPath,
+    ...(req.extraEnv || {}),
   };
 
-  const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
-  const toPosix = (p: string) => p.replace(/\\/g, "/");
+    const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+  const normalizePath = (v: string) => v.replace(/\\/g, "/");
 
-  const args = ["playwright", "test", "--config", found.configPath, "--reporter", "json"];
-  if (req.extraGlobs?.length) args.push(...req.extraGlobs.map(toPosix));
+  // ---- CLI args ----
+  const args: string[] = ["playwright", "test"];
+
+  // 🔹 Use grep to select individual tests, not path-based "globs"
+  if (req.grep) {
+    args.push("--grep", req.grep);
+  }
+
+  args.push(
+    "--config",
+    normalizePath(path.relative(found.cwd, found.configPath))
+  );
+
+
+  console.log("[runner] cwd =", found.cwd);
+  console.log("[runner] args =", JSON.stringify(args));
+
 
   const proc = await execa(npx, args, {
     cwd: found.cwd,
@@ -114,20 +224,24 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     stdio: "pipe",
   });
 
-  // ---- persist reporter output ----
-  try { await fs.writeFile(req.jsonOutPath, proc.stdout ?? ""); } catch {}
+  const stdout = proc.stdout ?? "";
+  const stderr = proc.stderr ?? "";
 
-  // ---- guarantee a report exists so UI link never 404s ----
-  try { await fs.mkdir(path.dirname(req.jsonOutPath), { recursive: true }); } catch {}
-  const hasReport = await fs.stat(req.jsonOutPath).then(() => true).catch(() => false);
+  const hasReport = await fs
+    .stat(req.jsonOutPath)
+    .then(() => true)
+    .catch(() => false);
+
   if (!hasReport) {
+    try {
+      await fs.mkdir(path.dirname(req.jsonOutPath), { recursive: true });
+    } catch {}
     await fs.writeFile(
       req.jsonOutPath,
       JSON.stringify(
         {
-          config: {},
           suites: [],
-          errors: [{ message: "No tests executed" }],
+          errors: [{ message: "No Playwright JSON report produced" }],
           stats: { startTime: new Date().toISOString() },
         },
         null,
@@ -137,14 +251,14 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     );
   }
 
-  // ---- final result ----
   return {
     ok: (proc.exitCode ?? 1) === 0,
     exitCode: proc.exitCode ?? null,
-    stdout: proc.stdout ?? "",
-    stderr: proc.stderr ?? "",
+    stdout,
+    stderr,
     resultsPath: req.jsonOutPath,
     framework: "playwright",
   };
+
 }
 

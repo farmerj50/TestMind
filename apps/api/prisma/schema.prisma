@@ -40,6 +40,14 @@ enum TestRunStatus {
   failed
 }
 
+enum HealingStatus {
+  queued
+  running
+  succeeded
+  failed
+  skipped
+}
+
 model User {
   id        String    @id
   plan      PlanTier  @default(free)
@@ -85,16 +93,22 @@ model TestRun {
   finishedAt DateTime?
   issueUrl   String?
 
-  framework    String?       // "playwright"
-  trigger      String?       // "user" | "schedule" | "webhook"
-  envName      String?
-  paramsJson   Json?
+  framework  String? // "playwright"
+  trigger    String? // "user" | "schedule" | "webhook"
+  envName    String?
+  paramsJson Json?
 
-  reportPath String?
+  rerunOfId String?
+  rerunOf   TestRun? @relation("RunReruns", fields: [rerunOfId], references: [id])
+  reruns    TestRun[] @relation("RunReruns")
+
+  reportPath    String?
   artifactsJson Json?
 
-  results TestResult[]
+  results            TestResult[]
+  TestHealingAttempt TestHealingAttempt[]
 
+  @@index([rerunOfId])
   @@index([projectId, createdAt])
 }
 
@@ -128,7 +142,8 @@ model TestCase {
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  results TestResult[]
+  results            TestResult[]
+  TestHealingAttempt TestHealingAttempt[]
 
   @@unique([projectId, key])
   @@index([projectId, suiteId])
@@ -142,10 +157,35 @@ model TestResult {
   testCaseId String
   testCase   TestCase @relation(fields: [testCaseId], references: [id])
 
-  status     TestResultStatus
-  durationMs Int?
-  message    String?
-  createdAt  DateTime         @default(now())
+  status          TestResultStatus
+  durationMs      Int?
+  message         String?
+  createdAt       DateTime             @default(now())
+  healingAttempts TestHealingAttempt[]
 
   @@index([runId, testCaseId])
+}
+
+model TestHealingAttempt {
+  id            String        @id @default(cuid())
+  runId         String
+  run           TestRun       @relation(fields: [runId], references: [id])
+  testResultId  String
+  testResult    TestResult    @relation(fields: [testResultId], references: [id])
+  testCaseId    String
+  testCase      TestCase      @relation(fields: [testCaseId], references: [id])
+  attempt       Int           @default(1)
+  status        HealingStatus @default(queued)
+  summary       String?
+  diff          String?
+  error         String?
+  prompt        Json?
+  response      Json?
+  artifactsPath String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([testResultId, attempt])
+  @@index([runId, testCaseId])
+  @@index([testResultId])
 }

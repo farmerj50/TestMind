@@ -8,7 +8,7 @@ test("Page loads: /login", async ({ page }) => {
     await page.goto("/login");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
+    await page.waitForSelector("text='TestMind AI'", { timeout: 10000 });
     await expect(page.getByText("TestMind AI")).toBeVisible();
   });
 });
-

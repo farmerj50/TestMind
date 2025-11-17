@@ -1,12 +1,13 @@
 import type { TestPlan } from "../../core/plan.js";
 
+// ------- Types mirrored from plan/pattern -------
 type Step =
   | { kind: "goto"; url: string }
   | { kind: "expect-text"; text: string }
   | { kind: "fill"; selector: string; value: string }
   | { kind: "click"; selector: string }
   | { kind: "upload"; selector: string; path: string }
-  | { kind: "expect-visible"; selector: string };
+  | { kind: "expect-visible"; selector: string }; // legacy mapping support
 
 type TestCase = {
   id: string;
@@ -15,24 +16,26 @@ type TestCase = {
   steps: Step[];
 };
 
+// ------- Group cases by page (default "/") -------
 export function groupByPage(cases: TestCase[]): Map<string, TestCase[]> {
-  const grouped = new Map<string, TestCase[]>();
+  const m = new Map<string, TestCase[]>();
   for (const tc of cases ?? []) {
     const page = tc.group?.page || "/";
-    const arr = grouped.get(page) ?? [];
+    const arr = m.get(page) ?? [];
     arr.push(tc);
-    grouped.set(page, arr);
+    m.set(page, arr);
   }
-  return grouped;
+  return m;
 }
 
+// ------- Title de-duper (per file) -------
 function makeUniqTitleFactory() {
   const seen = new Map<string, number>();
   return (raw: string) => {
-    const base = raw.replace(/\s+/g, " ").trim();
-    const next = (seen.get(base) ?? 0) + 1;
-    seen.set(base, next);
-    return next === 1 ? base : `${base} [${next}]`;
+    const base = raw.replace(/\s+/g, " ").trim(); // normalize whitespace
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base} [${n}]`; // Page loads: /signup [2]
   };
 }
 
@@ -49,7 +52,7 @@ function describeStep(step: Step): string {
     case "click":
       return `Click ${step.selector}`;
     case "upload":
-      return `Upload through ${step.selector}`;
+      return `Upload file via ${step.selector}`;
     default:
       return `Run ${step.kind}`;
   }
@@ -80,62 +83,58 @@ function emitStep(step: Step, index: number): string {
     .split("\n")
     .map((line) => `    ${line}`)
     .join("\n");
-  return `  await test.step(${JSON.stringify(title)}, async () => {\n${action}\n  });`;
-}
-
-function emitAnnotations(pagePath: string, caseName: string): string {
-  const entries = [
-    { type: "parentSuite", description: "Testmind Generated Suite" },
-    { type: "suite", description: pagePath },
-    { type: "story", description: caseName },
-    { type: "parameter", description: `page=${pagePath}` },
-  ];
-  return `  test.info().annotations.push(${entries
-    .map((entry) => `{ type: ${JSON.stringify(entry.type)}, description: ${JSON.stringify(entry.description)} }`)
-    .join(", ")});\n`;
+  return `  await allure.step(${JSON.stringify(title)}, async () => {\n${action}\n  });`;
 }
 
 function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string): string {
-  const title = uniqTitle(tc.name);
   const body =
     tc.steps.length > 0
       ? tc.steps.map((step, idx) => emitStep(step, idx)).join("\n")
-      : `  await test.step('Placeholder step', async () => {\n    // TODO: add steps\n  });`;
-
+      : "  await allure.step('Placeholder', async () => {\n    // TODO: add steps\n  });";
+  const title = uniqTitle(tc.name);
   return `
 test(${JSON.stringify(title)}, async ({ page }) => {
-${emitAnnotations(pagePath, tc.name)}${body}
+  await allure.parentSuite('Testmind Generated Suite');
+  await allure.suite(${JSON.stringify(pagePath)});
+  await allure.story(${JSON.stringify(tc.name)});
+  await allure.parameter('page', ${JSON.stringify(pagePath)});
+${body}
 });`.trim();
 }
 
-export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
-  const uniqTitle = makeUniqTitleFactory();
-  const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath)).join("\n\n");
-  const banner = `// Auto-generated for page ${pagePath} – ${tests?.length ?? 0} test(s)`;
-
+// ------- Emit a whole spec file for one page with ALL its cases -------
+export function emitSpecFile(pagePath: string, tcs: TestCase[]): string {
+  const uniq = makeUniqTitleFactory(); // reset per file
+  const tests = (tcs ?? []).map(tc => emitTest(tc, uniq, pagePath)).join("\n\n");
+  const banner = `// Auto-generated for page ${pagePath} – ${tcs?.length ?? 0} test(s)`;
   return `
 import { test, expect } from '@playwright/test';
+import * as allure from 'allure-js-commons';
 
 ${banner}
 
-${cases}
+${tests}
 `.trimStart();
 }
 
+// ------- Adapter-style renderer (if you still call adapter.render(plan)) -------
 export const playwrightTSAdapter = {
   id: "playwright-ts",
   render(plan: TestPlan) {
     const grouped = groupByPage((plan as any).cases ?? []);
-    return Array.from(grouped.entries()).map(([page, tests]) => {
+    const files: { path: string; content: string }[] = [];
+    for (const [page, tcs] of grouped) {
       const base = page === "/" ? "home" : page.replace(/\//g, "_").replace(/^_/, "");
-      return {
-        path: `${base}.spec.ts`,
-        content: emitSpecFile(page, tests),
-      };
-    });
+      const content = emitSpecFile(page, tcs);
+      files.push({ path: `${base}.spec.ts`, content });
+    }
+    return files;
   },
   manifest(plan: TestPlan) {
-    const grouped = groupByPage((plan as any).cases ?? []);
-    return { pages: Array.from(grouped.keys()), count: (plan as any).cases?.length ?? 0 };
+    return {
+      pages: Array.from(groupByPage((plan as any).cases ?? []).keys()),
+      count: (plan as any).cases?.length ?? 0,
+    };
   },
 };
+

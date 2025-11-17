@@ -6,17 +6,16 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
+    alias: { '@': resolve(__dirname, 'src') },
   },
   server: {
     proxy: {
-      // forward /tm/... to your API during dev
-      '/tm': {
-        target: 'http://localhost:8787',
-        changeOrigin: true,
-      },
+      '/tm':      { target: 'http://localhost:8787', changeOrigin: true },
+      '/projects':{ target: 'http://localhost:8787', changeOrigin: true },
+      '/reports': { target: 'http://localhost:8787', changeOrigin: true },
+      '/repos':   { target: 'http://localhost:8787', changeOrigin: true },
+      '/me':      { target: 'http://localhost:8787', changeOrigin: true },
+      '/_static': { target: 'http://localhost:8787', changeOrigin: true },
     },
   },
 })

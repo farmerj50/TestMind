@@ -5,6 +5,8 @@ import { generatePlan } from "./pipeline/generate-plan.js";
 import { writeSpecsFromPlan } from "./pipeline/codegen.js";
 import { playwrightTSRunner } from "./adapters/playwright-ts/runner.js";
 import 'dotenv/config';
+// apps/api/src/server.ts (or wherever you build Fastify)
+
 
 
 type Runner = {

@@ -13,7 +13,8 @@ import { cloneRepo } from "../runner/git";
 import { runTests } from "../runner/node-test-exec";
 import { execa } from "execa";
 
-import { parseResults } from "../runner/result-parsers";
+import { parseResults, ParsedCase } from "../runner/result-parsers";
+import { scheduleSelfHealingForRun } from "../runner/self-heal";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -50,6 +51,24 @@ async function installDeps(repoRoot: string, workspaceCwd: string) {
 
     await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
   }
+
+  const ensureDevDependency = async (pkg: string) => {
+    const canResolvePkg = () => {
+      try { require.resolve(pkg, { paths: [workspaceCwd] }); return true; }
+      catch { return false; }
+    };
+    if (canResolvePkg()) return;
+    const addArgs =
+      pm === "pnpm" ? ["add", "-D", pkg] :
+        pm === "yarn" ? ["add", "-D", pkg] :
+          ["install", "-D", pkg];
+    await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
+  };
+
+  await ensureDevDependency("allure-playwright");
+  await ensureDevDependency("allure-commandline");
+  await ensureDevDependency("allure-js-commons");
+
   try {
   const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
   await execa(npx, ["-y", "playwright", "install", "--with-deps"], {
@@ -166,11 +185,17 @@ export default async function runRoutes(app: FastifyInstance) {
 
     // create run entry
     const run = await prisma.testRun.create({
-      data: { projectId: pid, status: TestRunStatus.running, startedAt: new Date() },
+      data: {
+        projectId: pid,
+        status: TestRunStatus.running,
+        startedAt: new Date(),
+        trigger: "user",
+      },
     });
 
     const outDir = path.join(process.cwd(), "runner-logs", run.id);
     await fs.mkdir(outDir, { recursive: true });
+    let artifacts: Record<string, string> | undefined;
 
     // launch the real runner in background (no await)
     (async () => {
@@ -246,17 +271,27 @@ export default async function runRoutes(app: FastifyInstance) {
         const ciConfig = `import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || 'http://localhost:4173';
 const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts');
-
-// Optional grep forwarded via env PW_GREP (plain string -> RegExp)
+const JSON_REPORT = process.env.PW_JSON_OUTPUT
+  ? path.resolve(process.env.PW_JSON_OUTPUT)
+  : path.resolve(DIR, 'playwright-report.json');
+const ALLURE_RESULTS = process.env.PW_ALLURE_RESULTS
+  ? path.resolve(process.env.PW_ALLURE_RESULTS)
+  : path.resolve(DIR, 'allure-results');
 const GREP = process.env.PW_GREP ? new RegExp(process.env.PW_GREP) : undefined;
+
+const reporters = [
+  ['list'],
+  ['json', { outputFile: JSON_REPORT }],
+  ['allure-playwright', { resultsDir: ALLURE_RESULTS }],
+];
 
 export default defineConfig({
   use: { baseURL: BASE },
   grep: GREP,
+  reporter: reporters,
   webServer: { command: 'vite preview --port 4173', port: 4173, reuseExistingServer: true },
   testIgnore: ['**/node_modules/**','**/dist/**','**/build/**','**/.*/**'],
   projects: [{
@@ -379,30 +414,46 @@ export default defineConfig({
           await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
         }
         await logSpecs(cwd, "apps/web");
-        await logSpecs(path.join(cwd, "testmind-generated", "playwright-ts"), "generated");
+          await logSpecs(path.join(cwd, "testmind-generated", "playwright-ts"), "generated");
 
-        // --- build optional selectors (single-file + grep) ---
+                  // --- build optional selectors (single-file + grep) ---
         const extraGlobs: string[] = [];
         if (parsed.data.file) {
-          // parsed.data.file is relative to the generated root (e.g. "home.spec.ts" or "auth/login.spec.ts")
           const abs = path.join(genDest, parsed.data.file);
           const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
           extraGlobs.push(relFromCwd);
         }
 
-        const extraEnv: Record<string, string> = { TM_SOURCE_ROOT: work };
-        if (parsed.data.grep) extraEnv.PW_GREP = parsed.data.grep;
+        // normalize grep: Playwright matches against "path spec.ts Test title",
+        // so a leading ^ breaks it. Strip ^ but keep the rest (including $).
+        const normalizedGrep = parsed.data.grep
+          ? parsed.data.grep.replace(/^\^/, "")
+          : undefined;
 
+        const allureResultsDir = path.join(outDir, "allure-results");
+        await fs.mkdir(allureResultsDir, { recursive: true });
+        const extraEnv: Record<string, string> = {
+          TM_SOURCE_ROOT: work,
+          PW_JSON_OUTPUT: resultsPath,
+          PW_ALLURE_RESULTS: allureResultsDir,
+        };
+        if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
+        const allureReportDir = path.join(outDir, "allure-report");
+        let allureReportReady = false;
+        let hasAllureResults = false;
 
         const exec = await runTests({
           workdir: cwd,
           jsonOutPath: resultsPath,
           baseUrl: providedBaseUrl,
           configPath: ciConfigPath,
+          // extraGlobs is no longer used by the runner; selection is via grep
           extraGlobs,
           extraEnv,
+          grep: normalizedGrep,
           sourceRoot: work,
         });
+
 
         await fs.writeFile(path.join(outDir, 'stdout.txt'),
           `[runner] exitCode=${exec.exitCode} baseUrl=${providedBaseUrl} extraGlobs=${JSON.stringify(extraGlobs)} grep=${parsed.data.grep || ''}\n`,
@@ -419,7 +470,26 @@ export default defineConfig({
         if (!exists) {
           await fs.writeFile(
             path.join(outDir, "stderr.txt"),
-            `\n[runner] report.json missing – Playwright likely didn’t execute. Check dependency install and webServer.\n`,
+            `\n[runner] report.json missing - Playwright likely did not execute. Check dependency install and webServer.\n`,
+            { flag: "a" }
+          );
+        }
+        try {
+          const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
+          hasAllureResults = allureEntries.length > 0;
+          if (hasAllureResults) {
+            const npxBin = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+            await execa(
+              npxBin,
+              ["allure", "generate", allureResultsDir, "--clean", "-o", allureReportDir],
+              { cwd, stdio: "pipe" }
+            );
+            allureReportReady = true;
+          }
+        } catch (err: any) {
+          await fs.writeFile(
+            path.join(outDir, "stderr.txt"),
+            `[runner] allure generate failed: ${err?.message || err}\n`,
             { flag: "a" }
           );
         }
@@ -463,6 +533,16 @@ export default defineConfig({
           });
         }
 
+        artifacts = {
+          "reportJson": path.join("runner-logs", run.id, "report.json"),
+        };
+        if (hasAllureResults) {
+          artifacts["allure-results"] = path.join("runner-logs", run.id, "allure-results");
+        }
+        if (allureReportReady) {
+          artifacts["allure-report"] = path.join("runner-logs", run.id, "allure-report");
+        }
+
         // 5) Mark run finished
         const ok = failed === 0 && ((exec.exitCode ?? 1) === 0);
         await prisma.testRun.update({
@@ -479,8 +559,14 @@ export default defineConfig({
               skipped,
             }),
             error: ok ? null : (exec.stderr ?? "Test command failed"),
+            artifactsJson: artifacts ?? undefined,
           },
         });
+        if (!ok && failed > 0) {
+          scheduleSelfHealingForRun(run.id).catch((err) => {
+            console.error(`[runner] failed to schedule self heal for run ${run.id}`, err);
+          });
+        }
       } catch (err: any) {
         await prisma.testRun.update({
           where: { id: run.id },
@@ -488,6 +574,7 @@ export default defineConfig({
             status: TestRunStatus.failed,
             finishedAt: new Date(),
             error: err?.message ?? String(err),
+            artifactsJson: artifacts ?? undefined,
           },
         });
       } finally {
@@ -502,6 +589,7 @@ export default defineConfig({
             status: TestRunStatus.failed,
             finishedAt: new Date(),
             error: err?.message || "Unexpected error in background runner",
+            artifactsJson: artifacts ?? undefined,
           },
         })
         .catch(() => { });
@@ -536,7 +624,20 @@ export default defineConfig({
     const { id } = req.params as { id: string };
     const run = await prisma.testRun.findUnique({
       where: { id },
-      include: { project: { select: { id: true, name: true } } },
+      include: {
+        project: { select: { id: true, name: true } },
+        rerunOf: { select: { id: true, status: true } },
+        reruns: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+            startedAt: true,
+            finishedAt: true,
+          },
+        },
+      },
     });
     if (!run) return reply.code(404).send({ error: "Run not found" });
     return reply.send({ run }); // UI expects { run }
@@ -574,7 +675,7 @@ export default defineConfig({
       return reply.code(404).send({ error: "Run not found" });
     }
 
-    const results = await prisma.testResult.findMany({
+    const rows = await prisma.testResult.findMany({
       where: { runId: id },
       orderBy: { createdAt: "asc" },
       select: {
@@ -584,6 +685,32 @@ export default defineConfig({
         message: true,
         testCase: { select: { id: true, title: true, key: true } },
       },
+    });
+
+    const extras: Record<string, ParsedCase> = {};
+    const runLogsDir = path.join(process.cwd(), "apps/api/runner-logs", id);
+    const reportPath = path.join(runLogsDir, "report.json");
+    try {
+      const parsed = await parseResults(reportPath);
+      for (const c of parsed) {
+        extras[`${c.file}#${c.fullName}`] = c;
+      }
+    } catch {
+      // ignore – enriched info optional
+    }
+
+    const results = rows.map((r) => {
+      const extra = extras[r.testCase.key];
+      return {
+        id: r.id,
+        status: r.status,
+        durationMs: r.durationMs,
+        message: r.message,
+        case: r.testCase,
+        steps: extra?.steps ?? [],
+        stdout: extra?.stdout ?? [],
+        stderr: extra?.stderr ?? [],
+      };
     });
 
     return reply.send({ results });
