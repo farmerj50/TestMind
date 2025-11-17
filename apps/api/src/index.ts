@@ -24,7 +24,21 @@ import testmindRoutes from './testmind/routes';
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd());
 
-app.register(cors, { origin: ["http://localhost:5173"], credentials: true });
+const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:5174,http://localhost:5175")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.register(cors, {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.some((allowed) => allowed === origin)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Not allowed"), false);
+  },
+  credentials: true,
+});
 
 app.register(clerkPlugin, {
   publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,

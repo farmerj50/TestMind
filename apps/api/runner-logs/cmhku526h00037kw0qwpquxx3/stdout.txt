@@ -1,2 +1,0 @@
-[runner] repoRoot=C:\Users\gabby\AppData\Local\Temp\tm-run-75f896a6-7397-4760-b112-40bcb0aca866
-[runner] work=C:\Users\gabby\AppData\Local\Temp\tm-run-75f896a6-7397-4760-b112-40bcb0aca866\apps\justicepath

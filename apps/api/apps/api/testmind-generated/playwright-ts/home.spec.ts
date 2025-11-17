@@ -8,7 +8,7 @@ test("Page loads: /", async ({ page }) => {
     await page.goto("/");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    await expect(page.locator('a:has-text(\"TestMind AI\")')).toBeVisible();
   });
 });
 
@@ -20,8 +20,8 @@ test("Navigate / → /pricing", async ({ page }) => {
   await test.step("2. Navigate to /pricing", async () => {
     await page.goto("/pricing");
   });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+  await test.step("3. Ensure text \"Pricing\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Pricing' })).toBeVisible();
   });
 });
 
@@ -33,8 +33,8 @@ test("Navigate / → /contact", async ({ page }) => {
   await test.step("2. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("3. Ensure text \"contact\" is visible", async () => {
-    await expect(page.getByText("contact")).toBeVisible();
+  await test.step("3. Ensure text \"Contact\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Contact' })).toBeVisible();
   });
 });
 
@@ -47,7 +47,7 @@ test("Navigate / → /signin", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("Sign In")).toBeVisible();
   });
 });
 
@@ -96,7 +96,7 @@ test("Page loads: / [2]", async ({ page }) => {
     await page.goto("/#features");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    await expect(page.locator('a:has-text(\"TestMind AI\")')).toBeVisible();
   });
 });
 
@@ -108,8 +108,8 @@ test("Navigate / → /pricing [2]", async ({ page }) => {
   await test.step("2. Navigate to /pricing", async () => {
     await page.goto("/pricing");
   });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+  await test.step("3. Ensure text \"Pricing\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Pricing' })).toBeVisible();
   });
 });
 
@@ -121,8 +121,8 @@ test("Navigate / → /contact [2]", async ({ page }) => {
   await test.step("2. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("3. Ensure text \"contact\" is visible", async () => {
-    await expect(page.getByText("contact")).toBeVisible();
+  await test.step("3. Ensure text \"Contact\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Contact' })).toBeVisible();
   });
 });
 
@@ -135,7 +135,7 @@ test("Navigate / → /signin [2]", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("Sign In")).toBeVisible();
   });
 });
 
@@ -184,7 +184,7 @@ test("Page loads: / [3]", async ({ page }) => {
     await page.goto("/#how");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    await expect(page.locator('a:has-text(\"TestMind AI\")')).toBeVisible();
   });
 });
 
@@ -196,8 +196,8 @@ test("Navigate / → /pricing [3]", async ({ page }) => {
   await test.step("2. Navigate to /pricing", async () => {
     await page.goto("/pricing");
   });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+  await test.step("3. Ensure text \"Pricing\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Pricing' })).toBeVisible();
   });
 });
 
@@ -209,8 +209,8 @@ test("Navigate / → /contact [3]", async ({ page }) => {
   await test.step("2. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("3. Ensure text \"contact\" is visible", async () => {
-    await expect(page.getByText("contact")).toBeVisible();
+  await test.step("3. Ensure text \"Contact\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Contact' })).toBeVisible();
   });
 });
 
@@ -223,7 +223,7 @@ test("Navigate / → /signin [3]", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("Sign In")).toBeVisible();
   });
 });
 
@@ -272,7 +272,7 @@ test("Page loads: / [4]", async ({ page }) => {
     await page.goto("/#pricing");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    await expect(page.locator('a:has-text(\"TestMind AI\")')).toBeVisible();
   });
 });
 
@@ -284,8 +284,8 @@ test("Navigate / → /pricing [4]", async ({ page }) => {
   await test.step("2. Navigate to /pricing", async () => {
     await page.goto("/pricing");
   });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+  await test.step("3. Ensure text \"Pricing\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Pricing' })).toBeVisible();
   });
 });
 
@@ -297,8 +297,8 @@ test("Navigate / → /contact [4]", async ({ page }) => {
   await test.step("2. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("3. Ensure text \"contact\" is visible", async () => {
-    await expect(page.getByText("contact")).toBeVisible();
+  await test.step("3. Ensure text \"Contact\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Contact' })).toBeVisible();
   });
 });
 
@@ -311,7 +311,7 @@ test("Navigate / → /signin [4]", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("Sign In")).toBeVisible();
   });
 });
 
@@ -360,7 +360,7 @@ test("Page loads: / [5]", async ({ page }) => {
     await page.goto("/#faq");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    await expect(page.locator('a:has-text(\"TestMind AI\")')).toBeVisible();
   });
 });
 
@@ -372,8 +372,8 @@ test("Navigate / → /pricing [5]", async ({ page }) => {
   await test.step("2. Navigate to /pricing", async () => {
     await page.goto("/pricing");
   });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+  await test.step("3. Ensure text \"Pricing\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Pricing' })).toBeVisible();
   });
 });
 
@@ -385,8 +385,8 @@ test("Navigate / → /contact [5]", async ({ page }) => {
   await test.step("2. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("3. Ensure text \"contact\" is visible", async () => {
-    await expect(page.getByText("contact")).toBeVisible();
+  await test.step("3. Ensure text \"Contact\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Contact' })).toBeVisible();
   });
 });
 
@@ -399,7 +399,7 @@ test("Navigate / → /signin [5]", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("Sign In")).toBeVisible();
   });
 });
 
@@ -448,7 +448,7 @@ test("Page loads: / [6]", async ({ page }) => {
     await page.goto("/");
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    await expect(page.locator('a:has-text(\"TestMind AI\")')).toBeVisible();
   });
 });
 
@@ -460,8 +460,8 @@ test("Navigate / → /pricing [6]", async ({ page }) => {
   await test.step("2. Navigate to /pricing", async () => {
     await page.goto("/pricing");
   });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+  await test.step("3. Ensure text \"Pricing\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Pricing' })).toBeVisible();
   });
 });
 
@@ -473,8 +473,8 @@ test("Navigate / → /contact [6]", async ({ page }) => {
   await test.step("2. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("3. Ensure text \"contact\" is visible", async () => {
-    await expect(page.getByText("contact")).toBeVisible();
+  await test.step("3. Ensure text \"Contact\" is visible", async () => {
+    await expect(page.getByRole('link', { name: 'Contact' })).toBeVisible();
   });
 });
 
@@ -487,7 +487,7 @@ test("Navigate / → /signin [6]", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("Sign In")).toBeVisible();
   });
 });
 
@@ -529,4 +529,3 @@ test("Navigate / → /suite/playwright-ts [6]", async ({ page }) => {
     await expect(page.getByText("playwright-ts")).toBeVisible();
   });
 });
-

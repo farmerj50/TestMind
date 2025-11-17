@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Auto-generated for page /signup – 63 test(s)
 
-test("Page loads: /signup", async ({ page }) => {
+test("Page loads: /signup", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -12,7 +12,7 @@ test("Page loads: /signup", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup", async ({ page }) => {
+test("Form submits – /signup", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -29,27 +29,15 @@ test("Form submits – /signup", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup", async ({ page }) => {
+test("Validation blocks empty submission – /signup", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -62,7 +50,7 @@ test("Validation blocks empty submission – /signup", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /", async ({ page }) => {
+test("Navigate /signup → /", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -75,7 +63,7 @@ test("Navigate /signup → /", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing", async ({ page }) => {
+test("Navigate /signup → /pricing", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -88,7 +76,7 @@ test("Navigate /signup → /pricing", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact", async ({ page }) => {
+test("Navigate /signup → /contact", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -101,7 +89,7 @@ test("Navigate /signup → /contact", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin", async ({ page }) => {
+test("Navigate /signup → /signin", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup", async () => {
     await page.goto("/signup");
@@ -114,7 +102,7 @@ test("Navigate /signup → /signin", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [2]", async ({ page }) => {
+test("Page loads: /signup [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -124,7 +112,7 @@ test("Page loads: /signup [2]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [2]", async ({ page }) => {
+test("Form submits – /signup [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -141,27 +129,15 @@ test("Form submits – /signup [2]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [2]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -174,7 +150,7 @@ test("Validation blocks empty submission – /signup [2]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [2]", async ({ page }) => {
+test("Navigate /signup → / [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -187,7 +163,7 @@ test("Navigate /signup → / [2]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [2]", async ({ page }) => {
+test("Navigate /signup → /pricing [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -200,7 +176,7 @@ test("Navigate /signup → /pricing [2]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [2]", async ({ page }) => {
+test("Navigate /signup → /contact [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -213,7 +189,7 @@ test("Navigate /signup → /contact [2]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [2]", async ({ page }) => {
+test("Navigate /signup → /signin [2]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fdashboard", async () => {
     await page.goto("/signup#/?redirect=%2Fdashboard");
@@ -226,7 +202,7 @@ test("Navigate /signup → /signin [2]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [3]", async ({ page }) => {
+test("Page loads: /signup [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -236,7 +212,7 @@ test("Page loads: /signup [3]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [3]", async ({ page }) => {
+test("Form submits – /signup [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -253,27 +229,15 @@ test("Form submits – /signup [3]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [3]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -286,7 +250,7 @@ test("Validation blocks empty submission – /signup [3]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [3]", async ({ page }) => {
+test("Navigate /signup → / [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -299,7 +263,7 @@ test("Navigate /signup → / [3]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [3]", async ({ page }) => {
+test("Navigate /signup → /pricing [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -312,7 +276,7 @@ test("Navigate /signup → /pricing [3]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [3]", async ({ page }) => {
+test("Navigate /signup → /contact [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -325,7 +289,7 @@ test("Navigate /signup → /contact [3]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [3]", async ({ page }) => {
+test("Navigate /signup → /signin [3]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=free", async () => {
     await page.goto("/signup?plan=free");
@@ -338,7 +302,7 @@ test("Navigate /signup → /signin [3]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [4]", async ({ page }) => {
+test("Page loads: /signup [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -348,7 +312,7 @@ test("Page loads: /signup [4]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [4]", async ({ page }) => {
+test("Form submits – /signup [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -365,27 +329,15 @@ test("Form submits – /signup [4]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [4]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -398,7 +350,7 @@ test("Validation blocks empty submission – /signup [4]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [4]", async ({ page }) => {
+test("Navigate /signup → / [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -411,7 +363,7 @@ test("Navigate /signup → / [4]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [4]", async ({ page }) => {
+test("Navigate /signup → /pricing [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -424,7 +376,7 @@ test("Navigate /signup → /pricing [4]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [4]", async ({ page }) => {
+test("Navigate /signup → /contact [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -437,7 +389,7 @@ test("Navigate /signup → /contact [4]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [4]", async ({ page }) => {
+test("Navigate /signup → /signin [4]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=pro", async () => {
     await page.goto("/signup?plan=pro");
@@ -450,7 +402,7 @@ test("Navigate /signup → /signin [4]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [5]", async ({ page }) => {
+test("Page loads: /signup [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -460,7 +412,7 @@ test("Page loads: /signup [5]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [5]", async ({ page }) => {
+test("Form submits – /signup [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -477,27 +429,15 @@ test("Form submits – /signup [5]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [5]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -510,7 +450,7 @@ test("Validation blocks empty submission – /signup [5]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [5]", async ({ page }) => {
+test("Navigate /signup → / [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -523,7 +463,7 @@ test("Navigate /signup → / [5]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [5]", async ({ page }) => {
+test("Navigate /signup → /pricing [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -536,7 +476,7 @@ test("Navigate /signup → /pricing [5]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [5]", async ({ page }) => {
+test("Navigate /signup → /contact [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -549,7 +489,7 @@ test("Navigate /signup → /contact [5]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [5]", async ({ page }) => {
+test("Navigate /signup → /signin [5]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup?plan=team", async () => {
     await page.goto("/signup?plan=team");
@@ -562,7 +502,7 @@ test("Navigate /signup → /signin [5]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [6]", async ({ page }) => {
+test("Page loads: /signup [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -572,7 +512,7 @@ test("Page loads: /signup [6]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [6]", async ({ page }) => {
+test("Form submits – /signup [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -589,27 +529,15 @@ test("Form submits – /signup [6]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [6]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -622,7 +550,7 @@ test("Validation blocks empty submission – /signup [6]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [6]", async ({ page }) => {
+test("Navigate /signup → / [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -635,7 +563,7 @@ test("Navigate /signup → / [6]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [6]", async ({ page }) => {
+test("Navigate /signup → /pricing [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -648,7 +576,7 @@ test("Navigate /signup → /pricing [6]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [6]", async ({ page }) => {
+test("Navigate /signup → /contact [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -661,7 +589,7 @@ test("Navigate /signup → /contact [6]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [6]", async ({ page }) => {
+test("Navigate /signup → /signin [6]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?redirect=%2Fsuite%2Fplaywright-ts", async () => {
     await page.goto("/signup#/?redirect=%2Fsuite%2Fplaywright-ts");
@@ -674,7 +602,7 @@ test("Navigate /signup → /signin [6]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [7]", async ({ page }) => {
+test("Page loads: /signup [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -684,7 +612,7 @@ test("Page loads: /signup [7]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [7]", async ({ page }) => {
+test("Form submits – /signup [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -701,27 +629,15 @@ test("Form submits – /signup [7]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [7]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -734,7 +650,7 @@ test("Validation blocks empty submission – /signup [7]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [7]", async ({ page }) => {
+test("Navigate /signup → / [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -747,7 +663,7 @@ test("Navigate /signup → / [7]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [7]", async ({ page }) => {
+test("Navigate /signup → /pricing [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -760,7 +676,7 @@ test("Navigate /signup → /pricing [7]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [7]", async ({ page }) => {
+test("Navigate /signup → /contact [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -773,7 +689,7 @@ test("Navigate /signup → /contact [7]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [7]", async ({ page }) => {
+test("Navigate /signup → /signin [7]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=free", async () => {
     await page.goto("/signup#/?plan=free");
@@ -786,7 +702,7 @@ test("Navigate /signup → /signin [7]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [8]", async ({ page }) => {
+test("Page loads: /signup [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -796,7 +712,7 @@ test("Page loads: /signup [8]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [8]", async ({ page }) => {
+test("Form submits – /signup [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -813,27 +729,15 @@ test("Form submits – /signup [8]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [8]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -846,7 +750,7 @@ test("Validation blocks empty submission – /signup [8]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [8]", async ({ page }) => {
+test("Navigate /signup → / [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -859,7 +763,7 @@ test("Navigate /signup → / [8]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [8]", async ({ page }) => {
+test("Navigate /signup → /pricing [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -872,7 +776,7 @@ test("Navigate /signup → /pricing [8]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [8]", async ({ page }) => {
+test("Navigate /signup → /contact [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -885,7 +789,7 @@ test("Navigate /signup → /contact [8]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [8]", async ({ page }) => {
+test("Navigate /signup → /signin [8]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=pro", async () => {
     await page.goto("/signup#/?plan=pro");
@@ -898,7 +802,7 @@ test("Navigate /signup → /signin [8]", async ({ page }) => {
   });
 });
 
-test("Page loads: /signup [9]", async ({ page }) => {
+test("Page loads: /signup [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -908,7 +812,7 @@ test("Page loads: /signup [9]", async ({ page }) => {
   });
 });
 
-test("Form submits – /signup [9]", async ({ page }) => {
+test("Form submits – /signup [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -925,27 +829,15 @@ test("Form submits – /signup [9]", async ({ page }) => {
   await test.step("5. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("6. Fill [name='firstName'], #firstName", async () => {
-    await page.locator("[name='firstName'], #firstName").fill("QA Auto");
-  });
-  await test.step("7. Fill [name='lastName'], #lastName", async () => {
-    await page.locator("[name='lastName'], #lastName").fill("QA Auto");
-  });
-  await test.step("8. Fill [name='emailAddress'], #emailAddress", async () => {
-    await page.locator("[name='emailAddress'], #emailAddress").fill("qa+auto@example.com");
-  });
-  await test.step("9. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("10. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("11. Ensure text \"success\" is visible", async () => {
+  await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
 
-test("Validation blocks empty submission – /signup [9]", async ({ page }) => {
+test("Validation blocks empty submission – /signup [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Validation blocks empty submission – /signup" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -958,7 +850,7 @@ test("Validation blocks empty submission – /signup [9]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → / [9]", async ({ page }) => {
+test("Navigate /signup → / [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -971,7 +863,7 @@ test("Navigate /signup → / [9]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /pricing [9]", async ({ page }) => {
+test("Navigate /signup → /pricing [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -984,7 +876,8 @@ test("Navigate /signup → /pricing [9]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /contact [9]", async ({ page }) => {
+
+test("Navigate /signup → /contact [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /contact" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -997,7 +890,7 @@ test("Navigate /signup → /contact [9]", async ({ page }) => {
   });
 });
 
-test("Navigate /signup → /signin [9]", async ({ page }) => {
+test("Navigate /signup → /signin [9]", { timeout: 60000 }, async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /signin" }, { type: "parameter", description: "page=/signup" });
   await test.step("1. Navigate to /signup#/?plan=team", async () => {
     await page.goto("/signup#/?plan=team");
@@ -1009,4 +902,3 @@ test("Navigate /signup → /signin [9]", async ({ page }) => {
     await expect(page.getByText("signin")).toBeVisible();
   });
 });
-

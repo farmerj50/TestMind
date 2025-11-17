@@ -6,21 +6,58 @@ export type ParsedCase = {
   durationMs?: number;
   status: "passed" | "failed" | "skipped" | "error";
   message?: string | null;
+  steps?: string[];
+  stdout?: string[];
+  stderr?: string[];
+  attachments?: { name: string; path?: string; contentType?: string }[];
 };
 
-export async function parseResults(resultsPath: string): Promise<ParsedCase[]> {
-  let raw: any;
-  try {
-    raw = JSON.parse(await fs.readFile(resultsPath, "utf8"));
-  } catch {
-    return [];
+const normalizePath = (value?: string | null) =>
+  (value ?? "unknown").replace(/\\/g, "/");
+
+const stripAnsi = (value?: string | null) => {
+  if (!value) return value ?? null;
+  return value.replace(/\u001B\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "").trim();
+};
+
+const extractCallLog = (raw?: string | null) => {
+  if (!raw) return { message: raw ?? null, steps: [] as string[] };
+  const idx = raw.indexOf("Call log:");
+  if (idx < 0) return { message: raw, steps: [] };
+  const message = raw.slice(0, idx).trim();
+  const steps = raw
+    .slice(idx + "Call log:".length)
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-•]+\s*/, "").trim())
+    .filter(Boolean);
+  return { message: message || null, steps };
+};
+
+const collectIo = (chunks?: any[]): string[] =>
+  (chunks || [])
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (entry?.text) return entry.text;
+      return "";
+    })
+    .map((line) => line.replace(/\r/g, "").trim())
+    .filter(Boolean);
+
+export async function parseResults(resultsPath: string, rawReport?: any): Promise<ParsedCase[]> {
+  let raw: any = rawReport;
+  if (!raw) {
+    try {
+      raw = JSON.parse(await fs.readFile(resultsPath, "utf8"));
+    } catch {
+      return [];
+    }
   }
 
   // JEST FORMAT
   if (Array.isArray(raw.testResults)) {
     const out: ParsedCase[] = [];
     for (const tr of raw.testResults) {
-      const file = tr.name || tr.testFilePath || "unknown";
+      const file = normalizePath(tr.name || tr.testFilePath);
       for (const a of tr.assertionResults || []) {
         const status = a.status === "passed" ? "passed" :
                        a.status === "failed" ? "failed" : "skipped";
@@ -30,7 +67,11 @@ export async function parseResults(resultsPath: string): Promise<ParsedCase[]> {
           fullName: a.fullName || a.title,
           durationMs: a.duration || undefined,
           status,
-          message: msg,
+          message: stripAnsi(msg),
+          steps: [],
+          stdout: [],
+          stderr: [],
+          attachments: [],
         });
       }
     }
@@ -39,7 +80,6 @@ export async function parseResults(resultsPath: string): Promise<ParsedCase[]> {
 
   // VITEST (json reporter)
   if (Array.isArray(raw)) {
-    // vitest json reporter often outputs an array of suites
     const out: ParsedCase[] = [];
     const walk = (node: any, fileHint?: string) => {
       if (!node) return;
@@ -50,43 +90,92 @@ export async function parseResults(resultsPath: string): Promise<ParsedCase[]> {
                        node.result?.state === "fail" ? "failed" :
                        node.result?.state === "skip" ? "skipped" : "error";
         out.push({
-          file: node.file || fileHint || node.location?.file || "unknown",
+          file: normalizePath(node.file || fileHint || node.location?.file),
           fullName: node.namePath?.join(" ") || node.name || "test",
           durationMs: node.result?.duration,
           status,
-          message: node.result?.error?.message || null,
+          message: stripAnsi(node.result?.error?.message || null),
+          steps: [],
+          stdout: [],
+          stderr: [],
+          attachments: [],
         });
       }
     };
     raw.forEach((n: any) => walk(n));
     return out;
   }
-    // PLAYWRIGHT (json reporter)
+
+  // PLAYWRIGHT (json reporter)
   if (raw && Array.isArray(raw.suites)) {
     const out: ParsedCase[] = [];
-    const walk = (suite: any) => {
-      for (const t of suite.tests || []) {
-        const last = (t.results || []).slice(-1)[0] || {};
-        const status =
-          t.outcome || last.status || (last.error ? "failed" : "passed");
+    const normalizeStatus = (value?: string) => {
+      if (value === "expected" || value === "passed") return "passed";
+      if (value === "skipped") return "skipped";
+      if (value === "flaky") return "passed";
+      if (value === "failed" || value === "unexpected") return "failed";
+      return (value as any) || "error";
+    };
+
+    const walkSuite = (suite: any, ancestors: string[] = []) => {
+      const nextAncestors = suite?.title ? [...ancestors, suite.title] : ancestors;
+
+      // Legacy PW JSON (tests directly on suite.tests)
+      for (const test of suite.tests || []) {
+        const last = (test.results || []).slice(-1)[0] || {};
+        const status = normalizeStatus(test.outcome || last.status || (last.error ? "failed" : undefined));
+        const rawMessage = stripAnsi(last.error?.message || last.error?.stack || null);
+        const { message, steps } = extractCallLog(rawMessage || undefined);
         out.push({
-          file: t.location?.file || "unknown",
-          fullName: t.titlePath ? t.titlePath.join(" › ") : t.title,
+          file: normalizePath(test.location?.file || suite.file),
+          fullName: test.titlePath?.join(" > ") || [...nextAncestors, test.title || "test"].join(" > "),
           durationMs: last.duration,
-          status: status === "expected" ? "passed"
-                : status === "skipped" ? "skipped"
-                : status === "flaky" ? "passed"
-                : status as any,
-          message: last.error?.message || null,
+          status,
+          message,
+          steps,
+          stdout: collectIo(last.stdout),
+          stderr: collectIo(last.stderr),
+          attachments: (last.attachments || test.attachments || []).map((a: any) => ({
+            name: a?.name,
+            path: a?.path,
+            contentType: a?.contentType,
+          })),
         });
       }
-      for (const s of suite.suites || []) walk(s);
+
+      // Current PW JSON (suite.specs[].tests[])
+      for (const spec of suite.specs || []) {
+        const titleParts = spec.title ? [...nextAncestors, spec.title] : nextAncestors;
+        const file = normalizePath(spec.file || suite.file);
+        for (const test of spec.tests || []) {
+          const last = (test.results || []).slice(-1)[0] || {};
+          const status = normalizeStatus(test.outcome || test.status || last.status || (last.error ? "failed" : undefined));
+          const rawMessage = stripAnsi(last.error?.message || last.error?.stack || null);
+          const { message, steps } = extractCallLog(rawMessage || undefined);
+          out.push({
+            file,
+            fullName: titleParts.length ? titleParts.join(" > ") : spec.file || "test",
+            durationMs: last.duration,
+            status,
+            message: message ?? stripAnsi(spec.errors?.[0]?.message || null),
+            steps,
+            stdout: collectIo(last.stdout),
+            stderr: collectIo(last.stderr),
+            attachments: (last.attachments || test.attachments || spec.attachments || []).map((a: any) => ({
+              name: a?.name,
+              path: a?.path,
+              contentType: a?.contentType,
+            })),
+          });
+        }
+      }
+
+      for (const child of suite.suites || []) walkSuite(child, nextAncestors);
     };
-    raw.suites.forEach(walk);
+
+    raw.suites.forEach((suite: any) => walkSuite(suite));
     return out;
   }
 
-
   return [];
 }
-

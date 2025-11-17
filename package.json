@@ -18,7 +18,11 @@
     "openai": "^6.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@types/node": "^24.9.1",
+    "allure-commandline": "^2.32.0",
+    "allure-js-commons": "^3.4.2",
+    "allure-playwright": "^3.0.0-beta.8",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

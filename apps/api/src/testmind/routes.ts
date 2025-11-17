@@ -2,6 +2,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
+import { globby } from "globby";
+
+
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
 import { generateAndWrite, runAdapter } from './service.js';
 
@@ -43,6 +46,20 @@ function assertDirExists(p: string) {
 function assertUrl(u: string) {
   try { new URL(u); } catch { throw new Error(`Invalid baseUrl: ${u}`); }
 }
+// --- helper: find this project's generated specs directory ---
+async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
+  const candidates = [
+    optionalRoot ? path.resolve(optionalRoot) : null,
+    path.join(GENERATED_ROOT, projectId),
+    path.join(GENERATED_ROOT, projectId, "playwright"),
+  ].filter(Boolean) as string[];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(`No spec root found for ${projectId}. Checked: ${candidates.join(", ")}`);
+}
+
 
 // Render a simple HTML form to collect baseUrl and optional knobs
 function renderGenerateForm(defaultBaseUrl = ''): string {
@@ -131,10 +148,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       );
 
       if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) process.env.TM_MAX_ROUTES = String(maxRoutes);
-      if (include)  process.env.TM_INCLUDE = include;
-      if (exclude)  process.env.TM_EXCLUDE = exclude;
-      if (authEmail)    process.env.E2E_EMAIL = authEmail;
-      if (authPassword) process.env.E2E_PASS  = authPassword;
+      if (include) process.env.TM_INCLUDE = include;
+      if (exclude) process.env.TM_EXCLUDE = exclude;
+      if (authEmail) process.env.E2E_EMAIL = authEmail;
+      if (authPassword) process.env.E2E_PASS = authPassword;
 
       assertDirExists(repoPath);
       assertUrl(baseUrl);
@@ -184,10 +201,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!baseUrl) throw new Error('baseUrl is required');
 
       if (typeof maxRoutes === 'number' && Number.isFinite(maxRoutes)) process.env.TM_MAX_ROUTES = String(maxRoutes);
-      if (include)  process.env.TM_INCLUDE = include;
-      if (exclude)  process.env.TM_EXCLUDE = exclude;
-      if (authEmail)    process.env.E2E_EMAIL = authEmail;
-      if (authPassword) process.env.E2E_PASS  = authPassword;
+      if (include) process.env.TM_INCLUDE = include;
+      if (exclude) process.env.TM_EXCLUDE = exclude;
+      if (authEmail) process.env.E2E_EMAIL = authEmail;
+      if (authPassword) process.env.E2E_PASS = authPassword;
 
       assertDirExists(repoPath);
       assertUrl(baseUrl);
@@ -302,6 +319,41 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       return sendError(app, reply as any, err, 500);
     }
   });
+  // ---------------------------------------------------------------------------
+  // NEW: Suite endpoints
+  // ---------------------------------------------------------------------------
+
+  // GET /tm/suite/specs?projectId=<id>&root=<optional override>
+  app.get("/suite/specs", async (req, reply) => {
+    const { projectId, root } = (req.query as any) || {};
+    if (!projectId) return reply.code(400).send({ error: "Missing projectId" });
+
+    const specRoot = await resolveProjectRoot(projectId, root);
+    const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+    return files.map((rel: string) => ({ path: rel }));
+  });
+
+  // GET /tm/suite/cases?projectId=<id>&path=<repo-relative>&root=<optional>
+  app.get("/suite/cases", async (req, reply) => {
+    const { projectId, path: relPath, root } = (req.query as any) || {};
+    if (!projectId || !relPath) return reply.code(400).send({ error: "Missing projectId or path" });
+
+    const base = await resolveProjectRoot(projectId, root);
+    const abs = path.join(base, relPath);
+    const src = await fs.promises.readFile(abs, "utf8");
+
+    const CASE_RE = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['"`]([^'"`]+)['"`]\s*,/g;
+    const out: Array<{ title: string; line: number }> = [];
+
+    const lines = src.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      let m: RegExpExecArray | null;
+      CASE_RE.lastIndex = 0;
+      while ((m = CASE_RE.exec(line))) out.push({ title: m[1], line: i + 1 });
+    }
+    return out;
+  });
 
   // ----------------------------------------------------------------------------
   // GET /tm/health
@@ -327,49 +379,51 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   });
 
   app.get('/runs/:id/tests', async (req, reply) => {
-  try {
-    const runId = (req.params as any).id as string;
-    const outDir = path.join(GENERATED_ROOT, runId);
-    const jsonPath = path.join(outDir, 'report.json');
+    try {
+      const runId = (req.params as any).id as string;
+      const outDir = path.join(GENERATED_ROOT, runId);
+      const jsonPath = path.join(outDir, 'report.json');
 
-    if (!fs.existsSync(jsonPath)) {
-      return reply.code(404).send({ ok: false, error: 'report.json not found for this run' });
-    }
-
-    const raw = fs.readFileSync(jsonPath, 'utf-8');
-    const report = JSON.parse(raw);
-
-    const rows: Array<{ title: string; file: string; status: string; duration: number }> = [];
-
-    const walk = (node: any, file?: string) => {
-      if (!node) return;
-      if (node.file) file = node.file;
-      if (node.tests) {
-        for (const t of node.tests) {
-          const res = t.results?.[0];
-          rows.push({
-            title: t.titlePath?.join(' › ') || t.title,
-            file: file || t.location?.file || 'unknown',
-            status: res?.status || t.outcome || 'unknown',
-            duration: res?.duration || 0,
-          });
-        }
+      if (!fs.existsSync(jsonPath)) {
+        return reply.code(404).send({ ok: false, error: 'report.json not found for this run' });
       }
-      if (node.suites) node.suites.forEach((s: any) => walk(s, file));
-      if (node.specs) node.specs.forEach((s: any) => walk(s, s.file || file));
-    };
 
-    walk(report);
-    return reply.send({ tests: rows });
-  } catch (err: any) {
-    return sendError(app, reply as any, err, 500);
-  }
-});
-  
+      const raw = fs.readFileSync(jsonPath, 'utf-8');
+      const report = JSON.parse(raw);
+
+      const rows: Array<{ title: string; file: string; status: string; duration: number }> = [];
+
+      const walk = (node: any, file?: string) => {
+        if (!node) return;
+        if (node.file) file = node.file;
+        if (node.tests) {
+          for (const t of node.tests) {
+            const res = t.results?.[0];
+            rows.push({
+              title: t.titlePath?.join(' › ') || t.title,
+              file: file || t.location?.file || 'unknown',
+              status: res?.status || t.outcome || 'unknown',
+              duration: res?.duration || 0,
+            });
+          }
+        }
+        if (node.suites) node.suites.forEach((s: any) => walk(s, file));
+        if (node.specs) node.specs.forEach((s: any) => walk(s, s.file || file));
+      };
+
+      walk(report);
+      return reply.send({ tests: rows });
+    } catch (err: any) {
+      return sendError(app, reply as any, err, 500);
+    }
+  });
+
+
 }
 // apps/api/src/testmind/runtime/routes.ts
 export async function discoverRoutesFromRepo(_repoPath: string) {
   return { routes: ["/", "/pricing", "/login", "/signup", "/case-type-selection"] };
 }
+
 
 

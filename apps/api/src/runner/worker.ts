@@ -8,6 +8,7 @@ import { cloneRepo } from './git';
 import { detectFramework, installDeps, runTests } from './node-test-exec';
 import { parseResults } from './result-parsers';
 import { TestRunStatus, TestResultStatus } from '@prisma/client';
+import { scheduleSelfHealingForRun } from './self-heal';
 
 function mapStatus(s: string): TestResultStatus {
   if (s === 'passed') return TestResultStatus.passed;
@@ -52,7 +53,11 @@ export const worker = new Worker(
 
       // 3) Detect + run
       const framework = await detectFramework(work);
-      const exec = await runTests(framework, work);
+      const resultsPath = path.join(outDir, 'report.json');
+      const exec = await runTests({
+        workdir: work,
+        jsonOutPath: resultsPath,
+      });
 
       // write logs
       await fs.writeFile(path.join(outDir, 'stdout.txt'), exec.stdout ?? '');
@@ -105,6 +110,12 @@ export const worker = new Worker(
           error: ok ? null : (exec.stderr || 'Test command failed'),
         },
       });
+
+      if (!ok && failed > 0) {
+        scheduleSelfHealingForRun(runId).catch((err) => {
+          console.error(`[worker] failed to schedule self-heal for run ${runId}`, err);
+        });
+      }
     } catch (err: any) {
       await prisma.testRun.update({
         where: { id: runId },
@@ -123,5 +134,6 @@ export const worker = new Worker(
 );
 
 worker.on('failed', (job, err) => {
-  console.error(`[worker] job ${job?.id} failed:`, err);
+  const runId = job?.data?.runId;
+  console.error(`[worker] job ${job?.id} (run ${runId ?? 'unknown'}) failed:`, err);
 });

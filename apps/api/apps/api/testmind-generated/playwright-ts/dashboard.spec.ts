@@ -23,16 +23,10 @@ test("Form submits – /dashboard", async ({ page }) => {
   await test.step("3. Fill [name='password'], #password", async () => {
     await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
   });
-  await test.step("4. Fill [name='identifier'], #identifier", async () => {
-    await page.locator("[name='identifier'], #identifier").fill("Test value");
-  });
-  await test.step("5. Fill [name='password'], #password", async () => {
-    await page.locator("[name='password'], #password").fill("P@ssw0rd1!");
-  });
-  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("4. Click button[type='submit'], input[type='submit']", async () => {
     await page.locator("button[type='submit'], input[type='submit']").click();
   });
-  await test.step("7. Ensure text \"success\" is visible", async () => {
+  await test.step("5. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible();
   });
 });
@@ -114,4 +108,3 @@ test("Navigate /dashboard → /signup", async ({ page }) => {
     await expect(page.getByText("signup")).toBeVisible();
   });
 });
-

@@ -8,6 +8,9 @@ type Result = {
   durationMs: number | null;
   message: string | null;
   case: { id: string; title: string; key: string };
+  steps?: string[];
+  stdout?: string[];
+  stderr?: string[];
 };
 
 export default function RunResults({ runId, active }: { runId: string; active: boolean }) {
@@ -67,20 +70,60 @@ export default function RunResults({ runId, active }: { runId: string; active: b
           </tr>
         </thead>
         <tbody className="divide-y">
-          {results.map((r) => (
-            <tr key={r.id}>
-              <td className="px-2 py-2">
-                <div className="font-medium">{r.case.title}</div>
-                <div className="text-xs text-slate-500 font-mono">{r.case.key}</div>
-              </td>
-              <td className="px-2 py-2 capitalize flex items-center gap-1">
-                {icon(r.status)}
-                {r.status}
-              </td>
-              <td className="px-2 py-2">{r.durationMs ?? "—"} ms</td>
-              <td className="px-2 py-2 break-words">{r.message ?? "—"}</td>
-            </tr>
-          ))}
+          {results.map((r) => {
+            const path = r.case.key?.split("#")[0]?.replace(/\\/g, "/");
+            return (
+              <tr key={r.id}>
+                <td className="px-2 py-2 align-top">
+                  <div className="font-medium">{r.case.title}</div>
+                  {path && <div className="text-xs text-slate-500 font-mono">{path}</div>}
+                </td>
+                <td className="px-2 py-2 capitalize align-top flex items-center gap-1">
+                  {icon(r.status)}
+                  {r.status}
+                </td>
+                <td className="px-2 py-2 align-top">
+                  {r.durationMs != null ? `${r.durationMs} ms` : "—"}
+                </td>
+                <td className="px-2 py-2 align-top space-y-2">
+                  {r.message && (
+                    <pre className="whitespace-pre-wrap text-xs text-slate-700">{r.message}</pre>
+                  )}
+                  {r.steps && r.steps.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold text-slate-600">Steps</div>
+                      <ol className="list-decimal pl-4 text-xs text-slate-600 space-y-1">
+                        {r.steps.map((step, idx) => (
+                          <li key={idx}>{step}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                  {(r.stdout?.length || r.stderr?.length) ? (
+                    <div className="space-y-1">
+                      {r.stdout && r.stdout.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-600">Stdout</div>
+                          <pre className="whitespace-pre-wrap text-xs text-slate-500">
+                            {r.stdout.join("\n")}
+                          </pre>
+                        </div>
+                      )}
+                      {r.stderr && r.stderr.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-600">Stderr</div>
+                          <pre className="whitespace-pre-wrap text-xs text-slate-500">
+                            {r.stderr.join("\n")}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                  {!r.message && (!r.steps || r.steps.length === 0) && (!r.stdout?.length && !r.stderr?.length) && "—"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

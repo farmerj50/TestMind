@@ -49,7 +49,7 @@ export async function testRoutes(app: FastifyInstance) {
 
   // create a run record
   const run = await prisma.testRun.create({
-    data: { projectId, status: "queued" },
+    data: { projectId, status: "queued", trigger: "user" },
   });
 
   // Kick off background work (no blocking)
