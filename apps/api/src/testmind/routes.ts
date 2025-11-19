@@ -26,6 +26,110 @@ type RunQuery = { baseUrl?: string; adapterId?: string };
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(process.cwd(), 'testmind-generated');
+const CURATED_ROOT = process.env.TM_CURATED_ROOT
+  ? path.resolve(process.env.TM_CURATED_ROOT)
+  : path.resolve(process.cwd(), 'testmind-curated');
+const CURATED_MANIFEST = path.join(CURATED_ROOT, 'projects.json');
+
+type CuratedProject = {
+  id: string;
+  name?: string;
+  root?: string;
+  locked?: string[];
+};
+
+type CuratedManifest = {
+  projects: CuratedProject[];
+};
+
+function readCuratedManifest(): CuratedManifest {
+  try {
+    if (!fs.existsSync(CURATED_ROOT)) {
+      fs.mkdirSync(CURATED_ROOT, { recursive: true });
+    }
+    if (!fs.existsSync(CURATED_MANIFEST)) {
+      const empty: CuratedManifest = { projects: [] };
+      fs.writeFileSync(CURATED_MANIFEST, JSON.stringify(empty, null, 2), 'utf8');
+      return empty;
+    }
+    const raw = fs.readFileSync(CURATED_MANIFEST, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.projects)) {
+      return normalizeManifest(parsed);
+    }
+  } catch (err) {
+    console.warn('[TM] failed to read curated manifest:', err);
+  }
+  return { projects: [] };
+}
+
+function getCuratedProject(projectId: string) {
+  const manifest = readCuratedManifest();
+  return manifest.projects.find((p) => p.id === projectId);
+}
+
+function writeCuratedManifest(manifest: CuratedManifest) {
+  if (!fs.existsSync(CURATED_ROOT)) {
+    fs.mkdirSync(CURATED_ROOT, { recursive: true });
+  }
+  fs.writeFileSync(CURATED_MANIFEST, JSON.stringify(manifest, null, 2), 'utf8');
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'suite';
+}
+
+function ensureWithin(rootDir: string, candidate: string) {
+  const rel = path.relative(rootDir, candidate);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Path escapes project root');
+  }
+}
+
+function normalizeManifest(manifest: CuratedManifest): CuratedManifest {
+  return {
+    projects: manifest.projects.map((proj) => ({
+      ...proj,
+      locked: Array.isArray(proj.locked) ? proj.locked : [],
+    })),
+  };
+}
+
+function listSpecProjects() {
+  const base = [
+    {
+      id: "playwright-ts",
+      name: "Generated (playwright-ts)",
+      type: "generated" as const,
+    },
+  ];
+  const curated = readCuratedManifest().projects.map((proj) => ({
+    id: proj.id,
+    name: proj.name || proj.id,
+    type: "curated" as const,
+    locked: proj.locked ?? [],
+  }));
+  return [...base, ...curated];
+}
+
+function setSpecLock(projectId: string, relativePath: string, locked: boolean) {
+  const manifest = readCuratedManifest();
+  const target = manifest.projects.find((p) => p.id === projectId);
+  if (!target) throw new Error("Project not found");
+  target.locked = target.locked ?? [];
+  const idx = target.locked.indexOf(relativePath);
+  if (locked && idx === -1) {
+    target.locked.push(relativePath);
+  } else if (!locked && idx !== -1) {
+    target.locked.splice(idx, 1);
+  }
+  writeCuratedManifest(manifest);
+  return target;
+}
 
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
@@ -48,6 +152,15 @@ function assertUrl(u: string) {
 }
 // --- helper: find this project's generated specs directory ---
 async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
+  const curated = getCuratedProject(projectId);
+  if (curated) {
+    const rel = curated.root ?? projectId;
+    const abs = path.resolve(CURATED_ROOT, rel);
+    if (fs.existsSync(abs)) {
+      return abs;
+    }
+  }
+
   const candidates = [
     optionalRoot ? path.resolve(optionalRoot) : null,
     path.join(GENERATED_ROOT, projectId),
@@ -323,6 +436,190 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // NEW: Suite endpoints
   // ---------------------------------------------------------------------------
 
+  // GET /tm/suite/projects -> list generated + curated spec roots
+  app.get("/suite/projects", async (_req, reply) => {
+    return { projects: listSpecProjects() };
+  });
+  app.patch("/suite/projects/:id", async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const body = (req.body as any) || {};
+      const newName = (body.name || "").trim();
+      if (!newName) {
+        return reply.code(400).send({ error: "name is required" });
+      }
+      const manifest = readCuratedManifest();
+      const proj = manifest.projects.find((p) => p.id === id);
+      if (!proj) {
+        return reply.code(404).send({ error: "Project not found" });
+      }
+      proj.name = newName;
+      writeCuratedManifest(manifest);
+      return reply.send({ project: { id, name: newName, type: "curated", locked: proj.locked ?? [] } });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+  app.delete("/suite/projects/:id", async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const manifest = readCuratedManifest();
+      const idx = manifest.projects.findIndex((p) => p.id === id);
+      if (idx === -1) {
+        return reply.code(404).send({ error: "Project not found" });
+      }
+      const [proj] = manifest.projects.splice(idx, 1);
+      writeCuratedManifest(manifest);
+      const dir = path.resolve(CURATED_ROOT, proj.root ?? proj.id);
+      await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+      return reply.code(204).send();
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
+  app.post("/suite/projects", async (req, reply) => {
+    try {
+      const body = (req.body as any) || {};
+      const name = (body.name || "").trim();
+      let requestedId = (body.id || "").trim();
+      if (!name) {
+        return reply.code(400).send({ error: "Name is required" });
+      }
+
+      if (requestedId && !/^[a-z0-9-]+$/i.test(requestedId)) {
+        return reply.code(400).send({ error: "id must be alphanumeric/hyphen" });
+      }
+
+      const manifest = readCuratedManifest();
+      let slug = requestedId || slugify(name);
+      let attempt = slug;
+      let suffix = 2;
+      while (manifest.projects.some((p) => p.id === attempt)) {
+        attempt = `${slug}-${suffix++}`;
+      }
+      slug = attempt;
+
+      const rel = slug;
+      const abs = path.resolve(CURATED_ROOT, rel);
+      if (!fs.existsSync(abs)) {
+        fs.mkdirSync(abs, { recursive: true });
+      }
+
+      manifest.projects.push({ id: slug, name, root: rel });
+      writeCuratedManifest(manifest);
+
+      return reply.code(201).send({
+        project: { id: slug, name, type: "curated" },
+      });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
+  app.post("/suite/projects/:id/specs", async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const destProject = getCuratedProject(id);
+      if (!destProject) {
+        return reply.code(404).send({ error: "Project not found" });
+      }
+
+      const body = (req.body as any) || {};
+      const relativePath = (body.path || "").trim();
+      if (!relativePath) {
+        return reply.code(400).send({ error: "path is required" });
+      }
+      const sourceProjectId = (body.sourceProjectId || "playwright-ts").trim();
+
+      const sourceRoot = await resolveProjectRoot(sourceProjectId);
+      const destRoot = path.resolve(CURATED_ROOT, destProject.root ?? destProject.id);
+      const sourceAbs = path.resolve(sourceRoot, relativePath);
+      const destAbs = path.resolve(destRoot, relativePath);
+
+      ensureWithin(sourceRoot, sourceAbs);
+      await fs.promises.stat(sourceAbs);
+      ensureWithin(destRoot, destAbs);
+      await fs.promises.mkdir(path.dirname(destAbs), { recursive: true });
+      await fs.promises.copyFile(sourceAbs, destAbs);
+
+      return reply.code(201).send({
+        ok: true,
+        projectId: id,
+        path: relativePath,
+      });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
+  app.patch("/suite/projects/:id/specs", async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const body = (req.body as any) || {};
+      const relPath = (body.path || "").trim();
+      const lockedFlag = body.locked;
+      if (!relPath || typeof lockedFlag !== "boolean") {
+        return reply.code(400).send({ error: "path and locked flag are required" });
+      }
+      const proj = setSpecLock(id, relPath, lockedFlag);
+      return reply.send({
+        ok: true,
+        projectId: id,
+        locked: proj.locked ?? [],
+      });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
+  app.get("/suite/spec-content", async (req, reply) => {
+    try {
+      const { projectId, path: relPath } = (req.query as any) || {};
+      if (!projectId || !relPath) {
+        return reply.code(400).send({ error: "Missing projectId or path" });
+      }
+      const curated = getCuratedProject(projectId);
+      if (!curated) {
+        return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
+      }
+      const root = path.resolve(CURATED_ROOT, curated.root ?? curated.id);
+      const abs = path.resolve(root, relPath);
+      ensureWithin(root, abs);
+      if (!fs.existsSync(abs)) {
+        return reply.code(404).send({ error: "Spec not found in curated suite" });
+      }
+      const content = await fs.promises.readFile(abs, "utf8");
+      return { content };
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
+  app.put("/suite/spec-content", async (req, reply) => {
+    try {
+      const body = (req.body as any) || {};
+      const projectId = (body.projectId || "").trim();
+      const relPath = (body.path || "").trim();
+      const content = typeof body.content === "string" ? body.content : null;
+      if (!projectId || !relPath || content === null) {
+        return reply.code(400).send({ error: "projectId, path, and content are required" });
+      }
+      const curated = getCuratedProject(projectId);
+      if (!curated) {
+        return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
+      }
+      const root = path.resolve(CURATED_ROOT, curated.root ?? curated.id);
+      const abs = path.resolve(root, relPath);
+      ensureWithin(root, abs);
+      await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+      await fs.promises.writeFile(abs, content, "utf8");
+      return { ok: true };
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
   // GET /tm/suite/specs?projectId=<id>&root=<optional override>
   app.get("/suite/specs", async (req, reply) => {
     const { projectId, root } = (req.query as any) || {};
@@ -340,6 +637,9 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
     const base = await resolveProjectRoot(projectId, root);
     const abs = path.join(base, relPath);
+    if (!fs.existsSync(abs)) {
+      return [];
+    }
     const src = await fs.promises.readFile(abs, "utf8");
 
     const CASE_RE = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['"`]([^'"`]+)['"`]\s*,/g;

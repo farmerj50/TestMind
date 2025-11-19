@@ -1,6 +1,6 @@
 // apps/web/src/pages/RunPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useApi } from "../lib/api";
 import StatusBadge from "../components/StatusBadge";
 import { Button } from "../components/ui/button";
@@ -28,6 +28,7 @@ type Run = {
     startedAt?: string | null;
     finishedAt?: string | null;
   }[];
+  healingAttempts: { id: string; status: "queued" | "running" | "succeeded" | "failed" | "skipped" }[];
   paramsJson?: {
     headful?: boolean;
     reporter?: string;
@@ -41,11 +42,13 @@ type Run = {
 export default function RunPage() {
   const { runId } = useParams<{ runId: string }>();
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
 
   const [run, setRun] = useState<Run | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingIssue, setCreatingIssue] = useState(false);
+  const [triggeringRerun, setTriggeringRerun] = useState(false);
 
   const parsedSummary = useMemo(() => {
     if (!run?.summary) return null;
@@ -67,11 +70,47 @@ export default function RunPage() {
   };
 
   const done = useMemo(
-    () => !!run && (run.status === "succeeded" || run.status === "failed"),
+    () => !!run && run.status !== "queued" && run.status !== "running",
     [run]
   );
   const reruns = run?.reruns ?? [];
   const isRerun = Boolean(run?.rerunOfId);
+  const rerunsInProgress = reruns.some(
+    (r) => r.status === "running" || r.status === "queued"
+  );
+  const rerunsCompleted = reruns.filter((r) => r.status === "succeeded" || r.status === "failed");
+  const healingAttempts = run?.healingAttempts ?? [];
+  const healingInProgress = healingAttempts.some(
+    (a) => a.status === "queued" || a.status === "running"
+  );
+  const hasHealingAttempts = healingAttempts.length > 0 || reruns.length > 0;
+  const healStatusMessage = (() => {
+    if (isRerun) {
+      if (run?.rerunOf) {
+        return (
+          <>
+            This run was triggered automatically after{" "}
+            <Link to={`/test-runs/${run.rerunOf.id}`} className="underline">
+              run {run.rerunOf.id}
+            </Link>{" "}
+            failed.
+          </>
+        );
+      }
+      return "This run was triggered automatically.";
+    }
+    if (!run) return "";
+    if (run.status === "running" || run.status === "queued")
+      return "Run is still in progress; self-heal will start if failures occur.";
+    if (!hasHealingAttempts) return "No self-heal attempts were triggered.";
+    if (run.status === "succeeded") return "Original run passed; self-heal was not required.";
+    if (healingInProgress) return "Tests failed. Self-heal is running…";
+    if (rerunsInProgress) return "Self-heal reruns are still running.";
+    if (rerunsCompleted.length > 0) return "Self-heal reruns have completed.";
+    if (reruns.length > 0) return "Self-heal reruns are queued.";
+    if (hasHealingAttempts) return "Self-heal attempts have finished.";
+    return "Self-heal will start shortly.";
+  })();
 
   // load + (light) poll until finished
   useEffect(() => {
@@ -82,7 +121,6 @@ export default function RunPage() {
 
     const load = async () => {
       try {
-        // API returns { run }
         const { run: r } = await apiFetch<{ run: Run }>(`/runner/test-runs/${runId}`);
         if (!cancelled) {
           setRun(r);
@@ -97,7 +135,15 @@ export default function RunPage() {
 
     load();
 
-    if (!done) {
+    const shouldPoll =
+      !run ||
+      run.status === "queued" ||
+      run.status === "running" ||
+      healingInProgress ||
+      rerunsInProgress ||
+      (hasHealingAttempts && rerunsCompleted.length === 0);
+
+    if (shouldPoll) {
       interval = window.setInterval(load, 2000) as unknown as number;
     }
 
@@ -106,23 +152,9 @@ export default function RunPage() {
       if (interval) window.clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, done]);
+  }, [runId, run, healingInProgress, rerunsInProgress, hasHealingAttempts, rerunsCompleted.length]);
 
   const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
-  const describeStatus = (s: TestRunStatus) => {
-    switch (s) {
-      case "queued":
-        return "is queued";
-      case "running":
-        return "is running";
-      case "succeeded":
-        return "succeeded";
-      case "failed":
-        return "failed";
-      default:
-        return s;
-    }
-  };
 
   async function handleCreateIssue() {
     if (!run) return;
@@ -140,6 +172,22 @@ export default function RunPage() {
       alert(e?.message ?? "Failed to create GitHub issue");
     } finally {
       setCreatingIssue(false);
+    }
+  }
+
+  async function handleManualRerun() {
+    if (!run || triggeringRerun) return;
+    try {
+      setTriggeringRerun(true);
+      const res = await apiFetch<{ runId: string }>(
+        `/runner/test-runs/${run.id}/rerun`,
+        { method: "POST" }
+      );
+      navigate(`/test-runs/${res.runId}`);
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to trigger rerun");
+    } finally {
+      setTriggeringRerun(false);
     }
   }
 
@@ -198,19 +246,13 @@ export default function RunPage() {
           <hr className="my-4" />
 
           <div className="space-y-6">
-            {(isRerun || reruns.length > 0) && (
+            {run && (
               <section>
-                <div className="mb-2 font-medium text-slate-800">Self-heal reruns</div>
-                {isRerun && run.rerunOf && (
-                  <div className="mb-2 text-sm text-slate-600">
-                    This run was triggered automatically after{" "}
-                    <Link to={`/test-runs/${run.rerunOf.id}`} className="underline">
-                      run {run.rerunOf.id}
-                    </Link>{" "}
-                    {describeStatus(run.rerunOf.status)}.
-                  </div>
-                )}
-                {reruns.length > 0 ? (
+                <div className="mb-1 flex flex-col gap-1 text-slate-800">
+                  <div className="font-medium">Self-heal reruns</div>
+                  <div className="text-xs text-slate-500">{healStatusMessage}</div>
+                </div>
+                {reruns.length > 0 && (
                   <ul className="space-y-2">
                     {reruns.map((child, idx) => (
                       <li
@@ -233,12 +275,6 @@ export default function RunPage() {
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  !isRerun && (
-                    <div className="text-sm text-slate-500">
-                      No self-heal reruns have been triggered for this run.
-                    </div>
-                  )
                 )}
               </section>
             )}
@@ -264,7 +300,24 @@ export default function RunPage() {
               </section>
             )}
             <section>
-              <div className="mb-2 font-medium text-slate-800">Results</div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="font-medium text-slate-800">Results</div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!run || rerunsInProgress || healingInProgress || triggeringRerun}
+              onClick={handleManualRerun}
+              title={
+                !run
+                  ? "Run not loaded yet"
+                  : healingInProgress || rerunsInProgress
+                      ? "Self-heal is still running"
+                      : "Trigger a new run for this suite"
+                  }
+                >
+                  {triggeringRerun ? "Starting rerun…" : "Rerun this suite"}
+                </Button>
+              </div>
               <RunResults runId={run.id} active={!done} />
             </section>
             <section>

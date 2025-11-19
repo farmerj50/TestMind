@@ -52,9 +52,15 @@ export function useApi() {
       }
 
       const res = await fetch(url, { ...init, headers, credentials: "include" });
+      const contentType = res.headers.get("content-type") ?? "";
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
+        const text = contentType.includes("application/json")
+          ? JSON.stringify(await res.json().catch(() => null))
+          : await res.text().catch(() => "");
         throw new Error(text || `${res.status} ${res.statusText}`);
+      }
+      if (!contentType.includes("application/json")) {
+        return await res.text().catch(() => "") as T;
       }
       return res.json() as Promise<T>;
     },

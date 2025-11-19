@@ -2,15 +2,27 @@ import "dotenv/config";
 import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
-import { HealingStatus, TestRunStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { createTwoFilesPatch } from 'diff';
 import { redis } from './redis';
 import { prisma } from '../prisma';
 import type { SelfHealPayload, RunPayload } from './queue';
 import { enqueueRun } from './queue';
 import { requestSpecHeal, HealPrompt } from './llm';
+const TestRunStatus = (Prisma?.TestRunStatus ?? {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+}) as typeof Prisma.TestRunStatus;
+const HealingStatus = (Prisma?.HealingStatus ?? {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+}) as typeof Prisma.HealingStatus;
 
-async function triggerRerun(projectId: string, rerunOfId: string, grep?: string) {
+async function triggerRerun(projectId: string, rerunOfId: string, grep?: string, headed?: boolean) {
   const rerun = await prisma.testRun.create({
     data: {
       projectId,
@@ -18,11 +30,13 @@ async function triggerRerun(projectId: string, rerunOfId: string, grep?: string)
       status: TestRunStatus.running,
       startedAt: new Date(),
       trigger: "self-heal",
+      paramsJson: headed !== undefined ? { headful: headed } : undefined,
     },
   });
 
   const payload: RunPayload = { projectId };
   if (grep) payload.grep = grep;
+  if (headed !== undefined) payload.headed = headed;
 
   await enqueueRun(rerun.id, payload);
   console.log("[self-heal] queued rerun", rerun.id, "grep =", grep ?? "(full suite)");
@@ -158,13 +172,13 @@ export const selfHealWorker = new Worker(
       );
 
       if (job.data.totalFailed <= 1) {
-        await triggerRerun(job.data.projectId, job.data.runId, context.testTitle ?? undefined);
+        await triggerRerun(job.data.projectId, job.data.runId, context.testTitle ?? undefined, job.data.headed);
       } else {
         const remaining = await prisma.testHealingAttempt.count({
           where: { runId: job.data.runId, status: { not: HealingStatus.succeeded } },
         });
         if (remaining === 0) {
-          await triggerRerun(job.data.projectId, job.data.runId);
+          await triggerRerun(job.data.projectId, job.data.runId, undefined, job.data.headed);
         }
       }
     } catch (err: any) {
@@ -184,4 +198,10 @@ export const selfHealWorker = new Worker(
 
 selfHealWorker.on('failed', (job, err) => {
   console.error(`[self-heal] job ${job?.id} failed:`, err);
+});
+
+selfHealWorker.on('completed', (job) => {
+  console.log(
+    `[self-heal] job ${job?.id} (run ${job?.data?.runId ?? 'unknown'}) completed`
+  );
 });

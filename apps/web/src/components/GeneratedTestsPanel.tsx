@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 
 type FileItem = { path: string; size: number };
 

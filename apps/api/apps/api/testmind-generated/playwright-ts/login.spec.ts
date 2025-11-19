@@ -6,9 +6,10 @@ test("Page loads: /login", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Page loads: /login" }, { type: "parameter", description: "page=/login" });
   await test.step("1. Navigate to /login", async () => {
     await page.goto("/login");
+    await page.waitForLoadState('networkidle'); // Ensure page is fully loaded
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await page.waitForSelector("text='TestMind AI'", { timeout: 10000 });
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+    const locator = page.locator("a:has-text('TestMind AI')");
+    await expect(locator).toBeVisible({ timeout: 5000 }); // Ensure wait for visibility is consistent
   });
 });

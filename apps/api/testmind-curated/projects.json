@@ -1,0 +1,18 @@
+{
+  "projects": [
+    {
+      "id": "my-custom-suite",
+      "name": "My Custom Suite",
+      "root": "my-custom-suite",
+      "locked": [
+        "login.spec.ts"
+      ]
+    },
+    {
+      "id": "testmind-locked",
+      "name": "testMind_locked",
+      "root": "testmind-locked",
+      "locked": []
+    }
+  ]
+}

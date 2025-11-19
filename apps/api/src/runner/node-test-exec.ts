@@ -52,6 +52,25 @@ async function findPlaywrightConfig(workdir: string): Promise<FindConfigResult> 
   return null;
 }
 
+async function patchPreviewCommand(configPath: string) {
+  try {
+    const original = await fs.readFile(configPath, "utf8");
+    let updated = original;
+    const replacements: Array<[RegExp, string]> = [
+      [/pnpm\s+preview/g, "pnpm dev --host 0.0.0.0"],
+      [/vite\s+preview/g, "vite dev --host 0.0.0.0"],
+    ];
+    for (const [pattern, replacement] of replacements) {
+      updated = updated.replace(pattern, `${replacement}`);
+    }
+    if (updated !== original) {
+      await fs.writeFile(configPath, updated, "utf8");
+    }
+  } catch {
+    // ignore patch failures; fall back to original command
+  }
+}
+
 export type RunExecRequest = {
   workdir: string;              // repo root (temp clone)
   jsonOutPath: string;          // where to write report.json
@@ -61,6 +80,7 @@ export type RunExecRequest = {
   grep?: string;                // (IGNORED for now)
   configPath?: string;
   sourceRoot?: string;
+  headed?: boolean;
 };
 
 export type RunExecResult = {
@@ -185,6 +205,8 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     };
   }
 
+  await patchPreviewCommand(found.configPath);
+
   const env = {
     ...process.env,
     PW_BASE_URL: req.baseUrl ?? "",
@@ -200,6 +222,9 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
 
   // ---- CLI args ----
   const args: string[] = ["playwright", "test"];
+  if (req.headed) {
+    args.push("--headed");
+  }
 
   // 🔹 Use grep to select individual tests, not path-based "globs"
   if (req.grep) {

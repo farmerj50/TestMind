@@ -7,20 +7,37 @@ import { makeWorkdir, rmrf } from './workdir';
 import { cloneRepo } from './git';
 import { detectFramework, installDeps, runTests } from './node-test-exec';
 import { parseResults } from './result-parsers';
-import { TestRunStatus, TestResultStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { scheduleSelfHealingForRun } from './self-heal';
+import type { RunPayload } from './queue';
 
-function mapStatus(s: string): TestResultStatus {
+const TestRunStatus = (Prisma?.TestRunStatus ?? {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+}) as typeof Prisma.TestRunStatus;
+const TestResultStatus = (Prisma?.TestResultStatus ?? {
+  passed: "passed",
+  failed: "failed",
+  skipped: "skipped",
+  error: "error",
+}) as typeof Prisma.TestResultStatus;
+
+function mapStatus(s: string): Prisma.TestResultStatus {
   if (s === 'passed') return TestResultStatus.passed;
   if (s === 'failed' || s === 'error') return TestResultStatus.failed;
   if (s === 'skipped') return TestResultStatus.skipped;
   return TestResultStatus.error;
 }
 
+const stripAnsi = (value?: string | null) =>
+  typeof value === 'string' ? value.replace(/\u001b\[[0-9;]*m/g, '') : value ?? null;
+
 export const worker = new Worker(
   'test-runs',
   async (job: Job) => {
-    const { runId } = job.data as { runId: string; payload?: unknown };
+    const { runId, payload } = job.data as { runId: string; payload?: RunPayload };
 
     const run = await prisma.testRun.findUnique({
       where: { id: runId },
@@ -57,6 +74,7 @@ export const worker = new Worker(
       const exec = await runTests({
         workdir: work,
         jsonOutPath: resultsPath,
+        headed: payload?.headed,
       });
 
       // write logs
@@ -107,7 +125,7 @@ export const worker = new Worker(
           status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
           finishedAt: new Date(),
           summary: JSON.stringify({ framework, parsedCount, passed, failed, skipped }),
-          error: ok ? null : (exec.stderr || 'Test command failed'),
+          error: ok ? null : (stripAnsi(exec.stderr) || 'Test command failed'),
         },
       });
 
@@ -122,7 +140,7 @@ export const worker = new Worker(
         data: {
           status: TestRunStatus.failed,
           finishedAt: new Date(),
-          error: err?.message ?? String(err),
+          error: stripAnsi(err?.message ?? String(err)),
         },
       });
       throw err;
@@ -136,4 +154,9 @@ export const worker = new Worker(
 worker.on('failed', (job, err) => {
   const runId = job?.data?.runId;
   console.error(`[worker] job ${job?.id} (run ${runId ?? 'unknown'}) failed:`, err);
+});
+
+worker.on('completed', (job) => {
+  const runId = job?.data?.runId;
+  console.log(`[worker] job ${job?.id} (run ${runId ?? 'unknown'}) completed`);
 });

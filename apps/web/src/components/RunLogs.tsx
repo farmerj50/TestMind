@@ -1,7 +1,7 @@
 // apps/web/src/components/RunLogs.tsx
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 
 export default function RunLogs({ runId }: { runId: string }) {
   const { getToken } = useAuth();
