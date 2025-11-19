@@ -1,4 +1,4 @@
 // apps/worker/src/prisma.ts
-import { PrismaClient, TestRunStatus } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 export const prisma = new PrismaClient();
-export { TestRunStatus };
+export const { TestRunStatus } = Prisma;

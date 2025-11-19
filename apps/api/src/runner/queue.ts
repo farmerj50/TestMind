@@ -22,6 +22,7 @@ export type SelfHealPayload = {
   projectId: string;
   totalFailed: number;
   testTitle?: string | null;
+  headed?: boolean;
 };
 
 export const runQueue = new Queue('test-runs', { connection: redis });

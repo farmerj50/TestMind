@@ -29,8 +29,8 @@ export default defineConfig({
     : {
         command:
           process.platform === "win32"
-            ? `powershell -NoProfile -Command "cd apps/web; pnpm build; pnpm preview --port ${PORT} --strictPort"`
-            : `bash -lc "cd apps/web && pnpm build && pnpm preview --port ${PORT} --strictPort"`,
+            ? `powershell -NoProfile -Command "cd apps/web; pnpm install; pnpm dev --host localhost --port ${PORT} --strictPort"`
+            : `bash -lc "cd apps/web && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT} --strictPort"`,
         url: `http://localhost:${PORT}`,
         reuseExistingServer: true,
         timeout: 120_000,

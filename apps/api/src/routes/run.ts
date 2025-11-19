@@ -5,7 +5,7 @@ import fsSync from "fs";
 import path from "path";
 import { z } from "zod";
 import { prisma } from "../prisma";
-import { TestRunStatus, TestResultStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 // runner pieces
 import { makeWorkdir, rmrf } from "../runner/workdir";
@@ -15,6 +15,7 @@ import { execa } from "execa";
 
 import { parseResults, ParsedCase } from "../runner/result-parsers";
 import { scheduleSelfHealingForRun } from "../runner/self-heal";
+import { enqueueRun } from "../runner/queue";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -139,14 +140,31 @@ const RunBody = z.object({
   baseUrl: z.string().url().optional(), // optional override
   file: z.string().optional(),   // relative path to spec to run
   grep: z.string().optional(),   // test title to match
+  headful: z.boolean().optional(),
 });
 
-function mapStatus(s: string): TestResultStatus {
+const TestRunStatus = (Prisma?.TestRunStatus ?? {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+}) as typeof Prisma.TestRunStatus;
+const TestResultStatus = (Prisma?.TestResultStatus ?? {
+  passed: "passed",
+  failed: "failed",
+  skipped: "skipped",
+  error: "error",
+}) as typeof Prisma.TestResultStatus;
+
+function mapStatus(s: string): Prisma.TestResultStatus {
   if (s === "passed") return TestResultStatus.passed;
   if (s === "failed" || s === "error") return TestResultStatus.failed;
   if (s === "skipped") return TestResultStatus.skipped;
   return TestResultStatus.error;
 }
+
+const stripAnsi = (value?: string | null) =>
+  typeof value === "string" ? value.replace(/\u001b\[[0-9;]*m/g, "") : value ?? null;
 
 export default async function runRoutes(app: FastifyInstance) {
   // POST /runner/run
@@ -190,6 +208,7 @@ export default async function runRoutes(app: FastifyInstance) {
         status: TestRunStatus.running,
         startedAt: new Date(),
         trigger: "user",
+        paramsJson: { headful: Boolean(parsed.data.headful) },
       },
     });
 
@@ -267,12 +286,22 @@ export default async function runRoutes(app: FastifyInstance) {
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
         const ciConfigPath = path.join(cwd, "tm-ci.playwright.config.ts");
-        // when building ciConfig:
+        const serverDirAbsolute = cwd;
+        const winServerDirEsc = serverDirAbsolute
+          .replace(/\\/g, "\\\\")
+          .replace(/'/g, "''");
+        const unixServerDirEsc = serverDirAbsolute
+          .replace(/\\/g, "/")
+          .replace(/"/g, '\\"');
+        const PORT_PLACEHOLDER = "__TM_PORT__";
+        const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} --strictPort }"`;
+        const unixDevCommand = `bash -lc "cd \\"${unixServerDirEsc}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT_PLACEHOLDER} --strictPort"`;
         const ciConfig = `import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
-const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || 'http://localhost:4173';
+const PORT = Number(process.env.TM_PORT ?? 4173);
+const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://localhost:\${PORT}\`;
 const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts');
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
@@ -288,11 +317,28 @@ const reporters = [
   ['allure-playwright', { resultsDir: ALLURE_RESULTS }],
 ];
 
+const DEV_COMMAND =
+  process.platform === 'win32'
+    ? \`${winDevCommand}\`
+    : \`${unixDevCommand}\`;
+
 export default defineConfig({
-  use: { baseURL: BASE },
+  use: {
+    baseURL: BASE,
+    trace: 'on-first-retry',
+    video: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
   grep: GREP,
   reporter: reporters,
-  webServer: { command: 'vite preview --port 4173', port: 4173, reuseExistingServer: true },
+  webServer: process.env.TM_SKIP_SERVER
+    ? undefined
+    : {
+        command: DEV_COMMAND,
+        url: \`http://localhost:\${PORT}\`,
+        reuseExistingServer: true,
+        timeout: 120000,
+      },
   testIgnore: ['**/node_modules/**','**/dist/**','**/build/**','**/.*/**'],
   projects: [{
     name: 'generated',
@@ -304,7 +350,11 @@ export default defineConfig({
 
 
 
-        await fs.writeFile(ciConfigPath, ciConfig, "utf8");
+        const finalConfig = ciConfig.replace(
+          new RegExp(PORT_PLACEHOLDER, "g"),
+          "${PORT}"
+        );
+        await fs.writeFile(ciConfigPath, finalConfig, "utf8");
         // --- bring generated specs into the temp workspace ---
         // destination inside the workspace
         const genDest = path.join(cwd, 'testmind-generated', 'playwright-ts');
@@ -452,6 +502,7 @@ export default defineConfig({
           extraEnv,
           grep: normalizedGrep,
           sourceRoot: work,
+          headed: Boolean(parsed.data.headful),
         });
 
 
@@ -558,7 +609,7 @@ export default defineConfig({
               failed,
               skipped,
             }),
-            error: ok ? null : (exec.stderr ?? "Test command failed"),
+            error: ok ? null : stripAnsi(exec.stderr ?? "Test command failed"),
             artifactsJson: artifacts ?? undefined,
           },
         });
@@ -573,7 +624,7 @@ export default defineConfig({
           data: {
             status: TestRunStatus.failed,
             finishedAt: new Date(),
-            error: err?.message ?? String(err),
+            error: stripAnsi(err?.message ?? String(err)),
             artifactsJson: artifacts ?? undefined,
           },
         });
@@ -588,7 +639,7 @@ export default defineConfig({
           data: {
             status: TestRunStatus.failed,
             finishedAt: new Date(),
-            error: err?.message || "Unexpected error in background runner",
+            error: stripAnsi(err?.message || "Unexpected error in background runner"),
             artifactsJson: artifacts ?? undefined,
           },
         })
@@ -637,10 +688,37 @@ export default defineConfig({
             finishedAt: true,
           },
         },
+        TestHealingAttempt: { select: { id: true, status: true } },
       },
     });
     if (!run) return reply.code(404).send({ error: "Run not found" });
-    return reply.send({ run }); // UI expects { run }
+
+    const { TestHealingAttempt, ...rest } = run;
+    return reply.send({ run: { ...rest, healingAttempts: TestHealingAttempt } });
+  });
+
+  app.post("/test-runs/:id/rerun", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, projectId: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+
+    const headful = Boolean(run.paramsJson?.headful);
+    const rerun = await prisma.testRun.create({
+      data: {
+        projectId: run.projectId,
+        rerunOfId: run.id,
+        status: TestRunStatus.running,
+        startedAt: new Date(),
+        trigger: "manual",
+        paramsJson: { headful },
+      },
+    });
+
+    await enqueueRun(rerun.id, { projectId: run.projectId, headed: headful });
+    return reply.send({ runId: rerun.id });
   });
 
   // GET /runner/test-runs/:id/logs?type=stdout|stderr

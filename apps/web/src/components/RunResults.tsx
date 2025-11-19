@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useApi } from "@/lib/api";
+import { useApi } from "../lib/api";
 import { CheckCircle2, XCircle, CircleAlert } from "lucide-react";
 
 type Result = {

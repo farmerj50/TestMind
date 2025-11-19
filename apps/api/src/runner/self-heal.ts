@@ -1,6 +1,12 @@
-import { TestResultStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { enqueueSelfHeal } from './queue';
+const TestResultStatus = (Prisma?.TestResultStatus ?? {
+  passed: "passed",
+  failed: "failed",
+  skipped: "skipped",
+  error: "error",
+}) as typeof Prisma.TestResultStatus;
 
 /**
  * Schedule self-healing attempts for each failed test result in the run.
@@ -9,9 +15,10 @@ import { enqueueSelfHeal } from './queue';
 export async function scheduleSelfHealingForRun(runId: string) {
   const run = await prisma.testRun.findUnique({
     where: { id: runId },
-    select: { projectId: true },
+    select: { projectId: true, paramsJson: true },
   });
   if (!run) return;
+  const headful = Boolean((run.paramsJson as any)?.headful);
 
   const failedResults = await prisma.testResult.findMany({
     where: { runId, status: TestResultStatus.failed },
@@ -42,6 +49,7 @@ export async function scheduleSelfHealingForRun(runId: string) {
       projectId: run.projectId,
       totalFailed: failedResults.length,
       testTitle: result.testCase?.title ?? null,
+      headed: headful,
     });
   }
 }
