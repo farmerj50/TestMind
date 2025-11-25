@@ -8,12 +8,12 @@ test("Button Functionality Check", async ({ page }) => {
     await page.goto("http://localhost:5173/");
   });
   await test.step("2. Click the first button that says 'Start Testing'", async () => {
-    const locator = page.getByRole('button', { name: /start testing/i }).first();
+    const locator = page.getByRole('button', { name: /start testing/i });
     await expect(locator).toBeVisible({ timeout: 15000 });
     await locator.click();
   });
   await test.step("3. Click the second button that says 'Will you store our secrets?'", async () => {
-    const locator = page.getByRole('button', { name: /will you store our secrets?/i }).first();
+    const locator = page.getByRole('button', { name: /will you store our secrets?/i });
     await expect(locator).toBeVisible({ timeout: 15000 });
     await locator.click();
   });

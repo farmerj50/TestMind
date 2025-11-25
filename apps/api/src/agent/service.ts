@@ -102,6 +102,7 @@ export async function listAgentSessions(userId: string) {
       createdAt: true,
       updatedAt: true,
       _count: { select: { pages: true } },
+      pages: { select: { status: true, coverage: true } },
     },
   });
 }
