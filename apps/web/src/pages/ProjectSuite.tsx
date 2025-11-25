@@ -9,7 +9,7 @@ import { Separator } from "../components/ui/seperator";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { FileText, FolderTree, ChevronDown, ChevronRight, GitBranch, Search, RefreshCw, Play, Plus, Lock, Unlock } from "lucide-react";
 import { cn } from "../lib/utils";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { useApi } from "../lib/api";
 
 type SpecFile = { path: string };
@@ -127,6 +127,8 @@ function TreeItem({
   );
 }
 
+const COPY_PLACEHOLDER = "__copy_spec__";
+
 export default function ProjectSuite() {
   const { projectId } = useParams(); // route: /suite/:projectId
   const pid = projectId ?? "playwright-ts";
@@ -149,6 +151,7 @@ export default function ProjectSuite() {
   const [copyingSpec, setCopyingSpec] = useState(false);
   const [lockingSpec, setLockingSpec] = useState(false);
   const [copySelectOpen, setCopySelectOpen] = useState(false);
+  const [copySelectValue, setCopySelectValue] = useState(COPY_PLACEHOLDER);
   const [specReloadKey, setSpecReloadKey] = useState(0);
   const [renamingSuite, setRenamingSuite] = useState(false);
   const [deletingSuite, setDeletingSuite] = useState(false);
@@ -159,6 +162,10 @@ export default function ProjectSuite() {
   const [editorPath, setEditorPath] = useState<string | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
+
+  useEffect(() => {
+    setCopySelectValue(COPY_PLACEHOLDER);
+  }, [activeSpec?.path]);
 
   // load available spec projects (generated + curated)
   useEffect(() => {
@@ -208,6 +215,10 @@ export default function ProjectSuite() {
       children: proj.id === pid ? cloneNodes(specTree) : undefined,
     }));
   }, [specProjects, specTree, pid]);
+  const suiteOptions = useMemo(
+    () => specProjects.map((p) => ({ value: p.id, label: p.name, type: p.type })),
+    [specProjects]
+  );
 
   async function handleCreateSuite() {
     const proposed = window.prompt("New suite name?");
@@ -250,6 +261,7 @@ export default function ProjectSuite() {
       return;
     }
     setCopyingSpec(true);
+    setSpecProjectErr(null);
     try {
       const res = await fetch(`/tm/suite/projects/${targetId}/specs`, {
         method: "POST",
@@ -566,23 +578,28 @@ export default function ProjectSuite() {
           </Button>
           {curatedSuites.length > 0 && (
             <Select
+              value={copySelectValue}
               open={copySelectOpen}
               onOpenChange={setCopySelectOpen}
               disabled={!activeSpec || copyingSpec}
-              onValueChange={(val) => {
-                if (val) handleCopySpec(val);
+              onValueChange={async (val) => {
+                if (!val || val === COPY_PLACEHOLDER) return;
+                setCopySelectValue(val);
+                await handleCopySpec(val);
+                setCopySelectValue(COPY_PLACEHOLDER);
+                setCopySelectOpen(false);
               }}
             >
               <SelectTrigger className="w-full justify-center">
-                <SelectValue placeholder={copyingSpec ? "Copying..." : "Copy spec to suite"} />
+                <SelectValue placeholder={copyingSpec ? "Copying..." : "Copy spec"} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={COPY_PLACEHOLDER} disabled>
+                  Copy spec
+                </SelectItem>
                 {curatedSuites.map((suite) => (
                   <SelectItem key={suite.id} value={suite.id}>
-                    <span className="flex items-center gap-1">
-                      <FileText className="h-3 w-3 opacity-70" />
-                      {suite.name}
-                    </span>
+                    {suite.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -663,6 +680,34 @@ export default function ProjectSuite() {
       <div className="flex flex-col">
         {/* top bar */}
         <div className="flex items-center gap-2 p-3 border-b">
+          <div className="flex items-center gap-2 mr-3">
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/dashboard">Dashboard</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/integrations">Integrations</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/projects">Projects</Link>
+            </Button>
+          </div>
+
+          <Select
+            value={pid}
+            onValueChange={(val) => navigate(`/suite/${val}`)}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Select suite" />
+            </SelectTrigger>
+            <SelectContent>
+              {suiteOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label} {opt.type === "generated" ? "(generated)" : "(curated)"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select
             value={runProjectId ?? undefined}
             onValueChange={(val) => {

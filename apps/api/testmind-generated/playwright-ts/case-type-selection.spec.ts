@@ -7,8 +7,7 @@ test("Page loads: /case-type-selection", async ({ page }) => {
   await test.step("1. Navigate to /case-type-selection", async () => {
     await page.goto("/case-type-selection");
   });
-  await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+  await test.step("2. Ensure text \"testmind-web\" is visible", async () => {
+    await expect(page.getByText("testmind-web")).toBeVisible({ timeout: 10000 });
   });
 });
-

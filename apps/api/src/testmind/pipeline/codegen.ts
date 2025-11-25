@@ -1,5 +1,9 @@
 import type { TestPlan } from "../core/plan.js";
 import { emitSpecFile } from "../adapters/playwright-ts/generator.js";
+import { cucumberJSAdapter } from "../adapters/cucumber-js/generator.js";
+import { cypressJSAdapter } from "../adapters/cypress-js/generator.js";
+import { appiumJSAdapter } from "../adapters/appium-js/generator.js";
+import { xctestAdapter } from "../adapters/xctest/generator.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 // at top (under imports)
@@ -80,11 +84,9 @@ function groupByPageCompat(cases: any[]) {
 
 /** ✅ Named export used by synthesize.ts and service.ts */
 /** ✅ Named export used by synthesize.ts and service.ts */
-export async function writeSpecsFromPlan(outDir: string, plan: TestPlan) {
-  // 1) prove which writer is used + where it's writing
-  console.log("[tm-pipeline-codegen] using emitSpecFile v2 ->", outDir);
+export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapterId = "playwright-ts") {
+  console.log("[tm-pipeline-codegen] using adapter ->", adapterId, "at", outDir);
 
-  // 2) hard guard: do NOT allow legacy subfolders
   const normOut = outDir.replace(/\\/g, "/");
   if (/(^|\/)(default|tests)(\/|$)/.test(normOut)) {
     throw new Error(`outDir must be the adapter root (got ${outDir})`);
@@ -92,12 +94,58 @@ export async function writeSpecsFromPlan(outDir: string, plan: TestPlan) {
 
   await fs.mkdir(outDir, { recursive: true });
 
-  // --- normalize incoming cases to what emitSpecFile expects ---
   const raw = (plan as any).cases ?? (plan as any).testCases ?? [];
   const norm = normalizeCases(raw);
+
+  if (adapterId === "cucumber-js") {
+    const files = cucumberJSAdapter.render({ ...(plan as any), cases: norm } as any);
+    let logged = false;
+    for (const f of files) {
+      const dest = path.join(outDir, f.path);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.writeFile(dest, f.content, "utf8");
+      if (!logged) { console.log("[tm-pipeline-codegen] wrote:", dest); logged = true; }
+    }
+    return { total: norm.length, pages: cucumberJSAdapter.manifest(plan).pages.length, outDir };
+  }
+
+  if (adapterId === "cypress-js") {
+    const files = cypressJSAdapter.render({ ...(plan as any), cases: norm } as any);
+    let logged = false;
+    for (const f of files) {
+      const dest = path.join(outDir, f.path);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.writeFile(dest, f.content, "utf8");
+      if (!logged) { console.log("[tm-pipeline-codegen] wrote:", dest); logged = true; }
+    }
+    return { total: norm.length, pages: cypressJSAdapter.manifest(plan).pages.length, outDir };
+  }
+
+  if (adapterId === "appium-js") {
+    const files = appiumJSAdapter.render({ ...(plan as any), cases: norm } as any);
+    let logged = false;
+    for (const f of files) {
+      const dest = path.join(outDir, f.path);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.writeFile(dest, f.content, "utf8");
+      if (!logged) { console.log("[tm-pipeline-codegen] wrote:", dest); logged = true; }
+    }
+    return { total: norm.length, pages: appiumJSAdapter.manifest(plan).pages.length, outDir };
+  }
+
+  if (adapterId === "xctest") {
+    const files = xctestAdapter.render(plan);
+    for (const f of files) {
+      const dest = path.join(outDir, f.path);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.writeFile(dest, f.content, "utf8");
+    }
+    return { total: norm.length, pages: 0, outDir };
+  }
+
+  // Default: Playwright TS
   const grouped = groupByPageCompat(norm);
 
-  // 3) write one file per page (first write logged for sanity)
   let logged = false;
   for (const [page, tcs] of grouped) {
     const base = page === "/"

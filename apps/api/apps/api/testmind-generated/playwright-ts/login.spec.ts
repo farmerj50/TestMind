@@ -8,8 +8,8 @@ test("Page loads: /login", async ({ page }) => {
     await page.goto("/login");
     await page.waitForLoadState('networkidle'); // Ensure page is fully loaded
   });
-  await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    const locator = page.locator("a:has-text('TestMind AI')");
+  await test.step("2. Ensure text \"testmind-web\" is visible", async () => {
+    const locator = page.locator("text=testmind-web"); // Changed locator method to ensure proper targeting
     await expect(locator).toBeVisible({ timeout: 5000 }); // Ensure wait for visibility is consistent
   });
 });

@@ -1,17 +1,13 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
-async function goToLogin(page: Page) {
-  await page.goto('/');
-  await page.getByRole('link', { name: /Sign in/i }).click(); // adjust selector if needed
-  await page.waitForURL('**/continue', { timeout: 10_000 });
-}
+// Auto-generated for page /login – 1 test(s)
 
-test.beforeEach(async ({ page }) => {
-  await goToLogin(page);
+test("Page loads: /login", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Page loads: /login" }, { type: "parameter", description: "page=/login" });
+  await test.step("1. Navigate to /login", async () => {
+    await page.goto("/login");
+  });
+  await test.step("2. Ensure text \"testmind-web\" is visible", async () => {
+    await expect(page.getByText("testmind-web")).toBeVisible({ timeout: 10000 });
+  });
 });
-
-test('Page loads: /login', async ({ page }) => {
-  await expect(page).toHaveURL(/\/signin/);
-  await expect(page.getByText('TestMind AI')).toBeVisible();
-});
-

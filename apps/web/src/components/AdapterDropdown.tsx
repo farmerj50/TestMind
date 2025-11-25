@@ -8,9 +8,10 @@ export type AdapterId =
 
 const ADAPTER_OPTIONS: { id: AdapterId; label: string; disabled?: boolean }[] = [
   { id: "playwright-ts", label: "Playwright (TypeScript)" },
-  { id: "cypress-js",    label: "Cypress (JS)",  disabled: true },
-  { id: "cucumber-js",   label: "Cucumber (JS)", disabled: true },
-  { id: "appium-js",     label: "Appium (JS)",   disabled: true },
+  { id: "cypress-js",    label: "Cypress (JS)" },
+  { id: "cucumber-js",   label: "Cucumber (JS)" },
+  { id: "appium-js",     label: "Appium (JS)" },
+  { id: "xctest",        label: "XCTest (Swift)", disabled: true },
 ];
 
 type Props = {

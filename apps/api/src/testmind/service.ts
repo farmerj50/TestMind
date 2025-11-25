@@ -4,6 +4,11 @@ import { discoverSite } from "./discover.js";
 import { generatePlan } from "./pipeline/generate-plan.js";
 import { writeSpecsFromPlan } from "./pipeline/codegen.js";
 import { playwrightTSRunner } from "./adapters/playwright-ts/runner.js";
+import { cucumberJSRunner } from "./adapters/cucumber-js/runner.js";
+import { cypressJSRunner } from "./adapters/cypress-js/runner.js";
+import { appiumJSRunner } from "./adapters/appium-js/runner.js";
+import { xctestRunner } from "./adapters/xctest/runner.js";
+import { TestRunner } from "./core/adapter.js";
 import 'dotenv/config';
 // apps/api/src/server.ts (or wherever you build Fastify)
 
@@ -19,7 +24,13 @@ type Runner = {
   ): Promise<number>;
 };
 
-const runner: Runner = playwrightTSRunner;
+const runners: Record<string, Runner> = {
+  "playwright-ts": playwrightTSRunner,
+  "cucumber-js": cucumberJSRunner,
+  "cypress-js": cypressJSRunner,
+  "appium-js": appiumJSRunner,
+  "xctest": xctestRunner,
+};
 
 /** Try to get static routes from the repo (optional). */
 async function getSeedRoutesFromRepo(repoPath: string): Promise<string[]> {
@@ -97,7 +108,7 @@ export async function generateAndWrite({
   const plan: TestPlan = generatePlan(patternInput, "sdet");
 
   // 4) Emit Playwright specs
-  await writeSpecsFromPlan(outRoot, plan);
+  await writeSpecsFromPlan(outRoot, plan, adapterId);
 
   return {
     manifest: { plan },
@@ -116,6 +127,7 @@ export async function runAdapter({
   env: Record<string, string>;
   onLine: (s: string) => void;
 }) {
+  const runner = runners[adapterId] ?? playwrightTSRunner;
   if (runner.install) await runner.install(outRoot);
   return runner.run(outRoot, env, onLine);
 }

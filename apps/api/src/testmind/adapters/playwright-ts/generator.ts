@@ -6,7 +6,8 @@ type Step =
   | { kind: "fill"; selector: string; value: string }
   | { kind: "click"; selector: string }
   | { kind: "upload"; selector: string; path: string }
-  | { kind: "expect-visible"; selector: string };
+  | { kind: "expect-visible"; selector: string }
+  | { kind: "custom"; note?: string };
 
 type TestCase = {
   id: string;
@@ -51,7 +52,7 @@ function describeStep(step: Step): string {
     case "upload":
       return `Upload through ${step.selector}`;
     default:
-      return `Run ${step.kind}`;
+      return `Run custom step`;
   }
 }
 
@@ -60,17 +61,33 @@ function emitAction(step: Step): string {
     case "goto":
       return `await page.goto(${JSON.stringify(step.url)});`;
     case "expect-text":
-      return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible();`;
+      return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });`;
     case "expect-visible":
-      return `await expect(page.locator(${JSON.stringify(step.selector)})).toBeVisible();`;
+      return `{
+  const locator = page.locator(${JSON.stringify(step.selector)});
+  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  await expect(locator).toBeVisible({ timeout: 10000 });
+}`;
     case "fill":
-      return `await page.locator(${JSON.stringify(step.selector)}).fill(${JSON.stringify(step.value)});`;
+      return `{
+  const locator = page.locator(${JSON.stringify(step.selector)});
+  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  await locator.fill(${JSON.stringify(step.value)});
+}`;
     case "click":
-      return `await page.locator(${JSON.stringify(step.selector)}).click();`;
+      return `{
+  const locator = page.locator(${JSON.stringify(step.selector)});
+  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  await locator.click({ timeout: 10000 });
+}`;
     case "upload":
-      return `await page.setInputFiles(${JSON.stringify(step.selector)}, ${JSON.stringify(step.path)});`;
+      return `{
+  const locator = page.locator(${JSON.stringify(step.selector)});
+  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  await locator.setInputFiles(${JSON.stringify(step.path)});
+}`;
     default:
-      return `// TODO: unsupported step ${JSON.stringify((step as any).kind)}`;
+      return `// TODO: custom step`;
   }
 }
 

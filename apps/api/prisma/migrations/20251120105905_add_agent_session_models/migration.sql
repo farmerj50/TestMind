@@ -1,0 +1,2 @@
+-- Migration intentionally left blank.
+-- Agent session tables were replaced by migration 20251120120000_agent_sessions.

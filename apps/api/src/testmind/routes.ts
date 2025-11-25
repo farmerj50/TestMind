@@ -7,6 +7,14 @@ import { globby } from "globby";
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
 import { generateAndWrite, runAdapter } from './service.js';
+import {
+  CURATED_ROOT,
+  readCuratedManifest,
+  writeCuratedManifest,
+  getCuratedProject,
+  slugify,
+  ensureWithin,
+} from "./curated-store.js";
 
 type GenerateCommon = {
   repoPath?: string;
@@ -26,84 +34,33 @@ type RunQuery = { baseUrl?: string; adapterId?: string };
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(process.cwd(), 'testmind-generated');
-const CURATED_ROOT = process.env.TM_CURATED_ROOT
-  ? path.resolve(process.env.TM_CURATED_ROOT)
-  : path.resolve(process.cwd(), 'testmind-curated');
-const CURATED_MANIFEST = path.join(CURATED_ROOT, 'projects.json');
-
-type CuratedProject = {
-  id: string;
-  name?: string;
-  root?: string;
-  locked?: string[];
-};
-
-type CuratedManifest = {
-  projects: CuratedProject[];
-};
-
-function readCuratedManifest(): CuratedManifest {
-  try {
-    if (!fs.existsSync(CURATED_ROOT)) {
-      fs.mkdirSync(CURATED_ROOT, { recursive: true });
-    }
-    if (!fs.existsSync(CURATED_MANIFEST)) {
-      const empty: CuratedManifest = { projects: [] };
-      fs.writeFileSync(CURATED_MANIFEST, JSON.stringify(empty, null, 2), 'utf8');
-      return empty;
-    }
-    const raw = fs.readFileSync(CURATED_MANIFEST, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.projects)) {
-      return normalizeManifest(parsed);
-    }
-  } catch (err) {
-    console.warn('[TM] failed to read curated manifest:', err);
-  }
-  return { projects: [] };
-}
-
-function getCuratedProject(projectId: string) {
-  const manifest = readCuratedManifest();
-  return manifest.projects.find((p) => p.id === projectId);
-}
-
-function writeCuratedManifest(manifest: CuratedManifest) {
-  if (!fs.existsSync(CURATED_ROOT)) {
-    fs.mkdirSync(CURATED_ROOT, { recursive: true });
-  }
-  fs.writeFileSync(CURATED_MANIFEST, JSON.stringify(manifest, null, 2), 'utf8');
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64) || 'suite';
-}
-
-function ensureWithin(rootDir: string, candidate: string) {
-  const rel = path.relative(rootDir, candidate);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error('Path escapes project root');
-  }
-}
-
-function normalizeManifest(manifest: CuratedManifest): CuratedManifest {
-  return {
-    projects: manifest.projects.map((proj) => ({
-      ...proj,
-      locked: Array.isArray(proj.locked) ? proj.locked : [],
-    })),
-  };
-}
+type CuratedManifest = ReturnType<typeof readCuratedManifest>;
 
 function listSpecProjects() {
   const base = [
     {
       id: "playwright-ts",
       name: "Generated (playwright-ts)",
+      type: "generated" as const,
+    },
+    {
+      id: "cucumber-js",
+      name: "Generated (cucumber-js)",
+      type: "generated" as const,
+    },
+    {
+      id: "cypress-js",
+      name: "Generated (cypress-js)",
+      type: "generated" as const,
+    },
+    {
+      id: "appium-js",
+      name: "Generated (appium-js)",
+      type: "generated" as const,
+    },
+    {
+      id: "xctest",
+      name: "Generated (xctest)",
       type: "generated" as const,
     },
   ];

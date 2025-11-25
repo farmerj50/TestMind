@@ -34,7 +34,7 @@ function isHtmlLike(href: string) {
   return true;
 }
 
-async function scanPage(url: string): Promise<RouteScan> {
+export async function scanPage(url: string): Promise<RouteScan> {
   const browser = await chromium.launch(); // headless by default
   const page = await browser.newPage();
   try {

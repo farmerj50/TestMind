@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      VITE_API_URL: http://localhost:8787
+      CLERK_PUBLISHABLE_KEY: test-publishable-key
+      CLERK_SECRET_KEY: test-secret-key
+      DATABASE_URL: postgres://user:pass@localhost:5432/testmind
+      REDIS_URL: redis://localhost:6379
+      SECRET_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      CORS_ORIGINS: http://localhost:5173
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build API
+        run: pnpm --filter api build
+
+      - name: Lint web
+        run: pnpm --filter testmind-web lint
+
+      - name: Build web
+        run: pnpm --filter testmind-web build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: Playwright smoke tests
+        run: pnpm exec playwright test -c tm-ci.playwright.config.ts --project=chromium

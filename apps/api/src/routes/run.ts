@@ -5,7 +5,6 @@ import fsSync from "fs";
 import path from "path";
 import { z } from "zod";
 import { prisma } from "../prisma";
-import { Prisma } from "@prisma/client";
 
 // runner pieces
 import { makeWorkdir, rmrf } from "../runner/workdir";
@@ -16,6 +15,9 @@ import { execa } from "execa";
 import { parseResults, ParsedCase } from "../runner/result-parsers";
 import { scheduleSelfHealingForRun } from "../runner/self-heal";
 import { enqueueRun } from "../runner/queue";
+import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store";
+import { regenerateAttachedSpecs } from "../agent/service";
+import { decryptSecret } from "../lib/crypto";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -135,6 +137,31 @@ function sendError(
   return reply.code(statusCode).send({ error: { code, message, details } });
 }
 
+async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: string) {
+  try {
+    const suiteId = agentSuiteId(projectId);
+    const src = path.join(CURATED_ROOT, suiteId);
+    if (!fsSync.existsSync(src)) return false;
+    const agentDest = path.join(destRoot, "__agent", suiteId);
+    await fs.rm(agentDest, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(path.dirname(agentDest), { recursive: true });
+    await fs.cp(src, agentDest, { recursive: true });
+    await fs.writeFile(
+      logPath,
+      `[runner] agent specs merged from ${src} -> ${agentDest}\n`,
+      { flag: "a" }
+    );
+    return true;
+  } catch (err: any) {
+    await fs.writeFile(
+      logPath,
+      `[runner] agent specs merge failed: ${err?.message ?? String(err)}\n`,
+      { flag: "a" }
+    );
+    return false;
+  }
+}
+
 const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
   baseUrl: z.string().url().optional(), // optional override
@@ -143,20 +170,22 @@ const RunBody = z.object({
   headful: z.boolean().optional(),
 });
 
-const TestRunStatus = (Prisma?.TestRunStatus ?? {
+type RunStatus = "queued" | "running" | "succeeded" | "failed";
+type ResultStatus = "passed" | "failed" | "skipped" | "error";
+const TestRunStatus: Record<RunStatus, RunStatus> = {
   queued: "queued",
   running: "running",
   succeeded: "succeeded",
   failed: "failed",
-}) as typeof Prisma.TestRunStatus;
-const TestResultStatus = (Prisma?.TestResultStatus ?? {
+};
+const TestResultStatus: Record<ResultStatus, ResultStatus> = {
   passed: "passed",
   failed: "failed",
   skipped: "skipped",
   error: "error",
-}) as typeof Prisma.TestResultStatus;
+};
 
-function mapStatus(s: string): Prisma.TestResultStatus {
+function mapStatus(s: string): ResultStatus {
   if (s === "passed") return TestResultStatus.passed;
   if (s === "failed" || s === "error") return TestResultStatus.failed;
   if (s === "skipped") return TestResultStatus.skipped;
@@ -190,6 +219,12 @@ export default async function runRoutes(app: FastifyInstance) {
 
     if (!project) {
       return sendError(reply, "PROJECT_NOT_FOUND", `Project ${pid} was not found`, 404);
+    }
+    // Ensure attached agent scenarios are materialized as specs in TM_LOCAL_SPECS before running
+    try {
+      await regenerateAttachedSpecs(project.ownerId, project.id);
+    } catch (err) {
+      app.log.warn({ err }, "[runner] regenerateAttachedSpecs failed (continuing)");
     }
     if (!project.repoUrl?.trim()) {
       return sendError(
@@ -401,6 +436,8 @@ export default defineConfig({
             { flag: 'a' });
         }
 
+        await mergeAgentSpecs(project.id, genDest, path.join(outDir, "stdout.txt"));
+
         // log a short catalog so we can see exactly what’s about to run
         async function catalogSpecs(root: string, label: string) {
           const lines: string[] = [];
@@ -482,10 +519,28 @@ export default defineConfig({
 
         const allureResultsDir = path.join(outDir, "allure-results");
         await fs.mkdir(allureResultsDir, { recursive: true });
+        const projectSecrets = await prisma.projectSecret.findMany({
+          where: { projectId: project.id },
+          select: { key: true, value: true, name: true, id: true },
+        });
+        const secretEnv: Record<string, string> = {};
+        for (const s of projectSecrets) {
+          try {
+            secretEnv[s.key] = decryptSecret(s.value);
+          } catch (err: any) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] failed to decrypt secret ${s.name} (${s.id}): ${err?.message ?? err}\n`,
+              { flag: "a" }
+            );
+          }
+        }
+
         const extraEnv: Record<string, string> = {
           TM_SOURCE_ROOT: work,
           PW_JSON_OUTPUT: resultsPath,
           PW_ALLURE_RESULTS: allureResultsDir,
+          ...secretEnv,
         };
         if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
         const allureReportDir = path.join(outDir, "allure-report");
@@ -705,7 +760,8 @@ export default defineConfig({
     });
     if (!run) return reply.code(404).send({ error: "Run not found" });
 
-    const headful = Boolean(run.paramsJson?.headful);
+    const params = (run.paramsJson as any) ?? {};
+    const headful = Boolean((params as any)?.headful);
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
