@@ -28,9 +28,11 @@ import testmindRoutes from './testmind/routes';
 
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd());
-const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || process.env.ENABLE_DEBUG_ROUTES === "true";
+const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST;
-const shouldStartWorkers = (process.env.START_WORKERS ?? "true").toLowerCase() !== "false";
+const shouldStartWorkers = validatedEnv.START_WORKERS;
+const skipServer = validatedEnv.TM_SKIP_SERVER;
+const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
 
 app.register(cors, {
   origin: (origin, cb) => {
@@ -220,7 +222,18 @@ app.ready(() => {
 });
 
 // Start background workers when running the API (disable with START_WORKERS=false)
-if (shouldStartWorkers) {
+const startWorkersOnce = () => {
+  if (globalState.__tmWorkersStarted) {
+    app.log.info("[worker] already started; skipping duplicate init");
+    return;
+  }
+  globalState.__tmWorkersStarted = true;
+
+  if (!shouldStartWorkers) {
+    app.log.info("[worker] START_WORKERS=false; skipping background workers");
+    return;
+  }
+
   const start = async (loader: Promise<any>, label: string) => {
     try {
       await loader;
@@ -231,7 +244,9 @@ if (shouldStartWorkers) {
   };
   start(import("./runner/worker"), "test-runs");
   start(import("./runner/self-heal-worker"), "self-heal");
-}
+};
+
+startWorkersOnce();
 
 if (allowDebugRoutes) {
   app.get("/runner/debug/list", async () => {
@@ -297,4 +312,18 @@ app.patch("/billing/me", async (req, reply) => {
   return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
 });
 
-app.listen({ host: "0.0.0.0", port: Number(validatedEnv.PORT) || 8787 });
+const startServer = async () => {
+  if (skipServer) {
+    app.log.info("TM_SKIP_SERVER=true; skipping HTTP listener");
+    return;
+  }
+  try {
+    await app.listen({ host: "0.0.0.0", port: validatedEnv.PORT });
+    app.log.info(`API listening on 0.0.0.0:${validatedEnv.PORT}`);
+  } catch (err) {
+    app.log.error({ err }, "Failed to start server");
+    process.exit(1);
+  }
+};
+
+startServer();
