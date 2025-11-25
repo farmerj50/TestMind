@@ -1,108 +1,193 @@
-// apps/api/src/routes/integrations.ts
 import type { FastifyInstance } from "fastify";
-import { prisma } from "../prisma";
 import { getAuth } from "@clerk/fastify";
-import { Octokit } from "@octokit/rest";
 import { z } from "zod";
+import { prisma } from "../prisma";
+import { Prisma } from "@prisma/client";
+import {
+  assertProvider,
+  integrationProviders,
+} from "../integrations/registry";
 
-const Body = z.object({
-  runId: z.string().min(1),
-  title: z.string().trim().min(1).optional(),
-  body: z.string().optional(),
-  labels: z.array(z.string()).optional(), // optional labels
+const ListQuery = z.object({
+  projectId: z.string().min(1),
+});
+
+const UpsertBody = z.object({
+  id: z.string().optional(),
+  projectId: z.string().min(1),
+  provider: z.string().min(1),
+  name: z.string().optional(),
+  config: z.record(z.any()).optional(),
+  secrets: z.record(z.any()).optional(),
+  enabled: z.boolean().optional(),
 });
 
 export default async function integrationsRoutes(app: FastifyInstance) {
-  // POST /integrations/github/create-issue
-  app.post("/integrations/github/create-issue", async (req, reply) => {
+  app.get("/integrations", async (req, reply) => {
     const { userId } = getAuth(req);
-    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-
-    const parsed = Body.safeParse(req.body);
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    const parsed = ListQuery.safeParse(req.query);
     if (!parsed.success) {
       return reply.code(422).send({ error: parsed.error.flatten() });
     }
-    const { runId, title, body, labels } = parsed.data;
-
-    // Load run + project; verify ownership
-    const run = await prisma.testRun.findUnique({
-      where: { id: runId },
-      include: { project: { select: { id: true, name: true, ownerId: true, repoUrl: true } } },
+    const project = await prisma.project.findUnique({
+      where: { id: parsed.data.projectId },
     });
-    if (!run) return reply.code(404).send({ error: "Run not found" });
-    if (run.project.ownerId !== userId) {
+    if (!project) {
+      return reply.code(404).send({ error: "Project not found" });
+    }
+    if (project.ownerId !== userId) {
       return reply.code(403).send({ error: "Forbidden" });
     }
-
-    // Must be completed
-    if (run.status === "queued" || run.status === "running") {
-      return reply.code(409).send({ error: "Run must be completed before filing an issue" });
-    }
-
-    if (!run.project.repoUrl) {
-      return reply.code(400).send({ error: "Project repoUrl not configured" });
-    }
-
-    // If we already created an issue for this run, re-use it
-    if (run.issueUrl) {
-      return reply.code(200).send({ url: run.issueUrl });
-    }
-
-    // Parse owner/repo from repoUrl (supports https and ssh forms)
-    // e.g. https://github.com/org/repo(.git) or git@github.com:org/repo(.git)
-    const match =
-      /github\.com[:/](?<owner>[^/]+)\/(?<repo>[^/#?]+)(?:\.git)?/i.exec(run.project.repoUrl);
-    const owner = match?.groups?.owner;
-    const repo = match?.groups?.repo;
-    if (!owner || !repo) {
-      return reply.code(400).send({ error: "Invalid GitHub repo URL" });
-    }
-
-    // Fetch user's GitHub token
-    const git = await prisma.gitAccount.findFirst({
-      where: { userId, provider: "github" },
+    const integrations = await prisma.integration.findMany({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "asc" },
     });
-    if (!git?.token) return reply.code(400).send({ error: "GitHub not connected" });
+    const response = integrations.map((integration) => {
+      const provider = integrationProviders[integration.provider];
+      const masked =
+        provider?.maskConfig?.(integration.config ?? null) ??
+        integration.config;
+      return {
+        id: integration.id,
+        projectId: integration.projectId,
+        provider: integration.provider,
+        name: integration.name,
+        config: masked,
+        enabled: integration.enabled,
+        createdAt: integration.createdAt,
+        updatedAt: integration.updatedAt,
+      };
+    });
+    return reply.send({ projectId: project.id, integrations: response });
+  });
 
-    const octokit = new Octokit({ auth: git.token });
+  app.post("/integrations", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    const parsed = UpsertBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(422).send({ error: parsed.error.flatten() });
+    }
+    const body = parsed.data;
+    const provider = assertProvider(body.provider);
+    const project = await prisma.project.findUnique({
+      where: { id: body.projectId },
+    });
+    if (!project) {
+      return reply.code(404).send({ error: "Project not found" });
+    }
+    if (project.ownerId !== userId) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+    const validated = provider.validateConfig
+      ? provider.validateConfig(body.config ?? {})
+      : { config: body.config ?? {} };
+    let targetId = body.id ?? null;
+    if (!targetId && provider.allowMultiple !== true) {
+      const existing = await prisma.integration.findFirst({
+        where: { projectId: project.id, provider: provider.key },
+      });
+      if (existing) {
+        targetId = existing.id;
+      }
+    }
+    const integration = targetId
+      ? await prisma.integration.update({
+          where: { id: targetId },
+            data: {
+              name: body.name ?? provider.displayName,
+            config: (validated.config as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+            secrets: (validated as any).secrets ?? body.secrets ?? undefined,
+            enabled: body.enabled ?? true,
+          },
+        })
+      : await prisma.integration.create({
+          data: {
+            projectId: project.id,
+            provider: provider.key,
+            name: body.name ?? provider.displayName,
+            config: (validated.config as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+            secrets: (validated as any).secrets ?? body.secrets ?? undefined,
+            enabled: body.enabled ?? true,
+          },
+        });
+    const masked =
+      provider.maskConfig?.(integration.config ?? null) ??
+      integration.config;
+    return reply.send({
+      integration: {
+        id: integration.id,
+        projectId: integration.projectId,
+        provider: integration.provider,
+        name: integration.name,
+        config: masked,
+        enabled: integration.enabled,
+        createdAt: integration.createdAt,
+        updatedAt: integration.updatedAt,
+      },
+    });
+  });
 
-    const defaultTitle = title ?? `Test run ${run.id.slice(0, 8)} ${run.status}`;
-    const defaultBody =
-      body ??
-      [
-        `**Run**: ${run.id}`,
-        `**Status**: ${run.status}`,
-        run.error ? `**Error**:\n\n${run.error}` : null,
-        run.summary ? `**Summary**:\n\n\`\`\`json\n${run.summary}\n\`\`\`` : null,
-        `**Created**: ${run.createdAt.toISOString()}`,
-        run.startedAt ? `**Started**: ${run.startedAt.toISOString()}` : null,
-        run.finishedAt ? `**Finished**: ${run.finishedAt.toISOString()}` : null,
-        `**Link**: ${(process.env.APP_BASE_URL ?? "http://localhost:5173")}/test-runs/${run.id}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-
+  app.post("/integrations/:id/actions/:action", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    const { id, action } = req.params as { id: string; action: string };
+    const integration = await prisma.integration.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+    if (!integration) {
+      return reply.code(404).send({ error: "Integration not found" });
+    }
+    if (integration.project.ownerId !== userId) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+    const provider = integrationProviders[integration.provider];
+    if (!provider || !provider.performAction) {
+      return reply
+        .code(400)
+        .send({ error: "ACTION_NOT_SUPPORTED", provider: integration.provider });
+    }
     try {
-      const { data } = await octokit.issues.create({
-        owner,
-        repo,
-        title: defaultTitle,
-        body: defaultBody,
-        labels,
+      const result = await provider.performAction(action, {
+        req,
+        integration,
+        payload: (req.body ?? {}) as any,
+        userId,
       });
-
-      await prisma.testRun.update({
-        where: { id: run.id },
-        data: { issueUrl: data.html_url },
-      });
-
-      return reply.send({ url: data.html_url, number: data.number });
+      return reply.send(result ?? { ok: true });
     } catch (err: any) {
-      const gh = err?.response?.data;
-      return reply.code(502).send({
-        error: "GITHUB_ERROR",
-        details: gh ?? err?.message ?? String(err),
+      return reply.code(400).send({
+        error: "ACTION_FAILED",
+        message: err?.message ?? "Integration action failed",
       });
     }
+  });
+
+  app.delete("/integrations/:id", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    const { id } = req.params as { id: string };
+    const integration = await prisma.integration.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+    if (!integration) {
+      return reply.code(404).send({ error: "Integration not found" });
+    }
+    if (integration.project.ownerId !== userId) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+    await prisma.integration.delete({ where: { id } });
+    return reply.send({ ok: true });
   });
 }

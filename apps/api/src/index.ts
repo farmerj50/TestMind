@@ -5,12 +5,20 @@ import cors from "@fastify/cors";
 import { clerkPlugin, getAuth } from "@clerk/fastify";
 import { z } from "zod";
 
+import fastifyStatic from "@fastify/static";
+import fs from "node:fs";
+import path from "node:path";
+
 import { githubRoutes } from "./routes/github";
 import { testRoutes } from "./routes/tests";
 import runRoutes from "./routes/run";
 import reportsRoutes from "./routes/reports";
 import integrationsRoutes from "./routes/integrations";
+import agentRoutes from "./routes/agent";
+import jiraRoutes from "./routes/jira";
+import { secretsRoutes } from "./routes/secrets";
 import { prisma } from "./prisma";
+import { validatedEnv } from "./config/env";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans";
@@ -19,12 +27,25 @@ import testmindRoutes from './testmind/routes';
 
 
 const app = Fastify({ logger: true });
+const REPO_ROOT = path.resolve(process.cwd());
+const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || process.env.ENABLE_DEBUG_ROUTES === "true";
+const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST;
+const shouldStartWorkers = (process.env.START_WORKERS ?? "true").toLowerCase() !== "false";
 
-app.register(cors, { origin: ["http://localhost:5173"], credentials: true });
+app.register(cors, {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.some((allowed) => allowed === origin)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Not allowed"), false);
+  },
+  credentials: true,
+});
 
 app.register(clerkPlugin, {
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
-  secretKey: process.env.CLERK_SECRET_KEY!,
+  publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
+  secretKey: validatedEnv.CLERK_SECRET_KEY,
 });
 
 app.register(githubRoutes);
@@ -32,23 +53,35 @@ app.register(testRoutes);
 app.register(runRoutes, { prefix: "/runner" });
 app.register(reportsRoutes, { prefix: "/" });
 app.register(integrationsRoutes, { prefix: "/" });
+app.register(agentRoutes, { prefix: "/" });
+app.register(jiraRoutes, { prefix: "/" });
+app.register(secretsRoutes, { prefix: "/" });
 app.register(testmindRoutes, { prefix: "/tm" });
-
-app.get("/runner/debug/:id", async (req, reply) => {
-  const { id } = req.params as { id: string };
-  const [db] = await prisma.$queryRawUnsafe<{ current_database: string }[]>(
-    "select current_database()"
-  );
-  const proj = await prisma.project.findUnique({
-    where: { id },
-    select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
+const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
+if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
+  app.register(fastifyStatic, {
+    root: PLAYWRIGHT_REPORT_ROOT,
+    prefix: "/_static/playwright-report/",
   });
-  return {
-    currentDb: db?.current_database,
-    project: proj,
-    databaseUrl: (process.env.DATABASE_URL || "").replace(/:\/\/.*@/, "://***@").split("?")[0],
-  };
-});
+}
+
+if (allowDebugRoutes) {
+  app.get("/runner/debug/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [db] = await prisma.$queryRawUnsafe<{ current_database: string }[]>(
+      "select current_database()"
+    );
+    const proj = await prisma.project.findUnique({
+      where: { id },
+      select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
+    });
+    return {
+      currentDb: db?.current_database,
+      project: proj,
+      databaseUrl: (validatedEnv.DATABASE_URL || "").replace(/:\/\/.*@/, "://***@").split("?")[0],
+    };
+  });
+}
 
 app.get("/health", async () => ({ ok: true }));
 
@@ -171,25 +204,42 @@ app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
 app.ready(() => {
   console.log(app.printRoutes());
 });
-app.get("/runner/debug/list", async () => {
-  return await prisma.project.findMany({
-    select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
-});
 
-app.post("/runner/seed-project", async (req, reply) => {
-  const id = "cmgglhqyx0001z5n41vcvj9s1";
-  const repoUrl = "https://github.com/farmerj50/coding-framework";
-  const seeded = await prisma.project.upsert({
-    where: { id },
-    update: { repoUrl },
-    create: { id, name: "justicpath", repoUrl, ownerId: "dev-seed" },
-    select: { id: true, name: true, repoUrl: true, ownerId: true },
+// Start background workers when running the API (disable with START_WORKERS=false)
+if (shouldStartWorkers) {
+  const start = async (loader: Promise<any>, label: string) => {
+    try {
+      await loader;
+      app.log.info(`[worker] ${label} started`);
+    } catch (err) {
+      app.log.error({ err }, `[worker] ${label} failed to start`);
+    }
+  };
+  start(import("./runner/worker"), "test-runs");
+  start(import("./runner/self-heal-worker"), "self-heal");
+}
+
+if (allowDebugRoutes) {
+  app.get("/runner/debug/list", async () => {
+    return await prisma.project.findMany({
+      select: { id: true, name: true, repoUrl: true, ownerId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
   });
-  return { seeded };
-});
+
+  app.post("/runner/seed-project", async (req, reply) => {
+    const id = "cmgglhqyx0001z5n41vcvj9s1";
+    const repoUrl = "https://github.com/farmerj50/coding-framework";
+    const seeded = await prisma.project.upsert({
+      where: { id },
+      update: { repoUrl },
+      create: { id, name: "justicpath", repoUrl, ownerId: "dev-seed" },
+      select: { id: true, name: true, repoUrl: true, ownerId: true },
+    });
+    return { seeded };
+  });
+}
 
 // --- Billing / Plan ---
 app.get("/billing/me", async (req, reply) => {
@@ -233,4 +283,4 @@ app.patch("/billing/me", async (req, reply) => {
   return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
 });
 
-app.listen({ host: "0.0.0.0", port: Number(process.env.PORT) || 8787 });
+app.listen({ host: "0.0.0.0", port: Number(validatedEnv.PORT) || 8787 });

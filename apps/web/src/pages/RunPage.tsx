@@ -1,12 +1,12 @@
 // apps/web/src/pages/RunPage.tsx
-import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { useApi } from "@/lib/api";
-import StatusBadge from "@/components/StatusBadge";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useApi } from "../lib/api";
+import StatusBadge from "../components/StatusBadge";
+import { Button } from "../components/ui/button";
 import { ExternalLink } from "lucide-react";
-import RunResults from "@/components/RunResults";
-import RunLogs from "@/components/RunLogs";
+import RunResults from "../components/RunResults";
+import RunLogs from "../components/RunLogs";
 
 type TestRunStatus = "queued" | "running" | "succeeded" | "failed";
 type Run = {
@@ -19,21 +19,108 @@ type Run = {
   finishedAt?: string | null;
   project: { id: string; name: string };
   issueUrl?: string | null;
+  rerunOfId?: string | null;
+  rerunOf?: { id: string; status: TestRunStatus } | null;
+  reruns: {
+    id: string;
+    status: TestRunStatus;
+    createdAt: string;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+  }[];
+  healingAttempts: { id: string; status: "queued" | "running" | "succeeded" | "failed" | "skipped" }[];
+  paramsJson?: {
+    headful?: boolean;
+    reporter?: string;
+    specFile?: string | null;
+    grep?: string | null;
+  } | null;
+  artifactsJson?: Record<string, string> | null;
+  reportPath?: string | null;
 };
+
+type IntegrationSummary = {
+  id: string;
+  provider: string;
+  name?: string | null;
+  enabled: boolean;
+};
+
+const GITHUB_PROVIDER = "github-issues";
 
 export default function RunPage() {
   const { runId } = useParams<{ runId: string }>();
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
 
   const [run, setRun] = useState<Run | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingIssue, setCreatingIssue] = useState(false);
+  const [triggeringRerun, setTriggeringRerun] = useState(false);
+  const [githubIntegrationId, setGithubIntegrationId] = useState<string | null>(null);
+
+  const parsedSummary = useMemo(() => {
+    if (!run?.summary) return null;
+    try {
+      return JSON.parse(run.summary);
+    } catch {
+      return null;
+    }
+  }, [run?.summary]);
+
+  const params = run?.paramsJson ?? null;
+  const artifacts = run?.artifactsJson ?? null;
+  const summaryErrors: string[] = Array.isArray(parsedSummary?.errors) ? parsedSummary.errors : [];
+  const buildStaticUrl = (rel?: string | null, opts: { index?: boolean } = {}) => {
+    if (!rel) return null;
+    const clean = rel.replace(/^[/\\]+/, "").replace(/\\/g, "/");
+    const path = opts.index ? `${clean.replace(/\/$/, "")}/index.html` : clean;
+    return `/_static/${path}`;
+  };
 
   const done = useMemo(
-    () => !!run && (run.status === "succeeded" || run.status === "failed"),
+    () => !!run && run.status !== "queued" && run.status !== "running",
     [run]
   );
+  const reruns = run?.reruns ?? [];
+  const isRerun = Boolean(run?.rerunOfId);
+  const rerunsInProgress = reruns.some(
+    (r) => r.status === "running" || r.status === "queued"
+  );
+  const rerunsCompleted = reruns.filter((r) => r.status === "succeeded" || r.status === "failed");
+  const healingAttempts = run?.healingAttempts ?? [];
+  const healingInProgress = healingAttempts.some(
+    (a) => a.status === "queued" || a.status === "running"
+  );
+  const hasHealingAttempts = healingAttempts.length > 0 || reruns.length > 0;
+  const healStatusMessage = (() => {
+    if (isRerun) {
+      if (run?.rerunOf) {
+        return (
+          <>
+            This run was triggered automatically after{" "}
+            <Link to={`/test-runs/${run.rerunOf.id}`} className="underline">
+              run {run.rerunOf.id}
+            </Link>{" "}
+            failed.
+          </>
+        );
+      }
+      return "This run was triggered automatically.";
+    }
+    if (!run) return "";
+    if (run.status === "running" || run.status === "queued")
+      return "Run is still in progress; self-heal will start if failures occur.";
+    if (!hasHealingAttempts) return "No self-heal attempts were triggered.";
+    if (run.status === "succeeded") return "Original run passed; self-heal was not required.";
+    if (healingInProgress) return "Tests failed. Self-heal is running…";
+    if (rerunsInProgress) return "Self-heal reruns are still running.";
+    if (rerunsCompleted.length > 0) return "Self-heal reruns have completed.";
+    if (reruns.length > 0) return "Self-heal reruns are queued.";
+    if (hasHealingAttempts) return "Self-heal attempts have finished.";
+    return "Self-heal will start shortly.";
+  })();
 
   // load + (light) poll until finished
   useEffect(() => {
@@ -44,7 +131,6 @@ export default function RunPage() {
 
     const load = async () => {
       try {
-        // API returns { run }
         const { run: r } = await apiFetch<{ run: Run }>(`/runner/test-runs/${runId}`);
         if (!cancelled) {
           setRun(r);
@@ -59,7 +145,15 @@ export default function RunPage() {
 
     load();
 
-    if (!done) {
+    const shouldPoll =
+      !run ||
+      run.status === "queued" ||
+      run.status === "running" ||
+      healingInProgress ||
+      rerunsInProgress ||
+      (hasHealingAttempts && rerunsCompleted.length === 0);
+
+    if (shouldPoll) {
       interval = window.setInterval(load, 2000) as unknown as number;
     }
 
@@ -68,16 +162,40 @@ export default function RunPage() {
       if (interval) window.clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, done]);
+  }, [runId, run, healingInProgress, rerunsInProgress, hasHealingAttempts, rerunsCompleted.length]);
 
   const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
+
+  const ensureGitHubIntegration = useCallback(async () => {
+    if (!run) throw new Error("Run not loaded");
+    if (githubIntegrationId) return githubIntegrationId;
+    const qs = new URLSearchParams({ projectId: run.project.id });
+    const { integrations } = await apiFetch<{ integrations: IntegrationSummary[] }>(
+      `/integrations?${qs.toString()}`
+    );
+    let integration = integrations.find((i) => i.provider === GITHUB_PROVIDER) ?? null;
+    if (!integration) {
+      const created = await apiFetch<{ integration: IntegrationSummary }>("/integrations", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: run.project.id,
+          provider: GITHUB_PROVIDER,
+          name: "GitHub Issues",
+        }),
+      });
+      integration = created.integration;
+    }
+    setGithubIntegrationId(integration.id);
+    return integration.id;
+  }, [apiFetch, run, githubIntegrationId]);
 
   async function handleCreateIssue() {
     if (!run) return;
     try {
       setCreatingIssue(true);
+      const integrationId = await ensureGitHubIntegration();
       const res = await apiFetch<{ url: string }>(
-        "/integrations/github/create-issue",
+        `/integrations/${integrationId}/actions/create-issue`,
         {
           method: "POST",
           body: JSON.stringify({ runId: run.id }),
@@ -88,6 +206,22 @@ export default function RunPage() {
       alert(e?.message ?? "Failed to create GitHub issue");
     } finally {
       setCreatingIssue(false);
+    }
+  }
+
+  async function handleManualRerun() {
+    if (!run || triggeringRerun) return;
+    try {
+      setTriggeringRerun(true);
+      const res = await apiFetch<{ runId: string }>(
+        `/runner/test-runs/${run.id}/rerun`,
+        { method: "POST" }
+      );
+      navigate(`/test-runs/${res.runId}`);
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to trigger rerun");
+    } finally {
+      setTriggeringRerun(false);
     }
   }
 
@@ -113,14 +247,111 @@ export default function RunPage() {
           </div>
 
           <div className="space-y-1">
-            <div>Summary: {run.summary || "—"}</div>
+            {parsedSummary ? (
+              <div className="grid gap-1 text-sm text-slate-700 md:grid-cols-2">
+                <div>Framework: {parsedSummary.framework ?? "—"}</div>
+                <div>Base URL: {parsedSummary.baseUrl ?? "—"}</div>
+                <div>Parsed: {parsedSummary.parsedCount ?? 0}</div>
+                <div>Passed: {parsedSummary.passed ?? 0}</div>
+                <div>Failed: {parsedSummary.failed ?? 0}</div>
+                <div>Skipped: {parsedSummary.skipped ?? 0}</div>
+              </div>
+            ) : (
+              <div>Summary: {run.summary || "—"}</div>
+            )}
+            {params && (
+              <div className="text-xs text-slate-500">
+                Options: reporter {params.reporter ?? "json"} · {params.headful ? "headed" : "headless"}
+                {params.specFile ? ` · file ${params.specFile}` : ""}{params.grep ? ` · grep "${params.grep}"` : ""}
+              </div>
+            )}
+            {summaryErrors.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <div className="font-medium text-amber-900">Reporter errors</div>
+                <ul className="mt-1 list-disc pl-5">
+                  {summaryErrors.map((msg, idx) => (
+                    <li key={idx}>{msg}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div>Error: {run.error || "—"}</div>
           </div>
           <hr className="my-4" />
 
           <div className="space-y-6">
+            {run && (
+              <section>
+                <div className="mb-1 flex flex-col gap-1 text-slate-800">
+                  <div className="font-medium">Self-heal reruns</div>
+                  <div className="text-xs text-slate-500">{healStatusMessage}</div>
+                </div>
+                {reruns.length > 0 && (
+                  <ul className="space-y-2">
+                    {reruns.map((child, idx) => (
+                      <li
+                        key={child.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 p-3 text-sm"
+                      >
+                        <div className="space-y-1">
+                          <div className="font-medium">Rerun #{idx + 1}</div>
+                          <div className="text-xs text-slate-500">
+                            Started: {fmt(child.startedAt ?? child.createdAt)}
+                            {child.finishedAt ? ` · Finished: ${fmt(child.finishedAt)}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={child.status} />
+                          <Button asChild size="sm" variant="outline">
+                            <Link to={`/test-runs/${child.id}`}>View</Link>
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+            {(artifacts && (artifacts["allure-report"] || artifacts.reportJson)) && (
+              <section>
+                <div className="mb-2 font-medium text-slate-800">Artifacts</div>
+                <div className="flex flex-wrap gap-2">
+                  {buildStaticUrl(artifacts["allure-report"], { index: true }) && (
+                    <Button asChild size="sm" variant="outline">
+                      <a href={buildStaticUrl(artifacts["allure-report"], { index: true })!} target="_blank" rel="noreferrer">
+                        View Allure report
+                      </a>
+                    </Button>
+                  )}
+                  {buildStaticUrl(artifacts.reportJson) && (
+                    <Button asChild size="sm" variant="outline">
+                      <a href={buildStaticUrl(artifacts.reportJson)!} target="_blank" rel="noreferrer">
+                        Download raw JSON
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </section>
+            )}
             <section>
-              <div className="mb-2 font-medium text-slate-800">Results</div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="font-medium text-slate-800">Results</div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!run || rerunsInProgress || healingInProgress || triggeringRerun}
+              onClick={handleManualRerun}
+              title={
+                !run
+                  ? "Run not loaded yet"
+                  : healingInProgress || rerunsInProgress
+                      ? "Self-heal is still running"
+                      : "Trigger a new run for this suite"
+                  }
+                >
+                  {triggeringRerun ? "Starting rerun…" : "Rerun this suite"}
+                </Button>
+              </div>
               <RunResults runId={run.id} active={!done} />
             </section>
             <section>

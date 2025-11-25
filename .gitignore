@@ -41,3 +41,4 @@ coverage
 # Monorepo patterns
 apps/*/node_modules
 packages/*/node_modules
+runner-logs
