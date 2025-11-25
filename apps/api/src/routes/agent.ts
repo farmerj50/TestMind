@@ -13,6 +13,37 @@ import {
   regenerateAttachedSpecs,
 } from "../agent/service.js";
 
+type CoverageSummary = {
+  coverageTotals: Record<string, number>;
+  completedPages: number;
+  failedPages: number;
+  pageCount: number;
+};
+
+function summarizeCoverage(pages: Array<{ status: string; coverage: any }>): CoverageSummary {
+  const coverageTotals: Record<string, number> = {};
+  let completedPages = 0;
+  let failedPages = 0;
+  for (const p of pages) {
+    if (p.status === "completed") completedPages++;
+    if (p.status === "failed") failedPages++;
+    const cov = (p as any).coverage;
+    if (cov && typeof cov === "object") {
+      for (const [k, v] of Object.entries(cov)) {
+        if (typeof v === "number" && Number.isFinite(v)) {
+          coverageTotals[k] = (coverageTotals[k] ?? 0) + v;
+        }
+      }
+    }
+  }
+  return {
+    coverageTotals,
+    completedPages,
+    failedPages,
+    pageCount: pages.length,
+  };
+}
+
 function requireUser(req: any, reply: any) {
   const { userId } = getAuth(req);
   if (!userId) {
@@ -61,7 +92,14 @@ function registerProjectHelpers(
     if (!userId) return;
     const { projectId } = req.params as { projectId: string };
     const session = await getLatestSessionForProject(userId, projectId);
-    return reply.send({ session });
+    return reply.send({
+      session: session
+        ? {
+            ...session,
+            coverage: summarizeCoverage(session.pages || []),
+          }
+        : null,
+    });
   });
 
   app.post(`${base}/projects/:projectId/scans`, async (req, reply) => {
@@ -107,6 +145,7 @@ export default async function agentRoutes(app: FastifyInstance) {
         pageCount: s._count.pages,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
+        coverage: summarizeCoverage(s.pages),
       })),
     });
   });
@@ -128,7 +167,12 @@ export default async function agentRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const session = await getAgentSession(userId, id);
     if (!session) return reply.code(404).send({ error: "Session not found" });
-    return reply.send({ session });
+    return reply.send({
+      session: {
+        ...session,
+        coverage: summarizeCoverage(session.pages),
+      },
+    });
   });
 
   app.post("/tm/agent/sessions/:id/pages", async (req, reply) => {

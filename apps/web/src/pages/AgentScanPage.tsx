@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -51,6 +51,12 @@ type AgentSession = {
   instructions?: string | null;
   status: string;
   pages: AgentPage[];
+  coverage?: {
+    coverageTotals: Record<string, number>;
+    completedPages: number;
+    failedPages: number;
+    pageCount: number;
+  };
 };
 
 const baseUrlKey = (projectId: string) => `agent:baseUrl:${projectId}`;
@@ -92,8 +98,8 @@ export default function AgentScanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
 
-  async function fetchSession(projectId: string) {
-    setLoadingSession(true);
+  async function fetchSession(projectId: string, opts?: { silent?: boolean }) {
+    if (!opts?.silent) setLoadingSession(true);
     try {
       const { session } = await apiFetch<{ session: AgentSession | null }>(
         `/tm/agent/projects/${projectId}/session`
@@ -109,7 +115,7 @@ export default function AgentScanPage() {
       setError(err?.message ?? "Failed to load session");
       setSession(null);
     } finally {
-      setLoadingSession(false);
+      if (!opts?.silent) setLoadingSession(false);
     }
   }
 
@@ -117,6 +123,20 @@ export default function AgentScanPage() {
     () => [...projects].sort((a, b) => a.name.localeCompare(b.name)),
     [projects]
   );
+
+  const hasInProgress = useMemo(
+    () => !!session?.pages.some((p) => p.status !== "completed" && p.status !== "failed"),
+    [session]
+  );
+
+  useEffect(() => {
+    if (!selectedProject || !hasInProgress) return;
+    const id = setInterval(() => {
+      fetchSession(selectedProject, { silent: true });
+    }, 4000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject, hasInProgress]);
 
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
@@ -310,7 +330,7 @@ export default function AgentScanPage() {
               <Button type="submit" disabled={scanning || !selectedProject}>
                 {scanning ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scanning�?�
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scanningï¿½?ï¿½
                   </>
                 ) : (
                   "Scan page"
@@ -340,10 +360,31 @@ export default function AgentScanPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {session?.coverage && (
+            <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+              <span>
+                Pages:{" "}
+                <strong className="text-slate-800">
+                  {session.coverage.completedPages}/{session.coverage.pageCount}
+                </strong>{" "}
+                completed
+              </span>
+              {session.coverage.failedPages > 0 && (
+                <span className="text-rose-600">
+                  Failed: {session.coverage.failedPages}
+                </span>
+              )}
+              {Object.entries(session.coverage.coverageTotals).map(([key, value]) => (
+                <span key={key}>
+                  {key}: <strong className="text-slate-800">{value as number}</strong>
+                </span>
+              ))}
+            </div>
+          )}
           {loadingSession ? (
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading session�?�
+                            Loading session...
             </div>
           ) : !session ? (
             <p className="text-sm text-slate-500">
@@ -410,7 +451,7 @@ export default function AgentScanPage() {
                               {scenario.title}
                             </div>
                             <div className="text-xs text-slate-500">
-                              {scenario.coverageType} • {scenario.status}
+                              {scenario.coverageType} - {scenario.status}
                             </div>
                             {scenario.description && (
                               <p className="text-xs text-slate-600 mt-1">
@@ -434,7 +475,7 @@ export default function AgentScanPage() {
                             {scenario.status === "attached"
                               ? "Added"
                               : attachBusy === scenario.id
-                              ? "Adding�?�"
+                              ? "Adding..."
                               : "Add to suite"}
                           </Button>
                         </div>
@@ -450,3 +491,5 @@ export default function AgentScanPage() {
     </div>
   );
 }
+
+
