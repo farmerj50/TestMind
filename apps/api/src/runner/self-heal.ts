@@ -1,12 +1,11 @@
-import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { enqueueSelfHeal } from './queue';
-const TestResultStatus = (Prisma?.TestResultStatus ?? {
+const TestResultStatus = {
   passed: "passed",
   failed: "failed",
   skipped: "skipped",
   error: "error",
-}) as typeof Prisma.TestResultStatus;
+} as const;
 
 /**
  * Schedule self-healing attempts for each failed test result in the run.

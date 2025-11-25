@@ -1,13 +1,15 @@
 import * as React from "react";
 
 /** option shape used internally */
-type Option = { value: string; label: React.ReactNode };
+type Option = { value: string; label: React.ReactNode; disabled?: boolean };
 
 type Ctx = {
   value?: string;
   setValue: (v: string) => void;
   options: Option[];
   register: (opt: Option) => void;
+  placeholder?: string;
+  setPlaceholder: (p?: string) => void;
 };
 
 const SelectCtx = React.createContext<Ctx | null>(null);
@@ -32,12 +34,17 @@ export function Select({
   children,
 }: SelectRootProps) {
   const [internal, setInternal] = React.useState<string | undefined>(
-    defaultValue
+    defaultValue ?? ""
   );
   const [options, setOptions] = React.useState<Option[]>([]);
+  const [placeholder, setPlaceholder] = React.useState<string | undefined>();
+  const isControlled = value !== undefined;
+  const currentValue = isControlled ? value : internal;
 
   const setValue = (v: string) => {
-    setInternal(v);
+    if (!isControlled) {
+      setInternal(v);
+    }
     onValueChange?.(v);
   };
 
@@ -48,10 +55,12 @@ export function Select({
   }, []);
 
   const ctx: Ctx = {
-    value: value ?? internal,
+    value: currentValue,
     setValue,
     options,
     register,
+    placeholder,
+    setPlaceholder,
   };
 
   return <SelectCtx.Provider value={ctx}>{children}</SelectCtx.Provider>;
@@ -72,8 +81,13 @@ export function SelectTrigger({ className = "", ...props }: TriggerProps) {
       onChange={(e) => ctx.setValue(e.target.value)}
       {...props}
     >
+      {ctx.placeholder && (
+        <option value="">
+          {ctx.placeholder as any}
+        </option>
+      )}
       {ctx.options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} disabled={o.disabled}>
           {o.label as any}
         </option>
       ))}
@@ -93,18 +107,23 @@ export function SelectContent({
 export function SelectItem({
   value,
   children,
+  disabled,
 }: {
   value: string;
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   const ctx = useSelectCtx();
   React.useEffect(() => {
-    ctx.register({ value, label: children });
-  }, [ctx, value, children]);
+    ctx.register({ value, label: children, disabled });
+  }, [ctx, value, children, disabled]);
   return null; // rendered through <SelectTrigger> options
 }
 
-export function SelectValue(_props: { placeholder?: string }) {
-  // placeholder handled by native select; no-op to keep API compatible
+export function SelectValue({ placeholder }: { placeholder?: string }) {
+  const ctx = useSelectCtx();
+  React.useEffect(() => {
+    ctx.setPlaceholder(placeholder);
+  }, [ctx, placeholder]);
   return null;
 }

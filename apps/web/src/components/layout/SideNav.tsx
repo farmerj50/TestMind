@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, BadgeDollarSign, Mail, FolderKanban as FolderTree, } from "lucide-react";
+import { LayoutDashboard, BadgeDollarSign, Mail, FolderKanban as FolderTree, Bot, Link2 } from "lucide-react";
 
 function Item({
   to,
@@ -35,6 +35,8 @@ export default function SideNav() {
     <aside className="fixed left-0 top-14 hidden h-[calc(100vh-56px)] w-56 border-r bg-white md:block">
       <div className="flex h-full flex-col gap-1 p-2">
         <Item to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
+        <Item to="/agent" icon={Bot} label="Scan pages" />
+        <Item to="/integrations" icon={Link2} label="Integrations" />
         <Item to="/suite/playwright-ts" icon={FolderTree} label="Suites" />
         <Item to="/pricing" icon={BadgeDollarSign} label="Pricing" />
         <Item to="/contact" icon={Mail} label="Contact" />

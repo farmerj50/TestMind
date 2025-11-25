@@ -48,11 +48,33 @@ enum HealingStatus {
   skipped
 }
 
+enum AgentSessionStatus {
+  draft
+  running
+  ready
+  failed
+}
+
+enum AgentPageStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum AgentScenarioStatus {
+  suggested
+  attached
+  archived
+}
+
 model User {
-  id        String    @id
-  plan      PlanTier  @default(free)
-  projects  Project[]
-  createdAt DateTime  @default(now())
+  id               String            @id
+  plan             PlanTier          @default(free)
+  projects         Project[]
+  createdAt        DateTime          @default(now())
+  AgentSession     AgentSession[]
+  jiraIntegrations JiraIntegration[]
 }
 
 model Project {
@@ -64,9 +86,14 @@ model Project {
   plan      PlanTier @default(free)
   createdAt DateTime @default(now())
 
-  testRuns TestRun[]
-  suites   TestSuite[]
-  cases    TestCase[]
+  testRuns         TestRun[]
+  suites           TestSuite[]
+  cases            TestCase[]
+  AgentSession     AgentSession[]
+  AgentScenario    AgentScenario[]
+  jiraIntegrations JiraIntegration[]
+  integrations     Integration[]
+  secrets          ProjectSecret[]
 }
 
 model GitAccount {
@@ -99,7 +126,7 @@ model TestRun {
   paramsJson Json?
 
   rerunOfId String?
-  rerunOf   TestRun? @relation("RunReruns", fields: [rerunOfId], references: [id])
+  rerunOf   TestRun?  @relation("RunReruns", fields: [rerunOfId], references: [id])
   reruns    TestRun[] @relation("RunReruns")
 
   reportPath    String?
@@ -188,4 +215,123 @@ model TestHealingAttempt {
   @@unique([testResultId, attempt])
   @@index([runId, testCaseId])
   @@index([testResultId])
+}
+
+model AgentSession {
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id])
+  projectId    String?
+  project      Project?           @relation(fields: [projectId], references: [id])
+  name         String?
+  baseUrl      String
+  instructions String?
+  status       AgentSessionStatus @default(draft)
+  meta         Json?
+  pages        AgentPage[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model AgentPage {
+  id           String          @id @default(cuid())
+  sessionId    String
+  session      AgentSession    @relation(fields: [sessionId], references: [id])
+  path         String
+  url          String
+  instructions String?
+  status       AgentPageStatus @default(pending)
+  summary      String?
+  coverage     Json?
+  error        String?
+  scenarios    AgentScenario[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([sessionId])
+}
+
+model AgentScenario {
+  id                String              @id @default(cuid())
+  pageId            String
+  page              AgentPage           @relation(fields: [pageId], references: [id])
+  title             String
+  coverageType      String
+  description       String?
+  tags              Json?
+  risk              String?
+  status            AgentScenarioStatus @default(suggested)
+  steps             Json?
+  specPath          String?
+  attachedProjectId String?
+  attachedProject   Project?            @relation(fields: [attachedProjectId], references: [id])
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([pageId])
+  @@index([attachedProjectId])
+}
+
+model JiraIntegration {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  projectId    String
+  project      Project           @relation(fields: [projectId], references: [id])
+  siteUrl      String
+  email        String
+  apiToken     String
+  projectKey   String
+  lastSyncedAt DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  requirements JiraRequirement[]
+
+  @@unique([userId, projectId])
+}
+
+model JiraRequirement {
+  id            String          @id @default(cuid())
+  integrationId String
+  integration   JiraIntegration @relation(fields: [integrationId], references: [id])
+  issueKey      String
+  summary       String
+  status        String
+  priority      String?
+  url           String?
+  syncedAt      DateTime        @default(now())
+
+  @@unique([integrationId, issueKey])
+}
+
+model Integration {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  provider  String
+  name      String?
+  config    Json     @default("{}")
+  secrets   Json?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, provider])
+}
+
+model ProjectSecret {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  name      String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, key])
+  @@index([projectId])
 }

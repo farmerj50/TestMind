@@ -2,25 +2,27 @@ import "dotenv/config";
 import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
-import { Prisma } from '@prisma/client';
 import { createTwoFilesPatch } from 'diff';
 import { redis } from './redis';
 import { prisma } from '../prisma';
 import type { SelfHealPayload, RunPayload } from './queue';
 import { enqueueRun } from './queue';
 import { requestSpecHeal, HealPrompt } from './llm';
-const TestRunStatus = (Prisma?.TestRunStatus ?? {
+import { CURATED_ROOT } from "../testmind/curated-store";
+
+const TestRunStatus = {
   queued: "queued",
   running: "running",
   succeeded: "succeeded",
   failed: "failed",
-}) as typeof Prisma.TestRunStatus;
-const HealingStatus = (Prisma?.HealingStatus ?? {
+} as const;
+
+const HealingStatus = {
   queued: "queued",
   running: "running",
   succeeded: "succeeded",
   failed: "failed",
-}) as typeof Prisma.HealingStatus;
+} as const;
 
 async function triggerRerun(projectId: string, rerunOfId: string, grep?: string, headed?: boolean) {
   const rerun = await prisma.testRun.create({
@@ -90,13 +92,29 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
     );
   }
 
-  const repoAbsolutePath = path.join(process.cwd(), repoRelativePath);
+  let preferredAbsolutePath: string | null = null;
+  if (runSpecPath.includes("__agent/agent-")) {
+    const match = runSpecPath.match(/__agent\/(agent-[^/]+)(\/.*)?$/);
+    if (match) {
+      const suiteId = match[1];
+      const remainder = match[2]?.replace(/^\/+/, "") ?? "";
+      preferredAbsolutePath = path.join(CURATED_ROOT, suiteId, remainder);
+    }
+  }
+
+  const repoAbsolutePath = preferredAbsolutePath
+    ? preferredAbsolutePath
+    : path.join(process.cwd(), repoRelativePath);
+  const relativeForDiff = preferredAbsolutePath
+    ? path.relative(process.cwd(), preferredAbsolutePath)
+    : repoRelativePath;
+
   const repoSpecContent = await fs.readFile(repoAbsolutePath, "utf8").catch(() => undefined);
   const runSpecContent = await fs.readFile(runSpecPathRaw, "utf8").catch(() => undefined);
   const specContent = repoSpecContent ?? runSpecContent;
 
   return {
-    repoRelativePath,
+    repoRelativePath: relativeForDiff,
     repoAbsolutePath,
     runSpecPath: runSpecContent ? runSpecPathRaw : undefined,
     specContent,

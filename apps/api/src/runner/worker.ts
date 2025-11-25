@@ -7,24 +7,25 @@ import { makeWorkdir, rmrf } from './workdir';
 import { cloneRepo } from './git';
 import { detectFramework, installDeps, runTests } from './node-test-exec';
 import { parseResults } from './result-parsers';
-import { Prisma } from '@prisma/client';
 import { scheduleSelfHealingForRun } from './self-heal';
 import type { RunPayload } from './queue';
 
-const TestRunStatus = (Prisma?.TestRunStatus ?? {
+type RunStatus = "queued" | "running" | "succeeded" | "failed";
+type ResultStatus = "passed" | "failed" | "skipped" | "error";
+const TestRunStatus: Record<RunStatus, RunStatus> = {
   queued: "queued",
   running: "running",
   succeeded: "succeeded",
   failed: "failed",
-}) as typeof Prisma.TestRunStatus;
-const TestResultStatus = (Prisma?.TestResultStatus ?? {
+};
+const TestResultStatus: Record<ResultStatus, ResultStatus> = {
   passed: "passed",
   failed: "failed",
   skipped: "skipped",
   error: "error",
-}) as typeof Prisma.TestResultStatus;
+};
 
-function mapStatus(s: string): Prisma.TestResultStatus {
+function mapStatus(s: string): ResultStatus {
   if (s === 'passed') return TestResultStatus.passed;
   if (s === 'failed' || s === 'error') return TestResultStatus.failed;
   if (s === 'skipped') return TestResultStatus.skipped;

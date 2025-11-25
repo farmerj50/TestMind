@@ -159,11 +159,18 @@ export const playwrightTSRunner = {
     // 3) Kick off Playwright
     const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
     const childEnv = { ...process.env, ...env };
+    const retries = Number(process.env.TM_CASE_RETRIES ?? process.env.PW_RETRIES ?? "0");
+    const args = ['playwright', 'test', '-c', configPath];
+    if (Number.isFinite(retries) && retries > 0) {
+      args.push('--retries', String(retries));
+      args.push('--trace', 'on-first-retry');
+      args.push('--reporter', 'json');
+    }
 
     // keep logs readable
-    onelineCopyLog(`[runner] invoking: ${cmd} playwright test -c ${configPath}`, onLine);
+    onelineCopyLog(`[runner] invoking: ${cmd} ${args.join(' ')}`, onLine);
 
-    const proc = execa(cmd, ['playwright', 'test', '-c', configPath], { cwd, env: childEnv });
+    const proc = execa(cmd, args, { cwd, env: childEnv });
     proc.stdout?.on('data', d => onLine(d.toString()));
     proc.stderr?.on('data', d => onLine(d.toString()));
     const { exitCode } = await proc;

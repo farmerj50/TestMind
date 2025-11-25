@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 
-// Auto-generated for page /contact – 7 test(s)
+// Auto-generated for page /contact – 9 test(s)
 
 test("Page loads: /contact", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Page loads: /contact" }, { type: "parameter", description: "page=/contact" });
   await test.step("1. Navigate to /contact", async () => {
     await page.goto("/contact");
   });
-  await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
-    await expect(page.getByText("TestMind AI")).toBeVisible();
+  await test.step("2. Ensure text \"testmind-web\" is visible", async () => {
+    await expect(page.getByText("testmind-web")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -21,7 +21,7 @@ test("Navigate /contact → /", async ({ page }) => {
     await page.goto("/");
   });
   await test.step("3. Ensure text \"Page\" is visible", async () => {
-    await expect(page.getByText("Page")).toBeVisible();
+    await expect(page.getByText("Page")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -34,7 +34,7 @@ test("Navigate /contact → /pricing", async ({ page }) => {
     await page.goto("/pricing");
   });
   await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    await expect(page.getByText("pricing")).toBeVisible();
+    await expect(page.getByText("pricing")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -47,7 +47,7 @@ test("Navigate /contact → /signin", async ({ page }) => {
     await page.goto("/signin");
   });
   await test.step("3. Ensure text \"signin\" is visible", async () => {
-    await expect(page.getByText("signin")).toBeVisible();
+    await expect(page.getByText("signin")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -60,7 +60,7 @@ test("Navigate /contact → /signup", async ({ page }) => {
     await page.goto("/signup");
   });
   await test.step("3. Ensure text \"signup\" is visible", async () => {
-    await expect(page.getByText("signup")).toBeVisible();
+    await expect(page.getByText("signup")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -73,7 +73,33 @@ test("Navigate /contact → /dashboard", async ({ page }) => {
     await page.goto("/dashboard");
   });
   await test.step("3. Ensure text \"dashboard\" is visible", async () => {
-    await expect(page.getByText("dashboard")).toBeVisible();
+    await expect(page.getByText("dashboard")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate /contact → /agent", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Navigate /contact → /agent" }, { type: "parameter", description: "page=/contact" });
+  await test.step("1. Navigate to /contact", async () => {
+    await page.goto("/contact");
+  });
+  await test.step("2. Navigate to /agent", async () => {
+    await page.goto("/agent");
+  });
+  await test.step("3. Ensure text \"agent\" is visible", async () => {
+    await expect(page.getByText("agent")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate /contact → /integrations", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Navigate /contact → /integrations" }, { type: "parameter", description: "page=/contact" });
+  await test.step("1. Navigate to /contact", async () => {
+    await page.goto("/contact");
+  });
+  await test.step("2. Navigate to /integrations", async () => {
+    await page.goto("/integrations");
+  });
+  await test.step("3. Ensure text \"integrations\" is visible", async () => {
+    await expect(page.getByText("integrations")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -86,7 +112,6 @@ test("Navigate /contact → /suite/playwright-ts", async ({ page }) => {
     await page.goto("/suite/playwright-ts");
   });
   await test.step("3. Ensure text \"playwright-ts\" is visible", async () => {
-    await expect(page.getByText("playwright-ts")).toBeVisible();
+    await expect(page.getByText("playwright-ts")).toBeVisible({ timeout: 10000 });
   });
 });
-

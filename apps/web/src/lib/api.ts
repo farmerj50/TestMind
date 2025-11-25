@@ -15,13 +15,15 @@ export async function startRun(apiFetch: any, projectId: string) {
 
 export function useApi() {
   const { getToken } = useAuth();
-  const BASE = (import.meta.env.VITE_API_URL as string) || DEFAULT_BASE;
+  const envBase = import.meta.env.VITE_API_URL as string | undefined;
+  const BASE = envBase || (import.meta.env.DEV ? DEFAULT_BASE : undefined);
+  if (!BASE) {
+    throw new Error("VITE_API_URL is required for production builds.");
+  }
 
   function normalize(path: string) {
     let p = (path || "").trim();
     if (/^https?:\/\//i.test(p)) return p;            // full URL passed
-    if (p.startsWith("/tm/")) p = p.slice(3);         // strip accidental /tm
-    if (p === "/tm") p = "/";
     return p.startsWith("/") ? p : `/${p}`;
   }
 

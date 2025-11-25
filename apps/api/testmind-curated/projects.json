@@ -9,9 +9,29 @@
       ]
     },
     {
-      "id": "testmind-locked",
-      "name": "testMind_locked",
-      "root": "testmind-locked",
+      "id": "testmind",
+      "name": "testMind",
+      "root": "testmind",
+      "locked": []
+    },
+    {
+      "id": "regression",
+      "name": "regression",
+      "root": "regression",
+      "locked": [
+        "contact.spec.ts"
+      ]
+    },
+    {
+      "id": "justicepath",
+      "name": "justicepath",
+      "root": "justicepath",
+      "locked": []
+    },
+    {
+      "id": "agent-cmi7spwba00037kmkyglpyg4x",
+      "name": "Agent - testmind",
+      "root": "agent-cmi7spwba00037kmkyglpyg4x",
       "locked": []
     }
   ]

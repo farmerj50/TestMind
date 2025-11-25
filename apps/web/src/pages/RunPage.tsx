@@ -1,5 +1,5 @@
 // apps/web/src/pages/RunPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useApi } from "../lib/api";
 import StatusBadge from "../components/StatusBadge";
@@ -39,6 +39,15 @@ type Run = {
   reportPath?: string | null;
 };
 
+type IntegrationSummary = {
+  id: string;
+  provider: string;
+  name?: string | null;
+  enabled: boolean;
+};
+
+const GITHUB_PROVIDER = "github-issues";
+
 export default function RunPage() {
   const { runId } = useParams<{ runId: string }>();
   const { apiFetch } = useApi();
@@ -49,6 +58,7 @@ export default function RunPage() {
   const [loading, setLoading] = useState(true);
   const [creatingIssue, setCreatingIssue] = useState(false);
   const [triggeringRerun, setTriggeringRerun] = useState(false);
+  const [githubIntegrationId, setGithubIntegrationId] = useState<string | null>(null);
 
   const parsedSummary = useMemo(() => {
     if (!run?.summary) return null;
@@ -156,12 +166,36 @@ export default function RunPage() {
 
   const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
 
+  const ensureGitHubIntegration = useCallback(async () => {
+    if (!run) throw new Error("Run not loaded");
+    if (githubIntegrationId) return githubIntegrationId;
+    const qs = new URLSearchParams({ projectId: run.project.id });
+    const { integrations } = await apiFetch<{ integrations: IntegrationSummary[] }>(
+      `/integrations?${qs.toString()}`
+    );
+    let integration = integrations.find((i) => i.provider === GITHUB_PROVIDER) ?? null;
+    if (!integration) {
+      const created = await apiFetch<{ integration: IntegrationSummary }>("/integrations", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: run.project.id,
+          provider: GITHUB_PROVIDER,
+          name: "GitHub Issues",
+        }),
+      });
+      integration = created.integration;
+    }
+    setGithubIntegrationId(integration.id);
+    return integration.id;
+  }, [apiFetch, run, githubIntegrationId]);
+
   async function handleCreateIssue() {
     if (!run) return;
     try {
       setCreatingIssue(true);
+      const integrationId = await ensureGitHubIntegration();
       const res = await apiFetch<{ url: string }>(
-        "/integrations/github/create-issue",
+        `/integrations/${integrationId}/actions/create-issue`,
         {
           method: "POST",
           body: JSON.stringify({ runId: run.id }),
