@@ -1,22 +1,24 @@
 import { Routes, Route } from "react-router-dom";
-import LandingPage from "@/pages/LandingPage";
-import PricingPage from "@/pages/PricingPage";
-import DashboardPage from "@/pages/DashboardPage";
-import ContactPage from "@/pages/ContactPage";
-import ResetPage from "@/pages/ResetPage";
-import SignInPage from "@/pages/SignInPage";
-import SignUpPage from "@/pages/SignUpPage";
-import ProjectPage from "@/pages/ProjectPage";
-import RunPage from "@/pages/RunPage";            // ⬅️ import this
-
-import ProtectedRoute from "@/components/ProtectedRoute";
-import AppLayout from "@/components/layout/AppLayout";
-import BareLayout from "@/components/layout/BareLayout";
+import LandingPage from "../pages/LandingPage";
+import PricingPage from "../pages/PricingPage";
+import DashboardPage from "../pages/DashboardPage";
+import ContactPage from "../pages/ContactPage";
+import ResetPage from "../pages/ResetPage";
+import SignInPage from "../pages/SignInPage";
+import SignUpPage from "../pages/SignUpPage";
+import ProjectPage from "../pages/ProjectPage";
+import RunPage from "../pages/RunPage";
+import AgentScanPage from "../pages/AgentScanPage";
+import IntegrationsPage from "../pages/IntegrationsPage";
+import ProtectedRoute from "../components/ProtectedRoute";
+import AppLayout from "../components/layout/AppLayout";
+import BareLayout from "../components/layout/BareLayout";
+import ProjectSuite from "../pages/ProjectSuite";
 
 function NotFound() {
   return (
     <div className="min-h-[60vh] grid place-items-center text-slate-600">
-      404 – Not found
+      404 - Not found
     </div>
   );
 }
@@ -40,6 +42,24 @@ export default function AppRoutes() {
         />
 
         <Route
+          path="/agent"
+          element={
+            <ProtectedRoute>
+              <AgentScanPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/integrations"
+          element={
+            <ProtectedRoute>
+              <IntegrationsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/projects/:id"
           element={
             <ProtectedRoute>
@@ -57,6 +77,15 @@ export default function AppRoutes() {
           }
         />
       </Route>
+
+      <Route
+        path="/suite/:projectId"
+        element={
+          <ProtectedRoute>
+            <ProjectSuite />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Auth-only pages (no sidebar) */}
       <Route element={<BareLayout />}>

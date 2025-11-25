@@ -1,26 +1,29 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { useApi } from "@/lib/api";
+import { Button } from "./ui/button";
+import { useApi } from "../lib/api";
 import { Play } from "lucide-react";
 
 export default function RunNowButton({
   projectId,
   onDone,
-}: { projectId: string; onDone?: () => void }) {
+}: {
+  projectId: string;
+  onDone?: () => void;
+}) {
   const { apiFetch } = useApi();
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
     setLoading(true);
     try {
+      // send ONLY the projectId; no subdir defaults from the client
       await apiFetch<{ id: string }>("/runner/run", {
         method: "POST",
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({ projectId }), // <- no appSubdir here
       });
       onDone?.();
     } catch (e) {
       console.error(e);
-      // (optional) show a toast
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button"; // if you don't have shadcn Button, swap to a plain <a>
-import { useApi } from "@/lib/api";
-import { apiHref } from "@/lib/env";
+import { Button } from "../components/ui/button"; // if you don't have shadcn Button, swap to a plain <a>
+import { useApi } from "../lib/api";
+import { apiHref } from "../lib/env";
 import { toast } from "sonner";
 
 type Repo = { name: string; url: string; private: boolean };

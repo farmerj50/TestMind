@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useApi } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { useApi } from "../lib/api";
+import { Card, CardContent } from "../components/ui/card";
 
 type Summary = {
   counts: { queued: number; running: number; succeeded: number; failed: number; total: number };

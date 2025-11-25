@@ -1,11 +1,11 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Github, ShieldCheck, Zap, Wrench, LineChart, GitPullRequest, Bell, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Link } from "react-router-dom";
-import { useScrollToHash } from "@/lib/useScrollToHash";
+import { useScrollToHash } from "../lib/useScrollToHash";
 
 
 

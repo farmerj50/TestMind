@@ -2,18 +2,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
-import { useApi } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useApi } from "../lib/api";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Trash2, Pencil } from "lucide-react";
-import { validateProject } from "@/lib/validation";
-import ConnectGitHubCard from "@/components/ConnectGitHubCard";
-import ReportSummary from "@/components/ReportSummary";
-import RecentRunsTable from "@/components/RecentRunsTable";
-import RunNowButton from "@/components/RunNowButton";
-import AdapterDropdown, { AdapterId } from "@/components/AdapterDropdown";
-import GenerateButton from "@/components/GenerateButton";
-import GeneratedTestsPanel from "@/components/GeneratedTestsPanel";
+import { validateProject } from "../lib/validation";
+import ConnectGitHubCard from "../components/ConnectGitHubCard";
+import ReportSummary from "../components/ReportSummary";
+import RecentRunsTable from "../components/RecentRunsTable";
+import RunNowButton from "../components/RunNowButton";
+import AdapterDropdown, { AdapterId } from "../components/AdapterDropdown";
+import GenerateButton from "../components/GenerateButton";
+import GeneratedTestsPanel from "../components/GeneratedTestsPanel";
 
 
 

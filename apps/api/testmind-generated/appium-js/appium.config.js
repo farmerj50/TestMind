@@ -1,0 +1,1 @@
+// Placeholder for Appium config. Provide env vars for capabilities.
