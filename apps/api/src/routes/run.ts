@@ -23,6 +23,9 @@ import { decryptSecret } from "../lib/crypto";
 // replace your installDeps with this
 async function installDeps(repoRoot: string, workspaceCwd: string) {
   const has = (p: string) => fsSync.existsSync(path.join(repoRoot, p));
+  const isWorkspaceRoot =
+    path.resolve(repoRoot) === path.resolve(workspaceCwd) &&
+    fsSync.existsSync(path.join(repoRoot, "pnpm-workspace.yaml"));
 
   // pick package manager from **repo root**
   let pm: "pnpm" | "yarn" | "npm";
@@ -48,7 +51,7 @@ async function installDeps(repoRoot: string, workspaceCwd: string) {
 
   if (!canResolve()) {
     const addArgs =
-      pm === "pnpm" ? ["add", "-D", "@playwright/test"] :
+      pm === "pnpm" ? ["add", "-D", "@playwright/test", ...(isWorkspaceRoot ? ["-w"] : [])] :
         pm === "yarn" ? ["add", "-D", "@playwright/test"] :
           ["install", "-D", "@playwright/test"];
 
@@ -62,7 +65,7 @@ async function installDeps(repoRoot: string, workspaceCwd: string) {
     };
     if (canResolvePkg()) return;
     const addArgs =
-      pm === "pnpm" ? ["add", "-D", pkg] :
+      pm === "pnpm" ? ["add", "-D", pkg, ...(isWorkspaceRoot ? ["-w"] : [])] :
         pm === "yarn" ? ["add", "-D", pkg] :
           ["install", "-D", pkg];
     await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
@@ -95,13 +98,27 @@ async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: stri
     } catch { /* ignore */ }
   }
 
+  // Prefer apps/web, then other apps, then packages, then root.
+  const ordered = Array.from(candidates).sort((a, b) => {
+    const score = (v: string) => {
+      if (v === "apps/web") return 0;
+      if (v.startsWith("apps/")) return 1;
+      if (v.startsWith("packages/")) return 2;
+      if (v === ".") return 3;
+      return 4;
+    };
+    return score(a) - score(b);
+  });
+
   // Prefer a folder that contains a Playwright config (CI config first).
   const prefer = ["tm-ci.playwright.config.ts", "tm-ci.playwright.config.mjs", "tm-ci.playwright.config.js",
     "playwright.config.ts", "playwright.config.mjs", "playwright.config.js", "playwright.config.cjs"];
 
-  for (const sub of candidates) {
+  for (const sub of ordered) {
     const cwd = path.join(repoRoot, sub);
     for (const fname of prefer) {
+      // Skip root-level tm-ci configs so we prefer real app workspaces (apps/web)
+      if (sub === "." && fname.startsWith("tm-ci.playwright.config")) continue;
       if (fsSync.existsSync(path.join(cwd, fname))) {
         return { subdir: sub, configPath: path.join(cwd, fname) };
       }
@@ -109,7 +126,7 @@ async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: stri
   }
 
   // If no config found, pick any workspace that declares @playwright/test
-  for (const sub of candidates) {
+  for (const sub of ordered) {
     const pkgPath = path.join(repoRoot, sub, "package.json");
     try {
       const pkg = JSON.parse(await fs.readFile(pkgPath, "utf8"));
@@ -320,7 +337,11 @@ export default async function runRoutes(app: FastifyInstance) {
 
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
-        const ciConfigPath = path.join(cwd, "tm-ci.playwright.config.ts");
+        const ciConfigPath = path.join(cwd, "tm-ci.playwright.config.mjs");
+        const legacyTsConfig = path.join(cwd, "tm-ci.playwright.config.ts");
+        const legacyJsConfig = path.join(cwd, "tm-ci.playwright.config.js");
+        await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
+        await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
         const serverDirAbsolute = cwd;
         const winServerDirEsc = serverDirAbsolute
           .replace(/\\/g, "\\\\")
