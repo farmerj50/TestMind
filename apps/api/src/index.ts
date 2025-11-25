@@ -64,6 +64,20 @@ if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
     prefix: "/_static/playwright-report/",
   });
 }
+const RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
+if (fs.existsSync(RUNNER_LOGS_ROOT)) {
+  app.register(fastifyStatic, {
+    root: RUNNER_LOGS_ROOT,
+    prefix: "/_static/runner-logs/",
+  });
+}
+const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
+if (fs.existsSync(API_RUNNER_LOGS_ROOT)) {
+  app.register(fastifyStatic, {
+    root: API_RUNNER_LOGS_ROOT,
+    prefix: "/_static/runner-logs/",
+  });
+}
 
 if (allowDebugRoutes) {
   app.get("/runner/debug/:id", async (req, reply) => {

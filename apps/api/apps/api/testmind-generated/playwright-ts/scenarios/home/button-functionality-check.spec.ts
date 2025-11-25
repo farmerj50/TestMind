@@ -8,13 +8,13 @@ test("Button Functionality Check", async ({ page }) => {
     await page.goto("http://localhost:5173/");
   });
   await test.step("2. Click the first button that says 'Do you commit tests to our'", async () => {
-    const locator = page.locator("button:has-text('Do you commit tests to our')").nth(0);
-    await locator.waitFor({ state: 'visible', timeout: 15000 });
-    await locator.click({ timeout: 15000 });
+    const locator = page.locator("button:has-text('Do you commit tests to our')").first();
+    await expect(locator).toBeVisible({ timeout: 15000 });
+    await locator.click();
   });
   await test.step("3. Click the second button that says 'Will you store our secrets?'", async () => {
-    const locator = page.locator("button:has-text('Will you store our secrets?')").nth(0);
-    await locator.waitFor({ state: 'visible', timeout: 15000 });
-    await locator.click({ timeout: 15000 });
+    const locator = page.locator("button:has-text('Will you store our secrets?')").first();
+    await expect(locator).toBeVisible({ timeout: 15000 });
+    await locator.click();
   });
 });
