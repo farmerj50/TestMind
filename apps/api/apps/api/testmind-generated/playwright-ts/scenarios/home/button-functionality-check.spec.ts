@@ -7,13 +7,13 @@ test("Button Functionality Check", async ({ page }) => {
   await test.step("1. Navigate to http://localhost:5173/", async () => {
     await page.goto("http://localhost:5173/");
   });
-  await test.step("2. Click the first button that says 'Do you commit tests to our'", async () => {
-    const locator = page.locator("button:has-text('Do you commit tests to our')").first();
+  await test.step("2. Click the first button that says 'Start Testing'", async () => {
+    const locator = page.getByRole('button', { name: /start testing/i }).first();
     await expect(locator).toBeVisible({ timeout: 15000 });
     await locator.click();
   });
   await test.step("3. Click the second button that says 'Will you store our secrets?'", async () => {
-    const locator = page.locator("button:has-text('Will you store our secrets?')").first();
+    const locator = page.getByRole('button', { name: /will you store our secrets?/i }).first();
     await expect(locator).toBeVisible({ timeout: 15000 });
     await locator.click();
   });
