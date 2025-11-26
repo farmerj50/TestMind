@@ -12,6 +12,7 @@ export type RunPayload = {
   envName?: string;
   trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
   grep?: string;
+  file?: string;
 };
 
 export type SelfHealPayload = {

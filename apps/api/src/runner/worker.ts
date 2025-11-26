@@ -72,10 +72,20 @@ export const worker = new Worker(
       // 3) Detect + run
       const framework = await detectFramework(work);
       const resultsPath = path.join(outDir, 'report.json');
+      const extraGlobs: string[] = [];
+      const grep = payload?.grep;
+      if (payload?.file) {
+        const abs = path.isAbsolute(payload.file) ? payload.file : path.join(work, payload.file);
+        const rel = path.relative(work, abs).replace(/\\/g, "/");
+        extraGlobs.push(rel);
+      }
+
       const exec = await runTests({
         workdir: work,
         jsonOutPath: resultsPath,
         headed: payload?.headed,
+        grep,
+        extraGlobs,
       });
 
       // write logs
