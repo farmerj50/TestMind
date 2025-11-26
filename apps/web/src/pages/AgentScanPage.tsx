@@ -381,10 +381,49 @@ export default function AgentScanPage() {
               ))}
             </div>
           )}
+          {session && session.pages.length > 0 && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-medium text-slate-700">Page map</div>
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {session.pages.map((page) => (
+                  <div key={page.id} className="rounded border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-slate-900 truncate">
+                        {page.path || page.url}
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          page.status === "completed"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : page.status === "failed"
+                            ? "bg-rose-50 text-rose-700"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {page.status}
+                      </span>
+                    </div>
+                    {page.coverage && (
+                      <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-600">
+                        {Object.entries(page.coverage).map(([k, v]) => (
+                          <span key={k}>
+                            {k}: <strong className="text-slate-800">{v as number}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {page.scenarios.length} scenario{page.scenarios.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {loadingSession ? (
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading session...
+              Loading session...
             </div>
           ) : !session ? (
             <p className="text-sm text-slate-500">
@@ -491,5 +530,6 @@ export default function AgentScanPage() {
     </div>
   );
 }
+
 
 

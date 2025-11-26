@@ -1,8 +1,13 @@
-// apps/api/src/runner/node-test-exec.ts
+﻿// apps/api/src/runner/node-test-exec.ts
 import path from "node:path";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { execa } from "execa";
+
+const multiFrameworkEnabled = (() => {
+  const v = (process.env.TM_MULTI_FRAMEWORK || "").toLowerCase();
+  return ["1", "true", "yes", "on"].includes(v);
+})();
 
 type FindConfigResult = { cwd: string; configPath: string } | null;
 
@@ -75,9 +80,9 @@ export type RunExecRequest = {
   workdir: string;              // repo root (temp clone)
   jsonOutPath: string;          // where to write report.json
   baseUrl?: string;             // e.g., http://localhost:5173
-  extraGlobs?: string[];        // (IGNORED for now – we run the whole suite)
+    extraGlobs?: string[];        // optional file globs/paths
   extraEnv?: Record<string, string>;
-  grep?: string;                // (IGNORED for now)
+    grep?: string;                // optional test grep
   configPath?: string;
   sourceRoot?: string;
   headed?: boolean;
@@ -93,11 +98,35 @@ export type RunExecResult = {
 };
 
 export async function detectFramework(workdir: string): Promise<"playwright" | "vitest" | "jest" | "none"> {
+  // If multi-framework is disabled, force Playwright.
+  if (!multiFrameworkEnabled) {
+    for (const ext of ["ts", "js", "cjs", "mjs"]) {
+      if (await pathExists(path.join(workdir, `playwright.config.${ext}`))) return "playwright";
+      if (await pathExists(path.join(workdir, `tm-ci.playwright.config.${ext}`))) return "playwright";
+    }
+    return "playwright";
+  }
+
+  // Prefer Playwright when configs exist
   for (const ext of ["ts", "js", "cjs", "mjs"]) {
     if (await pathExists(path.join(workdir, `playwright.config.${ext}`))) return "playwright";
     if (await pathExists(path.join(workdir, `tm-ci.playwright.config.${ext}`))) return "playwright";
   }
-  return "playwright";
+
+  // Check package.json for vitest / jest
+  const pkgPath = path.join(workdir, "package.json");
+  try {
+    const pkg = JSON.parse(await fs.readFile(pkgPath, "utf8"));
+    const has = (dep: string) => !!(pkg.dependencies?.[dep] || pkg.devDependencies?.[dep]);
+    if (has("vitest")) return "vitest";
+    if (has("jest")) return "jest";
+    const scr = pkg.scripts || {};
+    if (/vitest/.test(String(scr.test || ""))) return "vitest";
+    if (/jest/.test(String(scr.test || ""))) return "jest";
+  } catch {
+    // ignore
+  }
+  return "none";
 }
 
 export async function installDeps(repoRoot: string, workspaceCwd = repoRoot) {
@@ -181,109 +210,167 @@ export async function installDeps(repoRoot: string, workspaceCwd = repoRoot) {
 
 export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
   const fw = await detectFramework(req.workdir);
-  if (fw !== "playwright") {
-    return {
-      ok: false,
-      exitCode: 1,
-      stdout: "",
-      stderr: "Unsupported framework",
-      framework: fw,
+  const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+  const normalizePath = (v: string) => v.replace(/\\/g, "/");
+
+  // ---- Playwright path ----
+  if (fw === "playwright") {
+    const found = req.configPath
+      ? { cwd: path.dirname(req.configPath), configPath: req.configPath }
+      : await findPlaywrightConfig(req.workdir);
+
+    if (!found) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: `No Playwright config found under ${req.workdir}`,
+        framework: "playwright",
+      };
+    }
+
+    await patchPreviewCommand(found.configPath);
+
+    const env = {
+      ...process.env,
+      PW_BASE_URL: req.baseUrl ?? "",
+      TM_BASE_URL: req.baseUrl ?? "",
+      BASE_URL: req.baseUrl ?? "",
+      TM_SOURCE_ROOT: req.extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
+      PW_JSON_OUTPUT: req.jsonOutPath,
+      ...(req.extraEnv || {}),
     };
-  }
 
-  const found = req.configPath
-    ? { cwd: path.dirname(req.configPath), configPath: req.configPath }
-    : await findPlaywrightConfig(req.workdir);
+    const args: string[] = ["playwright", "test"];
+    if (req.headed) {
+      args.push("--headed");
+    }
 
-  if (!found) {
+    if (req.grep) {
+      args.push("--grep", req.grep);
+    }
+
+    if (req.extraGlobs && req.extraGlobs.length) {
+      for (const g of req.extraGlobs) {
+        const rel = path.isAbsolute(g) ? normalizePath(path.relative(found.cwd, g)) : normalizePath(g);
+        args.push(rel);
+      }
+    }
+
+    args.push(
+      "--config",
+      normalizePath(path.relative(found.cwd, found.configPath))
+    );
+
+    const proc = await execa(npx, args, {
+      cwd: found.cwd,
+      env,
+      reject: false,
+      timeout: 0,
+      stdio: "pipe",
+    });
+
+    const stdout = proc.stdout ?? "";
+    const stderr = proc.stderr ?? "";
+
+    const hasReport = await fs
+      .stat(req.jsonOutPath)
+      .then(() => true)
+      .catch(() => false);
+
+    if (!hasReport) {
+      try {
+        await fs.mkdir(path.dirname(req.jsonOutPath), { recursive: true });
+      } catch {}
+      await fs.writeFile(
+        req.jsonOutPath,
+        JSON.stringify(
+          {
+            suites: [],
+            errors: [{ message: "No Playwright JSON report produced" }],
+            stats: { startTime: new Date().toISOString() },
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+    }
+
     return {
-      ok: false,
-      exitCode: 1,
-      stdout: "",
-      stderr: `No Playwright config found under ${req.workdir}`,
+      ok: (proc.exitCode ?? 1) === 0,
+      exitCode: proc.exitCode ?? null,
+      stdout,
+      stderr,
+      resultsPath: req.jsonOutPath,
       framework: "playwright",
     };
   }
 
-  await patchPreviewCommand(found.configPath);
-
-  const env = {
-    ...process.env,
-    PW_BASE_URL: req.baseUrl ?? "",
-    TM_BASE_URL: req.baseUrl ?? "",
-    BASE_URL: req.baseUrl ?? "",
-    TM_SOURCE_ROOT: req.extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
-    PW_JSON_OUTPUT: req.jsonOutPath,
-    ...(req.extraEnv || {}),
-  };
-
-    const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
-  const normalizePath = (v: string) => v.replace(/\\/g, "/");
-
-  // ---- CLI args ----
-  const args: string[] = ["playwright", "test"];
-  if (req.headed) {
-    args.push("--headed");
+  // ---- Vitest path (requires TM_MULTI_FRAMEWORK=on) ----
+  if (fw === "vitest") {
+    const args: string[] = ["vitest", "run", "--reporter=json", `--outputFile=${req.jsonOutPath}`];
+    if (req.grep) {
+      args.push("--grep", req.grep);
+    }
+    if (req.extraGlobs && req.extraGlobs.length) {
+      args.push(...req.extraGlobs);
+    }
+    const proc = await execa(npx, args, {
+      cwd: req.workdir,
+      env: { ...process.env, ...req.extraEnv },
+      reject: false,
+      timeout: 0,
+      stdio: "pipe",
+    });
+    return {
+      ok: (proc.exitCode ?? 1) === 0,
+      exitCode: proc.exitCode ?? null,
+      stdout: proc.stdout ?? "",
+      stderr: proc.stderr ?? "",
+      resultsPath: req.jsonOutPath,
+      framework: "vitest",
+    };
   }
 
-  // 🔹 Use grep to select individual tests, not path-based "globs"
-  if (req.grep) {
-    args.push("--grep", req.grep);
+  // ---- Jest path (requires TM_MULTI_FRAMEWORK=on) ----
+  if (fw === "jest") {
+    const args: string[] = [
+      "jest",
+      "--runInBand",
+      "--testLocationInResults",
+      "--json",
+      `--outputFile=${req.jsonOutPath}`,
+    ];
+    if (req.grep) args.push("--testNamePattern", req.grep);
+    if (req.extraGlobs && req.extraGlobs.length) {
+      args.push(...req.extraGlobs);
+    }
+    const proc = await execa(npx, args, {
+      cwd: req.workdir,
+      env: { ...process.env, ...req.extraEnv },
+      reject: false,
+      timeout: 0,
+      stdio: "pipe",
+    });
+    return {
+      ok: (proc.exitCode ?? 1) === 0,
+      exitCode: proc.exitCode ?? null,
+      stdout: proc.stdout ?? "",
+      stderr: proc.stderr ?? "",
+      resultsPath: req.jsonOutPath,
+      framework: "jest",
+    };
   }
 
-  args.push(
-    "--config",
-    normalizePath(path.relative(found.cwd, found.configPath))
-  );
-
-
-  console.log("[runner] cwd =", found.cwd);
-  console.log("[runner] args =", JSON.stringify(args));
-
-
-  const proc = await execa(npx, args, {
-    cwd: found.cwd,
-    env,
-    reject: false,
-    timeout: 0,
-    stdio: "pipe",
-  });
-
-  const stdout = proc.stdout ?? "";
-  const stderr = proc.stderr ?? "";
-
-  const hasReport = await fs
-    .stat(req.jsonOutPath)
-    .then(() => true)
-    .catch(() => false);
-
-  if (!hasReport) {
-    try {
-      await fs.mkdir(path.dirname(req.jsonOutPath), { recursive: true });
-    } catch {}
-    await fs.writeFile(
-      req.jsonOutPath,
-      JSON.stringify(
-        {
-          suites: [],
-          errors: [{ message: "No Playwright JSON report produced" }],
-          stats: { startTime: new Date().toISOString() },
-        },
-        null,
-        2
-      ),
-      "utf8"
-    );
-  }
-
+  // No supported framework
   return {
-    ok: (proc.exitCode ?? 1) === 0,
-    exitCode: proc.exitCode ?? null,
-    stdout,
-    stderr,
-    resultsPath: req.jsonOutPath,
-    framework: "playwright",
+    ok: false,
+    exitCode: 1,
+    stdout: "",
+    stderr: "Unsupported framework",
+    framework: fw,
   };
-
 }
+
 
