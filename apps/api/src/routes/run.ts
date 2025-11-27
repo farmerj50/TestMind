@@ -187,6 +187,14 @@ const RunBody = z.object({
   headful: z.boolean().optional(),
 });
 
+function parseBool(val: unknown, fallback: boolean) {
+  if (val === undefined || val === null) return fallback;
+  const s = String(val).toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(s)) return true;
+  if (["0", "false", "no", "n", "off"].includes(s)) return false;
+  return fallback;
+}
+
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
 const TestRunStatus: Record<RunStatus, RunStatus> = {
@@ -227,6 +235,7 @@ export default async function runRoutes(app: FastifyInstance) {
     }
 
     const pid = parsed.data.projectId.trim();
+    const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
     const providedBaseUrl = parsed.data.baseUrl ?? DEFAULT_BASE_URL;
 
     // look up project
@@ -235,7 +244,12 @@ export default async function runRoutes(app: FastifyInstance) {
       (await prisma.project.findFirst({ where: { id: pid } }));
 
     if (!project) {
-      return sendError(reply, "PROJECT_NOT_FOUND", `Project ${pid} was not found`, 404);
+      return sendError(
+        reply,
+        "PROJECT_NOT_FOUND",
+        `Project ${pid} was not found. Create the project and configure its repoUrl before running.`,
+        404
+      );
     }
     // Ensure attached agent scenarios are materialized as specs in TM_LOCAL_SPECS before running
     try {
@@ -247,7 +261,7 @@ export default async function runRoutes(app: FastifyInstance) {
       return sendError(
         reply,
         "MISSING_REPO_URL",
-        "Repository URL is not configured for this project",
+        "Repository URL is not configured for this project. Set repoUrl and try again.",
         400,
         { projectId: pid }
       );
@@ -260,7 +274,7 @@ export default async function runRoutes(app: FastifyInstance) {
         status: TestRunStatus.running,
         startedAt: new Date(),
         trigger: "user",
-        paramsJson: { headful: Boolean(parsed.data.headful) },
+        paramsJson: { headful },
       },
     });
 
@@ -395,7 +409,13 @@ export default defineConfig({
         reuseExistingServer: true,
         timeout: 120000,
       },
-  testIgnore: ['**/node_modules/**','**/dist/**','**/build/**','**/.*/**'],
+  testIgnore: [
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/build/**',
+    '**/.*/**',
+    '**/testmind-generated/appium-js/**', // skip appium stubs that require CommonJS
+  ],
   projects: [{
     name: 'generated',
     testDir: GEN_DIR,
@@ -578,13 +598,15 @@ export default defineConfig({
           extraEnv,
           grep: normalizedGrep,
           sourceRoot: work,
-          headed: Boolean(parsed.data.headful),
+          headed: headful,
         });
 
 
-        await fs.writeFile(path.join(outDir, 'stdout.txt'),
-          `[runner] exitCode=${exec.exitCode} baseUrl=${providedBaseUrl} extraGlobs=${JSON.stringify(extraGlobs)} grep=${parsed.data.grep || ''}\n`,
-          { flag: 'a' });
+        await fs.writeFile(
+          path.join(outDir, "stdout.txt"),
+          `[runner] exitCode=${exec.exitCode} baseUrl=${providedBaseUrl} headful=${headful} file=${parsed.data.file || ""} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)}\n`,
+          { flag: "a" }
+        );
 
 
 
@@ -882,6 +904,25 @@ export default defineConfig({
     } catch {
       return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
     }
+  });
+
+  app.get("/test-runs/:id/analysis", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const paths = [
+      path.join(process.cwd(), "runner-logs", id, "analysis.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "analysis.json"),
+    ];
+    for (const p of paths) {
+      try {
+        const raw = await fs.readFile(p, "utf8");
+        const analysis = JSON.parse(raw);
+        reply.header("Content-Type", "application/json; charset=utf-8");
+        return reply.send({ analysis });
+      } catch {
+        // try next
+      }
+    }
+    return reply.code(404).send({ ok: false, error: "analysis not found for this run" });
   });
 
   // GET /projects/:id/specs  -> returns a tree of the generated specs

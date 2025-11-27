@@ -1,0 +1,15 @@
+{
+  "name": "testmind-recorder-helper",
+  "version": "0.1.0",
+  "description": "Local desktop helper to launch Playwright codegen from the TestMind UI (mabl-style trainer).",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node main.js --check"
+  },
+  "dependencies": {
+    "electron": "^30.0.0"
+  },
+  "devDependencies": {}
+}

@@ -17,6 +17,8 @@ const EnvSchema = z.object({
   START_WORKERS: z.string().optional(),
   TM_SKIP_SERVER: z.string().optional(),
   ENABLE_DEBUG_ROUTES: z.string().optional(),
+  ENABLE_AI_ANALYSIS: z.string().optional(),
+  START_RECORDER_HELPER: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -58,6 +60,8 @@ export const validatedEnv = {
   START_WORKERS: parseBoolean(env.START_WORKERS, true, "START_WORKERS"),
   TM_SKIP_SERVER: parseBoolean(env.TM_SKIP_SERVER, false, "TM_SKIP_SERVER"),
   ENABLE_DEBUG_ROUTES: parseBoolean(env.ENABLE_DEBUG_ROUTES, false, "ENABLE_DEBUG_ROUTES"),
+  ENABLE_AI_ANALYSIS: parseBoolean(env.ENABLE_AI_ANALYSIS, false, "ENABLE_AI_ANALYSIS"),
+  START_RECORDER_HELPER: parseBoolean(env.START_RECORDER_HELPER, false, "START_RECORDER_HELPER"),
 };
 
 // Validate SECRET_KEY format (32-byte base64 for AES-256-GCM).

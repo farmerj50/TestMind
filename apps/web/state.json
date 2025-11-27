@@ -1,0 +1,403 @@
+{
+  "cookies": [
+    {
+      "name": "MUID",
+      "value": "19E118431A4F6DFB3E590EF21B996C5F",
+      "domain": ".bing.com",
+      "path": "/",
+      "expires": 1797923430.571924,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "MR",
+      "value": "0",
+      "domain": ".bat.bing.com",
+      "path": "/",
+      "expires": 1764832207.749689,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_gcl_au",
+      "value": "1.1.798293807.1764227408",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1772003408,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "li_sugr",
+      "value": "3928327c-c8da-44f1-ba24-8bdaaf4591af",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1772003408.773724,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "bcookie",
+      "value": "\"v=2&5018cc5f-967d-43dd-838d-dabf4f81a971\"",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1795763408.773886,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "lidc",
+      "value": "\"b=OGST03:s=O:r=O:a=O:p=O:g=3699:u=1:x=1:i=1764227410:t=1764313810:v=2:sig=AQFbcoY_n-ZtjRXCqVEZLuacr-hfjBUh\"",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1764313807.962698,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_uetsid",
+      "value": "1ae6a2f0cb6011f0884543eb9173b804",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1764313807,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_uetvid",
+      "value": "1ae88200cb6011f09c04276c6ae4eeef",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1797923407,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "UserMatchHistory",
+      "value": "AQLTX3y60gtsHQAAAZrEJeq6pzh-7TQk_SMPRfiJTw8blRmHfUjYeEbJQ3OaW-vcfA_4xuJzbLr7qQ",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1766819408.076514,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "AnalyticsSyncHistory",
+      "value": "AQJRN3yfPxN56wAAAZrEJeq6KGd7BXrYD3LJGg-LLx9rtYzCJKYMOdc95vGWmfzoCT2-FVEgc4lI0dJeXZwJVg",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1766819408.076552,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.956502669.1764227408",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1798787408.182622,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "bscookie",
+      "value": "\"v=1&2025112707101096a06e9d-48c7-4a8d-85c1-5c391ccb16d2AQFARia4bwbolRvK6J5K4YNxoyXt8B8G\"",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1795763408.24951,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__cf_bm",
+      "value": "mD7Sd7nCcEdbNzOXZm6k0Uih.W.veJw80izegeCVq5k-1764227410-1.0.1.1-NFLSFxWmMfvEQQsqtAexMPOGuZ3Np6IRtKyfvJg_uiIOdLJXI_ui6ZYsGTk3XUIp44be8Ub8yvlcx3j_5IV9KE3lgAcA4eJUUBvFq2.ZA9k",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1764229208.249729,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ar_debug",
+      "value": "1",
+      "domain": ".www.google-analytics.com",
+      "path": "/",
+      "expires": 1772003408.383443,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ttp",
+      "value": "363FaXDHOTaIUAW0EZ1HPJiS9UH",
+      "domain": ".tiktok.com",
+      "path": "/",
+      "expires": 1797923408.859853,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tt_enable_cookie",
+      "value": "1",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1797923408,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "01KB22BS27PFYYRYCN5BAJAV2Y_.tt.1",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1797923408,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "IDE",
+      "value": "AHWqTUmvmaF5XGFyUw92Kk22A98Q81IopCgDk7FpkAm4P0Oa1xaBPEv8vr7Arj0G",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1798787409.062395,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "CLID",
+      "value": "ff6797a42e33482a85c1970bfbcc7093.20251127.20261127",
+      "domain": "www.clarity.ms",
+      "path": "/",
+      "expires": 1795763429.313843,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_clck",
+      "value": "wt50oi%5E2%5Eg1d%5E0%5E2157",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1795763429,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "MR",
+      "value": "0",
+      "domain": ".c.bing.com",
+      "path": "/",
+      "expires": 1764832230.572003,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "SRM_B",
+      "value": "19E118431A4F6DFB3E590EF21B996C5F",
+      "domain": ".c.bing.com",
+      "path": "/",
+      "expires": 1797923430.57202,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "SM",
+      "value": "C",
+      "domain": ".c.clarity.ms",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "MUID",
+      "value": "19E118431A4F6DFB3E590EF21B996C5F",
+      "domain": ".clarity.ms",
+      "path": "/",
+      "expires": 1797923429.591799,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "MR",
+      "value": "0",
+      "domain": ".c.clarity.ms",
+      "path": "/",
+      "expires": 1764832229.591835,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ANONCHK",
+      "value": "0",
+      "domain": ".c.clarity.ms",
+      "path": "/",
+      "expires": 1764228029.591848,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_clsk",
+      "value": "1ulb0vw%5E1764227429708%5E1%5E1%5En.clarity.ms%2Fcollect",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1764313829,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid",
+      "value": "1764227408977::KIgfso0wAB8H-5DdQOHG.1.1764227446697.0",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1797923446,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid_CM0IJ53C77U0797CAP10",
+      "value": "1764227408976::tNIJ-JqNVoEvWJdtHc9d.1.1764227446697.0",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1797923446,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "g_state",
+      "value": "{\"i_l\":0,\"i_ll\":1764227450968,\"i_b\":\"xiKYdXl/6AWVfBvrJeZKZmn4BkQQ6K1K13Mq90NkFOU\"}",
+      "domain": "jobright.ai",
+      "path": "/",
+      "expires": 1779779450,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Host-GAPS",
+      "value": "1:CT5XOR3cUmbFWVepitAmyo6LkQiXoA:fsW2jykm3LtB2v8P",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1798787451.3851,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "OTZ",
+      "value": "8365391_76_76_104100_72_446760",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1766819454,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "NID",
+      "value": "526=S2NR5jvRZrzG0nWJ6wA8xn8zGLvlVSfr-JfQA7hLqzrf-eogLzPgIpAZI63hvAKxrwPyx5nRBN5z8jZuZ__VSi9FAculVo0Dd8qwKGvfok6pnGJDQYAO8JToIHGr4b5x8mAqFdpYkEQa6GAzm_JQKCNigt7vOXWBg1rdCnNCbLf8vRk0m6P-BN21HC_19Aw-IATSMyaueGZGxyyaJ3EX",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1780038654.968785,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga_ETKKWETCJD",
+      "value": "GS2.1.s1764227408$o1$g1$t1764227492$j60$l0$h1834903358",
+      "domain": ".jobright.ai",
+      "path": "/",
+      "expires": 1798787492.087143,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://jobright.ai",
+      "localStorage": [
+        {
+          "name": "JR_userid",
+          "value": "not logined"
+        },
+        {
+          "name": "AMP_MKTG_bd8bbcb632",
+          "value": "{}"
+        },
+        {
+          "name": "_uetvid_exp",
+          "value": "Tue, 22 Dec 2026 07:10:07 GMT"
+        },
+        {
+          "name": "_uetsid_exp",
+          "value": "Fri, 28 Nov 2025 07:10:07 GMT"
+        },
+        {
+          "name": "JR_showScoreTip_v1",
+          "value": "false"
+        },
+        {
+          "name": "_uetvid",
+          "value": "1ae88200cb6011f09c04276c6ae4eeef"
+        },
+        {
+          "name": "_gcl_ls",
+          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":0,\"timeouts\":0,\"creationTimeMs\":1764227407791},\"expires\":1772003407791}}"
+        },
+        {
+          "name": "JR_visitor_id",
+          "value": "3645486040606588308"
+        },
+        {
+          "name": "_uetsid",
+          "value": "1ae6a2f0cb6011f0884543eb9173b804"
+        },
+        {
+          "name": "AMP_bd8bbcb632",
+          "value": "{\"deviceId\":\"98700ff8-a817-405e-a089-6f75015e3598\",\"sessionId\":1764227405307,\"optOut\":false,\"lastEventTime\":1764227451058,\"lastEventId\":9,\"pageCounter\":2}"
+        },
+        {
+          "name": "AMP_unsent_bd8bbcb632",
+          "value": "[]"
+        },
+        {
+          "name": "JR_device_id",
+          "value": "2765416639"
+        },
+        {
+          "name": "li_adsId",
+          "value": "8a7089cb-195b-40af-b7fb-f9603f5c8735"
+        }
+      ]
+    }
+  ]
+}
