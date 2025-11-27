@@ -38,10 +38,14 @@ async function main() {
 
   const projectExists = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true },
+    select: { id: true, repoUrl: true },
   });
-  if (!projectExists) {
+  if (!projectExists?.id) {
     console.error(`Project ${projectId} not found. Provide a valid projectId.`);
+    process.exit(1);
+  }
+  if (!projectExists.repoUrl) {
+    console.error(`Project ${projectId} is missing repoUrl. Set repoUrl before triggering a run.`);
     process.exit(1);
   }
 

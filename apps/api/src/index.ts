@@ -8,6 +8,7 @@ import { z } from "zod";
 import fastifyStatic from "@fastify/static";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 import { githubRoutes } from "./routes/github";
 import { testRoutes } from "./routes/tests";
@@ -19,6 +20,7 @@ import jiraRoutes from "./routes/jira";
 import { secretsRoutes } from "./routes/secrets";
 import { prisma } from "./prisma";
 import { validatedEnv } from "./config/env";
+import recorderRoutes from "./routes/recorder";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans";
@@ -33,6 +35,7 @@ const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST;
 const shouldStartWorkers = validatedEnv.START_WORKERS;
 const skipServer = validatedEnv.TM_SKIP_SERVER;
 const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
+const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 
 app.register(cors, {
   origin: (origin, cb) => {
@@ -59,6 +62,7 @@ app.register(agentRoutes, { prefix: "/" });
 app.register(jiraRoutes, { prefix: "/" });
 app.register(secretsRoutes, { prefix: "/" });
 app.register(testmindRoutes, { prefix: "/tm" });
+app.register(recorderRoutes, { prefix: "/" });
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
 if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
   app.register(fastifyStatic, {
@@ -78,6 +82,24 @@ if (fs.existsSync(API_RUNNER_LOGS_ROOT)) {
   app.register(fastifyStatic, {
     root: API_RUNNER_LOGS_ROOT,
     prefix: "/_static/runner-logs/",
+  });
+}
+// Serve built web assets (SPA) when available
+const WEB_DIST = path.join(REPO_ROOT, "apps", "web", "dist");
+if (fs.existsSync(WEB_DIST)) {
+  app.register(fastifyStatic, {
+    root: WEB_DIST,
+    prefix: "/", // serve assets at root
+    decorateReply: false,
+  });
+
+  // SPA fallback for client routes (e.g., /reports) so refreshes work
+  app.setNotFoundHandler((req, reply) => {
+    const accept = req.headers.accept || "";
+    if (req.method === "GET" && accept.includes("text/html")) {
+      return reply.sendFile("index.html");
+    }
+    return reply.code(404).send({ message: `Route ${req.method}:${req.url} not found`, error: "Not Found", statusCode: 404 });
   });
 }
 
@@ -247,6 +269,26 @@ const startWorkersOnce = () => {
 };
 
 startWorkersOnce();
+
+// Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch
+const startRecorderHelper = () => {
+  if (recorderState.__tmRecorderHelperStarted || !validatedEnv.START_RECORDER_HELPER) return;
+  recorderState.__tmRecorderHelperStarted = true;
+  const helperPath = path.join(REPO_ROOT, "recorder-helper.js");
+  if (!fs.existsSync(helperPath)) {
+    app.log.warn(`[recorder] helper not found at ${helperPath}; skipping auto-start`);
+    return;
+  }
+  const child = spawn(process.execPath, [helperPath], {
+    cwd: REPO_ROOT,
+    stdio: "ignore",
+    detached: true,
+  });
+  child.unref();
+  app.log.info("[recorder] helper auto-started (detached)");
+};
+
+startRecorderHelper();
 
 if (allowDebugRoutes) {
   app.get("/runner/debug/list", async () => {

@@ -12,7 +12,6 @@ export default defineConfig({
     proxy: {
       '/tm':      { target: 'http://localhost:8787', changeOrigin: true },
       '/projects':{ target: 'http://localhost:8787', changeOrigin: true },
-      '/reports': { target: 'http://localhost:8787', changeOrigin: true },
       '/repos':   { target: 'http://localhost:8787', changeOrigin: true },
       '/me':      { target: 'http://localhost:8787', changeOrigin: true },
       '/_static': { target: 'http://localhost:8787', changeOrigin: true },
