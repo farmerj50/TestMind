@@ -124,10 +124,37 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
   }
 
   async function runPage(pageId: string) {
+    if (!session?.projectId) {
+      setError("Attach the session to a project before running.");
+      return;
+    }
+    const page = session.pages.find((p) => p.id === pageId);
+    if (!page) {
+      setError("Page not found in session.");
+      return;
+    }
+
     setBusyPage(pageId);
     setError(null);
     try {
-      await apiFetch(`/tm/agent/pages/${pageId}/run`, { method: "POST" });
+      // kick off a fresh page analysis (optional; keeps page status current)
+      await apiFetch(`/tm/agent/pages/${pageId}/run`, { method: "POST" }).catch(() => {});
+
+      // run all scenarios for this page that already have specs
+      const runnable = page.scenarios.filter((s) => s.specPath);
+      if (runnable.length === 0) {
+        setRunInfo("Generate tests before running this page.");
+      } else {
+        for (const sc of runnable) {
+          await apiFetch("/runner/run", {
+            method: "POST",
+            body: JSON.stringify({ projectId: session.projectId, specPath: sc.specPath }),
+          });
+        }
+        setRunInfo(`Triggered ${runnable.length} run(s) for this page.`);
+        await loadRecentRuns(session.projectId);
+      }
+
       // optimistically mark page running
       setSession((prev) =>
         prev
@@ -139,7 +166,6 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
             }
           : prev
       );
-      setRunInfo("Run started. Page status will update when finished.");
       await load(true);
     } catch (err: any) {
       setError(err?.message ?? "Failed to run page");
@@ -205,7 +231,7 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
         setError("Generate the test first before running.");
         return;
       }
-      await apiFetch("/runs", {
+      await apiFetch("/runner/run", {
         method: "POST",
         body: JSON.stringify({ projectId: session.projectId, specPath: spec }),
       });
@@ -218,16 +244,24 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
   }
 
   async function generateAllAccepted(page: Page) {
-    if (!session) return;
+    if (!session?.projectId) {
+      setError("Attach the session to a project before generating tests.");
+      return;
+    }
     const toGenerate = page.scenarios.filter((s) => s.status === "accepted" && !s.specPath);
     if (toGenerate.length === 0) {
-      setRunInfo("No accepted scenarios needing generation.");
+      setRunInfo("No accepted scenarios needing generation on this page.");
       return;
     }
     setBusyGenerateAll(page.id);
     setError(null);
     try {
       for (const sc of toGenerate) {
+        // Ensure attached to project, then generate
+        await apiFetch(`/tm/agent/scenarios/${sc.id}/attach`, {
+          method: "POST",
+          body: JSON.stringify({ projectId: session.projectId }),
+        });
         await apiFetch(`/agent/scenarios/${sc.id}/generate-test`, { method: "POST" });
       }
       await load(true);
@@ -276,8 +310,39 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
         </div>
       )}
       {runInfo && (
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-slate-700">
-          {runInfo}
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 space-y-2 text-sm text-slate-700">
+          <div className="flex items-center justify-between">
+            <span>{runInfo}</span>
+            <Link
+              to="/reports"
+              className="text-blue-600 underline text-xs"
+            >
+              View reports
+            </Link>
+          </div>
+          {recentRuns.length > 0 && (
+            <div className="text-xs text-slate-600">
+              Recent runs:
+              <ul className="mt-1 space-y-1">
+                {recentRuns.slice(0, 3).map((r) => (
+                  <li key={r.id} className="flex justify-between">
+                    <span>{new Date(r.createdAt).toLocaleTimeString()}</span>
+                    <span
+                      className={
+                        r.status === "succeeded"
+                          ? "text-emerald-700"
+                          : r.status === "failed"
+                          ? "text-rose-700"
+                          : "text-slate-700"
+                      }
+                    >
+                      {r.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -415,7 +480,10 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
                               size="sm"
                               variant="outline"
                               onClick={() => generateAllAccepted(page)}
-                              disabled={busyGenerateAll === page.id}
+                              disabled={
+                                busyGenerateAll === page.id ||
+                                !page.scenarios.some((s) => s.status === "accepted" && !s.specPath)
+                              }
                             >
                               {busyGenerateAll === page.id ? "Generating…" : "Generate all accepted"}
                             </Button>

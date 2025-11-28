@@ -10,7 +10,7 @@ test("Page loads: /login", async ({ page }) => {
   });
   await test.step("2. Ensure text \"testmind-web\" is visible", async () => {
     const locator = page.locator("text=testmind-web"); // Ensured proper targeting
-    await page.waitForTimeout(1000); // Add a short delay before checking visibility
-    await expect(locator).toBeVisible({ timeout: 5000 }); // Ensure wait for visibility is consistent
+    await locator.waitFor({ state: 'visible', timeout: 10000 }); // Wait for the text to be visible
+    await expect(locator).toBeVisible(); // Assertion for visibility
   });
 });

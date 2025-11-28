@@ -33,6 +33,12 @@
       "name": "Agent - testmind",
       "root": "agent-cmi7spwba00037kmkyglpyg4x",
       "locked": []
+    },
+    {
+      "id": "agent-cmihx1g8j00017klcjcr3dkea",
+      "name": "Agent - facebook.com",
+      "root": "agent-cmihx1g8j00017klcjcr3dkea",
+      "locked": []
     }
   ]
 }

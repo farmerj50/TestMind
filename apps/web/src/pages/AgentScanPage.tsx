@@ -240,6 +240,23 @@ export default function AgentScanPage() {
     }
   }
 
+  async function generateAllAccepted(page: AgentPage) {
+    if (!selectedProject) return;
+    const toGenerate = page.scenarios.filter((s) => s.status === "accepted" && !s.specPath);
+    if (!toGenerate.length) return;
+    setBusyGenerateAll(page.id);
+    try {
+      for (const sc of toGenerate) {
+        await apiFetch(`/agent/scenarios/${sc.id}/generate-test`, { method: "POST" });
+      }
+      await fetchSession(selectedProject, { silent: true });
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to generate tests");
+    } finally {
+      setBusyGenerateAll(null);
+    }
+  }
+
   async function handleCreateProject() {
     if (!baseUrl.trim()) {
       setError("Enter a Base URL first to create a project.");
@@ -551,7 +568,11 @@ export default function AgentScanPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(()=>fetchSession(selectedProject,{silent:true}))}
+                    onClick={() =>
+                      apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(() =>
+                        fetchSession(selectedProject, { silent: true })
+                      )
+                    }
                     disabled={busyGenerateAll === page.id}
                   >
                     Run page

@@ -257,7 +257,9 @@ export default async function runRoutes(app: FastifyInstance) {
     } catch (err) {
       app.log.warn({ err }, "[runner] regenerateAttachedSpecs failed (continuing)");
     }
-    if (!project.repoUrl?.trim()) {
+    const allowLocalRepo = (process.env.TM_USE_LOCAL_REPO ?? "1") === "1"; // default: allow local fallback
+    const hasRepoUrl = !!project.repoUrl?.trim();
+    if (!hasRepoUrl && !allowLocalRepo) {
       return sendError(
         reply,
         "MISSING_REPO_URL",
@@ -284,7 +286,15 @@ export default async function runRoutes(app: FastifyInstance) {
 
     // launch the real runner in background (no await)
     (async () => {
-      const work = await makeWorkdir(); // where we clone the repo
+      let work: string;
+      let usingLocalRepo = false;
+      if (!hasRepoUrl && allowLocalRepo) {
+        // fall back to monorepo root (apps/api is one level below)
+        work = path.resolve(process.cwd(), "..");
+        usingLocalRepo = true;
+      } else {
+        work = await makeWorkdir(); // where we clone the repo
+      }
       try {
         // GitHub token if connected
         const gitAcct = await prisma.gitAccount.findFirst({
@@ -292,8 +302,10 @@ export default async function runRoutes(app: FastifyInstance) {
           select: { token: true },
         });
 
-        // 1) Clone
-        await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+        // 1) Clone (skip if using local repo)
+        if (!usingLocalRepo && project.repoUrl) {
+          await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+        }
 
         // 2) Install deps
         // await installDeps(work);
@@ -318,12 +330,18 @@ export default async function runRoutes(app: FastifyInstance) {
         await installDeps(work, cwd);
         // If this workspace is a Vite app and Playwright's webServer uses "vite preview",
         // do a build first so preview has static assets.
+        const isLocalhostBase =
+          providedBaseUrl?.includes("localhost") || providedBaseUrl?.includes("127.0.0.1");
+        const shouldBuildVite =
+          process.env.TM_VITE_BUILD !== "0" && !isLocalhostBase;
+
         if (
-          fsSync.existsSync(path.join(cwd, "vite.config.ts")) ||
-          fsSync.existsSync(path.join(cwd, "vite.config.js")) ||
-          fsSync.existsSync(path.join(cwd, "vite.config.mts")) ||
-          fsSync.existsSync(path.join(cwd, "vite.config.mjs")) ||
-          fsSync.existsSync(path.join(cwd, "vite.config.cjs"))
+          shouldBuildVite &&
+          (fsSync.existsSync(path.join(cwd, "vite.config.ts")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.js")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.mts")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.mjs")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.cjs")))
         ) {
           try {
             const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
@@ -477,7 +495,20 @@ export default defineConfig({
             { flag: 'a' });
         }
 
-        await mergeAgentSpecs(project.id, genDest, path.join(outDir, "stdout.txt"));
+        // For agent-triggered runs we used to merge curated agent specs into the temp workspace.
+        // That pulled in many extra specs and could hang runs. Default is now OFF.
+        // Set TM_AGENT_INCLUDE_CURATED=1 to re-enable the merge.
+        const includeCuratedAgents =
+          (process.env.TM_AGENT_INCLUDE_CURATED ?? "0") === "1";
+        if (includeCuratedAgents) {
+          await mergeAgentSpecs(project.id, genDest, path.join(outDir, "stdout.txt"));
+        } else {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] agent curated specs merge skipped (TM_AGENT_INCLUDE_CURATED!=1)\n`,
+            { flag: "a" }
+          );
+        }
 
         // log a short catalog so we can see exactly what’s about to run
         async function catalogSpecs(root: string, label: string) {
@@ -727,7 +758,9 @@ export default defineConfig({
           },
         });
       } finally {
-        await rmrf(work).catch(() => { });
+        if (!usingLocalRepo) {
+          await rmrf(work).catch(() => { });
+        }
       }
     })().catch((err) => {
       // last safety net

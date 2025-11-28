@@ -9,6 +9,10 @@ const multiFrameworkEnabled = (() => {
   return ["1", "true", "yes", "on"].includes(v);
 })();
 
+// Cap test command execution to avoid hung runs (default 10 minutes unless overridden).
+const runTimeout =
+  Number(process.env.TM_RUN_TIMEOUT ?? "") || 10 * 60 * 1000;
+
 type FindConfigResult = { cwd: string; configPath: string } | null;
 
 async function pathExists(p: string) {
@@ -266,7 +270,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       cwd: found.cwd,
       env,
       reject: false,
-      timeout: 0,
+      timeout: runTimeout,
       stdio: "pipe",
     });
 
@@ -320,7 +324,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       cwd: req.workdir,
       env: { ...process.env, ...req.extraEnv },
       reject: false,
-      timeout: 0,
+      timeout: runTimeout,
       stdio: "pipe",
     });
     return {
@@ -350,7 +354,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       cwd: req.workdir,
       env: { ...process.env, ...req.extraEnv },
       reject: false,
-      timeout: 0,
+      timeout: runTimeout,
       stdio: "pipe",
     });
     return {
