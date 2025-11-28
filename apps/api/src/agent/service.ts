@@ -316,7 +316,7 @@ export async function attachScenarioToProject(userId: string, scenarioId: string
 
   await prisma.agentScenario.update({
     where: { id: scenario.id },
-    data: { status: "attached", attachedProjectId: project.id },
+    data: { status: "accepted", attachedProjectId: project.id },
   });
 
   const attached = await prisma.agentScenario.findMany({
@@ -373,7 +373,7 @@ export async function regenerateAttachedSpecs(userId: string, projectId: string)
   }
 
   const attached = await prisma.agentScenario.findMany({
-    where: { attachedProjectId: project.id, status: "attached" },
+    where: { attachedProjectId: project.id, status: "accepted" },
     include: { page: { select: { path: true, url: true } } },
   });
   if (!attached.length) return { specPaths: [] };

@@ -9,10 +9,13 @@ import SignUpPage from "../pages/SignUpPage";
 import ProjectPage from "../pages/ProjectPage";
 import RunPage from "../pages/RunPage";
 import AgentScanPage from "../pages/AgentScanPage";
+import AgentPageDetailPage from "../pages/AgentPageDetailPage";
 import IntegrationsPage from "../pages/IntegrationsPage";
 import RecorderPage from "../pages/RecorderPage";
 import TestBuilderPage from "../pages/TestBuilderPage";
 import ReportsPage from "../pages/ReportsPage";
+import AgentSessionsPage from "../pages/AgentSessionsPage";
+import AgentSessionDetailPage from "../pages/AgentSessionDetailPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import AppLayout from "../components/layout/AppLayout";
 import BareLayout from "../components/layout/BareLayout";
@@ -49,6 +52,30 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <AgentScanPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/agent/sessions"
+          element={
+            <ProtectedRoute>
+              <AgentSessionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/agent/sessions/:id"
+          element={
+            <ProtectedRoute>
+              <AgentSessionDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/agent/pages/:id"
+          element={
+            <ProtectedRoute>
+              <AgentPageDetailPage />
             </ProtectedRoute>
           }
         />

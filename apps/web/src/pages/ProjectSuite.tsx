@@ -150,7 +150,6 @@ export default function ProjectSuite() {
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [copyingSpec, setCopyingSpec] = useState(false);
   const [lockingSpec, setLockingSpec] = useState(false);
-  const [copySelectOpen, setCopySelectOpen] = useState(false);
   const [copySelectValue, setCopySelectValue] = useState(COPY_PLACEHOLDER);
   const [specReloadKey, setSpecReloadKey] = useState(0);
   const [renamingSuite, setRenamingSuite] = useState(false);
@@ -281,7 +280,6 @@ export default function ProjectSuite() {
       setSpecProjectErr(err instanceof Error ? err.message : "Failed to copy spec");
     } finally {
       setCopyingSpec(false);
-      setCopySelectOpen(false);
     }
   }
 
@@ -579,15 +577,12 @@ export default function ProjectSuite() {
           {curatedSuites.length > 0 && (
             <Select
               value={copySelectValue}
-              open={copySelectOpen}
-              onOpenChange={setCopySelectOpen}
-              disabled={!activeSpec || copyingSpec}
               onValueChange={async (val) => {
                 if (!val || val === COPY_PLACEHOLDER) return;
+                if (!activeSpec || copyingSpec) return;
                 setCopySelectValue(val);
                 await handleCopySpec(val);
                 setCopySelectValue(COPY_PLACEHOLDER);
-                setCopySelectOpen(false);
               }}
             >
               <SelectTrigger className="w-full justify-center">
