@@ -39,6 +39,13 @@ type Run = {
   reportPath?: string | null;
 };
 
+type Analysis = {
+  summary: string;
+  cause: string;
+  suggestion: string;
+  model?: string;
+} | null;
+
 type IntegrationSummary = {
   id: string;
   provider: string;
@@ -59,6 +66,7 @@ export default function RunPage() {
   const [creatingIssue, setCreatingIssue] = useState(false);
   const [triggeringRerun, setTriggeringRerun] = useState(false);
   const [githubIntegrationId, setGithubIntegrationId] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis>(null);
 
   const parsedSummary = useMemo(() => {
     if (!run?.summary) return null;
@@ -164,7 +172,25 @@ export default function RunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, run, healingInProgress, rerunsInProgress, hasHealingAttempts, rerunsCompleted.length]);
 
-  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "â€”");
+  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "-");
+
+  // Load AI analysis once the run finishes (best effort)
+  useEffect(() => {
+    if (!runId || !run || run.status === "queued" || run.status === "running") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ analysis: Analysis }>(`/test-runs/${runId}/analysis`);
+        if (!cancelled) setAnalysis(res.analysis ?? null);
+      } catch {
+        if (!cancelled) setAnalysis(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, run?.status]);
 
   const ensureGitHubIntegration = useCallback(async () => {
     if (!run) throw new Error("Run not loaded");
@@ -261,8 +287,8 @@ export default function RunPage() {
             )}
             {params && (
               <div className="text-xs text-slate-500">
-                Options: reporter {params.reporter ?? "json"} Â· {params.headful ? "headed" : "headless"}
-                {params.specFile ? ` Â· file ${params.specFile}` : ""}{params.grep ? ` Â· grep "${params.grep}"` : ""}
+                Options: reporter {params.reporter ?? "json"} • {params.headful ? "headed" : "headless"}
+                {params.specFile ? ` • file ${params.specFile}` : ""}{params.grep ? ` • grep "${params.grep}"` : ""}
               </div>
             )}
             {summaryErrors.length > 0 && (
@@ -275,7 +301,33 @@ export default function RunPage() {
                 </ul>
               </div>
             )}
-            <div>Error: {run.error || "â€”"}</div>
+            <div>Error: {run.error || "-"}</div>
+            {analysis && (
+              <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-1 text-sm font-semibold text-slate-800">AI analysis</div>
+                <dl className="space-y-1 text-sm text-slate-700">
+                  <div>
+                    <dt className="font-medium text-slate-800">Summary</dt>
+                    <dd>{analysis.summary || "-"}</dd>
+                  </div>
+                  {analysis.cause && (
+                    <div>
+                      <dt className="font-medium text-slate-800">Likely cause</dt>
+                      <dd>{analysis.cause}</dd>
+                    </div>
+                  )}
+                  {analysis.suggestion && (
+                    <div>
+                      <dt className="font-medium text-slate-800">Suggested fix</dt>
+                      <dd>{analysis.suggestion}</dd>
+                    </div>
+                  )}
+                  {analysis.model && (
+                    <div className="text-xs text-slate-500">Model: {analysis.model}</div>
+                  )}
+                </dl>
+              </div>
+            )}
           </div>
           <hr className="my-4" />
 
@@ -312,27 +364,38 @@ export default function RunPage() {
                 )}
               </section>
             )}
-            {(artifacts && (artifacts["allure-report"] || artifacts.reportJson)) && (
-              <section>
-                <div className="mb-2 font-medium text-slate-800">Artifacts</div>
-                <div className="flex flex-wrap gap-2">
-                  {buildStaticUrl(artifacts["allure-report"], { index: true }) && (
-                    <Button asChild size="sm" variant="outline">
-                      <a href={buildStaticUrl(artifacts["allure-report"], { index: true })!} target="_blank" rel="noreferrer">
-                        View Allure report
-                      </a>
-                    </Button>
-                  )}
-                  {buildStaticUrl(artifacts.reportJson) && (
-                    <Button asChild size="sm" variant="outline">
-                      <a href={buildStaticUrl(artifacts.reportJson)!} target="_blank" rel="noreferrer">
-                        Download raw JSON
-                      </a>
-                    </Button>
-                  )}
+            <section>
+              <div className="mb-2 font-medium text-slate-800">Artifacts</div>
+              <div className="flex flex-wrap gap-2">
+                {buildStaticUrl(artifacts?.["allure-report"], { index: true }) && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={buildStaticUrl(artifacts?.["allure-report"], { index: true })!} target="_blank" rel="noreferrer">
+                      View Allure report
+                    </a>
+                  </Button>
+                )}
+                {buildStaticUrl(artifacts?.reportJson) && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={buildStaticUrl(artifacts?.reportJson)!} target="_blank" rel="noreferrer">
+                      Download raw JSON
+                    </a>
+                  </Button>
+                )}
+              </div>
+              {!artifacts && (
+                <div className="mt-1 text-sm text-slate-500">No artifacts were produced for this run.</div>
+              )}
+              {artifacts && !artifacts["allure-report"] && (
+                <div className="mt-1 text-xs text-slate-500">
+                  Allure report not available for this run (no allure-results folder was generated).
                 </div>
-              </section>
-            )}
+              )}
+              {artifacts && !artifacts.reportJson && (
+                <div className="mt-1 text-xs text-slate-500">
+                  report.json not found; the test command may have failed before producing a JSON report.
+                </div>
+              )}
+            </section>
             <section>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="font-medium text-slate-800">Results</div>
@@ -396,3 +459,9 @@ export default function RunPage() {
     </div>
   );
 }
+
+
+
+
+
+

@@ -42,3 +42,5 @@ coverage
 apps/*/node_modules
 packages/*/node_modules
 runner-logs
+apps/api/testmind-generated/playwright-ts/recordings/
+apps/web/state.json

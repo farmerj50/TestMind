@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Auto-generated for page / – 54 test(s)
+// Auto-generated for page / – 72 test(s)
 
 test("Page loads: /", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Page loads: /" }, { type: "parameter", description: "page=/" });
@@ -100,6 +100,45 @@ test("Navigate / → /integrations", async ({ page }) => {
   });
   await test.step("3. Ensure text \"integrations\" is visible", async () => {
     await expect(page.getByText("integrations")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /recorder", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /recorder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /", async () => {
+    await page.goto("/");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /test-builder", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /test-builder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /", async () => {
+    await page.goto("/");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /reports", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /reports" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /", async () => {
+    await page.goto("/");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -217,6 +256,45 @@ test("Navigate / → /integrations [2]", async ({ page }) => {
   });
 });
 
+test("Navigate / → /recorder [2]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /recorder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#features", async () => {
+    await page.goto("/#features");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /test-builder [2]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /test-builder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#features", async () => {
+    await page.goto("/#features");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /reports [2]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /reports" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#features", async () => {
+    await page.goto("/#features");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
+  });
+});
+
 test("Navigate / → /suite/playwright-ts [2]", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /suite/playwright-ts" }, { type: "parameter", description: "page=/" });
   await test.step("1. Navigate to /#features", async () => {
@@ -328,6 +406,45 @@ test("Navigate / → /integrations [3]", async ({ page }) => {
   });
   await test.step("3. Ensure text \"integrations\" is visible", async () => {
     await expect(page.getByText("integrations")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /recorder [3]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /recorder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#how", async () => {
+    await page.goto("/#how");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /test-builder [3]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /test-builder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#how", async () => {
+    await page.goto("/#how");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /reports [3]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /reports" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#how", async () => {
+    await page.goto("/#how");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -445,6 +562,45 @@ test("Navigate / → /integrations [4]", async ({ page }) => {
   });
 });
 
+test("Navigate / → /recorder [4]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /recorder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#pricing", async () => {
+    await page.goto("/#pricing");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /test-builder [4]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /test-builder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#pricing", async () => {
+    await page.goto("/#pricing");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /reports [4]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /reports" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#pricing", async () => {
+    await page.goto("/#pricing");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
+  });
+});
+
 test("Navigate / → /suite/playwright-ts [4]", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /suite/playwright-ts" }, { type: "parameter", description: "page=/" });
   await test.step("1. Navigate to /#pricing", async () => {
@@ -559,6 +715,45 @@ test("Navigate / → /integrations [5]", async ({ page }) => {
   });
 });
 
+test("Navigate / → /recorder [5]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /recorder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#faq", async () => {
+    await page.goto("/#faq");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /test-builder [5]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /test-builder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#faq", async () => {
+    await page.goto("/#faq");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /reports [5]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /reports" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /#faq", async () => {
+    await page.goto("/#faq");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
+  });
+});
+
 test("Navigate / → /suite/playwright-ts [5]", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /suite/playwright-ts" }, { type: "parameter", description: "page=/" });
   await test.step("1. Navigate to /#faq", async () => {
@@ -670,6 +865,45 @@ test("Navigate / → /integrations [6]", async ({ page }) => {
   });
   await test.step("3. Ensure text \"integrations\" is visible", async () => {
     await expect(page.getByText("integrations")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /recorder [6]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /recorder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /", async () => {
+    await page.goto("/");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /test-builder [6]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /test-builder" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /", async () => {
+    await page.goto("/");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate / → /reports [6]", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Navigate / → /reports" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to /", async () => {
+    await page.goto("/");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
   });
 });
 

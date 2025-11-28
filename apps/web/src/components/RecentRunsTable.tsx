@@ -20,11 +20,8 @@ export default function RecentRunsTable({
   const { apiFetch } = useApi();
   const [runs, setRuns] = useState<Run[]>([]);
   const [err, setErr] = useState<string | null>(null);
-
-  // single timer handle so we never spawn multiple loops
   const pollRef = useRef<number | null>(null);
 
-  // clear any pending timer on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) {
@@ -35,7 +32,6 @@ export default function RecentRunsTable({
   }, []);
 
   useEffect(() => {
-    // cancel any prior timer when deps change
     if (pollRef.current) {
       window.clearTimeout(pollRef.current);
       pollRef.current = null;
@@ -56,10 +52,7 @@ export default function RecentRunsTable({
     const loop = async () => {
       try {
         const list = await fetchOnce();
-        const hasActive = list.some(
-          (r) => r.status === "queued" || r.status === "running"
-        );
-        // Always keep polling; fast when active, slow when idle
+        const hasActive = list.some((r) => r.status === "queued" || r.status === "running");
         const delay = hasActive ? 1500 : 10000;
         if (!cancelled) {
           pollRef.current = window.setTimeout(loop, delay);
@@ -67,13 +60,11 @@ export default function RecentRunsTable({
       } catch (e: any) {
         if (!cancelled) {
           setErr(e?.message ?? "Failed to load runs");
-          // Back off a bit on error, but keep polling so it recovers
           pollRef.current = window.setTimeout(loop, 10000);
         }
       }
     };
 
-    // initial kick
     loop();
 
     return () => {
@@ -84,52 +75,89 @@ export default function RecentRunsTable({
         pollRef.current = null;
       }
     };
-  }, [projectId, refreshKey]);
-
-  if (err) return <div className="text-sm text-rose-600">{err}</div>;
-  if (!runs?.length) return <div className="text-sm text-slate-500">No recent runs.</div>;
+  }, [projectId, refreshKey, apiFetch]);
 
   const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
 
+  const deleteRuns = async (mode: "all" | "older") => {
+    const confirmMsg =
+      mode === "all"
+        ? "Delete all runs? This will remove run records and runner logs."
+        : "Delete runs older than 7 days?";
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      const body: any = mode === "all" ? { all: true } : { olderThanDays: 7 };
+      if (projectId) body.projectId = projectId;
+      await apiFetch<{ deleted: number }>("/reports/runs/delete", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setRuns([]);
+      setErr(null);
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to delete runs");
+    }
+  };
+
+  if (err) return <div className="text-sm text-rose-600">{err}</div>;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-slate-500">
-          <tr>
-            <th className="px-2 py-2">Run</th>
-            <th className="px-2 py-2">Status</th>
-            <th className="px-2 py-2">Created</th>
-            <th className="px-2 py-2">Started</th>
-            <th className="px-2 py-2">Finished</th>
-            <th className="px-2 py-2">Report</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {runs.map((r) => (
-            <tr key={r.id}>
-              <td className="px-2 py-2 font-mono">{r.id.slice(0, 8)}</td>
-              <td className="px-2 py-2"><StatusBadge status={r.status} /></td>
-              <td className="px-2 py-2">{fmt(r.createdAt)}</td>
-              <td className="px-2 py-2">{fmt(r.startedAt)}</td>
-              <td className="px-2 py-2">{fmt(r.finishedAt)}</td>
-              <td className="px-2 py-2">
-                {r.status === "running" ? (
-                  <span className="text-slate-400">—</span>
-                ) : (
-                  <a
-                    href={`/tm/runs/${r.id}/tests`} // change to `/runs/${r.id}/tests` if no /tm prefix
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    View tests
-                  </a>
-                )}
-              </td>
+    <div className="overflow-x-auto space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+        <button
+          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50"
+          onClick={() => deleteRuns("older")}
+        >
+          Delete older than 7 days
+        </button>
+        <button
+          className="rounded border border-rose-300 px-2 py-1 text-rose-700 hover:bg-rose-50"
+          onClick={() => deleteRuns("all")}
+        >
+          Delete all runs
+        </button>
+      </div>
+      {!runs?.length ? (
+        <div className="text-sm text-slate-500">No recent runs.</div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="text-left text-slate-500">
+            <tr>
+              <th className="px-2 py-2">Run</th>
+              <th className="px-2 py-2">Status</th>
+              <th className="px-2 py-2">Created</th>
+              <th className="px-2 py-2">Started</th>
+              <th className="px-2 py-2">Finished</th>
+              <th className="px-2 py-2">Report</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y">
+            {runs.map((r) => (
+              <tr key={r.id}>
+                <td className="px-2 py-2 font-mono">{r.id.slice(0, 8)}</td>
+                <td className="px-2 py-2"><StatusBadge status={r.status} /></td>
+                <td className="px-2 py-2">{fmt(r.createdAt)}</td>
+                <td className="px-2 py-2">{fmt(r.startedAt)}</td>
+                <td className="px-2 py-2">{fmt(r.finishedAt)}</td>
+                <td className="px-2 py-2">
+                  {r.status === "running" ? (
+                    <span className="text-slate-400">—</span>
+                  ) : (
+                    <a
+                      href={`/test-runs/${r.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      View tests
+                    </a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { z } from "zod";
 import fastifyStatic from "@fastify/static";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 import { githubRoutes } from "./routes/github";
 import { testRoutes } from "./routes/tests";
@@ -19,6 +20,7 @@ import jiraRoutes from "./routes/jira";
 import { secretsRoutes } from "./routes/secrets";
 import { prisma } from "./prisma";
 import { validatedEnv } from "./config/env";
+import recorderRoutes from "./routes/recorder";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans";
@@ -28,9 +30,12 @@ import testmindRoutes from './testmind/routes';
 
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd());
-const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || process.env.ENABLE_DEBUG_ROUTES === "true";
+const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST;
-const shouldStartWorkers = (process.env.START_WORKERS ?? "true").toLowerCase() !== "false";
+const shouldStartWorkers = validatedEnv.START_WORKERS;
+const skipServer = validatedEnv.TM_SKIP_SERVER;
+const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
+const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 
 app.register(cors, {
   origin: (origin, cb) => {
@@ -57,11 +62,44 @@ app.register(agentRoutes, { prefix: "/" });
 app.register(jiraRoutes, { prefix: "/" });
 app.register(secretsRoutes, { prefix: "/" });
 app.register(testmindRoutes, { prefix: "/tm" });
+app.register(recorderRoutes, { prefix: "/" });
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
 if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
   app.register(fastifyStatic, {
     root: PLAYWRIGHT_REPORT_ROOT,
     prefix: "/_static/playwright-report/",
+  });
+}
+const RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
+if (fs.existsSync(RUNNER_LOGS_ROOT)) {
+  app.register(fastifyStatic, {
+    root: RUNNER_LOGS_ROOT,
+    prefix: "/_static/runner-logs/",
+  });
+}
+const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
+if (fs.existsSync(API_RUNNER_LOGS_ROOT)) {
+  app.register(fastifyStatic, {
+    root: API_RUNNER_LOGS_ROOT,
+    prefix: "/_static/runner-logs/",
+  });
+}
+// Serve built web assets (SPA) when available
+const WEB_DIST = path.join(REPO_ROOT, "apps", "web", "dist");
+if (fs.existsSync(WEB_DIST)) {
+  app.register(fastifyStatic, {
+    root: WEB_DIST,
+    prefix: "/", // serve assets at root
+    decorateReply: false,
+  });
+
+  // SPA fallback for client routes (e.g., /reports) so refreshes work
+  app.setNotFoundHandler((req, reply) => {
+    const accept = req.headers.accept || "";
+    if (req.method === "GET" && accept.includes("text/html")) {
+      return reply.sendFile("index.html");
+    }
+    return reply.code(404).send({ message: `Route ${req.method}:${req.url} not found`, error: "Not Found", statusCode: 404 });
   });
 }
 
@@ -196,7 +234,45 @@ app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
   });
   if (!existing) return reply.code(404).send({ error: "Not found" });
 
-  await prisma.project.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    // Delete test results/healing attempts tied to this project
+    await tx.testHealingAttempt.deleteMany({
+      where: {
+        OR: [
+          { run: { projectId: id } },
+          { testCase: { projectId: id } },
+        ],
+      },
+    });
+    await tx.testResult.deleteMany({
+      where: { run: { projectId: id } },
+    });
+    await tx.testCase.deleteMany({ where: { projectId: id } });
+    await tx.testSuite.deleteMany({ where: { projectId: id } });
+    await tx.testRun.deleteMany({ where: { projectId: id } });
+
+    // Delete agent data
+    await tx.agentScenario.deleteMany({
+      where: {
+        OR: [
+          { page: { session: { projectId: id } } },
+          { attachedProjectId: id },
+        ],
+      },
+    });
+    await tx.agentPage.deleteMany({
+      where: { session: { projectId: id } },
+    });
+    await tx.agentSession.deleteMany({ where: { projectId: id } });
+
+    // Delete integrations/secrets
+    await tx.projectSecret.deleteMany({ where: { projectId: id } });
+    await tx.integration.deleteMany({ where: { projectId: id } });
+    await tx.jiraIntegration.deleteMany({ where: { projectId: id } });
+
+    // Finally delete the project
+    await tx.project.delete({ where: { id } });
+  });
   return reply.code(204).send();
 });
 
@@ -206,7 +282,18 @@ app.ready(() => {
 });
 
 // Start background workers when running the API (disable with START_WORKERS=false)
-if (shouldStartWorkers) {
+const startWorkersOnce = () => {
+  if (globalState.__tmWorkersStarted) {
+    app.log.info("[worker] already started; skipping duplicate init");
+    return;
+  }
+  globalState.__tmWorkersStarted = true;
+
+  if (!shouldStartWorkers) {
+    app.log.info("[worker] START_WORKERS=false; skipping background workers");
+    return;
+  }
+
   const start = async (loader: Promise<any>, label: string) => {
     try {
       await loader;
@@ -217,7 +304,29 @@ if (shouldStartWorkers) {
   };
   start(import("./runner/worker"), "test-runs");
   start(import("./runner/self-heal-worker"), "self-heal");
-}
+};
+
+startWorkersOnce();
+
+// Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch
+const startRecorderHelper = () => {
+  if (recorderState.__tmRecorderHelperStarted || !validatedEnv.START_RECORDER_HELPER) return;
+  recorderState.__tmRecorderHelperStarted = true;
+  const helperPath = path.join(REPO_ROOT, "recorder-helper.js");
+  if (!fs.existsSync(helperPath)) {
+    app.log.warn(`[recorder] helper not found at ${helperPath}; skipping auto-start`);
+    return;
+  }
+  const child = spawn(process.execPath, [helperPath], {
+    cwd: REPO_ROOT,
+    stdio: "ignore",
+    detached: true,
+  });
+  child.unref();
+  app.log.info("[recorder] helper auto-started (detached)");
+};
+
+startRecorderHelper();
 
 if (allowDebugRoutes) {
   app.get("/runner/debug/list", async () => {
@@ -283,4 +392,18 @@ app.patch("/billing/me", async (req, reply) => {
   return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
 });
 
-app.listen({ host: "0.0.0.0", port: Number(validatedEnv.PORT) || 8787 });
+const startServer = async () => {
+  if (skipServer) {
+    app.log.info("TM_SKIP_SERVER=true; skipping HTTP listener");
+    return;
+  }
+  try {
+    await app.listen({ host: "0.0.0.0", port: validatedEnv.PORT });
+    app.log.info(`API listening on 0.0.0.0:${validatedEnv.PORT}`);
+  } catch (err) {
+    app.log.error({ err }, "Failed to start server");
+    process.exit(1);
+  }
+};
+
+startServer();

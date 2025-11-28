@@ -5,7 +5,7 @@ import { useUser } from "@clerk/clerk-react";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, Bot } from "lucide-react";
 import { validateProject } from "../lib/validation";
 import ConnectGitHubCard from "../components/ConnectGitHubCard";
 import ReportSummary from "../components/ReportSummary";
@@ -222,6 +222,17 @@ export default function DashboardPage() {
                       projectId={p.id}
                       onDone={() => setRefreshKey((k) => k + 1)}
                     />
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      title="Scan with agent"
+                      aria-label="Scan with agent"
+                    >
+                      <Link to={`/agent?projectId=${p.id}`}>
+                        <Bot className="h-4 w-4" />
+                      </Link>
+                    </Button>
 
                     <Button
                       asChild

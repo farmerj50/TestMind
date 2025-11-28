@@ -9,6 +9,7 @@ import { detectFramework, installDeps, runTests } from './node-test-exec';
 import { parseResults } from './result-parsers';
 import { scheduleSelfHealingForRun } from './self-heal';
 import type { RunPayload } from './queue';
+import { analyzeFailure } from './ai-analysis';
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
@@ -34,6 +35,8 @@ function mapStatus(s: string): ResultStatus {
 
 const stripAnsi = (value?: string | null) =>
   typeof value === 'string' ? value.replace(/\u001b\[[0-9;]*m/g, '') : value ?? null;
+
+const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? process.env.BASE_URL ?? "http://localhost:4173";
 
 export const worker = new Worker(
   'test-runs',
@@ -72,14 +75,29 @@ export const worker = new Worker(
       // 3) Detect + run
       const framework = await detectFramework(work);
       const resultsPath = path.join(outDir, 'report.json');
+      const extraGlobs: string[] = [];
+      const grep = payload?.grep;
+      if (payload?.file) {
+        const abs = path.isAbsolute(payload.file) ? payload.file : path.join(work, payload.file);
+        const rel = path.relative(work, abs).replace(/\\/g, "/");
+        extraGlobs.push(rel);
+      }
+
       const exec = await runTests({
         workdir: work,
         jsonOutPath: resultsPath,
         headed: payload?.headed,
+        grep,
+        extraGlobs,
+        baseUrl: DEFAULT_BASE_URL,
       });
 
       // write logs
-      await fs.writeFile(path.join(outDir, 'stdout.txt'), exec.stdout ?? '');
+      await fs.writeFile(
+        path.join(outDir, "stdout.txt"),
+        `[worker] headful=${payload?.headed ? "true" : "false"} file=${payload?.file || ""} grep=${grep || ""}\n${exec.stdout ?? ""}`,
+        { flag: "w" }
+      );
       await fs.writeFile(path.join(outDir, 'stderr.txt'), exec.stderr ?? '');
 
       // 4) Parse → DB
@@ -120,6 +138,18 @@ export const worker = new Worker(
       }
 
       const ok = failed === 0 && exec.ok;
+      if (!ok) {
+        await analyzeFailure({
+          runId,
+          outDir,
+          stderr: exec.stderr ?? undefined,
+          stdout: exec.stdout ?? undefined,
+          reportPath: exec.resultsPath ?? resultsPath,
+          grep,
+          file: payload?.file,
+          baseUrl: DEFAULT_BASE_URL,
+        });
+      }
       await prisma.testRun.update({
         where: { id: runId },
         data: {
