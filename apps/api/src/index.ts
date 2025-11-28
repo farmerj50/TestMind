@@ -234,7 +234,45 @@ app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
   });
   if (!existing) return reply.code(404).send({ error: "Not found" });
 
-  await prisma.project.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    // Delete test results/healing attempts tied to this project
+    await tx.testHealingAttempt.deleteMany({
+      where: {
+        OR: [
+          { run: { projectId: id } },
+          { testCase: { projectId: id } },
+        ],
+      },
+    });
+    await tx.testResult.deleteMany({
+      where: { run: { projectId: id } },
+    });
+    await tx.testCase.deleteMany({ where: { projectId: id } });
+    await tx.testSuite.deleteMany({ where: { projectId: id } });
+    await tx.testRun.deleteMany({ where: { projectId: id } });
+
+    // Delete agent data
+    await tx.agentScenario.deleteMany({
+      where: {
+        OR: [
+          { page: { session: { projectId: id } } },
+          { attachedProjectId: id },
+        ],
+      },
+    });
+    await tx.agentPage.deleteMany({
+      where: { session: { projectId: id } },
+    });
+    await tx.agentSession.deleteMany({ where: { projectId: id } });
+
+    // Delete integrations/secrets
+    await tx.projectSecret.deleteMany({ where: { projectId: id } });
+    await tx.integration.deleteMany({ where: { projectId: id } });
+    await tx.jiraIntegration.deleteMany({ where: { projectId: id } });
+
+    // Finally delete the project
+    await tx.project.delete({ where: { id } });
+  });
   return reply.code(204).send();
 });
 

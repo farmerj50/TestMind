@@ -4,14 +4,15 @@ export type AdapterId =
   | "playwright-ts"
   | "cypress-js"
   | "cucumber-js"
-  | "appium-js";
+  | "appium-js"
+  | "xctest";
 
 const ADAPTER_OPTIONS: { id: AdapterId; label: string; disabled?: boolean }[] = [
   { id: "playwright-ts", label: "Playwright (TypeScript)" },
-  { id: "cypress-js",    label: "Cypress (JS)" },
-  { id: "cucumber-js",   label: "Cucumber (JS)" },
-  { id: "appium-js",     label: "Appium (JS)" },
-  { id: "xctest",        label: "XCTest (Swift)", disabled: true },
+  { id: "cypress-js", label: "Cypress (JS)" },
+  { id: "cucumber-js", label: "Cucumber (JS)" },
+  { id: "appium-js", label: "Appium (JS)" },
+  { id: "xctest", label: "XCTest (Swift)", disabled: true },
 ];
 
 type Props = {
@@ -23,7 +24,6 @@ type Props = {
 export default function AdapterDropdown({ value, onChange, className }: Props) {
   const [selected, setSelected] = useState<AdapterId>(value || "playwright-ts");
 
-  // Persist in localStorage so other pages (e.g., TestMind Runner) can read it
   useEffect(() => {
     const saved = localStorage.getItem("tm-adapterId") as AdapterId | null;
     if (!value && saved) setSelected(saved);
@@ -42,7 +42,8 @@ export default function AdapterDropdown({ value, onChange, className }: Props) {
     >
       {ADAPTER_OPTIONS.map((opt) => (
         <option key={opt.id} value={opt.id} disabled={opt.disabled}>
-          {opt.label}{opt.disabled ? " — coming soon" : ""}
+          {opt.label}
+          {opt.disabled ? " — coming soon" : ""}
         </option>
       ))}
     </select>

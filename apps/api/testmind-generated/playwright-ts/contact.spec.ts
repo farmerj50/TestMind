@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Auto-generated for page /contact – 9 test(s)
+// Auto-generated for page /contact – 12 test(s)
 
 test("Page loads: /contact", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Page loads: /contact" }, { type: "parameter", description: "page=/contact" });
@@ -100,6 +100,45 @@ test("Navigate /contact → /integrations", async ({ page }) => {
   });
   await test.step("3. Ensure text \"integrations\" is visible", async () => {
     await expect(page.getByText("integrations")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate /contact → /recorder", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Navigate /contact → /recorder" }, { type: "parameter", description: "page=/contact" });
+  await test.step("1. Navigate to /contact", async () => {
+    await page.goto("/contact");
+  });
+  await test.step("2. Navigate to /recorder", async () => {
+    await page.goto("/recorder");
+  });
+  await test.step("3. Ensure text \"recorder\" is visible", async () => {
+    await expect(page.getByText("recorder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate /contact → /test-builder", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Navigate /contact → /test-builder" }, { type: "parameter", description: "page=/contact" });
+  await test.step("1. Navigate to /contact", async () => {
+    await page.goto("/contact");
+  });
+  await test.step("2. Navigate to /test-builder", async () => {
+    await page.goto("/test-builder");
+  });
+  await test.step("3. Ensure text \"test-builder\" is visible", async () => {
+    await expect(page.getByText("test-builder")).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test("Navigate /contact → /reports", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/contact" }, { type: "story", description: "Navigate /contact → /reports" }, { type: "parameter", description: "page=/contact" });
+  await test.step("1. Navigate to /contact", async () => {
+    await page.goto("/contact");
+  });
+  await test.step("2. Navigate to /reports", async () => {
+    await page.goto("/reports");
+  });
+  await test.step("3. Ensure text \"reports\" is visible", async () => {
+    await expect(page.getByText("reports")).toBeVisible({ timeout: 10000 });
   });
 });
 

@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -30,7 +30,8 @@ type AgentScenario = {
   coverageType: string;
   description?: string;
   risk?: string;
-  status: "suggested" | "attached" | "archived";
+  status: "suggested" | "accepted" | "rejected" | "completed";
+  specPath?: string | null;
 };
 
 type AgentPage = {
@@ -46,6 +47,7 @@ type AgentPage = {
 
 type AgentSession = {
   id: string;
+  name?: string | null;
   projectId?: string | null;
   baseUrl: string;
   instructions?: string | null;
@@ -63,17 +65,21 @@ const baseUrlKey = (projectId: string) => `agent:baseUrl:${projectId}`;
 
 export default function AgentScanPage() {
   const { apiFetch } = useApi();
+  const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [session, setSession] = useState<AgentSession | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
-  const [pageInput, setPageInput] = useState("");
+  const [pageInput, setPageInput] = useState("/");
   const [instructions, setInstructions] = useState("");
   const [loadingSession, setLoadingSession] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [attachBusy, setAttachBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [projectSessions, setProjectSessions] = useState<AgentSession[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [busyGenerateAll, setBusyGenerateAll] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -81,20 +87,24 @@ export default function AgentScanPage() {
         const data = await apiFetch<{ projects: Project[] }>("/projects");
         // Agent scan requires real projects (FK in DB). Do not merge curated suites here.
         setProjects(data.projects);
-        if (data.projects.length) {
+        const fromQuery = searchParams.get("projectId");
+        if (fromQuery && data.projects.some((p) => p.id === fromQuery)) {
+          setSelectedProject(fromQuery);
+        } else if (data.projects.length) {
           setSelectedProject(data.projects[0].id);
         }
       } catch (err: any) {
         setError(err?.message ?? "Failed to load projects");
       }
     })();
-  }, [apiFetch]);
+  }, [apiFetch, searchParams]);
 
   useEffect(() => {
     if (!selectedProject) return;
     const stored = localStorage.getItem(baseUrlKey(selectedProject)) || "";
     setBaseUrl(stored);
     fetchSession(selectedProject);
+    fetchSessionsForProject(selectedProject);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
 
@@ -116,6 +126,40 @@ export default function AgentScanPage() {
       setSession(null);
     } finally {
       if (!opts?.silent) setLoadingSession(false);
+    }
+  }
+
+  async function fetchSessionsForProject(projectId: string) {
+    try {
+      const res = await apiFetch<{ sessions: AgentSession[] }>("/tm/agent/sessions");
+      const filtered = res.sessions.filter((s) => s.projectId === projectId);
+      setProjectSessions(filtered);
+      if (filtered.length && !selectedSessionId) {
+        setSelectedSessionId(filtered[0].id);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadSelectedSession() {
+    if (!selectedSessionId) return;
+    setLoadingSession(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ session: { session: AgentSession } | AgentSession | null }>(
+        `/tm/agent/sessions/${selectedSessionId}`
+      );
+      const sess = (res as any).session?.session || (res as any).session || res;
+      setSession(sess);
+      if (sess?.baseUrl) {
+        setBaseUrl(sess.baseUrl);
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load session");
+      setSession(null);
+    } finally {
+      setLoadingSession(false);
     }
   }
 
@@ -184,6 +228,11 @@ export default function AgentScanPage() {
         body: JSON.stringify({ projectId: selectedProject }),
       });
       await fetchSession(selectedProject);
+      // auto-generate test after attach
+      await apiFetch(`/agent/scenarios/${scenarioId}/generate-test`, {
+        method: "POST",
+      });
+      await fetchSession(selectedProject, { silent: true });
     } catch (err: any) {
       setError(err?.message ?? "Attach failed");
     } finally {
@@ -291,6 +340,28 @@ export default function AgentScanPage() {
               </div>
             </div>
 
+            {projectSessions.length > 0 && (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-slate-700">Existing session</label>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="min-w-[200px] rounded-md border border-slate-200 px-3 py-2 text-sm"
+                    value={selectedSessionId}
+                    onChange={(e) => setSelectedSessionId(e.target.value)}
+                  >
+                    {projectSessions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name || "Session"} — {s.status}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="button" size="sm" variant="outline" onClick={loadSelectedSession}>
+                    Load session
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-2">
               <label className="text-sm font-medium text-slate-700">
                 Base URL
@@ -387,22 +458,25 @@ export default function AgentScanPage() {
               <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                 {session.pages.map((page) => (
                   <div key={page.id} className="rounded border border-slate-200 bg-white px-3 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs font-semibold text-slate-900 truncate">
-                        {page.path || page.url}
-                      </div>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-slate-900 truncate">
+                      {page.path || page.url}
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
                           page.status === "completed"
                             ? "bg-emerald-50 text-emerald-700"
                             : page.status === "failed"
                             ? "bg-rose-50 text-rose-700"
                             : "bg-slate-100 text-slate-700"
                         }`}
-                      >
-                        {page.status}
-                      </span>
-                    </div>
+                    >
+                      {page.status}
+                    </span>
+                    <Button size="sm" variant="ghost" onClick={() => apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(()=>fetchSession(selectedProject,{silent:true}))}>
+                      Run page
+                    </Button>
+                  </div>
                     {page.coverage && (
                       <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-600">
                         {Object.entries(page.coverage).map(([k, v]) => (
@@ -473,6 +547,25 @@ export default function AgentScanPage() {
                 {page.error && (
                   <p className="text-xs text-rose-600">{page.error}</p>
                 )}
+                <div className="flex flex-wrap gap-2 text-xs mb-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(()=>fetchSession(selectedProject,{silent:true}))}
+                    disabled={busyGenerateAll === page.id}
+                  >
+                    Run page
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyGenerateAll === page.id}
+                    onClick={() => generateAllAccepted(page)}
+                  >
+                    {busyGenerateAll === page.id ? "Generating…" : "Generate all accepted"}
+                  </Button>
+                </div>
+
                 <div className="space-y-2">
                   {page.scenarios.length === 0 ? (
                     <p className="text-xs text-slate-500">
@@ -501,18 +594,20 @@ export default function AgentScanPage() {
                           <Button
                             size="sm"
                             variant={
-                              scenario.status === "attached"
+                              scenario.status === "accepted"
                                 ? "secondary"
                                 : "outline"
                             }
                             disabled={
-                              scenario.status === "attached" ||
+                              scenario.status === "accepted" ||
                               attachBusy === scenario.id
                             }
                             onClick={() => attachScenario(scenario.id)}
                           >
-                            {scenario.status === "attached"
-                              ? "Added"
+                            {scenario.status === "accepted"
+                              ? scenario.specPath
+                                ? "Test generated"
+                                : "Added"
                               : attachBusy === scenario.id
                               ? "Adding..."
                               : "Add to suite"}

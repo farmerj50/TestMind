@@ -110,7 +110,7 @@ export default function GeneratedTestsPanel() {
                   scrollBeyondLastLine: false,
                   wordWrap: "on",
                   renderLineHighlight: "all",
-                  occurrencesHighlight: false,
+                  occurrencesHighlight: "off",
                   contextmenu: false,
                 }}
                 wrapperProps={{ className: "border-t border-[#1b1b1b]" }}

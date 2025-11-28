@@ -174,9 +174,14 @@ useEffect(() => {
 <div className="mt-6 rounded-lg border p-4">
   <div className="mb-3 flex items-center justify-between">
     <h3 className="text-sm font-medium text-slate-800">Tests</h3>
-    <Button onClick={generateTests} disabled={genBusy}>
-      {genBusy ? "Starting…" : "Generate tests"}
-    </Button>
+    <div className="flex gap-2">
+      <Button variant="outline" asChild>
+        <Link to={`/agent?projectId=${id}`}>Scan with agent</Link>
+      </Button>
+      <Button onClick={generateTests} disabled={genBusy}>
+        {genBusy ? "Starting…" : "Generate tests"}
+      </Button>
+    </div>
   </div>
 
   {runs.length === 0 ? (
