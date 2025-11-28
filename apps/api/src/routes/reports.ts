@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma";
+import fs from "node:fs/promises";
+import path from "node:path";
+import fsSync from "node:fs";
 
 export default async function reportsRoutes(app: FastifyInstance) {
   // small helpers
@@ -142,6 +145,79 @@ export default async function reportsRoutes(app: FastifyInstance) {
       });
     } catch (err: any) {
       req.log.error({ err }, "reports/recent failed");
+      return reply
+        .code(500)
+        .send({ statusCode: 500, error: "Internal Server Error" });
+    }
+  });
+
+  /**
+   * POST /reports/runs/delete
+   * Body:
+   *  ids?: string[]            // explicit run ids
+   *  projectId?: string        // optional filter
+   *  all?: boolean             // delete all runs (optionally scoped by projectId)
+   *  olderThanDays?: number    // delete runs older than N days (optionally scoped by projectId)
+   */
+  app.post("/reports/runs/delete", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as {
+        ids?: string[];
+        projectId?: string;
+        all?: boolean;
+        olderThanDays?: number;
+      };
+
+      const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+      const olderThanDays =
+        typeof body.olderThanDays === "number" && isFinite(body.olderThanDays) && body.olderThanDays > 0
+          ? body.olderThanDays
+          : undefined;
+
+      if (!body.all && !ids.length && !olderThanDays) {
+        return reply.code(400).send({ error: "Provide ids[], or olderThanDays, or all=true" });
+      }
+
+      const where: any = {};
+      if (body.projectId) where.projectId = body.projectId;
+      if (ids.length) where.id = { in: ids };
+      if (olderThanDays) {
+        const cutoff = new Date(Date.now() - olderThanDays * 24 * 3600 * 1000);
+        where.createdAt = { lt: cutoff };
+      }
+
+      // gather run ids to clean up files
+      const runs = await prisma.testRun.findMany({
+        where,
+        select: { id: true },
+        take: body.all ? undefined : 500, // guardrail
+      });
+      const deleteIds = runs.map((r) => r.id);
+      if (deleteIds.length === 0) {
+        return reply.send({ deleted: 0, message: "No runs matched the criteria." });
+      }
+
+      // delete child rows first
+      await prisma.testResult.deleteMany({ where: { runId: { in: deleteIds } } });
+      await prisma.testRun.deleteMany({ where: { id: { in: deleteIds } } });
+
+      // best-effort log cleanup
+      const roots = [
+        path.join(process.cwd(), "runner-logs"),
+        path.join(process.cwd(), "apps", "api", "runner-logs"),
+      ];
+      for (const id of deleteIds) {
+        for (const root of roots) {
+          const p = path.join(root, id);
+          if (fsSync.existsSync(p)) {
+            await fs.rm(p, { recursive: true, force: true }).catch(() => {});
+          }
+        }
+      }
+
+      reply.send({ deleted: deleteIds.length });
+    } catch (err: any) {
+      req.log.error({ err }, "reports/runs/delete failed");
       return reply
         .code(500)
         .send({ statusCode: 500, error: "Internal Server Error" });

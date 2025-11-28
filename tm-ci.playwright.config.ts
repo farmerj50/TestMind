@@ -1,15 +1,21 @@
 // tm-ci.playwright.config.ts
 import { defineConfig, devices } from "@playwright/test";
-import path from "path";
 
 const PORT = Number(process.env.TM_PORT ?? 5173);
 const BASE = process.env.TM_BASE_URL ?? `http://localhost:${PORT}`;
 
 export default defineConfig({
-  // let Playwright scan the whole app; generated specs are under testmind-generated/
-  testDir: ".",               // <-- back to simple . so it can see everything
+  testDir: "testmind-generated/playwright-ts",
   timeout: 30_000,
   expect: { timeout: 10_000 },
+
+  testIgnore: [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.*/**",
+    "**/testmind-generated/appium-js/**",
+  ],
 
   use: {
     baseURL: BASE,
@@ -18,9 +24,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-  ],
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 
   reporter: [["list"], ["html", { outputFolder: "playwright-report" }]],
 

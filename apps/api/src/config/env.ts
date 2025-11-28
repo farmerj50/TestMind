@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
-  PORT: z.string().optional(),
+  PORT: z.coerce.number().int().positive().max(65535).default(8787),
 
   DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
   REDIS_URL: z.string().trim().min(1, "REDIS_URL is required"),
@@ -14,6 +14,11 @@ const EnvSchema = z.object({
 
   CORS_ORIGINS: z.string().optional(),
   ALLOW_PLAN_PATCH: z.string().optional(),
+  START_WORKERS: z.string().optional(),
+  TM_SKIP_SERVER: z.string().optional(),
+  ENABLE_DEBUG_ROUTES: z.string().optional(),
+  ENABLE_AI_ANALYSIS: z.string().optional(),
+  START_RECORDER_HELPER: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -23,6 +28,14 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
+
+const parseBoolean = (value: string | undefined, fallback: boolean, name: string) => {
+  if (value === undefined) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  throw new Error(`Invalid boolean for ${name}: use true/false/1/0/yes/no`);
+};
 
 // Build the CORS origin list, failing fast in production if unset.
 const corsList =
@@ -41,9 +54,14 @@ const devDefaultCors = ["http://localhost:5173", "http://localhost:5174", "http:
 export const validatedEnv = {
   ...env,
   NODE_ENV: env.NODE_ENV || "development",
-  PORT: env.PORT,
+  PORT: env.PORT ?? 8787,
   CORS_ORIGIN_LIST: corsList.length ? corsList : devDefaultCors,
   SECRET_KEY: env.SECRET_KEY,
+  START_WORKERS: parseBoolean(env.START_WORKERS, true, "START_WORKERS"),
+  TM_SKIP_SERVER: parseBoolean(env.TM_SKIP_SERVER, false, "TM_SKIP_SERVER"),
+  ENABLE_DEBUG_ROUTES: parseBoolean(env.ENABLE_DEBUG_ROUTES, false, "ENABLE_DEBUG_ROUTES"),
+  ENABLE_AI_ANALYSIS: parseBoolean(env.ENABLE_AI_ANALYSIS, false, "ENABLE_AI_ANALYSIS"),
+  START_RECORDER_HELPER: parseBoolean(env.START_RECORDER_HELPER, false, "START_RECORDER_HELPER"),
 };
 
 // Validate SECRET_KEY format (32-byte base64 for AES-256-GCM).

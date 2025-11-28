@@ -10,8 +10,8 @@ test("Page loads: /case-type-selection", async ({ page }) => {
   await test.step("2. Ensure the page has loaded before checking visibility", async () => {
     await page.waitForLoadState('networkidle');  // Changed to networkidle for better accuracy
   });
-  await test.step("3. Ensure text \"TestMind AI\" is visible", async () => {
-    const textElement = page.getByText("TestMind AI");
+  await test.step("3. Ensure text \"testmind-web\" is visible", async () => {
+    const textElement = page.getByText("testmind-web");
     await expect(textElement).toBeVisible({ timeout: 10000 }); // Added timeout for visibility check
   });
 });

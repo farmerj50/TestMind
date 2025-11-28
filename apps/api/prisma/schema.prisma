@@ -64,8 +64,9 @@ enum AgentPageStatus {
 
 enum AgentScenarioStatus {
   suggested
-  attached
-  archived
+  accepted
+  rejected
+  completed
 }
 
 model User {

@@ -17,9 +17,7 @@ export function useApi() {
   const { getToken } = useAuth();
   const envBase = import.meta.env.VITE_API_URL as string | undefined;
   const BASE = envBase || (import.meta.env.DEV ? DEFAULT_BASE : undefined);
-  if (!BASE) {
-    throw new Error("VITE_API_URL is required for production builds.");
-  }
+  const baseUrl = BASE || DEFAULT_BASE; // fall back to dev default to avoid undefined
 
   function normalize(path: string) {
     let p = (path || "").trim();
@@ -29,7 +27,7 @@ export function useApi() {
 
   function buildUrl(path: string) {
     const clean = normalize(path);
-    const baseWithSlash = BASE.endsWith("/") ? BASE : BASE + "/";
+    const baseWithSlash = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
     const cleanPath = clean.replace(/^\//, "");
     return new URL(cleanPath, baseWithSlash).toString();
   }
