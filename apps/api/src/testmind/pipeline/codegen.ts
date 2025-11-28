@@ -9,9 +9,11 @@ import path from "node:path";
 // at top (under imports)
 const toPath = (u: string): string => {
   try {
-    const { pathname, search, hash } = new URL(u);
-    return (pathname || "/") + (search || "") + (hash || "");
+    // Preserve full URLs (host + path) for generated specs
+    const url = new URL(u);
+    return url.toString();
   } catch {
+    // Fallback: if it's a path, keep it; otherwise default to root
     return typeof u === "string" && u.startsWith("/") ? u : "/";
   }
 };

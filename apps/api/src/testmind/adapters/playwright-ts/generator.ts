@@ -63,24 +63,36 @@ function emitAction(step: Step): string {
     case "expect-text":
       return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });`;
     case "expect-visible":
+      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
+        return `// TODO: missing selector for expect-visible`;
+      }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await expect(locator).toBeVisible({ timeout: 10000 });
 }`;
     case "fill":
+      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
+        return `// TODO: missing selector for fill`;
+      }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await locator.fill(${JSON.stringify(step.value)});
 }`;
     case "click":
+      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
+        return `// TODO: missing selector for click`;
+      }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await locator.click({ timeout: 10000 });
 }`;
     case "upload":
+      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
+        return `// TODO: missing selector for upload`;
+      }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
   await locator.waitFor({ state: 'visible', timeout: 10000 });
@@ -114,10 +126,15 @@ function emitAnnotations(pagePath: string, caseName: string): string {
 
 function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string): string {
   const title = uniqTitle(tc.name);
+  const hasGoto = tc.steps.some((s) => s.kind === "goto");
+  const preNav = hasGoto
+    ? ""
+    : `  // Auto-nav added because no explicit goto step was provided\n  await page.goto(${JSON.stringify(pagePath)}, { waitUntil: 'networkidle' });\n`;
+
   const body =
     tc.steps.length > 0
-      ? tc.steps.map((step, idx) => emitStep(step, idx)).join("\n")
-      : `  await test.step('Placeholder step', async () => {\n    // TODO: add steps\n  });`;
+      ? preNav + tc.steps.map((step, idx) => emitStep(step, idx)).join("\n")
+      : `${preNav}  await test.step('Placeholder step', async () => {\n    // TODO: add steps\n  });`;
 
   return `
 test(${JSON.stringify(title)}, async ({ page }) => {
