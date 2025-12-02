@@ -18,8 +18,8 @@ function Item({
         [
           "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
           isActive
-            ? "bg-slate-100 text-slate-900"
-            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+            ? "bg-slate-300 text-slate-950"
+            : "text-slate-900 hover:bg-slate-200 hover:text-slate-950",
         ].join(" ")
       }
     >
@@ -32,7 +32,7 @@ function Item({
 export default function SideNav() {
   return (
     // fixed so it floats on top, doesn't constrain page width
-    <aside className="fixed left-0 top-14 hidden h-[calc(100vh-56px)] w-56 border-r bg-white md:block">
+    <aside className="fixed left-0 top-14 hidden h-[calc(100vh-56px)] w-56 border-r border-slate-300 bg-[#8eb7ff] md:block">
       <div className="flex h-full flex-col gap-1 p-2">
         <Item to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
         <Item to="/agent" icon={Bot} label="Scan pages" />

@@ -8,7 +8,7 @@ function NavA({ to, children }: { to: string; children: React.ReactNode }) {
       className={({ isActive }) =>
         [
           "px-3 py-2 text-sm transition-colors",
-          isActive ? "text-slate-900" : "text-slate-600 hover:text-slate-900",
+          isActive ? "text-slate-950" : "text-slate-900 hover:text-slate-950",
         ].join(" ")
       }
       end
@@ -20,7 +20,7 @@ function NavA({ to, children }: { to: string; children: React.ReactNode }) {
 
 export default function TopNav() {
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-300 bg-[#8eb7ff]/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link to="/" className="font-semibold tracking-tight">

@@ -9,7 +9,7 @@ test("Successful Account Creation", async ({ page }) => {
   });
   await test.step("2. Click button:has-text(\"Create new account\")", async () => {
     const locator = page.locator("button:has-text(\"Create new account\")");
-    await locator.waitFor({ state: 'visible', timeout: 20000 });
-    await locator.click({ timeout: 20000 });
+    await locator.waitFor({ state: 'visible', timeout: 30000 });
+    await locator.click({ timeout: 30000 });
   });
 });

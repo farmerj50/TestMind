@@ -19,7 +19,18 @@ export default function LandingPage() {
     useScrollToHash();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--tm-bg)] text-slate-900">
+      <div
+        className="pointer-events-none absolute inset-0 -z-1 landing-pulse"
+        style={{
+          background: `
+            radial-gradient(circle at 20% 25%, rgba(255,255,255,0.15), transparent 45%),
+            radial-gradient(circle at 75% 30%, rgba(200,220,255,0.12), transparent 50%),
+            radial-gradient(circle at 40% 75%, rgba(255,220,160,0.1), transparent 45%),
+            var(--tm-bg)`,
+          opacity: 0.65,
+        }}
+      />
       <SiteHeader />
       <Hero />
       <Logos />
@@ -38,7 +49,7 @@ export default function LandingPage() {
 // Header / Nav
 function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-300 bg-[var(--tm-input-bg)]/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link to="/" className="flex items-center gap-2">
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
@@ -48,10 +59,10 @@ function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm md:flex">
-          <Link to="/#features" className="hover:text-slate-900 text-slate-600">Features</Link>
-          <Link to="/#how" className="hover:text-slate-900 text-slate-600">How it works</Link>
-          <Link to="/#pricing" className="hover:text-slate-900 text-slate-600">Pricing</Link>
-          <Link to="/#faq" className="hover:text-slate-900 text-slate-600">FAQ</Link>
+          <Link to="/#features" className="hover:text-slate-900 text-slate-800">Features</Link>
+          <Link to="/#how" className="hover:text-slate-900 text-slate-800">How it works</Link>
+          <Link to="/#pricing" className="hover:text-slate-900 text-slate-800">Pricing</Link>
+          <Link to="/#faq" className="hover:text-slate-900 text-slate-800">FAQ</Link>
         </nav>
 
         <div className="flex items-center gap-2">
@@ -72,7 +83,7 @@ function SiteHeader() {
 // Hero Section
 function Hero() {
   return (
-    <section className="relative overflow-hidden border-b bg-white">
+    <section className="relative overflow-hidden border-b border-slate-300 bg-[var(--tm-input-bg)]">
       <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 sm:px-6 md:grid-cols-2 md:py-20 lg:px-8">
         <div>
           <motion.h1
@@ -83,7 +94,7 @@ function Hero() {
           >
             Ship <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">reliable tests</span> in minutes, not weeks.
           </motion.h1>
-          <p className="mt-5 max-w-xl text-lg text-slate-600">
+          <p className="mt-5 max-w-xl text-lg text-slate-800">
             TestMind is an autonomous QA agent that generates Playwright tests from stories or PRs, runs them in CI, and
             <span className="font-semibold text-slate-900"> self-heals</span> brittle selectors with AI.
           </p>
@@ -102,7 +113,7 @@ function Hero() {
           </a>
         </Button>
           </div>
-          <ul className="mt-6 grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2">
+          <ul className="mt-6 grid grid-cols-1 gap-2 text-sm text-slate-800 sm:grid-cols-2">
             {[
               "Generate tests from PRs & stories",
               "Auto-run in GitHub Actions",
@@ -119,7 +130,7 @@ function Hero() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="relative"
         >
-          <div className="relative rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="relative rounded-2xl border border-slate-300 bg-[var(--tm-bg)] p-4 shadow-sm">
             <div className="rounded-lg bg-slate-950 p-3 text-slate-100">
               <div className="mb-3 text-xs text-slate-400">PR #128 • e2e auto-generated</div>
               <pre className="overflow-x-auto whitespace-pre-wrap text-[12px]/5">
@@ -148,7 +159,7 @@ test('checkout flow', async ({ page }) => {
 
 function Badge({ label }: { label: string }) {
   return (
-    <div className="inline-flex items-center justify-center rounded-full border bg-white px-3 py-1 text-slate-600 shadow-sm">
+    <div className="inline-flex items-center justify-center rounded-full border bg-[var(--tm-bg)] px-3 py-1 text-slate-800 shadow-sm">
       {label}
     </div>
   );
@@ -179,22 +190,22 @@ function Features() {
     { icon: Bell, title: 'Proactive alerts', desc: 'Slack & email digests with actionable diffs.' },
   ];
   return (
-    <section id="features" className="border-y bg-white scroll-mt-24">
+    <section id="features" className="border-y border-slate-300 bg-[var(--tm-input-bg)] scroll-mt-24">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="text-center text-3xl font-bold sm:text-4xl">Built for speed • Designed for reliability</h2>
-        <p className="mx-auto mt-3 max-w-2xl text-center text-slate-600">
+        <p className="mx-auto mt-3 max-w-2xl text-center text-slate-800">
           Everything you need to automate end-to-end testing from day one — without wrestling brittle scripts.
         </p>
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {items.map(({ icon: Icon, title, desc }) => (
-            <Card key={title} className="shadow-sm">
+            <Card key={title} className="shadow-sm bg-[var(--tm-bg)] border border-slate-300">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">
                   <Icon className="h-5 w-5" />
                 </span>
                 <CardTitle className="text-base">{title}</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-slate-600">{desc}</CardContent>
+              <CardContent className="text-sm text-slate-800">{desc}</CardContent>
             </Card>
           ))}
         </div>
@@ -211,25 +222,25 @@ function HowItWorks() {
     { title: 'Run & self-heal', desc: 'CI executes tests; AI patches flaky selectors with diffs for review.' },
   ];
   return (
-    <section id="how" className="bg-slate-50 scroll-mt-24">
+    <section id="how" className="bg-[var(--tm-input-bg)] scroll-mt-24">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="grid items-start gap-8 md:grid-cols-2">
           <div>
             <h2 className="text-3xl font-bold">From PR → passing tests in minutes</h2>
-            <p className="mt-3 max-w-xl text-slate-600">No brittle boilerplate. Use role-based locators, stable attributes, and AI guardrails by default.</p>
-            <ul className="mt-6 space-y-4 text-slate-700">
+            <p className="mt-3 max-w-xl text-slate-800">No brittle boilerplate. Use role-based locators, stable attributes, and AI guardrails by default.</p>
+            <ul className="mt-6 space-y-4 text-slate-900">
               {steps.map((s, i) => (
                 <li key={s.title} className="flex items-start gap-3">
                   <div className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{i+1}</div>
                   <div>
                     <div className="font-semibold">{s.title}</div>
-                    <div className="text-sm text-slate-600">{s.desc}</div>
+                    <div className="text-sm text-slate-800">{s.desc}</div>
                   </div>
                 </li>
               ))}
             </ul>
           </div>
-          <Card className="shadow-sm">
+          <Card className="shadow-sm bg-[var(--tm-bg)] border border-slate-300">
             <CardHeader>
               <CardTitle>CI run summary</CardTitle>
             </CardHeader>
@@ -240,7 +251,7 @@ function HowItWorks() {
                 <Metric label="Self-healed" value="8 patches" />
                 <Metric label="Avg. run time" value="4m 12s" />
               </div>
-              <div className="mt-4 rounded-lg border bg-white p-3 text-xs text-slate-600">
+          <div className="mt-4 rounded-lg border bg-[var(--tm-bg)] p-3 text-xs text-slate-800">
                 <div className="mb-2 font-mono">patch.diff</div>
                 <pre className="overflow-auto text-[11px]">
 {`--- a/tests/ai/checkout.spec.ts
@@ -261,7 +272,7 @@ function HowItWorks() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border bg-white px-3 py-2">
+    <div className="flex items-center justify-between rounded-lg border bg-[var(--tm-bg)] px-3 py-2">
       <span className="text-slate-500">{label}</span>
       <span className="font-semibold">{value}</span>
     </div>
@@ -278,13 +289,13 @@ function ValueProps() {
   ];
   return (
     <section className="mx-auto max-w-6xl px-4 py-16">
-      <div className="rounded-2xl border bg-white p-6 shadow-sm md:p-10">
+      <div className="rounded-2xl border bg-[var(--tm-bg)] p-6 shadow-sm md:p-10">
         <div className="grid gap-6 md:grid-cols-3">
           <div className="md:col-span-2">
             <h3 className="text-2xl font-bold">Why teams switch to TestMind</h3>
-            <p className="mt-2 max-w-xl text-slate-600">Real ROI from day one: less manual scripting, cleaner CI signals, and AI that proposes safe, minimal diffs.</p>
+            <p className="mt-2 max-w-xl text-slate-800">Real ROI from day one: less manual scripting, cleaner CI signals, and AI that proposes safe, minimal diffs.</p>
           </div>
-          <ul className="space-y-2 text-sm text-slate-700">
+          <ul className="space-y-2 text-sm text-slate-900">
             {bullets.map((b) => (
               <li key={b} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" /> {b}</li>
             ))}
@@ -298,10 +309,10 @@ function ValueProps() {
 // Pricing
 function Pricing() {
   return (
-    <section id="pricing" className="border-t bg-white scroll-mt-24">
+    <section id="pricing" className="border-t border-slate-300 bg-[var(--tm-input-bg)] scroll-mt-24">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="text-center text-3xl font-bold">Simple, transparent pricing</h2>
-        <p className="mx-auto mt-2 max-w-xl text-center text-slate-600">Start free. Upgrade when your team is ready.</p>
+        <p className="mx-auto mt-2 max-w-xl text-center text-slate-800">Start free. Upgrade when your team is ready.</p>
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           <PriceCard
   name="Free"
@@ -346,17 +357,17 @@ function PriceCard({
   cta: string; highlighted?: boolean; tag?: string; to?: string;
 }) {
   return (
-    <Card className={`relative ${highlighted ? 'border-slate-900 shadow-md' : 'shadow-sm'}`}>
+    <Card className={`relative bg-[var(--tm-bg)] border border-slate-300 ${highlighted ? 'shadow-md' : 'shadow-sm'}`}>
       {tag && <span className="absolute right-3 top-3 rounded-full bg-slate-900 px-2 py-1 text-xs font-semibold text-white">{tag}</span>}
       <CardHeader>
         <CardTitle className="text-xl">{name}</CardTitle>
         <div className="mt-1 text-3xl font-extrabold">
           {price}<span className="text-base font-normal text-slate-500">/mo</span>
         </div>
-        <p className="text-sm text-slate-600">{blurb}</p>
+        <p className="text-sm text-slate-800">{blurb}</p>
       </CardHeader>
       <CardContent>
-        <ul className="space-y-2 text-sm text-slate-700">
+        <ul className="space-y-2 text-sm text-slate-900">
           {features.map(f => (
             <li key={f} className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-600" /> {f}
@@ -385,13 +396,13 @@ function Testimonials() {
     { name: 'Marc D.', role: 'VP Eng @ SaaS', quote: 'Cut our authoring time by ~70%. PR-to-test automation sold the team instantly.' },
   ];
   return (
-    <section className="bg-slate-50">
+    <section className="bg-[var(--tm-input-bg)]">
       <div className="mx-auto max-w-6xl px-4 py-16">
         <h2 className="text-center text-3xl font-bold">Loved by fast‑moving teams</h2>
         <div className="mt-8 grid gap-6 md:grid-cols-2">
           {quotes.map((q) => (
             <Card key={q.name} className="shadow-sm">
-              <CardContent className="pt-6 text-slate-700">
+              <CardContent className="pt-6 text-slate-900">
                 “{q.quote}”
                 <div className="mt-4 text-sm text-slate-500">— {q.name}, {q.role}</div>
               </CardContent>
@@ -418,7 +429,7 @@ function FAQ() {
         {faqs.map((f, i) => (
           <AccordionItem key={i} value={`item-${i}`}>
             <AccordionTrigger className="text-left">{f.q}</AccordionTrigger>
-            <AccordionContent className="text-slate-600">{f.a}</AccordionContent>
+            <AccordionContent className="text-slate-800">{f.a}</AccordionContent>
           </AccordionItem>
         ))}
       </Accordion>
@@ -429,10 +440,10 @@ function FAQ() {
 // Final CTA
 function CTA() {
   return (
-    <section className="border-y bg-white">
+    <section className="border-y border-slate-300 bg-[var(--tm-input-bg)]">
       <div className="mx-auto max-w-5xl px-4 py-16 text-center">
         <h3 className="text-3xl font-bold">Ready to slash QA time and ship faster?</h3>
-        <p className="mx-auto mt-2 max-w-2xl text-slate-600">
+        <p className="mx-auto mt-2 max-w-2xl text-slate-800">
           Get started in minutes. Connect your repo, open a PR, and watch tests appear.
         </p>
         <div className="mt-6 flex justify-center gap-3">
@@ -450,7 +461,7 @@ function CTA() {
 // Footer
 function SiteFooter() {
   return (
-    <footer className="bg-slate-50">
+    <footer className="bg-[var(--tm-input-bg)]">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid gap-6 md:grid-cols-3">
           <div>
@@ -458,9 +469,9 @@ function SiteFooter() {
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white"><Sparkles className="h-4 w-4"/></span>
               <span className="font-semibold">TestMind AI</span>
             </div>
-            <p className="mt-2 text-sm text-slate-600">Autonomous QA agents for modern teams.</p>
+            <p className="mt-2 text-sm text-slate-800">Autonomous QA agents for modern teams.</p>
           </div>
-          <div className="text-sm text-slate-600">
+          <div className="text-sm text-slate-800">
             <div className="font-semibold text-slate-900">Product</div>
             <ul className="mt-2 space-y-1">
               <li><Link to="#features" className="hover:underline">Features</Link></li>
@@ -468,7 +479,7 @@ function SiteFooter() {
               <li><Link to="#how" className="hover:underline">How it works</Link></li>
             </ul>
           </div>
-          <div className="text-sm text-slate-600">
+          <div className="text-sm text-slate-800">
             <div className="font-semibold text-slate-900">Company</div>
             <ul className="mt-2 space-y-1">
               <li><a href="#" className="hover:underline">Docs</a></li>

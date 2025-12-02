@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import net from "net";
 import { z } from "zod";
 import { prisma } from "../prisma";
 
@@ -141,6 +142,29 @@ async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: stri
 // Default base URL the runner will hand to Playwright (can be overridden by req or env)
 const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? "http://localhost:4173";
 
+async function findAvailablePort(preferred: number): Promise<number> {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.unref();
+    const onError = () => {
+      const fallback = net.createServer();
+      fallback.unref();
+      fallback.listen(0, () => {
+        const addr = fallback.address();
+        const port = typeof addr === "object" && addr ? addr.port : preferred + 1;
+        fallback.close(() => resolve(port));
+      });
+      fallback.on("error", () => resolve(preferred + 1));
+    };
+    srv.on("error", onError);
+    srv.listen(preferred, () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : preferred;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
 
 
 // ---------- helpers ----------
@@ -183,8 +207,11 @@ const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
   baseUrl: z.string().url().optional(), // optional override
   file: z.string().optional(),   // relative path to spec to run
+  specPath: z.string().optional(), // alias used by agent UI
+  files: z.array(z.string()).optional(), // multiple specs
   grep: z.string().optional(),   // test title to match
   headful: z.boolean().optional(),
+  runAll: z.boolean().optional(), // if true, ignore file/files/grep and run full suite
 });
 
 function parseBool(val: unknown, fallback: boolean) {
@@ -236,7 +263,10 @@ export default async function runRoutes(app: FastifyInstance) {
 
     const pid = parsed.data.projectId.trim();
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
-    const providedBaseUrl = parsed.data.baseUrl ?? DEFAULT_BASE_URL;
+    const requestedBaseUrl = parsed.data.baseUrl;
+    let effectiveBaseUrl = requestedBaseUrl ?? DEFAULT_BASE_URL;
+    // Default to running the full suite unless the caller explicitly opts into filtering.
+    const runAll = parsed.data.runAll ?? parseBool(process.env.TM_RUN_ALL_DEFAULT ?? "1", true);
 
     // look up project
     const project =
@@ -331,7 +361,7 @@ export default async function runRoutes(app: FastifyInstance) {
         // If this workspace is a Vite app and Playwright's webServer uses "vite preview",
         // do a build first so preview has static assets.
         const isLocalhostBase =
-          providedBaseUrl?.includes("localhost") || providedBaseUrl?.includes("127.0.0.1");
+          effectiveBaseUrl?.includes("localhost") || effectiveBaseUrl?.includes("127.0.0.1");
         const shouldBuildVite =
           process.env.TM_VITE_BUILD !== "0" && !isLocalhostBase;
 
@@ -364,8 +394,8 @@ export default async function runRoutes(app: FastifyInstance) {
 
         // 4) Run tests and force JSON to outDir/report.json
         const resultsPath = path.join(outDir, "report.json");
-        process.env.PW_BASE_URL = providedBaseUrl;
-        process.env.TM_BASE_URL = providedBaseUrl;
+        process.env.PW_BASE_URL = effectiveBaseUrl;
+        process.env.TM_BASE_URL = effectiveBaseUrl;
 
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
@@ -374,6 +404,10 @@ export default async function runRoutes(app: FastifyInstance) {
         const legacyJsConfig = path.join(cwd, "tm-ci.playwright.config.js");
         await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
         await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
+        const serverPort = await findAvailablePort(Number(process.env.TM_PORT ?? 4173));
+        if (!requestedBaseUrl) {
+          effectiveBaseUrl = `http://localhost:${serverPort}`;
+        }
         const serverDirAbsolute = cwd;
         const winServerDirEsc = serverDirAbsolute
           .replace(/\\/g, "\\\\")
@@ -382,8 +416,8 @@ export default async function runRoutes(app: FastifyInstance) {
           .replace(/\\/g, "/")
           .replace(/"/g, '\\"');
         const PORT_PLACEHOLDER = "__TM_PORT__";
-        const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} --strictPort }"`;
-        const unixDevCommand = `bash -lc "cd \\"${unixServerDirEsc}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT_PLACEHOLDER} --strictPort"`;
+        const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} }"`;
+        const unixDevCommand = `bash -lc "cd \\"${unixServerDirEsc}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT_PLACEHOLDER}"`;
         const ciConfig = `import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -446,7 +480,7 @@ export default defineConfig({
 
         const finalConfig = ciConfig.replace(
           new RegExp(PORT_PLACEHOLDER, "g"),
-          "${PORT}"
+          String(serverPort)
         );
         await fs.writeFile(ciConfigPath, finalConfig, "utf8");
         // --- bring generated specs into the temp workspace ---
@@ -577,17 +611,74 @@ export default defineConfig({
 
                   // --- build optional selectors (single-file + grep) ---
         const extraGlobs: string[] = [];
-        if (parsed.data.file) {
-          const abs = path.join(genDest, parsed.data.file);
+        // When runAll is true (default), ignore any file/grep filters from the UI.
+        const requestedFiles = runAll
+          ? []
+          : (parsed.data.files && parsed.data.files.length
+            ? parsed.data.files
+            : [parsed.data.file, parsed.data.specPath].filter(Boolean as any)) as string[];
+
+        const findByName = async (root: string, needle: string): Promise<string | null> => {
+          try {
+            const stack: string[] = [root];
+            while (stack.length) {
+              const dir = stack.pop() as string;
+              const entries = await fs.readdir(dir, { withFileTypes: true });
+              for (const e of entries) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) stack.push(full);
+                else if (e.isFile() && e.name === needle) return full;
+              }
+            }
+          } catch { /* ignore */ }
+          return null;
+        };
+
+        for (const selectedFile of requestedFiles) {
+          if (!selectedFile) continue;
+          let abs = path.join(genDest, selectedFile);
+          const curatedSuiteDir = path.join(CURATED_ROOT, agentSuiteId(project.id));
+          const curatedCandidate = path.join(curatedSuiteDir, selectedFile);
+          try {
+            const exists = await fs.stat(abs).then(() => true).catch(() => false);
+            if (!exists) {
+              if (fsSync.existsSync(curatedCandidate)) {
+                await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+                await fs.cp(curatedCandidate, abs, { recursive: false });
+              } else {
+                // search all curated suites for the relative path
+                const suites = fsSync.readdirSync(CURATED_ROOT, { withFileTypes: true }).filter((d) => d.isDirectory());
+                for (const s of suites) {
+                  const candidate = path.join(CURATED_ROOT, s.name, selectedFile);
+                  if (fsSync.existsSync(candidate)) {
+                    await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+                    await fs.cp(candidate, abs, { recursive: false });
+                    break;
+                  }
+                }
+                // if still missing, try basename match anywhere under curated root
+                const basename = path.basename(selectedFile);
+                const found = await findByName(CURATED_ROOT, basename);
+                if (found && !fsSync.existsSync(abs)) {
+                  await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+                  await fs.cp(found, abs, { recursive: false });
+                }
+              }
+            }
+          } catch {
+            // ignore copy failures
+          }
           const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
           extraGlobs.push(relFromCwd);
         }
 
         // normalize grep: Playwright matches against "path spec.ts Test title",
         // so a leading ^ breaks it. Strip ^ but keep the rest (including $).
-        const normalizedGrep = parsed.data.grep
-          ? parsed.data.grep.replace(/^\^/, "")
-          : undefined;
+        const normalizedGrep = runAll
+          ? undefined
+          : parsed.data.grep
+            ? parsed.data.grep.replace(/^\^/, "")
+            : undefined;
 
         const allureResultsDir = path.join(outDir, "allure-results");
         await fs.mkdir(allureResultsDir, { recursive: true });
@@ -612,6 +703,7 @@ export default defineConfig({
           TM_SOURCE_ROOT: work,
           PW_JSON_OUTPUT: resultsPath,
           PW_ALLURE_RESULTS: allureResultsDir,
+          TM_PORT: String(serverPort),
           ...secretEnv,
         };
         if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
@@ -622,7 +714,7 @@ export default defineConfig({
         const exec = await runTests({
           workdir: cwd,
           jsonOutPath: resultsPath,
-          baseUrl: providedBaseUrl,
+          baseUrl: effectiveBaseUrl,
           configPath: ciConfigPath,
           // extraGlobs is no longer used by the runner; selection is via grep
           extraGlobs,
@@ -633,9 +725,10 @@ export default defineConfig({
         });
 
 
+        const selectedFilesForLog = requestedFiles.filter(Boolean);
         await fs.writeFile(
           path.join(outDir, "stdout.txt"),
-          `[runner] exitCode=${exec.exitCode} baseUrl=${providedBaseUrl} headful=${headful} file=${parsed.data.file || ""} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)}\n`,
+          `[runner] exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)}\n`,
           { flag: "a" }
         );
 
@@ -732,7 +825,7 @@ export default defineConfig({
             finishedAt: new Date(),
             summary: JSON.stringify({
               framework: exec.framework,
-              baseUrl: providedBaseUrl,
+              baseUrl: effectiveBaseUrl,
               parsedCount,
               passed,
               failed,
@@ -796,6 +889,7 @@ export default defineConfig({
         finishedAt: true,
         summary: true,
         error: true,
+        artifactsJson: true,
       },
     });
     return reply.send(runs);
@@ -870,6 +964,60 @@ export default defineConfig({
       reply.header("Content-Type", "text/plain; charset=utf-8");
       return reply.send("");
     }
+  });
+
+  // Serve runner artifacts (e.g., allure-report) directly from runner-logs
+  app.get("/runner-logs/*", async (req, reply) => {
+    const splat = (req.params as any)["*"] as string | undefined;
+    const parts = (splat || "").split("/").filter(Boolean);
+    const id = parts.shift();
+    if (!id) return reply.code(404).send("Not found");
+    const rest = parts.join("/");
+    const roots = [
+      path.join(process.cwd(), "runner-logs"),
+      path.join(process.cwd(), "apps", "api", "runner-logs"),
+    ];
+
+    for (const root of roots) {
+      const base = path.resolve(root, id);
+      const target = path.resolve(base, rest);
+
+      // Prevent path traversal
+      if (!target.startsWith(base)) continue;
+
+      let finalPath = target;
+      try {
+        const st = await fs.stat(finalPath);
+        if (st.isDirectory()) {
+          finalPath = path.join(finalPath, "index.html");
+        }
+      } catch {
+        continue;
+      }
+
+      try {
+        const data = await fs.readFile(finalPath);
+        const ext = path.extname(finalPath).toLowerCase();
+        const type =
+          ext === ".html"
+            ? "text/html"
+            : ext === ".js"
+            ? "application/javascript"
+            : ext === ".css"
+            ? "text/css"
+            : ext === ".json"
+            ? "application/json"
+            : ext === ".svg"
+            ? "image/svg+xml"
+            : "application/octet-stream";
+        reply.header("Content-Type", `${type}; charset=utf-8`);
+        return reply.send(data);
+      } catch {
+        // try next root
+      }
+    }
+
+    return reply.code(404).send("Not found");
   });
 
   // GET /runner/test-runs/:id/results

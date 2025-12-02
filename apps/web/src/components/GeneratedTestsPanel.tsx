@@ -34,7 +34,7 @@ export default function GeneratedTestsPanel() {
 
   if (!files.length) {
     return (
-      <div className="rounded-lg border bg-white p-4">
+      <div className="rounded-lg border border-slate-300 bg-[var(--tm-bg)] p-4">
         <h2 className="mb-3 text-sm font-medium text-slate-800">Generated tests</h2>
         <p className="text-sm text-slate-500">No generated files yet. Click <b>Generate</b> on a project.</p>
       </div>
@@ -42,8 +42,8 @@ export default function GeneratedTestsPanel() {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-white p-0 md:col-span-2 xl:col-span-2">
-      <div className="flex items-center justify-between border-b px-4 py-3">
+    <div className="overflow-hidden rounded-lg border border-slate-300 bg-[var(--tm-bg)] p-0 md:col-span-2 xl:col-span-2">
+      <div className="flex items-center justify-between border-b border-slate-300 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-800">Generated tests ({adapterId})</h2>
           <p className="text-xs text-slate-500">VS Code-style preview with line numbers</p>
