@@ -4,15 +4,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
+import HowToHint from "../components/HowToHint";
 
 type Run = {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed";
+  projectId?: string;
   createdAt: string;
   startedAt?: string | null;
   finishedAt?: string | null;
   summary?: string | null;
   error?: string | null;
+  artifactsJson?: Record<string, string> | null;
 };
 
 type Project = { id: string; name: string };
@@ -113,6 +116,7 @@ type Range = "all" | "7d" | "30d";
 export default function ReportsPage() {
   const { apiFetch } = useApi();
   const [runs, setRuns] = useState<Run[]>([]);
+  const [specHints, setSpecHints] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState<Range>("all");
@@ -220,6 +224,47 @@ export default function ReportsPage() {
       .map(([label, count], idx) => ({ label, count, rank: idx + 1 }));
   }, [filteredRuns]);
 
+  const resolveAllureHref = (run: Run) => {
+    const artifacts = run.artifactsJson || {};
+    const p = artifacts["allure-report"] || artifacts["allure"];
+    if (!p) return null;
+    if (/^https?:\/\//i.test(p)) return p;
+    const clean = p.replace(/^[\\/]+/, "").replace(/\\/g, "/");
+    const withIndex = clean.endsWith("index.html") ? clean : `${clean.replace(/\/$/, "")}/index.html`;
+    const apiBase =
+      (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
+      window.location.origin.replace(/\/$/, "");
+
+    // If the artifact path is relative, prefix with /runner/ so it hits the API (which serves runner-logs).
+    const needsPrefix = !withIndex.startsWith("runner-logs/") && !withIndex.startsWith("/runner-logs/");
+    const pathWithPrefix = needsPrefix ? `/runner/${withIndex}` : `/${withIndex.replace(/^\//, "")}`;
+    return `${apiBase}${pathWithPrefix}`;
+  };
+
+  const suiteHref = (projectId?: string) =>
+    projectId ? `/suite/agent-${encodeURIComponent(projectId)}` : undefined;
+
+  // Prefetch first spec path hint for visible runs (run feed slice)
+  useEffect(() => {
+    const visible = filteredRuns.slice(0, 8);
+    const missing = visible.filter((r) => !specHints[r.id]).map((r) => r.id);
+    if (!missing.length) return;
+
+    missing.forEach(async (id) => {
+      try {
+        const res = await apiFetch<{ results?: Array<{ case?: { key?: string } }> }>(
+          `/runner/test-runs/${id}/results`,
+          { method: "GET", auth: "include" }
+        );
+        const first = res?.results?.[0]?.case?.key || "";
+        const specPath = first.split("#")[0] || "";
+        setSpecHints((prev) => (prev[id] ? prev : { ...prev, [id]: specPath || "spec unknown" }));
+      } catch {
+        // best effort; leave blank
+      }
+    });
+  }, [filteredRuns, apiFetch, specHints]);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -231,6 +276,16 @@ export default function ReportsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <HowToHint
+            storageKey="tm-howto-reports"
+            title="How to use Reports"
+            steps={[
+              "Filter by project/range to focus on relevant runs.",
+              "Use run id + spec name to open the suite editor and adjust tests.",
+              "View Allure for detailed traces/screenshots.",
+              "Export CSV to share summaries with your team.",
+            ]}
+          />
           <Select value={range} onValueChange={(val) => setRange(val as Range)}>
             <SelectTrigger className="w-28">
               <SelectValue placeholder="Range" />
@@ -445,8 +500,31 @@ export default function ReportsPage() {
                   <span className="font-mono text-slate-800">{r.id.slice(0, 10)}</span>
                   <span>{new Date(r.createdAt).toLocaleString()}</span>
                 </div>
+                {specHints[r.id] && (
+                  <div className="text-[11px] text-slate-500">spec: {specHints[r.id]}</div>
+                )}
                 <div className="mt-1 text-xs text-rose-800">
                   {formatReason(r.error || r.summary) || "Failure summary unavailable."}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  {suiteHref(r.projectId) && (
+                    <a
+                      href={suiteHref(r.projectId)}
+                      className="text-blue-600 underline"
+                    >
+                      Edit in suites
+                    </a>
+                  )}
+                  {resolveAllureHref(r) && (
+                    <a
+                      href={resolveAllureHref(r) as string}
+                      className="text-blue-600 underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View Allure
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
@@ -468,8 +546,40 @@ export default function ReportsPage() {
                 className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-2 shadow-sm"
               >
                 <div>
-                  <div className="font-mono text-xs text-slate-700">{r.id.slice(0, 10)}</div>
+                  <div className="font-mono text-xs text-slate-700">
+                    {r.id.slice(0, 10)}
+                    {specHints[r.id] && (
+                      <span className="ml-2 text-[11px] text-slate-500">
+                        • {specHints[r.id].split("/").slice(-1)[0]}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</div>
+                {specHints[r.id] && (
+                  <div className="text-[11px] text-slate-500">
+                    {r.id.slice(0, 10)} • {specHints[r.id].split("/").slice(-1)[0]}
+                  </div>
+                )}
+                  <div className="flex flex-wrap gap-2 text-[11px] mt-1">
+                    {suiteHref(r.projectId) && (
+                      <a
+                        href={suiteHref(r.projectId)}
+                        className="text-blue-600 underline"
+                      >
+                        Edit tests
+                      </a>
+                    )}
+                    {resolveAllureHref(r) && (
+                      <a
+                        href={resolveAllureHref(r) as string}
+                        className="text-blue-600 underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Allure report
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <span
                   className="rounded-full px-2 py-0.5 text-xs font-medium"

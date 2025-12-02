@@ -49,23 +49,23 @@ export default function ReportSummary({
   if (!data) return <div className="text-sm text-slate-500">Loading summary…</div>;
 
   const { counts, lastRun } = data;
-  const Pill = ({ label, value }: { label: string; value: number }) => (
-    <div className="rounded-lg border px-3 py-2">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="text-lg font-semibold">{value}</div>
+  const Pill = ({ label, value, color, bg }: { label: string; value: number; color?: string; bg?: string }) => (
+    <div className={`rounded-lg border border-slate-400 px-3 py-2 ${bg || "bg-white"}`}>
+      <div className="text-xs text-slate-800">{label}</div>
+      <div className={`text-lg font-semibold ${color || "text-slate-900"}`}>{value}</div>
     </div>
   );
 
   return (
     <Card>
       <CardContent className="p-4">
-        <div className="mb-3 text-sm font-medium text-slate-800">Test Run Summary</div>
+        <div className="mb-3 text-sm font-medium text-slate-900">Test Run Summary</div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Pill label="Total" value={counts.total} />
-          <Pill label="Succeeded" value={counts.succeeded} />
-          <Pill label="Failed" value={counts.failed} />
-          <Pill label="Running" value={counts.running} />
-          <Pill label="Queued" value={counts.queued} />
+          <Pill label="Total" value={counts.total} bg="bg-[#ffeab0]" color="text-slate-900" />
+          <Pill label="Pass" value={counts.succeeded} bg="bg-[#d6f5e6]" color="text-emerald-800" />
+          <Pill label="Fail" value={counts.failed} bg="bg-[#ffe2e6]" color="text-rose-800" />
+          <Pill label="Running" value={counts.running} bg="bg-[#ffe8c2]" color="text-amber-800" />
+          <Pill label="Queued" value={counts.queued} bg="bg-[#d6e7ff]" color="text-blue-900" />
         </div>
         <div className="mt-4 text-xs text-slate-500">
           {lastRun ? (

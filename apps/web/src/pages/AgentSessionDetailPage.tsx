@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
+import HowToHint from "../components/HowToHint";
 
 type Scenario = {
   id: string;
@@ -52,7 +53,7 @@ const [filterSuggested, setFilterSuggested] = useState(true);
 const [filterRejected, setFilterRejected] = useState(true);
 const [filterCompleted, setFilterCompleted] = useState(true);
 const [autoRefresh, setAutoRefresh] = useState(true);
-const [runInfo, setRunInfo] = useState<string | null>(null);
+  const [runInfo, setRunInfo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"pages" | "scenarios" | "activity">("pages");
   const [selectedScenario, setSelectedScenario] = useState<{ scenario: Scenario; page: Page } | null>(null);
   const [busyRunScenario, setBusyRunScenario] = useState<string | null>(null);
@@ -60,6 +61,10 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
     Array<{ id: string; status: string; createdAt: string; error?: string | null }>
   >([]);
   const [runPanelOpen, setRunPanelOpen] = useState(true);
+  const hasInFlightRuns = useMemo(
+    () => recentRuns.some((r) => r.status === "running" || r.status === "queued"),
+    [recentRuns]
+  );
 
   const hasRunning = useMemo(
     () => !!session?.pages.some((p) => p.status !== "completed" && p.status !== "failed"),
@@ -76,6 +81,14 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
     const t = setInterval(() => load(true), 4000);
     return () => clearInterval(t);
   }, [autoRefresh, hasRunning, id]);
+
+  // Poll run status while any recent run is in-flight (even if pages are already completed)
+  useEffect(() => {
+    if (!autoRefresh || !session?.projectId) return;
+    if (!hasInFlightRuns) return;
+    const t = setInterval(() => loadRecentRuns(session.projectId, true), 4000);
+    return () => clearInterval(t);
+  }, [autoRefresh, session?.projectId, hasInFlightRuns]);
 
   async function load(silent = false) {
     if (!id) return;
@@ -124,10 +137,37 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
   }
 
   async function runPage(pageId: string) {
+    if (!session?.projectId) {
+      setError("Attach the session to a project before running.");
+      return;
+    }
+    const page = session.pages.find((p) => p.id === pageId);
+    if (!page) {
+      setError("Page not found in session.");
+      return;
+    }
+
     setBusyPage(pageId);
     setError(null);
     try {
-      await apiFetch(`/tm/agent/pages/${pageId}/run`, { method: "POST" });
+      // kick off a fresh page analysis (optional; keeps page status current)
+      await apiFetch(`/tm/agent/pages/${pageId}/run`, { method: "POST" }).catch(() => {});
+
+      // run all scenarios for this page that already have specs
+      const runnable = page.scenarios.filter((s) => s.specPath);
+      if (runnable.length === 0) {
+        setRunInfo("Generate tests before running this page.");
+      } else {
+        for (const sc of runnable) {
+          await apiFetch("/runner/run", {
+            method: "POST",
+            body: JSON.stringify({ projectId: session.projectId, specPath: sc.specPath }),
+          });
+        }
+        setRunInfo(`Triggered ${runnable.length} run(s) for this page.`);
+        await loadRecentRuns(session.projectId);
+      }
+
       // optimistically mark page running
       setSession((prev) =>
         prev
@@ -139,7 +179,6 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
             }
           : prev
       );
-      setRunInfo("Run started. Page status will update when finished.");
       await load(true);
     } catch (err: any) {
       setError(err?.message ?? "Failed to run page");
@@ -179,13 +218,35 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
     });
   }
 
-  async function loadRecentRuns(projectId?: string | null) {
+  async function loadRecentRuns(projectId?: string | null, silent = false) {
     if (!projectId) return;
     try {
       const res = await apiFetch<{ runs: Array<{ id: string; status: string; createdAt: string; error?: string | null }> }>(
         `/projects/${projectId}/test-runs`
       );
-      setRecentRuns(res.runs.slice(0, 5));
+      const latest = res.runs.slice(0, 5);
+
+      // Proactively refresh any in-flight runs so the UI reflects completion without waiting for the next poll
+      const withDetails = await Promise.all(
+        latest.map(async (run) => {
+          if (run.status !== "running" && run.status !== "queued") return run;
+          try {
+            const detail = await apiFetch<{ run: { status: string } }>(`/runner/test-runs/${run.id}`, {
+              method: "GET",
+              auth: "include",
+            });
+            const updatedStatus =
+              (detail as any)?.status ||
+              (detail as any)?.run?.status ||
+              (detail as any)?.run?.status === "" ? (detail as any)?.run?.status : undefined;
+            return updatedStatus ? { ...run, status: updatedStatus } : run;
+          } catch {
+            return run;
+          }
+        })
+      );
+
+      setRecentRuns(withDetails);
     } catch {
       // ignore
     }
@@ -205,7 +266,7 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
         setError("Generate the test first before running.");
         return;
       }
-      await apiFetch("/runs", {
+      await apiFetch("/runner/run", {
         method: "POST",
         body: JSON.stringify({ projectId: session.projectId, specPath: spec }),
       });
@@ -218,16 +279,24 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
   }
 
   async function generateAllAccepted(page: Page) {
-    if (!session) return;
+    if (!session?.projectId) {
+      setError("Attach the session to a project before generating tests.");
+      return;
+    }
     const toGenerate = page.scenarios.filter((s) => s.status === "accepted" && !s.specPath);
     if (toGenerate.length === 0) {
-      setRunInfo("No accepted scenarios needing generation.");
+      setRunInfo("No accepted scenarios needing generation on this page.");
       return;
     }
     setBusyGenerateAll(page.id);
     setError(null);
     try {
       for (const sc of toGenerate) {
+        // Ensure attached to project, then generate
+        await apiFetch(`/tm/agent/scenarios/${sc.id}/attach`, {
+          method: "POST",
+          body: JSON.stringify({ projectId: session.projectId }),
+        });
         await apiFetch(`/agent/scenarios/${sc.id}/generate-test`, { method: "POST" });
       }
       await load(true);
@@ -250,6 +319,16 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
             <div className="text-xs text-slate-500 break-all">{session.baseUrl}</div>
           )}
         </div>
+        <HowToHint
+          storageKey="tm-howto-agent-session"
+          title="How to use Agent sessions"
+          steps={[
+            "Add or scan pages to discover scenarios.",
+            "Attach & generate to push scenarios into the agent curated suite.",
+            "Run scenario or Run page to trigger tests; check Reports for status.",
+            "Edit generated specs later via the Suites editor when needed.",
+          ]}
+        />
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setAutoRefresh((v) => !v)}>
             <span className="text-xs">{autoRefresh ? "⏸ Auto-refresh" : "▶ Auto-refresh"}</span>
@@ -276,8 +355,39 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
         </div>
       )}
       {runInfo && (
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-slate-700">
-          {runInfo}
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 space-y-2 text-sm text-slate-700">
+          <div className="flex items-center justify-between">
+            <span>{runInfo}</span>
+            <Link
+              to="/reports"
+              className="text-blue-600 underline text-xs"
+            >
+              View reports
+            </Link>
+          </div>
+          {recentRuns.length > 0 && (
+            <div className="text-xs text-slate-600">
+              Recent runs:
+              <ul className="mt-1 space-y-1">
+                {recentRuns.slice(0, 3).map((r) => (
+                  <li key={r.id} className="flex justify-between">
+                    <span>{new Date(r.createdAt).toLocaleTimeString()}</span>
+                    <span
+                      className={
+                        r.status === "succeeded"
+                          ? "text-emerald-700"
+                          : r.status === "failed"
+                          ? "text-rose-700"
+                          : "text-slate-700"
+                      }
+                    >
+                      {r.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -415,7 +525,10 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
                               size="sm"
                               variant="outline"
                               onClick={() => generateAllAccepted(page)}
-                              disabled={busyGenerateAll === page.id}
+                              disabled={
+                                busyGenerateAll === page.id ||
+                                !page.scenarios.some((s) => s.status === "accepted" && !s.specPath)
+                              }
                             >
                               {busyGenerateAll === page.id ? "Generating…" : "Generate all accepted"}
                             </Button>

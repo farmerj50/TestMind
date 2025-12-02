@@ -14,6 +14,7 @@ import RunNowButton from "../components/RunNowButton";
 import AdapterDropdown, { AdapterId } from "../components/AdapterDropdown";
 import GenerateButton from "../components/GenerateButton";
 import GeneratedTestsPanel from "../components/GeneratedTestsPanel";
+import HowToHint from "../components/HowToHint";
 
 
 
@@ -117,6 +118,16 @@ export default function DashboardPage() {
         )}
         {/* push the framework selector to the far right */}
         <div className="ml-auto flex items-center gap-2">
+          <HowToHint
+            storageKey="tm-howto-dashboard"
+            title="How to use the Dashboard"
+            steps={[
+              "Create a project and link its repo URL to get started.",
+              "Use Generate to draft tests and Run to trigger a test run.",
+              "View recent runs and summaries to monitor status.",
+              "Scan with the agent for new scenarios when needed.",
+            ]}
+          />
           <span className="text-xs text-slate-500">Framework:</span>
           <AdapterDropdown value={adapterId} onChange={setAdapterId} />
         </div>
@@ -172,7 +183,7 @@ export default function DashboardPage() {
         <ConnectGitHubCard onPickRepo={(url) => setRepoUrl(url)} />
 
         {/* Reporting summary */}
-        <div className="rounded-lg border bg-white p-4 md:col-span-2 xl:col-span-1">
+        <div className="rounded-lg border border-slate-300 bg-white p-4 md:col-span-2 xl:col-span-1">
           <h2 className="mb-3 text-sm font-medium text-slate-800">Test run summary</h2>
           <ReportSummary refreshKey={refreshKey} />
         </div>
