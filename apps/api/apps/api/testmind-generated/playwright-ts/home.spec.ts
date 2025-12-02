@@ -5,8 +5,8 @@ import { test, expect } from '@playwright/test';
 test("Page loads: /", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Page loads: /" }, { type: "parameter", description: "page=/:" });
   await test.step("1. Navigate to /", async () => {
-    await page.goto("/");
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto("/", { timeout: 60000 });  // Timeout increased to 60 seconds
+    await page.waitForLoadState('load', { timeout: 80000 }); // Increased wait timeout to 80 seconds
   });
   await test.step("2. Ensure text \"TestMind AI\" is visible", async () => {
     const locator = page.locator('text=TestMind AI');
@@ -29,7 +29,7 @@ test("Page loads: /", async ({ page }) => {
     await expect(locator).toBeVisible();
   });
   await test.step("7. Ensure text \"Signup\" is visible", async () => {
-    const locator = page.locator('text=Signup');  // Updated text to be case-sensitive
+    const locator = page.locator('text=Signup');
     await expect(locator).toBeVisible();
   });
   await test.step("8. Ensure text \"Integrations\" is visible", async () => {

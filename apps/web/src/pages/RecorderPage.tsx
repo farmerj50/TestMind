@@ -90,16 +90,42 @@ export default function RecorderPage() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectId.trim()) {
-      setErr("Select or enter a project before saving a recording.");
-      return;
+  const ensureProjectId = async () => {
+    if (projectId.trim()) return projectId.trim();
+    const url = baseUrl.trim();
+    if (!url) {
+      setErr("Enter Base URL to create a new project.");
+      throw new Error("Base URL required");
     }
     try {
+      const name = (() => {
+        try {
+          const host = new URL(url).hostname || "recorded-project";
+          return host.replace(/^www\\./, "");
+        } catch {
+          return "recorded-project";
+        }
+      })();
+      const res = await apiFetch<{ project: Project }>("/projects", {
+        method: "POST",
+        body: JSON.stringify({ name, repoUrl: url }),
+      });
+      setProjects((prev) => [...prev, res.project]);
+      setProjectId(res.project.id);
+      return res.project.id;
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to create project from Base URL");
+      throw e;
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
       setErr(null);
+      const pid = projectId.trim() || (await ensureProjectId());
       const body: any = { name: name || "recorded-spec", content };
-      body.projectId = projectId.trim();
+      body.projectId = pid;
       if (baseUrl.trim()) body.baseUrl = baseUrl.trim();
       body.language = language;
       const res = await apiFetch<{ projectId: string; path: string }>(`/recorder/specs`, {
@@ -115,19 +141,27 @@ export default function RecorderPage() {
   };
 
   const handleCommand = async () => {
-    if (!projectId.trim() || !baseUrl.trim() || !name.trim()) {
-      setErr("Select a project and enter Base URL + Spec name to generate a recorder command.");
+    if (!name.trim()) {
+      setErr("Enter Spec name to generate a recorder command.");
+      return;
+    }
+    const computedProjectId = projectId.trim();
+    const computedBaseUrl =
+      baseUrl.trim() || projects.find((p) => p.id === computedProjectId)?.repoUrl || "";
+    if (!computedProjectId && !computedBaseUrl) {
+      setErr("Enter Base URL (or select a project with a repo URL) to build the command.");
       return;
     }
     try {
       setErr(null);
+      const pid = computedProjectId || (await ensureProjectId());
       const res = await apiFetch<{ projectId: string; path: string; commandWindows: string; commandUnix: string }>(
         `/recorder/codegen-command`,
         {
           method: "POST",
           body: JSON.stringify({
-            projectId: projectId.trim(),
-            baseUrl: baseUrl.trim(),
+            projectId: pid,
+            baseUrl: computedBaseUrl || baseUrl.trim(),
             name: name.trim(),
             language,
           }),
@@ -141,20 +175,28 @@ export default function RecorderPage() {
   };
 
   const handleLaunch = async () => {
-    if (!projectId.trim() || !baseUrl.trim() || !name.trim()) {
-      setErr("Select a project and enter Base URL + Spec name to launch the recorder.");
+    if (!name.trim()) {
+      setErr("Enter Spec name to launch the recorder.");
+      return;
+    }
+    const computedProjectId = projectId.trim();
+    const computedBaseUrl =
+      baseUrl.trim() || projects.find((p) => p.id === computedProjectId)?.repoUrl || "";
+    if (!computedProjectId && !computedBaseUrl) {
+      setErr("Enter Base URL (or select a project with a repo URL) to launch.");
       return;
     }
     try {
       setErr(null);
       setLaunchStatus(null);
       setLaunching(true);
+      const pid = computedProjectId || (await ensureProjectId());
       const res = await fetch("http://localhost:43117/record", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId: projectId || undefined,
-          baseUrl: baseUrl.trim(),
+          projectId: pid || undefined,
+          baseUrl: computedBaseUrl,
           name: name.trim(),
           language,
           headed,
@@ -183,7 +225,7 @@ export default function RecorderPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <form className="space-y-3 rounded-lg border bg-white p-4 shadow-sm" onSubmit={handleSave}>
+        <form className="space-y-3 rounded-lg border bg-[var(--tm-input-bg)] p-4 shadow-sm" onSubmit={handleSave}>
           <div className="grid gap-1">
             <label className="text-sm font-medium text-slate-700">Project</label>
             <Select value={projectId} onValueChange={handleProjectSelect}>
@@ -250,14 +292,26 @@ export default function RecorderPage() {
             />
           </div>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={!projectId.trim()}>Save spec</Button>
+            <Button type="submit" size="sm" disabled={!(projectId.trim() || baseUrl.trim())}>Save spec</Button>
             <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
               Refresh list
             </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={handleCommand} disabled={!projectId.trim()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={handleCommand}
+              disabled={!(projectId.trim() || baseUrl.trim())}
+            >
               Get recorder command
             </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={handleLaunch} disabled={launching || !projectId.trim()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={handleLaunch}
+              disabled={launching || !(projectId.trim() || baseUrl.trim())}
+            >
               {launching ? "Launching..." : "Launch recorder"}
             </Button>
           </div>
@@ -299,7 +353,7 @@ export default function RecorderPage() {
             )}
         </form>
 
-        <div className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="space-y-3 rounded-lg border bg-[var(--tm-input-bg)] p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-lg font-semibold text-slate-900">Recorded specs</div>

@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
+import HowToHint from "../components/HowToHint";
 
 type Scenario = {
   id: string;
@@ -52,7 +53,7 @@ const [filterSuggested, setFilterSuggested] = useState(true);
 const [filterRejected, setFilterRejected] = useState(true);
 const [filterCompleted, setFilterCompleted] = useState(true);
 const [autoRefresh, setAutoRefresh] = useState(true);
-const [runInfo, setRunInfo] = useState<string | null>(null);
+  const [runInfo, setRunInfo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"pages" | "scenarios" | "activity">("pages");
   const [selectedScenario, setSelectedScenario] = useState<{ scenario: Scenario; page: Page } | null>(null);
   const [busyRunScenario, setBusyRunScenario] = useState<string | null>(null);
@@ -60,6 +61,10 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
     Array<{ id: string; status: string; createdAt: string; error?: string | null }>
   >([]);
   const [runPanelOpen, setRunPanelOpen] = useState(true);
+  const hasInFlightRuns = useMemo(
+    () => recentRuns.some((r) => r.status === "running" || r.status === "queued"),
+    [recentRuns]
+  );
 
   const hasRunning = useMemo(
     () => !!session?.pages.some((p) => p.status !== "completed" && p.status !== "failed"),
@@ -76,6 +81,14 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
     const t = setInterval(() => load(true), 4000);
     return () => clearInterval(t);
   }, [autoRefresh, hasRunning, id]);
+
+  // Poll run status while any recent run is in-flight (even if pages are already completed)
+  useEffect(() => {
+    if (!autoRefresh || !session?.projectId) return;
+    if (!hasInFlightRuns) return;
+    const t = setInterval(() => loadRecentRuns(session.projectId, true), 4000);
+    return () => clearInterval(t);
+  }, [autoRefresh, session?.projectId, hasInFlightRuns]);
 
   async function load(silent = false) {
     if (!id) return;
@@ -205,13 +218,35 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
     });
   }
 
-  async function loadRecentRuns(projectId?: string | null) {
+  async function loadRecentRuns(projectId?: string | null, silent = false) {
     if (!projectId) return;
     try {
       const res = await apiFetch<{ runs: Array<{ id: string; status: string; createdAt: string; error?: string | null }> }>(
         `/projects/${projectId}/test-runs`
       );
-      setRecentRuns(res.runs.slice(0, 5));
+      const latest = res.runs.slice(0, 5);
+
+      // Proactively refresh any in-flight runs so the UI reflects completion without waiting for the next poll
+      const withDetails = await Promise.all(
+        latest.map(async (run) => {
+          if (run.status !== "running" && run.status !== "queued") return run;
+          try {
+            const detail = await apiFetch<{ run: { status: string } }>(`/runner/test-runs/${run.id}`, {
+              method: "GET",
+              auth: "include",
+            });
+            const updatedStatus =
+              (detail as any)?.status ||
+              (detail as any)?.run?.status ||
+              (detail as any)?.run?.status === "" ? (detail as any)?.run?.status : undefined;
+            return updatedStatus ? { ...run, status: updatedStatus } : run;
+          } catch {
+            return run;
+          }
+        })
+      );
+
+      setRecentRuns(withDetails);
     } catch {
       // ignore
     }
@@ -284,6 +319,16 @@ const [runInfo, setRunInfo] = useState<string | null>(null);
             <div className="text-xs text-slate-500 break-all">{session.baseUrl}</div>
           )}
         </div>
+        <HowToHint
+          storageKey="tm-howto-agent-session"
+          title="How to use Agent sessions"
+          steps={[
+            "Add or scan pages to discover scenarios.",
+            "Attach & generate to push scenarios into the agent curated suite.",
+            "Run scenario or Run page to trigger tests; check Reports for status.",
+            "Edit generated specs later via the Suites editor when needed.",
+          ]}
+        />
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setAutoRefresh((v) => !v)}>
             <span className="text-xs">{autoRefresh ? "⏸ Auto-refresh" : "▶ Auto-refresh"}</span>
