@@ -8,6 +8,8 @@ test("Page loads: /recorder", async ({ page }) => {
     await page.goto("/recorder");
   });
   await test.step("2. Ensure text \"testmind-web\" is visible", async () => {
+    await page.waitForLoadState('load');
+    await page.waitForTimeout(2000); // Increased wait for dynamic content
     await expect(page.getByText("testmind-web")).toBeVisible({ timeout: 10000 });
   });
 });
@@ -18,39 +20,29 @@ test("Form submits – /recorder", async ({ page }) => {
     await page.goto("/recorder");
   });
   await test.step("2. Fill [name='identifier'], #identifier", async () => {
-    {
-      const locator = page.locator("[name='identifier'], #identifier");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.fill("Test value");
-    }
+    const locator = page.locator("[name='identifier'], #identifier");
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+    await locator.fill("Test value");
   });
   await test.step("3. Fill [name='password'], #password", async () => {
-    {
-      const locator = page.locator("[name='password'], #password");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.fill("P@ssw0rd1!");
-    }
+    const locator = page.locator("[name='password'], #password");
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+    await locator.fill("P@ssw0rd1!");
   });
   await test.step("4. Fill [name='identifier'], #identifier", async () => {
-    {
-      const locator = page.locator("[name='identifier'], #identifier");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.fill("Test value");
-    }
+    const locator = page.locator("[name='identifier'], #identifier");
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+    await locator.fill("Test value");
   });
   await test.step("5. Fill [name='password'], #password", async () => {
-    {
-      const locator = page.locator("[name='password'], #password");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.fill("P@ssw0rd1!");
-    }
+    const locator = page.locator("[name='password'], #password");
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+    await locator.fill("P@ssw0rd1!");
   });
   await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
-    {
-      const locator = page.locator("button[type='submit'], input[type='submit']");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.click({ timeout: 10000 });
-    }
+    const locator = page.locator("button[type='submit'], input[type='submit']");
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+    await locator.click({ timeout: 10000 });
   });
   await test.step("7. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible({ timeout: 10000 });
@@ -63,11 +55,9 @@ test("Validation blocks empty submission – /recorder", async ({ page }) => {
     await page.goto("/recorder");
   });
   await test.step("2. Click button[type='submit'], input[type='submit']", async () => {
-    {
-      const locator = page.locator("button[type='submit'], input[type='submit']");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.click({ timeout: 10000 });
-    }
+    const locator = page.locator("button[type='submit'], input[type='submit']");
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+    await locator.click({ timeout: 10000 });
   });
   await test.step("3. Ensure text \"required\" is visible", async () => {
     await expect(page.getByText("required")).toBeVisible({ timeout: 10000 });
@@ -83,6 +73,7 @@ test("Navigate /recorder → /", async ({ page }) => {
     await page.goto("/");
   });
   await test.step("3. Ensure text \"Page\" is visible", async () => {
+    await page.waitForLoadState('load'); // Ensures the page is fully loaded
     await expect(page.getByText("Page")).toBeVisible({ timeout: 10000 });
   });
 });
@@ -133,6 +124,7 @@ test("Navigate /recorder → /signup", async ({ page }) => {
   });
   await test.step("2. Navigate to /signup", async () => {
     await page.goto("/signup");
+    await page.waitForLoadState('load'); // Ensures the page is fully loaded
   });
   await test.step("3. Ensure text \"signup\" is visible", async () => {
     await expect(page.getByText("signup")).toBeVisible({ timeout: 10000 });

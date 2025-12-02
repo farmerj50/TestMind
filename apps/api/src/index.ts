@@ -84,6 +84,56 @@ if (fs.existsSync(API_RUNNER_LOGS_ROOT)) {
     prefix: "/_static/runner-logs/",
   });
 }
+
+// Serve runner artifacts (e.g., allure) directly from either runner-logs root
+app.get("/runner-logs/*", async (req, reply) => {
+  const splat = (req.params as any)["*"] as string | undefined;
+  const parts = (splat || "").split("/").filter(Boolean);
+  const id = parts.shift();
+  if (!id) return reply.code(404).send("Not found");
+  const rest = parts.join("/");
+  const roots = [path.join(REPO_ROOT, "runner-logs"), path.join(REPO_ROOT, "apps", "api", "runner-logs")];
+
+  for (const root of roots) {
+    const base = path.resolve(root, id);
+    const target = path.resolve(base, rest);
+    if (!target.startsWith(base)) continue; // traversal guard
+
+    let finalPath = target;
+    try {
+      const st = fs.statSync(finalPath);
+      if (st.isDirectory()) {
+        finalPath = path.join(finalPath, "index.html");
+      }
+    } catch {
+      continue;
+    }
+
+    try {
+      const data = fs.readFileSync(finalPath);
+      const ext = path.extname(finalPath).toLowerCase();
+      const type =
+        ext === ".html"
+          ? "text/html"
+          : ext === ".js"
+          ? "application/javascript"
+          : ext === ".css"
+          ? "text/css"
+          : ext === ".json"
+          ? "application/json"
+          : ext === ".svg"
+          ? "image/svg+xml"
+          : "application/octet-stream";
+      reply.header("Content-Type", `${type}; charset=utf-8`);
+      return reply.send(data);
+    } catch {
+      // try next root
+    }
+  }
+
+  return reply.code(404).send("Not found");
+});
+
 // Serve built web assets (SPA) when available
 const WEB_DIST = path.join(REPO_ROOT, "apps", "web", "dist");
 if (fs.existsSync(WEB_DIST)) {

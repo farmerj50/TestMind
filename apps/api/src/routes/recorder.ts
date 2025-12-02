@@ -5,6 +5,7 @@ import fsSync from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { prisma } from "../prisma";
+import { ensureCuratedProjectEntry } from "../testmind/curated-store";
 
 const RECORD_ROOT = path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts", "recordings");
 const HELPER_PING = process.env.RECORDER_HELPER || "http://localhost:43117";
@@ -89,7 +90,7 @@ export default async function recorderRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "projectId is required to save a recorded spec" });
     }
     const projectId = pidInput;
-    const projectExists = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+    const projectExists = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } });
     if (!projectExists) {
       return reply
         .code(404)
@@ -104,6 +105,20 @@ export default async function recorderRoutes(app: FastifyInstance) {
     await fs.writeFile(absPath, content, "utf8");
 
     const relPath = path.join("apps", "api", "testmind-generated", "playwright-ts", "recordings", projectId, `${fileSlug}.spec.${ext}`);
+
+    // Also copy into a curated suite for visibility in Suites (auto-creates recordings-{projectId})
+    try {
+      const suiteId = `recordings-${projectId}`;
+      const suiteName = `Recordings - ${projectExists.name || projectId}`;
+      const { root } = ensureCuratedProjectEntry(suiteId, suiteName);
+      const destDir = path.join(root, "recordings");
+      fsSync.mkdirSync(destDir, { recursive: true });
+      const destPath = path.join(destDir, `${fileSlug}.spec.${ext}`);
+      await fs.copyFile(absPath, destPath);
+    } catch (err) {
+      // non-fatal; fallback is generated path
+      app.log.warn({ err }, "[recorder] failed to copy recording into curated suite");
+    }
 
     // Helper command to run Playwright codegen against this target
     const target = languageToTarget(language);
