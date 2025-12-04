@@ -8,10 +8,8 @@ test("Signup with Existing Email", async ({ page }) => {
     await page.goto("https://www.facebook.com/", { timeout: 60000 });  // Increased timeout to 60 seconds
   });
   await test.step("2. Click button:has-text(\"Create new account\")", async () => {
-    {
-      const locator = page.locator("button:has-text(\"Create new account\")");
-      await locator.waitFor({ state: 'visible', timeout: 15000 });  // Increased wait timeout
-      await locator.click({ timeout: 30000 });
-    }
+    const locator = page.locator("button:has-text(\"Create new account\")");
+    await locator.waitFor({ state: 'visible', timeout: 15000 });  // Increased wait timeout
+    await locator.click({ timeout: 30000 });
   });
 });

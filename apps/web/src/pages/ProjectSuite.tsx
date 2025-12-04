@@ -25,6 +25,26 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Build a grep that still matches when Playwright prepends describe titles.
+function buildLooseGrep(titles: string[]) {
+  if (!titles.length) return "";
+  const escaped = titles.map(escapeRegex);
+  const body = escaped.length === 1 ? escaped[0] : `(?:${escaped.join("|")})`;
+  return `(?:^|\\s)${body}(?:$|\\s)`;
+}
+
+function friendlyError(text: string, fallback: string) {
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed === "string") return parsed;
+    if (parsed?.error) return parsed.error;
+    if (parsed?.message) return parsed.message;
+  } catch {
+    // ignore
+  }
+  return text?.trim() || fallback;
+}
+
 function buildTree(specs: SpecFile[]): TreeNode[] {
   const root: Record<string, any> = {};
   for (const s of specs) {
@@ -401,6 +421,10 @@ export default function ProjectSuite() {
       setRunError("Select a spec before editing.");
       return;
     }
+    if (activeSpec.path.startsWith("(")) {
+      setSpecProjectErr("Pick a specific spec (not the suite aggregate) before editing.");
+      return;
+    }
     if (!isActiveCurated || !activeSuite) {
       setSpecProjectErr("Copy the spec into a curated suite before editing.");
       return;
@@ -412,7 +436,7 @@ export default function ProjectSuite() {
       const res = await fetch(`/tm/suite/spec-content?${qs.toString()}`);
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to load spec content");
-        throw new Error(text);
+        throw new Error(friendlyError(text, "Failed to load spec"));
       }
       const data = await res.json().catch(() => null);
       setEditorContent(data?.content ?? "");
@@ -439,7 +463,7 @@ export default function ProjectSuite() {
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to save spec");
-        throw new Error(text);
+        throw new Error(friendlyError(text, "Failed to save spec"));
       }
       setEditorOpen(false);
       setSpecProjectErr(null);
@@ -537,31 +561,31 @@ export default function ProjectSuite() {
     return () => { active = false; };
   }, [apiFetch]);
 
-  // load cases when a spec is selected
+  // load cases when a spec is selected (skip when viewing whole suite)
   useEffect(() => {
-  if (!activeSpec) return;
-  const qs = new URLSearchParams({ projectId: pid, path: activeSpec.path });
-  fetch(`/tm/suite/cases?${qs.toString()}`)
-    .then(async (r) => {
-      if (!r.ok) {
-        const text = await r.text().catch(() => "Failed to load cases");
-        throw new Error(text);
-      }
-      return r.json();
-    })
-    .then((rows: CaseItem[]) => {
-      setCases(rows);
-      const allSelected: Record<string, boolean> = {};
-      rows.forEach((c) => {
-        allSelected[`case:${activeSpec?.path || ""}:${c.title}`] = true;
+    if (!activeSpec || suiteSelected) return;
+    const qs = new URLSearchParams({ projectId: pid, path: activeSpec.path });
+    fetch(`/tm/suite/cases?${qs.toString()}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => "Failed to load cases");
+          throw new Error(text);
+        }
+        return r.json();
+      })
+      .then((rows: CaseItem[]) => {
+        setCases(rows);
+        const allSelected: Record<string, boolean> = {};
+        rows.forEach((c) => {
+          allSelected[`case:${activeSpec?.path || ""}:${c.title}`] = true;
+        });
+        setSelected(allSelected);
+      })
+      .catch((err) => {
+        console.error(err);
+        setRunError(err instanceof Error ? err.message : "Failed to load cases");
       });
-      setSelected(allSelected);
-    })
-    .catch((err) => {
-      console.error(err);
-      setRunError(err instanceof Error ? err.message : "Failed to load cases");
-    });
-}, [pid, activeSpec]);
+  }, [pid, activeSpec, suiteSelected]);
 
 
   const filtered = useMemo(
@@ -637,44 +661,31 @@ export default function ProjectSuite() {
     setRunError(null);
     try {
       if (suiteSelected) {
-        const bySpec = new Map<string, string[]>();
-        selectedCases.forEach((c) => {
-          const p = c.specPath;
-          if (!p) return;
-          const arr = bySpec.get(p) || [];
-          arr.push(c.title);
-          bySpec.set(p, arr);
+        const files = Array.from(
+          new Set(
+            selectedCases
+              .map((c) => c.specPath)
+              .filter((p): p is string => !!p)
+          )
+        );
+        const grep = buildLooseGrep(selectedCases.map((c) => c.title));
+        const res = await apiFetch<{ id: string }>("/runner/run", {
+          method: "POST",
+          body: JSON.stringify({
+            projectId: runProjectId,
+            files,
+            grep,
+            headful,
+            reporter,
+          }),
         });
-        const runIds: string[] = [];
-        for (const [file, titles] of bySpec.entries()) {
-          const fragments = titles.map(escapeRegex);
-          const grep =
-            fragments.length === 1
-              ? `^${fragments[0]}$`
-              : `^(?:${fragments.join("|")})$`;
-          const res = await apiFetch<{ id: string }>("/runner/run", {
-            method: "POST",
-            body: JSON.stringify({
-              projectId: runProjectId,
-              file,
-              grep,
-              headful,
-              reporter,
-            }),
-          });
-          if (res?.id) runIds.push(res.id);
-        }
-        if (runIds.length) navigate(`/test-runs/${runIds[0]}`);
+        if (res?.id) navigate(`/test-runs/${res.id}`);
       } else {
         if (!activeSpec) {
           setRunError("Select a spec before running.");
           return;
         }
-        const fragments = selectedTitles.map(escapeRegex);
-        const grep =
-          fragments.length === 1
-            ? `^${fragments[0]}$`
-            : `^(?:${fragments.join("|")})$`;
+        const grep = buildLooseGrep(selectedTitles);
         const res = await apiFetch<{ id: string }>("/runner/run", {
           method: "POST",
           body: JSON.stringify({
@@ -708,17 +719,17 @@ export default function ProjectSuite() {
     setRunningSuite(true);
     setRunError(null);
     try {
-      for (const spec of specs) {
-        await apiFetch<{ id: string }>("/runner/run", {
-          method: "POST",
-          body: JSON.stringify({
-            projectId: runProjectId,
-            file: spec.path,
-            headful,
-            reporter,
-          }),
-        });
-      }
+      const files = specs.map((s) => s.path);
+      const res = await apiFetch<{ id: string }>("/runner/run", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: runProjectId,
+          files,
+          headful,
+          reporter,
+        }),
+      });
+      if (res?.id) navigate(`/test-runs/${res.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to run suite";
       setRunError(msg);
@@ -741,9 +752,11 @@ export default function ProjectSuite() {
               title="How to use Suites"
               steps={[
                 "Pick a suite on the left and select a spec file.",
-                "Click Edit spec to open the inline editor and save changes.",
+                "Click Edit spec to open the inline editor; you can edit even locked specs.",
+                "Use Lock spec when you want to freeze the current saved version (locks are advisory).",
+                "Saved changes are applied immediately; rerun to see new steps.",
                 "Use Run selection to execute chosen tests.",
-                "Copy or lock specs to manage curated suites safely.",
+                "Copy specs into curated suites to safely customize generated tests.",
               ]}
             />
           </div>
@@ -791,7 +804,7 @@ export default function ProjectSuite() {
                 size="sm"
                 className="w-full justify-center"
                 onClick={handleEditSpec}
-                disabled={editorLoading}
+                disabled={editorLoading || activeSpec?.path.startsWith("(")}
               >
                 <FileText className="h-4 w-4 mr-1" />
                 {editorLoading ? "Opening..." : "Edit spec"}
@@ -945,7 +958,11 @@ export default function ProjectSuite() {
           </Button>
 
           {/* NOTE: wiring the Run button in Step 2 */}
-          <Button disabled={!anySelected || running} onClick={handleRunSelection}>
+          <Button
+            disabled={!anySelected || running}
+            onClick={handleRunSelection}
+            className="border border-white/90"
+          >
             <Play className="h-4 w-4 mr-1" /> {running ? "Starting..." : "Run selection"}
           </Button>
         </div>
@@ -961,25 +978,55 @@ export default function ProjectSuite() {
             <div className="text-sm text-muted-foreground">Select a spec on the left.</div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm text-muted-foreground">{activeSpec.path}</div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={()=>selectAll(true)}>Select page</Button>
-                    <Button variant="ghost" onClick={()=>selectAll(false)}>Clear page</Button>
-                    <Button variant="secondary" onClick={loadSuiteCases} disabled={suiteSelected && !runError}>
-                      Load suite
-                    </Button>
-                    <Button variant="secondary" onClick={handleRunSuite} disabled={runningSuite || running}>
-                      {runningSuite ? "Running suite..." : "Run suite"}
-                    </Button>
-                  </div>
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="text-sm text-muted-foreground">{activeSpec.path}</div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    onClick={()=>selectAll(true)}
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                  >
+                    Select page
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={()=>selectAll(false)}
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                  >
+                    Clear page
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={loadSuiteCases}
+                    disabled={suiteSelected && !runError}
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                  >
+                    Load suite
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={handleRunSuite}
+                    disabled={runningSuite || running}
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                  >
+                    {runningSuite ? "Running suite..." : "Run suite"}
+                  </Button>
                 </div>
+              </div>
               <Separator className="mb-3" />
               <div className="grid gap-2">
                 {filtered.map(c => {
                   const key = `case:${c.specPath || activeSpec?.path || ""}:${c.title}`;
                   return (
-                  <div key={key} className="flex items-start gap-3 p-3 rounded-xl border">
+                  <div
+                    key={key}
+                    className="flex items-start gap-3 p-3 rounded-xl border cursor-pointer"
+                    onClick={() => {
+                      if (c.specPath) {
+                        setActiveSpec({ path: c.specPath });
+                      }
+                    }}
+                  >
                     <Checkbox
                       checked={!!selected[key]}
                       onCheckedChange={(v)=>toggle(key, Boolean(v))}

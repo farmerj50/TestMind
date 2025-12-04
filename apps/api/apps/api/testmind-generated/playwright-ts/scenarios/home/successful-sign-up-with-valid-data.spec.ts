@@ -9,7 +9,7 @@ test("Successful Sign Up with Valid Data", async ({ page }) => {
   });
   await test.step("2. Click button:has-text(\"Create new account\")", async () => {
     const locator = page.locator("button:has-text(\"Create new account\")");
-    await locator.waitFor({ state: 'visible', timeout: 15000 });
-    await locator.click({ timeout: 10000 });
+    await locator.waitFor({ state: 'visible', timeout: 20000 });
+    await locator.click({ timeout: 15000 });
   });
 });

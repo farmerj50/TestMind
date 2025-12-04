@@ -4,8 +4,11 @@ import { test, expect } from '@playwright/test';
 test("Decline Marketing Button Functionality", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Decline Marketing Button Functionality" }, { type: "parameter", description: "page=/${page}" });
   // Navigating to the base URL defined in the Playwright configuration
-  await page.goto("http://localhost:3000/", { waitUntil: 'networkidle' }); // Updated port to 3000
+  await page.goto("https://bovada.lv/", { timeout: 60000 }); // Increased timeout to 60 seconds
+  await page.waitForLoadState('domcontentloaded'); // Wait for DOM to fully load
+  await page.waitForLoadState('networkidle'); // Wait for network to be idle
   await test.step("1. Click decline marketing button", async () => {
-    await page.click('button#decline-marketing'); // Added a valid selector for click action
+    await page.waitForSelector('button#decline-marketing', { state: 'visible', timeout: 60000 }); // Increased timeout to 60 seconds
+    await page.click('button#decline-marketing'); // Valid selector for click action
   });
-}, { timeout: 60000 }); // Set timeout to 60 seconds
+}, { timeout: 60000 }); // Set default timeout for the test to 60 seconds for stability.

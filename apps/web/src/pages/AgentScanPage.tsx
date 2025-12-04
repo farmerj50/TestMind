@@ -173,6 +173,18 @@ export default function AgentScanPage() {
     [session]
   );
 
+  const friendlyError = (raw: any, fallback: string) => {
+    const stripAnsi = (val: string) => val.replace(/\u001b\[[0-9;]*m/g, "");
+    const text = typeof raw === "string" ? raw : raw?.message || fallback;
+    try {
+      const parsed = JSON.parse(text);
+      const msg = parsed?.error || parsed?.message || text;
+      return stripAnsi(String(msg));
+    } catch {
+      return stripAnsi(text || fallback);
+    }
+  };
+
   useEffect(() => {
     if (!selectedProject || !hasInProgress) return;
     const id = setInterval(() => {
@@ -213,7 +225,7 @@ export default function AgentScanPage() {
       localStorage.setItem(baseUrlKey(selectedProject), trimmedBase);
       setPageInput("");
     } catch (err: any) {
-      setError(err?.message ?? "Scan failed");
+      setError(friendlyError(err?.message, "Scan failed"));
     } finally {
       setScanning(false);
     }
@@ -340,11 +352,12 @@ export default function AgentScanPage() {
                 </Select>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="default"
                   size="sm"
                   onClick={handleCreateProject}
                   disabled={creatingProject}
                   title="Create a project using the Base URL as repoUrl"
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
                 >
                   {creatingProject ? (
                     <>
@@ -368,11 +381,17 @@ export default function AgentScanPage() {
                   >
                     {projectSessions.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name || "Session"} — {s.status}
+                        {s.name || "Session"} - {s.status}
                       </option>
                     ))}
                   </select>
-                  <Button type="button" size="sm" variant="outline" onClick={loadSelectedSession}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+                    onClick={loadSelectedSession}
+                  >
                     Load session
                   </Button>
                 </div>
@@ -387,6 +406,7 @@ export default function AgentScanPage() {
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder="https://app.yoursite.com"
+                className="bg-white"
               />
             </div>
 
@@ -398,6 +418,7 @@ export default function AgentScanPage() {
                 value={pageInput}
                 onChange={(e) => setPageInput(e.target.value)}
                 placeholder="/dashboard or https://example.com/dashboard"
+                className="bg-white"
               />
             </div>
 
@@ -415,10 +436,14 @@ export default function AgentScanPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button type="submit" disabled={scanning || !selectedProject}>
+              <Button
+                type="submit"
+                disabled={scanning || !selectedProject}
+                className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+              >
                 {scanning ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scanningï¿½?ï¿½
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scanning...
                   </>
                 ) : (
                   "Scan page"
@@ -567,7 +592,8 @@ export default function AgentScanPage() {
                 <div className="flex flex-wrap gap-2 text-xs mb-2">
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="default"
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
                     onClick={() =>
                       apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(() =>
                         fetchSession(selectedProject, { silent: true })
@@ -579,9 +605,7 @@ export default function AgentScanPage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="ghost"
-                    disabled={busyGenerateAll === page.id}
-                    onClick={() => generateAllAccepted(page)}
+                    variant="default" className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm" disabled={busyGenerateAll === page.id} onClick={() => generateAllAccepted(page)}
                   >
                     {busyGenerateAll === page.id ? "Generating…" : "Generate all accepted"}
                   </Button>
@@ -596,7 +620,7 @@ export default function AgentScanPage() {
                     page.scenarios.map((scenario) => (
                       <div
                         key={scenario.id}
-                        className="rounded-md border px-3 py-2"
+                        className="rounded-md border px-3 py-2 bg-white"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -614,11 +638,8 @@ export default function AgentScanPage() {
                           </div>
                           <Button
                             size="sm"
-                            variant={
-                              scenario.status === "accepted"
-                                ? "secondary"
-                                : "outline"
-                            }
+                            variant="default"
+                            className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
                             disabled={
                               scenario.status === "accepted" ||
                               attachBusy === scenario.id
@@ -646,6 +667,13 @@ export default function AgentScanPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
 
 
 
