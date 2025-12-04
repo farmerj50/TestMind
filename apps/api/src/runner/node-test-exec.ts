@@ -134,6 +134,18 @@ export async function detectFramework(workdir: string): Promise<"playwright" | "
 }
 
 export async function installDeps(repoRoot: string, workspaceCwd = repoRoot) {
+  if (process.env.TM_REUSE_WORKSPACE === "1") {
+    console.log("[runner] TM_REUSE_WORKSPACE=1 – skipping installDeps");
+    return;
+  }
+  if (process.env.TM_LOCAL_REPO_ROOT) {
+    console.log("[runner] TM_LOCAL_REPO_ROOT set - skipping installDeps");
+    return;
+  }
+  if (process.env.TM_SKIP_INSTALL === "1") {
+    console.log("[runner] TM_SKIP_INSTALL=1, skipping installDeps");
+    return;
+  }
   const has = (p: string) => fsSync.existsSync(path.join(repoRoot, p));
 
   let pm: "pnpm" | "yarn" | "npm";

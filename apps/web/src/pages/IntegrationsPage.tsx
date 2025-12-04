@@ -305,7 +305,20 @@ export default function IntegrationsPage() {
       setSecretForm({ name: "", key: "", value: "" });
       await loadSecrets(projectId);
     } catch (err: any) {
-      setSecretsErr(err?.message ?? "Failed to save secret");
+      let msg = err?.message ?? "Failed to save secret";
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed?.error?.fieldErrors) {
+          const parts: string[] = [];
+          Object.entries(parsed.error.fieldErrors as Record<string, string[]>).forEach(([k, v]) => {
+            if (v?.length) parts.push(`${k}: ${v.join(", ")}`);
+          });
+          if (parts.length) msg = parts.join(" | ");
+        }
+      } catch {
+        // keep original message
+      }
+      setSecretsErr(msg);
     } finally {
       setSecretSaving(false);
     }
@@ -411,7 +424,7 @@ export default function IntegrationsPage() {
                       {existing ? (
                         <Button
                           size="sm"
-                          variant="ghost"
+                          className="bg-blue-600 text-white hover:bg-blue-700"
                           disabled={busy}
                           onClick={() => handleProviderDisconnect(existing.id)}
                         >
@@ -421,6 +434,7 @@ export default function IntegrationsPage() {
                       ) : (
                         <Button
                           size="sm"
+                          className="bg-blue-600 text-white hover:bg-blue-700"
                           disabled={busy}
                           onClick={() => handleProviderConnect(provider)}
                         >
@@ -499,7 +513,11 @@ export default function IntegrationsPage() {
               />
             </div>
             <div className="md:col-span-3">
-              <Button type="submit" disabled={secretSaving || !projectId}>
+              <Button
+                type="submit"
+                className="bg-blue-600 text-white hover:bg-blue-700"
+                disabled={secretSaving || !projectId}
+              >
                 {secretSaving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -625,7 +643,11 @@ export default function IntegrationsPage() {
             </div>
 
             <div className="md:col-span-2">
-              <Button type="submit" disabled={loading || !form.projectId}>
+              <Button
+                type="submit"
+                className="bg-blue-600 text-white hover:bg-blue-700"
+                disabled={loading || !form.projectId}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving�?�

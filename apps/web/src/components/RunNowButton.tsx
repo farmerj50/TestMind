@@ -30,7 +30,14 @@ export default function RunNowButton({
   }
 
   return (
-    <Button onClick={handleClick} size="sm" disabled={loading} title="Run now">
+    <Button
+      onClick={handleClick}
+      size="sm"
+      disabled={loading}
+      title="Run now"
+      variant="default"
+      className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+    >
       <Play className="mr-2 h-4 w-4" />
       {loading ? "Running…" : "Run"}
     </Button>

@@ -90,7 +90,12 @@ export default function AgentSessionsPage() {
           <p className="text-sm text-slate-600">View and reopen recent agent scans.</p>
         </div>
         <Link to="/agent">
-          <Button variant="outline">Scan a page</Button>
+          <Button
+            variant="default"
+            className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+          >
+            Scan a page
+          </Button>
         </Link>
       </div>
 
@@ -112,6 +117,7 @@ export default function AgentSessionsPage() {
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="Homepage crawl"
+                className="bg-white"
               />
             </div>
             <div className="md:col-span-1">
@@ -135,6 +141,7 @@ export default function AgentSessionsPage() {
                 value={form.baseUrl}
                 onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
                 placeholder="https://app.yoursite.com"
+                className="bg-white"
               />
             </div>
             <div className="md:col-span-2">
@@ -150,12 +157,17 @@ export default function AgentSessionsPage() {
               />
             </div>
             <div className="md:col-span-2 flex gap-2">
-              <Button type="submit" disabled={creating}>
+              <Button
+                type="submit"
+                disabled={creating}
+                className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+              >
                 {creating ? "Creating..." : "Create session"}
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="default"
+                className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
                 onClick={() => setForm({ name: "", baseUrl: "", instructions: "", projectId: form.projectId })}
               >
                 Clear
@@ -199,13 +211,18 @@ export default function AgentSessionsPage() {
                   <div className="text-xs text-slate-500">Updated: {new Date(s.updatedAt).toLocaleString()}</div>
                   <div className="ml-auto flex gap-2">
                     <Link to={`/agent/sessions/${s.id}`}>
-                      <Button size="sm" variant="outline">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+                      >
                         View
                       </Button>
                     </Link>
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="default"
+                      className="bg-[#22c55e] text-white hover:bg-[#16a34a] shadow-sm"
                       onClick={() =>
                         apiFetch(`/tm/agent/sessions/${s.id}/start`, { method: "POST" })
                           .then(load)
