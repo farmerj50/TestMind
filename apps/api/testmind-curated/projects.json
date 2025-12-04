@@ -38,13 +38,9 @@
       "id": "agent-cmihx1g8j00017klcjcr3dkea",
       "name": "Agent - facebook.com",
       "root": "agent-cmihx1g8j00017klcjcr3dkea",
-      "locked": []
-    },
-    {
-      "id": "agent-cmijl4hxt00017k2o8zp5bh4z",
-      "name": "Agent - www.facebook.com",
-      "root": "agent-cmijl4hxt00017k2o8zp5bh4z",
-      "locked": []
+      "locked": [
+        "scenarios/home/check-privacy-policy-link.spec.ts"
+      ]
     },
     {
       "id": "agent-cmijmcib4000g7k2otajvpxy6",
@@ -57,6 +53,14 @@
       "name": "Recordings - www.inteletravel.com",
       "root": "recordings-cminmc2fu009f7kkcy1ow8b1a",
       "locked": []
+    },
+    {
+      "id": "agent-cmirq2qfb000p7k0095no2wv0",
+      "name": "Agent - www.tiktok.com",
+      "root": "agent-cmirq2qfb000p7k0095no2wv0",
+      "locked": [
+        "scenarios/home/verify-home-page-loads-successfully.spec.ts"
+      ]
     }
   ]
 }

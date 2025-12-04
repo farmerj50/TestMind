@@ -12,17 +12,17 @@ type Step =
 type TestCase = {
   id: string;
   name: string;
-  group?: { page?: string };
+  group?: { page?: string; url?: string };
   steps: Step[];
 };
 
 export function groupByPage(cases: TestCase[]): Map<string, TestCase[]> {
   const grouped = new Map<string, TestCase[]>();
   for (const tc of cases ?? []) {
-    const page = tc.group?.page || "/";
-    const arr = grouped.get(page) ?? [];
+    const key = tc.group?.url || tc.group?.page || "/";
+    const arr = grouped.get(key) ?? [];
     arr.push(tc);
-    grouped.set(page, arr);
+    grouped.set(key, arr);
   }
   return grouped;
 }
@@ -127,9 +127,10 @@ function emitAnnotations(pagePath: string, caseName: string): string {
 function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string): string {
   const title = uniqTitle(tc.name);
   const hasGoto = tc.steps.some((s) => s.kind === "goto");
+  const navTarget = tc.group?.url || pagePath;
   const preNav = hasGoto
     ? ""
-    : `  // Auto-nav added because no explicit goto step was provided\n  await page.goto(${JSON.stringify(pagePath)}, { waitUntil: 'networkidle' });\n`;
+    : `  // Auto-nav added because no explicit goto step was provided\n  await page.goto(${JSON.stringify(navTarget)}, { waitUntil: 'networkidle' });\n`;
 
   const body =
     tc.steps.length > 0
