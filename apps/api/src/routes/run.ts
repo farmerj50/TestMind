@@ -23,6 +23,17 @@ import { decryptSecret } from "../lib/crypto";
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
 async function installDeps(repoRoot: string, workspaceCwd: string) {
+  const nodeModulesExists = fsSync.existsSync(path.join(repoRoot, "node_modules"));
+  if (process.env.TM_SKIP_INSTALL === "1" && nodeModulesExists) {
+    console.log("[runner] TM_SKIP_INSTALL=1 and node_modules present; skipping installDeps");
+    return;
+  }
+  if (process.env.TM_SKIP_INSTALL === "1" && !nodeModulesExists) {
+    console.log("[runner] TM_SKIP_INSTALL=1 but node_modules missing; installing anyway");
+  }
+
+  const tStart = Date.now();
+
   const has = (p: string) => fsSync.existsSync(path.join(repoRoot, p));
   const isWorkspaceRoot =
     path.resolve(repoRoot) === path.resolve(workspaceCwd) &&
@@ -83,6 +94,9 @@ async function installDeps(repoRoot: string, workspaceCwd: string) {
     stdio: "pipe",
   });
 } catch { /* non-fatal; Playwright may already be installed */ }
+
+  const tEnd = Date.now();
+  console.log(`[runner] installDeps completed in ${tEnd - tStart}ms (cwd=${workspaceCwd})`);
 }
 // If webServer uses `vite preview`, make sure the app is built first
 async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: string, configPath?: string }> {
@@ -261,12 +275,21 @@ export default async function runRoutes(app: FastifyInstance) {
       );
     }
 
-    const pid = parsed.data.projectId.trim();
+  const pid = parsed.data.projectId.trim();
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
     const requestedBaseUrl = parsed.data.baseUrl;
     let effectiveBaseUrl = requestedBaseUrl ?? DEFAULT_BASE_URL;
-    // Default to running the full suite unless the caller explicitly opts into filtering.
-    const runAll = parsed.data.runAll ?? parseBool(process.env.TM_RUN_ALL_DEFAULT ?? "1", true);
+    // Default to honoring file/grep selection unless caller explicitly sets runAll.
+    // Honor explicit runAll, otherwise default from env, but if caller passed files/file/grep, prefer those.
+    const hasSelection =
+      (parsed.data.files && parsed.data.files.length > 0) ||
+      !!parsed.data.file ||
+      !!parsed.data.grep;
+    let runAll = parsed.data.runAll ?? parseBool(process.env.TM_RUN_ALL_DEFAULT ?? "0", false);
+    if (hasSelection && parsed.data.runAll === undefined) {
+      runAll = false;
+    }
+    const localRepoRoot = process.env.TM_LOCAL_REPO_ROOT?.trim() || null;
 
     // look up project
     const project =
@@ -318,7 +341,30 @@ export default async function runRoutes(app: FastifyInstance) {
     (async () => {
       let work: string;
       let usingLocalRepo = false;
-      if (!hasRepoUrl && allowLocalRepo) {
+
+      const reuseWorkspace = (process.env.TM_REUSE_WORKSPACE ?? "1") === "1";
+      const reusePathEnv = process.env.TM_WORKSPACE_PATH;
+
+      if (localRepoRoot) {
+        // Explicit local repo root takes priority
+        work = path.resolve(localRepoRoot);
+        usingLocalRepo = true;
+        await fs.writeFile(
+          path.join(outDir, "stdout.txt"),
+          `[runner] TM_LOCAL_REPO_ROOT=${work} -> using local workspace (skip clone/install/build/server)\n`,
+          { flag: "a" }
+        );
+      } else if (reuseWorkspace) {
+        // Reuse an existing checkout; force monorepo root (../../ from apps/api)
+        const fallbackRoot = path.resolve(process.cwd(), "../..");
+        work = fallbackRoot;
+        usingLocalRepo = true;
+        await fs.writeFile(
+          path.join(outDir, "stdout.txt"),
+          `[runner] TM_REUSE_WORKSPACE=1 using workdir=${work}\n`,
+          { flag: "a" }
+        );
+      } else if (!hasRepoUrl && allowLocalRepo) {
         // fall back to monorepo root (apps/api is one level below)
         work = path.resolve(process.cwd(), "..");
         usingLocalRepo = true;
@@ -326,15 +372,39 @@ export default async function runRoutes(app: FastifyInstance) {
         work = await makeWorkdir(); // where we clone the repo
       }
       try {
+        // Safety: if work accidentally points at apps/ or apps/api, lift to repo root
+        const workStat = work.replace(/\\/g, "/");
+        if (workStat.endsWith("/apps/api")) {
+          work = path.resolve(work, "../..");
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] corrected workdir up to repo root (was apps/api): ${work}\n`,
+            { flag: "a" }
+          );
+        } else if (workStat.endsWith("/apps")) {
+          work = path.resolve(work, "..");
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] corrected workdir up to repo root (was apps): ${work}\n`,
+            { flag: "a" }
+          );
+        }
+
         // GitHub token if connected
         const gitAcct = await prisma.gitAccount.findFirst({
           where: { userId: project.ownerId, provider: "github" },
           select: { token: true },
         });
 
-        // 1) Clone (skip if using local repo)
+        // 1) Clone (skip if using local/reuse workspace)
         if (!usingLocalRepo && project.repoUrl) {
           await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+        } else if (usingLocalRepo) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] clone skipped (using local/reuse workspace)\n",
+            { flag: "a" }
+          );
         }
 
         // 2) Install deps
@@ -357,13 +427,34 @@ export default async function runRoutes(app: FastifyInstance) {
 
 
         // 3) Install deps in the workspace (this is what was missing)
-        await installDeps(work, cwd);
+        if (localRepoRoot || reuseWorkspace) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] local/reuse workspace: skipping installDeps (expect node_modules already present)\n",
+            { flag: "a" }
+          );
+        } else {
+          const t0 = Date.now();
+          await installDeps(work, cwd);
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] installDeps done in ${Date.now() - t0}ms\n`,
+            { flag: "a" }
+          );
+        }
         // If this workspace is a Vite app and Playwright's webServer uses "vite preview",
         // do a build first so preview has static assets.
         const isLocalhostBase =
           effectiveBaseUrl?.includes("localhost") || effectiveBaseUrl?.includes("127.0.0.1");
+        const hasBuildOutput =
+          fsSync.existsSync(path.join(cwd, "dist")) ||
+          fsSync.existsSync(path.join(cwd, "build"));
         const shouldBuildVite =
-          process.env.TM_VITE_BUILD !== "0" && !isLocalhostBase;
+          localRepoRoot
+            ? false
+            : process.env.TM_SKIP_BUILD === "1"
+              ? hasBuildOutput
+              : process.env.TM_VITE_BUILD !== "0" && !isLocalhostBase;
 
         if (
           shouldBuildVite &&
@@ -375,10 +466,11 @@ export default async function runRoutes(app: FastifyInstance) {
         ) {
           try {
             const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+            const t0 = Date.now();
             await execa(npx, ["-y", "vite", "build"], { cwd, stdio: "pipe" });
             await fs.writeFile(
               path.join(outDir, "stdout.txt"),
-              "[runner] vite build completed\n",
+              `[runner] vite build completed in ${Date.now() - t0}ms\n`,
               { flag: "a" }
             );
           } catch (e: any) {
@@ -388,6 +480,34 @@ export default async function runRoutes(app: FastifyInstance) {
               { flag: "a" }
             );
             // don't throw; Playwright may still start the server for non-Vite apps
+          }
+        } else if (process.env.TM_SKIP_BUILD === "1" && hasBuildOutput) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] TM_SKIP_BUILD=1, skipping vite build (existing build output found)\n",
+            { flag: "a" }
+          );
+        } else if (process.env.TM_SKIP_BUILD === "1" && !hasBuildOutput) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] TM_SKIP_BUILD=1 requested but no build output found; running build\n",
+            { flag: "a" }
+          );
+          try {
+            const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+            const t0 = Date.now();
+            await execa(npx, ["-y", "vite", "build"], { cwd, stdio: "pipe" });
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] vite build completed after forced build in ${Date.now() - t0}ms\n`,
+              { flag: "a" }
+            );
+          } catch (e: any) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] vite build (forced) failed: ${e?.stdout || e?.message}\n`,
+              { flag: "a" }
+            );
           }
         }
 
@@ -444,13 +564,28 @@ const DEV_COMMAND =
     ? \`${winDevCommand}\`
     : \`${unixDevCommand}\`;
 
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "3000");
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? NAV_TIMEOUT);
+const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "3000");
+const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "10000");
+const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
+  ? Number(process.env.TM_WORKERS)
+  : 4;
+const MAX_FAILURES = process.env.TM_MAX_FAILURES ? Number(process.env.TM_MAX_FAILURES) : 0;
+
 export default defineConfig({
   use: {
     baseURL: BASE,
+    navigationTimeout: NAV_TIMEOUT,
+    actionTimeout: ACTION_TIMEOUT,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
+  timeout: TEST_TIMEOUT,
+  expect: { timeout: EXPECT_TIMEOUT },
+  workers: WORKERS,
+  maxFailures: MAX_FAILURES,
   grep: GREP,
   reporter: reporters,
   webServer: process.env.TM_SKIP_SERVER
@@ -494,14 +629,26 @@ export default defineConfig({
           : null;
         const repoPath = path.join(work, 'apps', 'api', 'testmind-generated', 'playwright-ts');
         const repoAlt = path.join(work, 'testmind-generated', 'playwright-ts');
+        const webPath  = path.join(work, 'apps', 'web', 'testmind-generated', 'playwright-ts'); // common dev location
+        const curatedPath = path.join(CURATED_ROOT, project.id);
 
         function pickSource(): string | null {
+          // Prefer curated edits when present so saved suite changes are run.
+          const curatedExists = fsSync.existsSync(curatedPath);
+          if (curatedExists) return curatedPath;
+
+          // If a dev build already produced specs under apps/web, use that next.
+          if (fsSync.existsSync(webPath)) return webPath;
+
           if (MODE === 'local') return localPath;
-          if (MODE === 'repo') return fsSync.existsSync(repoPath) ? repoPath : (fsSync.existsSync(repoAlt) ? repoAlt : null);
+          if (MODE === 'repo') return fsSync.existsSync(repoPath) ? repoPath
+            : fsSync.existsSync(repoAlt) ? repoAlt
+            : (curatedExists ? curatedPath : null);
+
           // auto
           return fsSync.existsSync(repoPath) ? repoPath
             : fsSync.existsSync(repoAlt) ? repoAlt
-              : localPath;
+            : (curatedExists ? curatedPath : localPath);
         }
 
         // always clean the repo-copy roots to avoid stale mixes
@@ -510,22 +657,26 @@ export default defineConfig({
         try { await fs.rm(repoRoot1, { recursive: true, force: true }); } catch { }
         try { await fs.rm(repoRoot2, { recursive: true, force: true }); } catch { }
 
-        // wipe destination if requested
-        if ((process.env.TM_CLEAN_DEST || '1') !== '0') {
+        // wipe destination if requested (but don't delete if source==dest)
+        const srcPicked = pickSource();
+        const samePath = srcPicked ? path.resolve(srcPicked) === path.resolve(genDest) : false;
+        if ((process.env.TM_CLEAN_DEST || '1') !== '0' && !samePath) {
           try { await fs.rm(genDest, { recursive: true, force: true }); } catch { }
         }
 
-        const srcPicked = pickSource();
         if (!srcPicked) {
           await fs.writeFile(path.join(outDir, 'stderr.txt'),
             `[runner] NO SPECS SOURCE FOUND. MODE=${MODE} local=${localPath || 'null'} repo=${repoPath} or ${repoAlt}\n`,
             { flag: 'a' });
         } else {
-          await fs.mkdir(genDest, { recursive: true });
-          // @ts-ignore Node 18+
-          await fs.cp(srcPicked, genDest, { recursive: true });
+          // If we're already inside apps/web, avoid copying onto itself.
+          if (!samePath) {
+            await fs.mkdir(genDest, { recursive: true });
+            // @ts-ignore Node 18+
+            await fs.cp(srcPicked, genDest, { recursive: true });
+          }
           await fs.writeFile(path.join(outDir, 'stdout.txt'),
-            `[runner] specs source=${srcPicked} -> dest=${genDest}\n`,
+            `[runner] specs source=${srcPicked} -> dest=${genDest}${samePath ? " (no copy needed)" : ""}\n`,
             { flag: 'a' });
         }
 
@@ -544,7 +695,7 @@ export default defineConfig({
           );
         }
 
-        // log a short catalog so we can see exactly what’s about to run
+        // log a short catalog so we can see exactly what's about to run
         async function catalogSpecs(root: string, label: string) {
           const lines: string[] = [];
           const out: string[] = [];
@@ -607,11 +758,20 @@ export default defineConfig({
           await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
         }
         await logSpecs(cwd, "apps/web");
-          await logSpecs(path.join(cwd, "testmind-generated", "playwright-ts"), "generated");
+        await logSpecs(path.join(cwd, "testmind-generated", "playwright-ts"), "generated");
+
+        // If the caller provided specific files, restrict to those
+        if (!runAll && parsed.data.files && parsed.data.files.length) {
+          const requested = new Set(parsed.data.files.map((f: string) => path.resolve(cwd, f)));
+          // prune extraGlobs and force to requested
+          parsed.data.extraGlobs = parsed.data.files.map((f: string) =>
+            path.posix.join("testmind-generated/playwright-ts", f.replace(/\\/g, "/"))
+          );
+        }
 
                   // --- build optional selectors (single-file + grep) ---
         const extraGlobs: string[] = [];
-        // When runAll is true (default), ignore any file/grep filters from the UI.
+        // When runAll is true, ignore any file/grep filters from the UI.
         const requestedFiles = runAll
           ? []
           : (parsed.data.files && parsed.data.files.length
@@ -711,6 +871,7 @@ export default defineConfig({
         let allureReportReady = false;
         let hasAllureResults = false;
 
+        const tRunStart = Date.now();
         const exec = await runTests({
           workdir: cwd,
           jsonOutPath: resultsPath,
@@ -728,7 +889,7 @@ export default defineConfig({
         const selectedFilesForLog = requestedFiles.filter(Boolean);
         await fs.writeFile(
           path.join(outDir, "stdout.txt"),
-          `[runner] exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)}\n`,
+          `[runner] exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)} durationMs=${Date.now() - tRunStart}\n`,
           { flag: "a" }
         );
 

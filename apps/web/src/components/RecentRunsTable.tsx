@@ -22,6 +22,19 @@ export default function RecentRunsTable({
   const [err, setErr] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
 
+  const friendlyError = (raw: any, fallback: string) => {
+    if (!raw) return fallback;
+    const text = typeof raw === "string" ? raw : raw?.message || fallback;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.error) return String(parsed.error);
+      if (parsed?.message) return String(parsed.message);
+      return text;
+    } catch {
+      return text;
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (pollRef.current) {
@@ -95,7 +108,7 @@ export default function RecentRunsTable({
       setRuns([]);
       setErr(null);
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to delete runs");
+      setErr(friendlyError(e?.message, "Failed to delete runs"));
     }
   };
 

@@ -31,9 +31,15 @@ type GenerateBody = GenerateCommon;
 type GenerateQuery = GenerateCommon;
 type RunQuery = { baseUrl?: string; adapterId?: string };
 
+// Treat the monorepo root as two levels up from apps/api by default.
+const REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT
+  ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
+  : path.resolve(process.cwd(), '..', '..');
+
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
-  : path.resolve(process.cwd(), 'testmind-generated');
+  // fallback to repo-root/testmind-generated
+  : path.join(REPO_ROOT, 'testmind-generated');
 type CuratedManifest = ReturnType<typeof readCuratedManifest>;
 
 function listSpecProjects() {
@@ -64,13 +70,20 @@ function listSpecProjects() {
       type: "generated" as const,
     },
   ];
-  const curated = readCuratedManifest().projects.map((proj) => ({
-    id: proj.id,
-    name: proj.name || proj.id,
-    type: "curated" as const,
-    locked: proj.locked ?? [],
-  }));
-  return [...base, ...curated];
+  const curatedExisting = readCuratedManifest().projects
+    .map((proj) => ({
+      id: proj.id,
+      name: proj.name || proj.id,
+      type: "curated" as const,
+      locked: proj.locked ?? [],
+      root: proj.root ?? proj.id,
+    }))
+    // Drop curated entries whose root directory no longer exists (e.g., after deletion)
+    .filter((proj) => {
+      const abs = path.resolve(CURATED_ROOT, proj.root);
+      return fs.existsSync(abs);
+    });
+  return [...base, ...curatedExisting];
 }
 
 function setSpecLock(projectId: string, relativePath: string, locked: boolean) {
@@ -122,6 +135,13 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
     optionalRoot ? path.resolve(optionalRoot) : null,
     path.join(GENERATED_ROOT, projectId),
     path.join(GENERATED_ROOT, projectId, "playwright"),
+    // curated fallback (when generated specs are missing)
+    path.join(CURATED_ROOT, projectId),
+    path.join(CURATED_ROOT, projectId, "playwright-ts"),
+    // monorepo fallbacks
+    path.join(REPO_ROOT, "apps", "api", "testmind-generated", "playwright-ts"),
+    path.join(REPO_ROOT, "apps", "web", "testmind-generated", "playwright-ts"),
+    path.join(REPO_ROOT, "testmind-generated", "playwright-ts"),
   ].filter(Boolean) as string[];
 
   for (const p of candidates) {

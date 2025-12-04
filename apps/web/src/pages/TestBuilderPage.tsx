@@ -36,6 +36,7 @@ export default function TestBuilderPage() {
   const [generated, setGenerated] = useState<GeneratedTest[]>([]);
   const [loadingGen, setLoadingGen] = useState(false);
   const [notes, setNotes] = useState("Add any special flows, risks, or data here.");
+  const [manualSteps, setManualSteps] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -90,6 +91,24 @@ export default function TestBuilderPage() {
     }, 400);
   };
 
+  const handleManualGenerate = () => {
+    const text = manualSteps.trim();
+    if (!text) return;
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const steps = lines.length ? lines : [text];
+    const fileSafe = `manual-steps-${Date.now()}.spec.${language === "javascript" ? "js" : language === "python" ? "py" : language === "java" ? "java" : "ts"}`;
+    const test: GeneratedTest = {
+      title: "Manual scenario",
+      type: "Manual",
+      language,
+      runtime: "~",
+      fileName: fileSafe,
+      steps,
+    };
+    setGenerated((prev) => [test, ...prev]);
+    setManualSteps("");
+  };
+
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId),
     [projects, projectId]
@@ -118,7 +137,14 @@ export default function TestBuilderPage() {
               ))}
             </SelectContent>
           </Select>
-          {projectId && <RunNowButton projectId={projectId} />}
+          {projectId && (
+            <RunNowButton
+              projectId={projectId}
+              variant="default"
+              size="sm"
+              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+            />
+          )}
         </div>
       </div>
 
@@ -133,7 +159,13 @@ export default function TestBuilderPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Upload reference docs</label>
-              <Input type="file" multiple accept=".md,.txt,.pdf,.doc,.docx" onChange={handleUpload} />
+              <Input
+                type="file"
+                multiple
+                accept=".md,.txt,.pdf,.doc,.docx"
+                onChange={handleUpload}
+                className="bg-white"
+              />
               <p className="text-xs text-slate-500">We use document text to craft realistic flows and assertions.</p>
               {docs.length > 0 && (
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
@@ -175,35 +207,77 @@ export default function TestBuilderPage() {
                   <SelectTrigger>
                     <SelectValue placeholder="Select language" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {LANGUAGES.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>
-                        {l.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <label className="text-sm font-medium text-slate-700">Notes</label>
-                <textarea
-                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </div>
+              <SelectContent>
+                {LANGUAGES.map((l) => (
+                  <SelectItem key={l.value} value={l.value}>
+                    {l.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <label className="text-sm font-medium text-slate-700">Notes</label>
+            <textarea
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 bg-white"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
 
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleGenerate} disabled={loadingGen}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                {loadingGen ? "Generating…" : "Generate tests"}
-              </Button>
-              {projectId && (
-                <Button size="sm" variant="outline" disabled={!generated.length}>
-                  <Play className="mr-2 h-4 w-4" />
-                  Execute selection
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={handleGenerate}
+            disabled={loadingGen}
+            className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            {loadingGen ? "Generating…" : "Generate tests"}
+          </Button>
+            {projectId && (
+              <Button
+                size="sm"
+                variant="default"
+                className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+              disabled={!generated.length}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Execute selection
+            </Button>
+          )}
+          </div>
+
+            {/* Manual steps entry */}
+            <div className="mt-4 space-y-2 border-t pt-4">
+              <label className="text-sm font-medium text-slate-700">
+                Manual test steps (free text)
+              </label>
+              <textarea
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 bg-white"
+                rows={4}
+                value={manualSteps}
+                onChange={(e) => setManualSteps(e.target.value)}
+                placeholder="Enter steps in plain language. One action per line works best."
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleManualGenerate}
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+                  disabled={!manualSteps.trim()}
+                >
+                  Generate from steps
                 </Button>
-              )}
+                {projectId && (
+                  <RunNowButton
+                    projectId={projectId}
+                    variant="default"
+                    size="sm"
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+                  />
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
