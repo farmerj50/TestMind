@@ -1,0 +1,149 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - main [ref=e4]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - img "Facebook" [ref=e10]
+        - heading "Connect with friends and the world around you on Facebook." [level=2] [ref=e11]
+      - generic [ref=e13]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - textbox "Email or phone number" [active] [ref=e18]
+            - textbox "Password" [ref=e21]
+          - button "Log In" [ref=e23] [cursor=pointer]
+          - link "Forgot password?" [ref=e25] [cursor=pointer]:
+            - /url: https://www.facebook.com/recover/initiate/?privacy_mutation_token=eyJ0eXBlIjowLCJjcmVhdGlvbl90aW1lIjoxNzY0ODk5MTczLCJjYWxsc2l0ZV9pZCI6MzgxMjI5MDc5NTc1OTQ2fQ%3D%3D&ars=facebook_login&next
+          - button "Create new account" [ref=e28] [cursor=pointer]
+        - generic [ref=e29]:
+          - link "Create a Page" [ref=e30] [cursor=pointer]:
+            - /url: /pages/create/?ref_type=registration_form
+          - text: for a celebrity, brand or business.
+  - generic [ref=e33]:
+    - list [ref=e34]:
+      - listitem [ref=e35]: English (US)
+      - listitem [ref=e36]:
+        - link "Español" [ref=e37] [cursor=pointer]:
+          - /url: https://www.facebook.com/
+      - listitem [ref=e38]:
+        - link "Français (France)" [ref=e39] [cursor=pointer]:
+          - /url: https://es-la.facebook.com/
+      - listitem [ref=e40]:
+        - link "中文(简体)" [ref=e41] [cursor=pointer]:
+          - /url: https://fr-fr.facebook.com/
+      - listitem [ref=e42]:
+        - link "العربية" [ref=e43] [cursor=pointer]:
+          - /url: https://zh-cn.facebook.com/
+      - listitem [ref=e44]:
+        - link "Português (Brasil)" [ref=e45] [cursor=pointer]:
+          - /url: https://ar-ar.facebook.com/
+      - listitem [ref=e46]:
+        - link "Italiano" [ref=e47] [cursor=pointer]:
+          - /url: https://pt-br.facebook.com/
+      - listitem [ref=e48]:
+        - link "한국어" [ref=e49] [cursor=pointer]:
+          - /url: https://it-it.facebook.com/
+      - listitem [ref=e50]:
+        - link "Deutsch" [ref=e51] [cursor=pointer]:
+          - /url: https://ko-kr.facebook.com/
+      - listitem [ref=e52]:
+        - link "हिन्दी" [ref=e53] [cursor=pointer]:
+          - /url: https://de-de.facebook.com/
+      - listitem [ref=e54]:
+        - link "日本語" [ref=e55] [cursor=pointer]:
+          - /url: https://hi-in.facebook.com/
+      - listitem [ref=e56]:
+        - button "Show more languages" [ref=e57] [cursor=pointer]
+    - contentinfo "Facebook site links" [ref=e60]:
+      - list [ref=e61]:
+        - listitem [ref=e62]:
+          - link "Sign Up" [ref=e63] [cursor=pointer]:
+            - /url: /reg/
+        - listitem [ref=e64]:
+          - link "Log In" [ref=e65] [cursor=pointer]:
+            - /url: /login/
+        - listitem [ref=e66]:
+          - link "Messenger" [ref=e67] [cursor=pointer]:
+            - /url: https://messenger.com/
+        - listitem [ref=e68]:
+          - link "Facebook Lite" [ref=e69] [cursor=pointer]:
+            - /url: /lite/
+        - listitem [ref=e70]:
+          - link "Video" [ref=e71] [cursor=pointer]:
+            - /url: https://www.facebook.com/watch/
+        - listitem [ref=e72]:
+          - link "Meta Pay" [ref=e73] [cursor=pointer]:
+            - /url: https://about.meta.com/technologies/meta-pay
+        - listitem [ref=e74]:
+          - link "Meta Store" [ref=e75] [cursor=pointer]:
+            - /url: https://www.meta.com/
+        - listitem [ref=e76]:
+          - link "Meta Quest" [ref=e77] [cursor=pointer]:
+            - /url: https://www.meta.com/quest/
+        - listitem [ref=e78]:
+          - link "Ray-Ban Meta" [ref=e79] [cursor=pointer]:
+            - /url: https://www.meta.com/smart-glasses/
+        - listitem [ref=e80]:
+          - link "Meta AI" [ref=e81] [cursor=pointer]:
+            - /url: https://www.meta.ai/
+        - listitem [ref=e82]:
+          - link "Meta AI more content" [ref=e83] [cursor=pointer]:
+            - /url: https://www.meta.ai/pages/horror-trends-movies-tv-shows/?utm_source=foa_web_footer
+        - listitem [ref=e84]:
+          - link "Instagram" [ref=e85] [cursor=pointer]:
+            - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.instagram.com%2F&h=AT2HnQmlwV2UPRh8HTJjC5T2_atZY96NrSQno7h9pXy8fRzRm4bCVW0wpTkjRb9VlFLz8uLjjCs5INmcS2O3ZaeQPYxTJyZXnSIMb_UNhHBikAtgsCLG6Ela3W6ed9TvYXMaI22sOfxY_6hxDTau5uJvBkxf2O6es4tW5w
+        - listitem [ref=e86]:
+          - link "Threads" [ref=e87] [cursor=pointer]:
+            - /url: https://www.threads.com/
+        - listitem [ref=e88]:
+          - link "Voting Information Center" [ref=e89] [cursor=pointer]:
+            - /url: /votinginformationcenter/?entry_point=c2l0ZQ%3D%3D
+        - listitem [ref=e90]:
+          - link "Privacy Policy" [ref=e91] [cursor=pointer]:
+            - /url: /privacy/policy/?entry_point=facebook_page_footer
+        - listitem [ref=e92]:
+          - link "Consumer Health Privacy" [ref=e93] [cursor=pointer]:
+            - /url: /privacy/policies/health/?entry_point=facebook_page_footer
+        - listitem [ref=e94]:
+          - link "Privacy Center" [ref=e95] [cursor=pointer]:
+            - /url: /privacy/center/?entry_point=facebook_page_footer
+        - listitem [ref=e96]:
+          - link "About" [ref=e97] [cursor=pointer]:
+            - /url: https://about.meta.com/
+        - listitem [ref=e98]:
+          - link "Create ad" [ref=e99] [cursor=pointer]:
+            - /url: /ad_campaign/landing.php?placement=pflo&campaign_id=402047449186&nav_source=unknown&extra_1=auto
+        - listitem [ref=e100]:
+          - link "Create Page" [ref=e101] [cursor=pointer]:
+            - /url: /pages/create/?ref_type=site_footer
+        - listitem [ref=e102]:
+          - link "Developers" [ref=e103] [cursor=pointer]:
+            - /url: https://developers.facebook.com/?ref=pf
+        - listitem [ref=e104]:
+          - link "Careers" [ref=e105] [cursor=pointer]:
+            - /url: /careers/?ref=pf
+        - listitem [ref=e106]:
+          - link "Cookies" [ref=e107] [cursor=pointer]:
+            - /url: /policies/cookies/
+        - listitem [ref=e108]:
+          - link "Ad choices" [ref=e109] [cursor=pointer]:
+            - /url: https://www.facebook.com/help/568137493302217
+            - text: Ad choices
+        - listitem [ref=e111]:
+          - link "Terms" [ref=e112] [cursor=pointer]:
+            - /url: /policies?ref=pf
+        - listitem [ref=e113]:
+          - link "Help" [ref=e114] [cursor=pointer]:
+            - /url: /help/?ref=pf
+        - listitem [ref=e115]:
+          - link "Contact Uploading & Non-Users" [ref=e116] [cursor=pointer]:
+            - /url: https://www.facebook.com/help/637205020878504
+        - listitem:
+          - link "Settings" [ref=e117] [cursor=pointer]:
+            - /url: /settings
+        - listitem:
+          - link "Activity log" [ref=e118] [cursor=pointer]:
+            - /url: /allactivity?privacy_source=activity_log_top_menu
+    - generic [ref=e120]: Meta © 2025
+```

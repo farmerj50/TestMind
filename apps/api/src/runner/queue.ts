@@ -26,8 +26,19 @@ export type SelfHealPayload = {
   headed?: boolean;
 };
 
+export type SecurityScanPayload = {
+  jobId: string;
+  projectId: string;
+  baseUrl: string;
+  allowedHosts: string[];
+  allowedPorts: number[];
+  maxDurationMinutes: number;
+  enableActive: boolean;
+};
+
 export const runQueue = new Queue('test-runs', { connection: redis });
 export const healingQueue = new Queue('self-heal', { connection: redis });
+export const securityQueue = new Queue('security-scan', { connection: redis });
 
 // helper the route will call:
 export async function enqueueRun(runId: string, payload: RunPayload) {
@@ -45,6 +56,13 @@ export async function enqueueRun(runId: string, payload: RunPayload) {
 
 export async function enqueueSelfHeal(payload: SelfHealPayload) {
   return healingQueue.add('heal', payload, {
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+export async function enqueueSecurityScan(payload: SecurityScanPayload) {
+  return securityQueue.add('scan', payload, {
     removeOnComplete: true,
     removeOnFail: false,
   });
