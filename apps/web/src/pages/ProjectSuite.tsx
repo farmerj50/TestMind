@@ -1020,7 +1020,7 @@ export default function ProjectSuite() {
                   return (
                   <div
                     key={key}
-                    className="flex items-start gap-3 p-3 rounded-xl border cursor-pointer"
+                    className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white shadow-sm cursor-pointer"
                     onClick={() => {
                       if (c.specPath) {
                         setActiveSpec({ path: c.specPath });

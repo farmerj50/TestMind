@@ -20,6 +20,14 @@ enum TestCaseStatus {
   archived
 }
 
+enum TestCaseType {
+  functional
+  regression
+  security
+  accessibility
+  other
+}
+
 enum PlanTier {
   free
   pro
@@ -69,6 +77,28 @@ enum AgentScenarioStatus {
   completed
 }
 
+enum SecurityScanStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+enum SecurityFindingType {
+  recon
+  static_analysis
+  dependency
+  dynamic
+}
+
+enum SecuritySeverity {
+  info
+  low
+  medium
+  high
+  critical
+}
+
 model User {
   id               String            @id
   plan             PlanTier          @default(free)
@@ -95,6 +125,7 @@ model Project {
   jiraIntegrations JiraIntegration[]
   integrations     Integration[]
   secrets          ProjectSecret[]
+  securityScans    SecurityScanJob[]
 }
 
 model GitAccount {
@@ -158,20 +189,26 @@ model TestSuite {
 }
 
 model TestCase {
-  id        String         @id @default(cuid())
-  projectId String
-  project   Project        @relation(fields: [projectId], references: [id])
-  suiteId   String?
-  suite     TestSuite?     @relation(fields: [suiteId], references: [id])
-  key       String         @default(cuid())
-  title     String
-  priority  TestPriority   @default(medium)
-  status    TestCaseStatus @default(active)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  projectId     String
+  project       Project        @relation(fields: [projectId], references: [id])
+  suiteId       String?
+  suite         TestSuite?     @relation(fields: [suiteId], references: [id])
+  key           String         @default(cuid())
+  title         String
+  priority      TestPriority   @default(medium)
+  status        TestCaseStatus @default(active)
+  type          TestCaseType   @default(functional)
+  tags          String[]       @default([])
+  preconditions String?        @db.Text
+  lastAiSyncAt  DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   results            TestResult[]
   TestHealingAttempt TestHealingAttempt[]
+  steps             TestStep[]
+  runs              TestCaseRun[]
 
   @@unique([projectId, key])
   @@index([projectId, suiteId])
@@ -216,6 +253,31 @@ model TestHealingAttempt {
   @@unique([testResultId, attempt])
   @@index([runId, testCaseId])
   @@index([testResultId])
+}
+
+model TestStep {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      TestCase @relation(fields: [caseId], references: [id])
+  idx       Int
+  action    String   @db.Text
+  expected  String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caseId, idx])
+}
+
+model TestCaseRun {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      TestCase @relation(fields: [caseId], references: [id])
+  status    TestResultStatus
+  note      String?  @db.Text
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([caseId, createdAt])
 }
 
 model AgentSession {
@@ -321,6 +383,43 @@ model Integration {
   updatedAt DateTime @updatedAt
 
   @@index([projectId, provider])
+}
+
+model SecurityScanJob {
+  id         String             @id @default(cuid())
+  projectId  String
+  project    Project            @relation(fields: [projectId], references: [id])
+  status     SecurityScanStatus @default(queued)
+  phase      String?
+  startedAt  DateTime?          @default(now())
+  finishedAt DateTime?
+  config     Json?
+  summary    Json?
+  error      String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  findings SecurityFinding[]
+
+  @@index([projectId, createdAt])
+}
+
+model SecurityFinding {
+  id          String              @id @default(cuid())
+  scanId      String
+  scan        SecurityScanJob     @relation(fields: [scanId], references: [id])
+  type        SecurityFindingType
+  severity    SecuritySeverity
+  title       String
+  description String?
+  location    String?
+  tool        String?
+  evidence    Json?
+  suggestion  String?
+  status      String?
+  createdAt   DateTime            @default(now())
+
+  @@index([scanId, severity])
 }
 
 model ProjectSecret {

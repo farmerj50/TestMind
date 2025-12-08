@@ -20,6 +20,9 @@ import ProtectedRoute from "../components/ProtectedRoute";
 import AppLayout from "../components/layout/AppLayout";
 import BareLayout from "../components/layout/BareLayout";
 import ProjectSuite from "../pages/ProjectSuite";
+import QaAgentPage from "../pages/QaAgentPage";
+import SecurityScanPage from "../pages/SecurityScanPage";
+import ProjectsPage from "../pages/ProjectsPage";
 
 function NotFound() {
   return (
@@ -76,6 +79,38 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <AgentPageDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/qa-agent"
+          element={
+            <ProtectedRoute>
+              <QaAgentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/security-scan"
+          element={
+            <ProtectedRoute>
+              <SecurityScanPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects"
+          element={
+            <ProtectedRoute>
+              <ProjectsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects-ui"
+          element={
+            <ProtectedRoute>
+              <ProjectsPage />
             </ProtectedRoute>
           }
         />

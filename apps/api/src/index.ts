@@ -18,6 +18,8 @@ import integrationsRoutes from "./routes/integrations";
 import agentRoutes from "./routes/agent";
 import jiraRoutes from "./routes/jira";
 import { secretsRoutes } from "./routes/secrets";
+import qaAgentRoutes from "./routes/qaAgent";
+import securityRoutes from "./routes/security";
 import { prisma } from "./prisma";
 import { validatedEnv } from "./config/env";
 import recorderRoutes from "./routes/recorder";
@@ -61,6 +63,8 @@ app.register(integrationsRoutes, { prefix: "/" });
 app.register(agentRoutes, { prefix: "/" });
 app.register(jiraRoutes, { prefix: "/" });
 app.register(secretsRoutes, { prefix: "/" });
+app.register(qaAgentRoutes, { prefix: "/" });
+app.register(securityRoutes, { prefix: "/" });
 app.register(testmindRoutes, { prefix: "/tm" });
 app.register(recorderRoutes, { prefix: "/" });
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
@@ -354,6 +358,7 @@ const startWorkersOnce = () => {
   };
   start(import("./runner/worker"), "test-runs");
   start(import("./runner/self-heal-worker"), "self-heal");
+  start(import("./runner/security-worker"), "security-scan");
 };
 
 startWorkersOnce();
