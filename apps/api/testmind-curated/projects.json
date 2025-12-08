@@ -46,7 +46,9 @@
       "id": "agent-cmijmcib4000g7k2otajvpxy6",
       "name": "Agent - bovada.lv",
       "root": "agent-cmijmcib4000g7k2otajvpxy6",
-      "locked": []
+      "locked": [
+        "scenarios/home/decline-marketing-button-functionality.spec.ts"
+      ]
     },
     {
       "id": "recordings-cminmc2fu009f7kkcy1ow8b1a",
