@@ -55,6 +55,22 @@ type FailureContext = {
   testTitle?: string | null;
 };
 
+function containsNavTimeout(msg?: string | null) {
+  if (!msg) return false;
+  const lower = msg.toLowerCase();
+  return lower.includes("page.goto") && lower.includes("timeout");
+}
+
+function containsStrictMode(msg?: string | null) {
+  if (!msg) return false;
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("strict mode") ||
+    lower.includes("resolved to") ||
+    lower.includes("matches 2 elements")
+  );
+}
+
 async function collectFailureContext(job: SelfHealPayload): Promise<FailureContext> {
   const runLogDir = path.join(process.cwd(), 'runner-logs', job.runId);
   const stdoutPath = path.join(runLogDir, 'stdout.txt');
@@ -151,6 +167,118 @@ export const selfHealWorker = new Worker(
       if (!context.specContent) {
         throw new Error(`Spec file not found for ${context.repoRelativePath}`);
       }
+
+      const writeAndRecordSuccess = async (patched: string, summary: string, note: string) => {
+        await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
+        await fs.writeFile(context.repoAbsolutePath, patched, "utf8");
+        const diff = createTwoFilesPatch(
+          context.repoRelativePath,
+          context.repoRelativePath,
+          context.specContent!,
+          patched
+        );
+        await prisma.testHealingAttempt.update({
+          where: { id: attemptId },
+          data: {
+            status: HealingStatus.succeeded,
+            summary,
+            diff,
+            prompt: { note },
+            response: { raw: note },
+          },
+        });
+        await triggerRerun(job.data.projectId, job.data.runId, context.testTitle ?? undefined, job.data.headed);
+      };
+
+      // Quick rule-based nav URL fix before invoking LLM
+      const gotoMatch = context.specContent.match(/page\.goto\(\s*["']([^"']+)["']\s*\)/);
+      const originalUrl = gotoMatch?.[1];
+      const normalizeUrl = (raw: string) => {
+        try {
+          const u = new URL(raw);
+          let host = u.hostname;
+          if (host.endsWith(".com.com")) host = host.replace(/\.com\.com$/, ".com");
+          const tldFix = host.match(/\.([a-z]{2,3})\.com$/);
+          if (tldFix) host = host.replace(/\.([a-z]{2,3})\.com$/, ".$1");
+          if (host !== u.hostname) {
+            u.hostname = host;
+            return u.toString();
+          }
+        } catch {
+          // ignore parse errors
+        }
+        return null;
+      };
+
+      let didNavPatch = false;
+      let navPatchedSpec = context.specContent;
+      if (originalUrl) {
+        const fixed = normalizeUrl(originalUrl);
+        if (fixed && fixed !== originalUrl) {
+          navPatchedSpec = navPatchedSpec.replace(originalUrl, fixed);
+          // add gentle waitUntil/timeout if not present
+          navPatchedSpec = navPatchedSpec.replace(
+            /page\.goto\(\s*["'][^"']+["']\s*\)/,
+            `page.goto(${JSON.stringify(fixed)}, { waitUntil: "domcontentloaded", timeout: 15000 })`
+          );
+          didNavPatch = true;
+        }
+      }
+
+      if (didNavPatch) {
+        await writeAndRecordSuccess(navPatchedSpec, "Auto-fixed navigation URL", "rule-based url fix");
+        return;
+      }
+
+      // Rule: bump nav timeout/waitUntil on navigation timeouts
+      if (containsNavTimeout(context.message)) {
+        const gotoWithOpts = /page\.goto\(\s*([^,]+)\s*,\s*{[^}]*timeout\s*:\s*(\d+)/m;
+        const gotoSimple = /page\.goto\(\s*([^)]+)\)/m;
+        let patched = context.specContent;
+        let updated = false;
+
+        const replaceWith = (urlLiteral: string) =>
+          `page.goto(${urlLiteral.trim()}, { waitUntil: "domcontentloaded", timeout: 15000 })`;
+
+        const mOpts = context.specContent.match(gotoWithOpts);
+        if (mOpts) {
+          const currentTimeout = Number(mOpts[2]);
+          if (!Number.isNaN(currentTimeout) && currentTimeout < 10000) {
+            patched = context.specContent.replace(gotoWithOpts, (_, urlLit) => replaceWith(urlLit));
+            updated = true;
+          }
+        } else {
+          const mSimple = context.specContent.match(gotoSimple);
+          if (mSimple) {
+            patched = context.specContent.replace(gotoSimple, (_, urlLit) => replaceWith(urlLit));
+            updated = true;
+          }
+        }
+
+        if (updated) {
+          await writeAndRecordSuccess(patched, "Auto-increased navigation timeout", "rule-based nav-timeout");
+          return;
+        }
+      }
+
+      // Rule: soften strict-mode locator errors by selecting first match
+      if (containsStrictMode(context.message)) {
+        const locatorPattern =
+          /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\)(?!\s*\.(first|nth|filter|locator))/m;
+        const match = context.specContent.match(locatorPattern);
+        if (match) {
+          const target = match[0];
+          const patchedLocator = `${target}.first()`;
+          const patched = context.specContent.replace(target, patchedLocator);
+          await writeAndRecordSuccess(
+            patched,
+            "Auto-selected first match for strict-mode locator",
+            "rule-based strict-mode"
+          );
+          return;
+        }
+      }
+
 
       const promptPayload: HealPrompt = {
         specPath: context.repoRelativePath,
