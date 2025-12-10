@@ -4,6 +4,7 @@ import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma";
 import { z } from "zod";
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs/promises";
 import { execa } from "execa";
 
@@ -30,6 +31,8 @@ async function writeJson(file: string, data: any) {
 
 async function startGeneratedRun(runId: string, projectId: string, caseId?: string) {
   const runDir = path.join(RUNS_DIR, runId);
+  const workspaceRoot = path.join(os.tmpdir(), "tm-runner");
+  const workspaceDir = path.join(workspaceRoot, runId);
   // Kick off background work (no blocking)
   (async () => {
     try {
@@ -45,6 +48,8 @@ async function startGeneratedRun(runId: string, projectId: string, caseId?: stri
       const command = "plan+gen"; // also can be a client param
 
       await fs.mkdir(runDir, { recursive: true });
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+      await fs.mkdir(workspaceDir, { recursive: true });
       const eventPath = path.join(runDir, "event.json");
       await writeJson(eventPath, {
         issue: { number: prNumber },
@@ -130,7 +135,18 @@ test("smoke", async ({ page }) => {
       }
 
       // 4) author a tiny CI config that points only to the manual specs for this run
-      const ciConfigPath = path.join(runDir, "tm-ci.playwright.config.ts");
+      const workspaceManualDir = path.join(workspaceDir, "manual-specs");
+      if (manualSpecDir) {
+        await fs.rm(workspaceManualDir, { recursive: true, force: true });
+        await fs.symlink(manualSpecDir, workspaceManualDir, "junction");
+      }
+      // reuse root node_modules to avoid reinstalling
+      const sharedNodeModules = path.join(REPO_ROOT, "node_modules");
+      const workspaceNodeModules = path.join(workspaceDir, "node_modules");
+      await fs.rm(workspaceNodeModules, { recursive: true, force: true }).catch(() => {});
+      await fs.symlink(sharedNodeModules, workspaceNodeModules, "junction").catch(() => {});
+
+      const ciConfigPath = path.join(workspaceDir, "tm-ci.playwright.config.ts");
       const ciConfig = `
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
@@ -145,7 +161,7 @@ export default defineConfig({
       await fs.writeFile(ciConfigPath, ciConfig);
 
       // Absolute test dirs (avoid empty suite due to relative paths)
-      const manualDir = manualSpecDir ? manualSpecDir : "";
+      const manualDir = manualSpecDir ? workspaceManualDir : "";
       const esc = (p: string) => p.replace(/\\/g, "/");
 
       // 5) ensure browsers are installed (reuse existing workspace version)
@@ -173,10 +189,10 @@ export default defineConfig({
   use: { baseURL: process.env.TEST_BASE_URL || 'http://localhost:5173' },
 });
 `;
-        await fs.writeFile(ciConfigPath, configContent, "utf8");
+      await fs.writeFile(ciConfigPath, configContent, "utf8");
 
         await execa("pnpm", ["exec", "playwright", "test", "-c", ciConfigPath], {
-          cwd: REPO_ROOT,
+          cwd: workspaceDir,
           env,
           stdio: "inherit",
         });

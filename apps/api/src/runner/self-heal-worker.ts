@@ -141,7 +141,8 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   };
 }
 
-const SELF_HEAL_CONCURRENCY = Number(process.env.SELF_HEAL_CONCURRENCY ?? '3');
+const SELF_HEAL_CONCURRENCY = Number(process.env.SELF_HEAL_CONCURRENCY ?? '2');
+const SELF_HEAL_TIMEOUT_MS = Number(process.env.SELF_HEAL_TIMEOUT_MS ?? '30000');
 
 async function withTimeout<T>(promise: Promise<T>, ms: number) {
   return Promise.race<T>([
@@ -292,7 +293,7 @@ export const selfHealWorker = new Worker(
         `[self-heal] starting attempt ${attemptId} for run ${job.data.runId} (testResult=${job.data.testResultId})`
       );
 
-      const healResult = await withTimeout(requestSpecHeal(promptPayload), 60_000);
+      const healResult = await withTimeout(requestSpecHeal(promptPayload), SELF_HEAL_TIMEOUT_MS);
       await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
       await fs.writeFile(context.repoAbsolutePath, healResult.updatedSpec, 'utf8');
 

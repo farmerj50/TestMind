@@ -198,7 +198,7 @@ function Features() {
         </p>
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {items.map(({ icon: Icon, title, desc }) => (
-            <Card key={title} className="shadow-sm bg-[var(--tm-bg)] border border-slate-300">
+            <Card key={title} className="shadow-sm bg-white border border-slate-200">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">
                   <Icon className="h-5 w-5" />
@@ -240,7 +240,7 @@ function HowItWorks() {
               ))}
             </ul>
           </div>
-          <Card className="shadow-sm bg-[var(--tm-bg)] border border-slate-300">
+          <Card className="shadow-sm bg-white border border-slate-200">
             <CardHeader>
               <CardTitle>CI run summary</CardTitle>
             </CardHeader>
@@ -251,7 +251,7 @@ function HowItWorks() {
                 <Metric label="Self-healed" value="8 patches" />
                 <Metric label="Avg. run time" value="4m 12s" />
               </div>
-          <div className="mt-4 rounded-lg border bg-[var(--tm-bg)] p-3 text-xs text-slate-800">
+          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-800 shadow-sm">
                 <div className="mb-2 font-mono">patch.diff</div>
                 <pre className="overflow-auto text-[11px]">
 {`--- a/tests/ai/checkout.spec.ts
@@ -313,35 +313,73 @@ function Pricing() {
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="text-center text-3xl font-bold">Simple, transparent pricing</h2>
         <p className="mx-auto mt-2 max-w-xl text-center text-slate-800">Start free. Upgrade when your team is ready.</p>
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
+        <div className="mt-10 grid gap-6 lg:grid-cols-4">
           <PriceCard
-  name="Free"
-  price="$0"
-  blurb="For solo devs testing the waters"
-  features={["50 runs/month","1 project","Community support"]}
-  cta="Start free"
-  to="/signup?plan=free"
-/>
+            name="Free"
+            price="$0"
+            blurb="For solo devs testing the waters"
+            features={[
+              "50 runs/month",
+              "1 project",
+              "AI generation (limited)",
+              "No self-heal",
+              "No security scanning",
+            ]}
+            cta="Start free"
+            to="/signup?plan=free"
+          />
 
-<PriceCard
-  name="Pro"
-  price="$29"
-  tag="Popular"
-  blurb="For small teams shipping fast"
-  features={["500 runs/month","5 projects","Slack reports","Self-heal patches"]}
-  cta="Start Pro"
-  to="/signup?plan=pro"
-  highlighted
-/>
+          <PriceCard
+            name="Starter / Solo"
+            price="$39"
+            blurb="For individual testers or devs"
+            features={[
+              "300 runs/month",
+              "3 projects",
+              "Basic scans",
+              "No self-heal",
+              "No Slack reports",
+            ]}
+            cta="Start Solo"
+            to="/signup?plan=starter"
+          />
 
-<PriceCard
-  name="Team"
-  price="$99"
-  blurb="Growing teams and CI scale"
-  features={["5k runs/month","Unlimited projects","SAML SSO","Audit logs"]}
-  cta="Contact sales"
-  to="/signup?plan=team"
-/>
+          <PriceCard
+            name="Pro"
+            price="$99"
+            tag="Popular"
+            blurb="For small teams"
+            features={[
+              "2,000 runs/month",
+              "10 projects",
+              "Parallel runs",
+              "Security scans",
+              "Slack / email alerts",
+              "Self-heal suggestions",
+              "Test insights dashboard",
+            ]}
+            cta="Start Pro"
+            to="/signup?plan=pro"
+            highlighted
+          />
+
+          <PriceCard
+            name="Team"
+            price="$249"
+            blurb="For engineering teams with CI pipelines"
+            features={[
+              "10,000 runs/month",
+              "Unlimited projects",
+              "SAML SSO",
+              "Audit logs",
+              "Priority support",
+              "AI-heal patches",
+              "Multi-user access",
+              "Multi-tenant",
+            ]}
+            cta="Contact sales"
+            to="/signup?plan=team"
+          />
 
         </div>
       </div>
@@ -357,7 +395,9 @@ function PriceCard({
   cta: string; highlighted?: boolean; tag?: string; to?: string;
 }) {
   return (
-    <Card className={`relative bg-[var(--tm-bg)] border border-slate-300 ${highlighted ? 'shadow-md' : 'shadow-sm'}`}>
+    <Card
+      className={`relative border ${highlighted ? "shadow-md bg-white" : "shadow-sm bg-white"} border-slate-200`}
+    >
       {tag && <span className="absolute right-3 top-3 rounded-full bg-slate-900 px-2 py-1 text-xs font-semibold text-white">{tag}</span>}
       <CardHeader>
         <CardTitle className="text-xl">{name}</CardTitle>

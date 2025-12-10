@@ -44,8 +44,14 @@ export default function RecorderPage() {
   // simple probe for helper availability
   const probeHelper = async () => {
     try {
-      const res = await fetch("http://localhost:43117/record", { method: "OPTIONS" });
-      setHelperDetected(res.ok ? "online" : "offline");
+      const res = await apiFetch<{ started?: boolean; configured?: boolean }>(
+        "/recorder/helper/status"
+      ).catch(() => null);
+      if (res?.started) {
+        setHelperDetected("online");
+      } else {
+        setHelperDetected("offline");
+      }
     } catch {
       setHelperDetected("offline");
     }
@@ -65,7 +71,9 @@ export default function RecorderPage() {
 
     const interval = window.setInterval(async () => {
       try {
-        const res = await apiFetch<{ lastCallback?: { receivedAt?: string; body?: any } }>("/recorder/callback/last");
+        const res = await apiFetch<{ lastCallback?: { receivedAt?: string; body?: any } }>(
+          "/recorder/callback/last"
+        );
         const ts = res.lastCallback?.receivedAt;
         if (ts && ts !== lastCallback) {
           setLastCallback(ts);

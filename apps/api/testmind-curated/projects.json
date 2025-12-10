@@ -63,6 +63,12 @@
       "locked": [
         "scenarios/home/verify-home-page-loads-successfully.spec.ts"
       ]
+    },
+    {
+      "id": "recordings-cmixntp9e00017k0wapi0u829",
+      "name": "Recordings - facebook.com",
+      "root": "recordings-cmixntp9e00017k0wapi0u829",
+      "locked": []
     }
   ]
 }
