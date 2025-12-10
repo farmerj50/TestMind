@@ -86,16 +86,19 @@ function TreeItem({
   onSelect,
   onSelectSuite,
   activeSuiteId,
+  activePath,
 }: {
   node: TreeNode;
   depth?: number;
   onSelect: (f: SpecFile) => void;
   onSelectSuite?: (suiteId: string) => void;
   activeSuiteId?: string;
+  activePath?: string | null;
 }) {
   const isFile = !!node.file;
   const isSuite = !isFile && !!node.suiteId;
   const isActiveSuite = isSuite && node.suiteId === activeSuiteId;
+  const isActiveFile = isFile && node.file?.path === activePath;
   const [open, setOpen] = useState(isSuite ? node.suiteId === activeSuiteId : true);
 
   useEffect(() => {
@@ -120,7 +123,8 @@ function TreeItem({
       <div
         className={cn(
           "flex items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-accent/30",
-          isActiveSuite && "bg-accent/40 font-medium"
+          isActiveSuite && "bg-accent/40 font-medium",
+          isActiveFile && "bg-white/80 font-medium"
         )}
         style={{ paddingLeft: depth * 12 }}
         onClick={handleClick}
@@ -142,6 +146,7 @@ function TreeItem({
           onSelect={onSelect}
           onSelectSuite={onSelectSuite}
           activeSuiteId={activeSuiteId}
+          activePath={activePath}
         />
       ))}
     </div>
@@ -197,18 +202,107 @@ export default function ProjectSuite() {
       return raw.replace(/^\/+/, "");
     }
   }, [location.search]);
-  const initialSpecApplied = useRef(false);
+  const placeholderApplied = useRef(false);
+  const matchApplied = useRef(false);
+  const lastQueryApplied = useRef<string | null>(null);
   const initialAutoOpenApplied = useRef(false);
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("returnTo");
+    if (!raw) return null;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [location.search]);
+  const projectParam = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("project");
+    if (!raw) return null;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [location.search]);
 
   useEffect(() => {
     setCopySelectValue(COPY_PLACEHOLDER);
   }, [activeSpec?.path]);
 
+  // If a project is provided via query (?project=...), redirect to that suite once
+  useEffect(() => {
+    if (!projectParam || projectParam === pid) return;
+    const params = new URLSearchParams(location.search);
+    params.delete("project");
+    const qs = params.toString();
+    navigate(`/suite/${projectParam}${qs ? `?${qs}` : ""}`, { replace: true });
+  }, [projectParam, pid, navigate, location.search]);
+
   // Reset auto-select flags when switching suites
   useEffect(() => {
-    initialSpecApplied.current = false;
+    placeholderApplied.current = false;
+    matchApplied.current = false;
     initialAutoOpenApplied.current = false;
   }, [pid]);
+  // If query changes, reset flags for new selection
+  useEffect(() => {
+    if (specFromQuery !== lastQueryApplied.current) {
+      placeholderApplied.current = false;
+      matchApplied.current = false;
+      lastQueryApplied.current = specFromQuery;
+    }
+  }, [specFromQuery]);
+
+  // Apply placeholder selection immediately from query
+  useEffect(() => {
+    if (placeholderApplied.current) return;
+    if (!specFromQuery) return;
+    if (!activeSpec) {
+      const normalizedQuery = specFromQuery.replace(/^\/+/, "");
+      setActiveSpec({ path: normalizedQuery });
+      placeholderApplied.current = true;
+    }
+  }, [specFromQuery, activeSpec]);
+  // Once specs load, try to match the queried spec to the real list
+  useEffect(() => {
+    if (matchApplied.current) return;
+    if (!specFromQuery) return;
+    if (!specs.length) {
+      // No specs available in this suite
+      setSpecProjectErr("No specs in this suite. Try selecting the generated suite or copy specs in.");
+      matchApplied.current = true;
+      setActiveSpec(null);
+      return;
+    }
+    const normalizedQuery = specFromQuery.replace(/^\/+/, "");
+    const qBase = normalizedQuery.split("/").pop();
+    const qBaseNoCheck = qBase?.replace(/-?check/i, "");
+
+    const match =
+      specs.find((s) => s.path === normalizedQuery) ||
+      specs.find((s) => s.path.replace(/^\/+/, "") === normalizedQuery) ||
+      specs.find((s) => s.path.replace(/^\/+/, "").endsWith(normalizedQuery)) ||
+      (qBase ? specs.find((s) => s.path.split("/").pop() === qBase) : undefined) ||
+      (qBase ? specs.find((s) => (s.path.split("/").pop() || "").includes(qBase)) : undefined) ||
+      (qBaseNoCheck ? specs.find((s) => (s.path.split("/").pop() || "").includes(qBaseNoCheck)) : undefined);
+
+    if (match) {
+      setActiveSpec(match);
+      setSpecProjectErr(null);
+    } else {
+      setSpecProjectErr("Spec not found in this suite. It may live in another suite (e.g., generated).");
+      setActiveSpec(null);
+      setSelected({});
+    }
+    matchApplied.current = true;
+  }, [specFromQuery, specs]);
+  useEffect(() => {
+    if (specFromQuery) {
+      setSuiteSelected(false);
+    }
+  }, [specFromQuery]);
 
   // load available spec projects (generated + curated)
   useEffect(() => {
@@ -421,12 +515,16 @@ export default function ProjectSuite() {
       setRunError("Select a spec before editing.");
       return;
     }
+    if (!isActiveCurated) {
+      setSpecProjectErr("Edit is only available for curated suites. Copy this spec into a curated suite first.");
+      return;
+    }
     if (activeSpec.path.startsWith("(")) {
       setSpecProjectErr("Pick a specific spec (not the suite aggregate) before editing.");
       return;
     }
-    if (!isActiveCurated || !activeSuite) {
-      setSpecProjectErr("Copy the spec into a curated suite before editing.");
+    if (!activeSuite) {
+      setSpecProjectErr("Select a suite before editing.");
       return;
     }
     setEditorLoading(true);
@@ -466,6 +564,10 @@ export default function ProjectSuite() {
         throw new Error(friendlyError(text, "Failed to save spec"));
       }
       setEditorOpen(false);
+      if (returnTo) {
+        navigate(returnTo, { replace: true });
+        return;
+      }
       setSpecProjectErr(null);
     } catch (err) {
       console.error(err);
@@ -495,12 +597,16 @@ export default function ProjectSuite() {
 
   // If a spec path is provided via query (?spec=...), auto-select it once specs are loaded.
   useEffect(() => {
-    if (initialSpecApplied.current) return;
+    if (matchApplied.current) return;
     if (!specFromQuery || !specs.length) return;
-    const match = specs.find((s) => s.path === specFromQuery);
+    const normalizedQuery = specFromQuery.replace(/^\/+/, "");
+    const match =
+      specs.find((s) => s.path === normalizedQuery) ||
+      specs.find((s) => s.path.replace(/^\/+/, "") === normalizedQuery) ||
+      specs.find((s) => s.path.replace(/^\/+/, "").endsWith(normalizedQuery));
     if (match) {
       setActiveSpec(match);
-      initialSpecApplied.current = true;
+      matchApplied.current = true;
     }
   }, [specFromQuery, specs]);
 
@@ -509,7 +615,11 @@ export default function ProjectSuite() {
     if (initialAutoOpenApplied.current) return;
     if (!specFromQuery || !specs.length) return;
     if (!activeSuite || activeSuite.type !== "curated") return;
-    const match = specs.find((s) => s.path === specFromQuery);
+    const normalizedQuery = specFromQuery.replace(/^\/+/, "");
+    const match =
+      specs.find((s) => s.path === normalizedQuery) ||
+      specs.find((s) => s.path.replace(/^\/+/, "") === normalizedQuery) ||
+      specs.find((s) => s.path.replace(/^\/+/, "").endsWith(normalizedQuery));
     if (!match) return;
 
     initialAutoOpenApplied.current = true;
@@ -673,6 +783,7 @@ export default function ProjectSuite() {
           method: "POST",
           body: JSON.stringify({
             projectId: runProjectId,
+            suiteId: pid,
             files,
             grep,
             headful,
@@ -690,6 +801,7 @@ export default function ProjectSuite() {
           method: "POST",
           body: JSON.stringify({
             projectId: runProjectId,
+            suiteId: pid,
             file: activeSpec.path,
             grep,
             headful,
@@ -724,6 +836,7 @@ export default function ProjectSuite() {
         method: "POST",
         body: JSON.stringify({
           projectId: runProjectId,
+          suiteId: pid,
           files,
           headful,
           reporter,
@@ -797,7 +910,7 @@ export default function ProjectSuite() {
               </SelectContent>
             </Select>
           )}
-          {isActiveCurated && activeSpec && (
+          {activeSpec && isActiveCurated && (
             <>
               <Button
                 variant="outline"
@@ -809,23 +922,25 @@ export default function ProjectSuite() {
                 <FileText className="h-4 w-4 mr-1" />
                 {editorLoading ? "Opening..." : "Edit spec"}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => handleToggleLock(!activeSpecLocked)}
-                disabled={lockingSpec}
-              >
-                {activeSpecLocked ? (
-                  <>
-                    <Unlock className="h-4 w-4 mr-1" /> {lockingSpec ? "Unlocking..." : "Unlock spec"}
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4 mr-1" /> {lockingSpec ? "Locking..." : "Lock spec"}
-                  </>
-                )}
-              </Button>
+              {isActiveCurated && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => handleToggleLock(!activeSpecLocked)}
+                  disabled={lockingSpec}
+                >
+                  {activeSpecLocked ? (
+                    <>
+                      <Unlock className="h-4 w-4 mr-1" /> {lockingSpec ? "Unlocking..." : "Unlock spec"}
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-4 w-4 mr-1" /> {lockingSpec ? "Locking..." : "Lock spec"}
+                    </>
+                  )}
+                </Button>
+              )}
             </>
           )}
           {isActiveCurated && (
@@ -867,6 +982,7 @@ export default function ProjectSuite() {
                 setSuiteSelected(false);
               }}
               activeSuiteId={pid}
+              activePath={activeSpec?.path || null}
             />
           ))}
         </ScrollArea>
@@ -947,6 +1063,12 @@ export default function ProjectSuite() {
               <SelectItem value="allure">JSON + Allure</SelectItem>
             </SelectContent>
           </Select>
+
+          {returnTo && (
+            <Button asChild variant="outline" className="border-white/90">
+              <Link to={returnTo}>Back to run</Link>
+            </Button>
+          )}
 
           <div className="relative flex-1 max-w-[480px] ml-2">
             <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 opacity-60" />

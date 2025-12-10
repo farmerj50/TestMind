@@ -9,7 +9,8 @@ test("Accept All Button Functionality", async ({ page }) => {
   });
   await test.step("2. Click button:has-text(\"Accept all\")", async () => {
     {
-      const locator = page.locator("button:has-text(\"Accept all\")");
+      // Be explicit to avoid strict-mode collisions when multiple “Accept all” buttons exist.
+      const locator = page.locator('button.coi-banner__accept:has-text("Accept all")').first();
       await locator.waitFor({ state: 'visible', timeout: 10000 });
       await locator.click({ timeout: 10000 });
     }

@@ -254,6 +254,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       BASE_URL: req.baseUrl ?? "",
       TM_SOURCE_ROOT: req.extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
       PW_JSON_OUTPUT: req.jsonOutPath,
+      ALLURE_RESULTS_DIR: req.extraEnv?.PW_ALLURE_RESULTS || req.extraEnv?.ALLURE_RESULTS_DIR,
       ...(req.extraEnv || {}),
     };
 
@@ -278,6 +279,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       normalizePath(path.relative(found.cwd, found.configPath))
     );
 
+    // Force reporters so JSON + allure artifacts are emitted
     const proc = await execa(npx, args, {
       cwd: found.cwd,
       env,
@@ -289,10 +291,29 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     const stdout = proc.stdout ?? "";
     const stderr = proc.stderr ?? "";
 
-    const hasReport = await fs
+    let hasReport = await fs
       .stat(req.jsonOutPath)
       .then(() => true)
       .catch(() => false);
+
+    // fallback: copy default json reporter output if present
+    if (!hasReport) {
+      const candidates = [
+        path.join(found.cwd, "test-results.json"),
+        path.join(found.cwd, "playwright-report", "test-results.json"),
+      ];
+      for (const c of candidates) {
+        try {
+          await fs.access(c);
+          await fs.mkdir(path.dirname(req.jsonOutPath), { recursive: true }).catch(() => {});
+          await fs.copyFile(c, req.jsonOutPath);
+          hasReport = true;
+          break;
+        } catch {
+          /* continue */
+        }
+      }
+    }
 
     if (!hasReport) {
       try {

@@ -1,0 +1,230 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - banner [ref=e5]:
+    - link [ref=e7] [cursor=pointer]:
+      - /url: /
+      - img [ref=e9]
+    - navigation [ref=e16]:
+      - generic [ref=e17]:
+        - link "Sports" [ref=e18] [cursor=pointer]:
+          - /url: /sports
+        - link "CASINO" [ref=e19] [cursor=pointer]:
+          - /url: /casino
+        - link "Live Dealer" [ref=e20] [cursor=pointer]:
+          - /url: /live-dealer
+        - link "Poker" [ref=e21] [cursor=pointer]:
+          - /url: /poker
+        - link "Horses" [ref=e22] [cursor=pointer]:
+          - /url: /horses
+    - generic [ref=e23]:
+      - generic [ref=e25]:
+        - link "Join" [ref=e26] [cursor=pointer]:
+          - /url: /join
+        - link "Login" [ref=e27] [cursor=pointer]:
+          - /url: /login
+      - generic [ref=e28]:
+        - button [ref=e30] [cursor=pointer]:
+          - img [ref=e31]
+        - button "EN" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]:
+            - img [ref=e36]
+            - generic [ref=e38]: EN
+  - generic [ref=e42]:
+    - generic [ref=e44]:
+      - heading "GET READY TO PLAY SPORTS CASINO POKER" [level=1] [ref=e45]:
+        - generic [ref=e46]: GET READY TO PLAY
+        - generic [ref=e47]: SPORTS
+        - generic [ref=e48]: CASINO
+        - generic [ref=e49]: POKER
+      - generic [ref=e50]:
+        - text: SCORE UP TO $3,750 IN
+        - text: WELCOME BONUSES
+      - link "JOIN NOW" [ref=e51] [cursor=pointer]:
+        - /url: https://www.bovada.lv/?overlay=join
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - link [ref=e55] [cursor=pointer]:
+          - /url: https://www.bovada.lv/sports
+        - img "Online Sportsbook" [ref=e56]
+      - generic [ref=e57]:
+        - link [ref=e58] [cursor=pointer]:
+          - /url: https://www.bovada.lv/casino
+        - img "Online Casino" [ref=e59]
+      - generic [ref=e60]:
+        - link [ref=e61] [cursor=pointer]:
+          - /url: https://www.bovada.lv/live-dealer
+        - img "Live Casino Games" [ref=e62]
+      - generic [ref=e63]:
+        - link [ref=e64] [cursor=pointer]:
+          - /url: https://www.bovada.lv/casino/hot-drop-jackpots
+        - img "Hot Drop Jackpots" [ref=e65]
+    - generic [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: BOOST YOUR
+        - generic [ref=e69]: PLAY WITH
+        - generic [ref=e70]: CRYPTO
+      - generic [ref=e71]:
+        - text: BIGGER BONUSES, BETTER
+        - text: SECURITY, FASTER PAYOUTS
+      - link "LEARN MORE" [ref=e72] [cursor=pointer]:
+        - /url: https://www.bovada.lv/crypto-promotion
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - link [ref=e76] [cursor=pointer]:
+          - /url: https://www.bovada.lv/rewards
+        - heading "GET REWARDED" [level=2] [ref=e77]
+        - paragraph [ref=e78]: Earn redeemable points while you play
+      - generic [ref=e79]:
+        - link [ref=e80] [cursor=pointer]:
+          - /url: https://www.bovada.lv/help/financial-faq/deposit-methods
+        - heading "TRANSACTIONS YOUR WAY" [level=2] [ref=e81]
+        - paragraph [ref=e82]: Multiple deposit and cash out methods
+      - generic [ref=e83]:
+        - link [ref=e84] [cursor=pointer]:
+          - /url: https://community.bovada.lv/
+        - heading "JOIN A COMMUNITY" [level=2] [ref=e85]
+        - paragraph [ref=e86]: Interact with other players
+      - generic [ref=e87]:
+        - link [ref=e88] [cursor=pointer]:
+          - /url: https://www.bovada.lv/refer
+        - heading "REFER YOUR FRIENDS" [level=2] [ref=e89]
+        - paragraph [ref=e90]: Earn cash for every bud you bring
+    - generic [ref=e92]:
+      - img "12 years" [ref=e93]
+      - generic [ref=e94]: 24/7 SUPPORT | FAST PAYOUTS THE WAY YOU WANT
+  - generic [ref=e97]:
+    - heading "Online Casino, Sports Betting and Poker at Bovada" [level=2] [ref=e98]
+    - paragraph [ref=e99]:
+      - text: Bovada is a top USA-based gambling and
+      - link "sports betting" [ref=e100] [cursor=pointer]:
+        - /url: /sports
+      - text: website. Join Bovada
+      - link "sportsbook" [ref=e101] [cursor=pointer]:
+        - /url: /sports
+      - text: to find unmissable
+      - link "odds on your favorite sports" [ref=e102] [cursor=pointer]:
+        - /url: /sports
+      - text: including
+      - link "NFL" [ref=e103] [cursor=pointer]:
+        - /url: /sports/football/nfl
+      - text: ","
+      - link "basketball" [ref=e104] [cursor=pointer]:
+        - /url: /sports/basketball
+      - text: ","
+      - link "soccer" [ref=e105] [cursor=pointer]:
+        - /url: /sports/soccer
+      - text: and more. Bovada is also home to tons of
+      - link "casino games" [ref=e106] [cursor=pointer]:
+        - /url: /casino
+      - text: for you to play, including
+      - link "slots" [ref=e107] [cursor=pointer]:
+        - /url: /casino/slots
+      - text: ","
+      - link "blackjack" [ref=e108] [cursor=pointer]:
+        - /url: /casino/blackjack-games
+      - text: ", and"
+      - link "roulette" [ref=e109] [cursor=pointer]:
+        - /url: /casino/roulette-games
+      - text: . So whether you want to place a bet on
+      - link "football" [ref=e110] [cursor=pointer]:
+        - /url: /sports/football
+      - text: ", or play a round or two of"
+      - link "poker" [ref=e111] [cursor=pointer]:
+        - /url: /poker
+      - text: ", Bovada is the place to play. With a generous"
+      - link "welcome bonus" [ref=e112] [cursor=pointer]:
+        - /url: /crypto-promotion
+      - text: ", and multiple ways to deposit and withdraw - including several crypto options - Bovada is ready for you."
+  - contentinfo [ref=e113]:
+    - list [ref=e115]:
+      - link "Help Center" [ref=e116] [cursor=pointer]:
+        - /url: /help
+      - link "Affiliate Program" [ref=e117] [cursor=pointer]:
+        - /url: https://www.bovada.lv/new-bovada-affiliate-program
+      - link "About" [ref=e118] [cursor=pointer]:
+        - /url: /about
+      - link "Terms of Service" [ref=e119] [cursor=pointer]:
+        - /url: /terms-of-service
+      - link "Forms & Agreements" [ref=e120] [cursor=pointer]:
+        - /url: /forms-and-agreements
+      - link "Privacy Policy" [ref=e121] [cursor=pointer]:
+        - /url: /privacy-policy
+      - link "Responsible Gaming" [ref=e122] [cursor=pointer]:
+        - /url: /responsible-gaming
+      - link "Self Exclusion" [ref=e123] [cursor=pointer]:
+        - /url: /pages/self-exclusion
+      - link "Bug Bounty" [ref=e124] [cursor=pointer]:
+        - /url: /bug-bounty
+      - link "Anti-Money Laundering" [ref=e125] [cursor=pointer]:
+        - /url: /pages/anti-money-laundering
+      - link "Fairness and RNG Testing Methods" [ref=e126] [cursor=pointer]:
+        - /url: /pages/fairness-and-rng-testing-methods
+      - link "KYC Policies" [ref=e127] [cursor=pointer]:
+        - /url: /pages/kyc-policies
+      - link "Accounts Payouts and Bonuses" [ref=e128] [cursor=pointer]:
+        - /url: /pages/accounts-payouts-and-bonuses
+      - link "Dispute Resolution" [ref=e129] [cursor=pointer]:
+        - /url: /pages/dispute-resolution
+      - link "Bovada Instagram" [ref=e130] [cursor=pointer]:
+        - /url: https://www.instagram.com/bovada/
+    - generic [ref=e133]:
+      - generic [ref=e134]:
+        - img "Bitcoin Logo" [ref=e135]
+        - img "Bitcoin Cash Logo" [ref=e136]
+        - img "Tether Logo" [ref=e137]
+        - img "Ethereum Logo" [ref=e138]
+        - img "Litecoin Logo" [ref=e139]
+        - img "VISA Logo" [ref=e140]
+        - img "Mastercard Logo" [ref=e141]
+      - generic [ref=e142]:
+        - link "YouTube" [ref=e143] [cursor=pointer]:
+          - /url: https://www.youtube.com/@bovadaYT/featured
+          - img "YouTube" [ref=e144]
+        - link "TikTok" [ref=e145] [cursor=pointer]:
+          - /url: https://www.tiktok.com/@bovada_official
+          - img "TikTok" [ref=e146]
+        - link "Telegram" [ref=e147] [cursor=pointer]:
+          - /url: https://t.me/+gtLA9tSp0u0zNGM8
+          - img "Telegram" [ref=e148]
+        - link "Facebook" [ref=e149] [cursor=pointer]:
+          - /url: https://www.facebook.com/BovadaLV
+          - img "Facebook" [ref=e150]
+        - link "Instagram" [ref=e151] [cursor=pointer]:
+          - /url: https://www.instagram.com/bovada
+          - img "Instagram" [ref=e152]
+        - link "Twitter/X" [ref=e153] [cursor=pointer]:
+          - /url: https://twitter.com/BovadaOfficial
+          - img "Twitter/X" [ref=e154]
+    - generic [ref=e158]:
+      - paragraph [ref=e159]:
+        - text: Gambling should be entertaining. Remember that you always risk losing the money you bet, so do not spend more than you can afford to lose. If you think you may have a problem,
+        - link "click here" [ref=e160] [cursor=pointer]:
+          - /url: /responsible-gaming
+        - text: .
+      - paragraph [ref=e161]:
+        - text: This site is protected by reCAPTCHA and the Google
+        - link "Privacy Policy" [ref=e162] [cursor=pointer]:
+          - /url: https://policies.google.com/privacy
+        - text: and
+        - link "Terms of Service" [ref=e163] [cursor=pointer]:
+          - /url: https://policies.google.com/terms
+        - text: apply.
+    - generic [ref=e167]:
+      - paragraph [ref=e168]:
+        - generic [ref=e169]: Bovada.lv is licensed and regulated by the Union of the Comoros and the Central Reserve Authority of Western Sahara.
+      - paragraph [ref=e170]:
+        - generic [ref=e171]:
+          - text: In order to register for this website, the user is required to accept the
+          - link "General Terms and Conditions" [ref=e172] [cursor=pointer]:
+            - /url: /terms-of-service
+          - text: . In the event the General Terms and Conditions are updated, existing users may choose to discontinue using the products and services before the said update shall become effective, which is a minimum of two weeks after it has been announced.
+    - generic:
+      - generic:
+        - paragraph
+  - generic [ref=e177]:
+    - button [ref=e178]:
+      - img
+    - textbox "Select an item" [ref=e179]: English
+```

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useApi } from "../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -41,6 +41,7 @@ type Session = {
 
 export default function AgentSessionDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { apiFetch } = useApi();
 const [session, setSession] = useState<Session | null>(null);
 const [loading, setLoading] = useState(false);
@@ -158,14 +159,20 @@ const [autoRefresh, setAutoRefresh] = useState(true);
       if (runnable.length === 0) {
         setRunInfo("Generate tests before running this page.");
       } else {
+        const runIds: string[] = [];
         for (const sc of runnable) {
-          await apiFetch("/runner/run", {
+          const res = await apiFetch<{ id?: string }>("/runner/run", {
             method: "POST",
             body: JSON.stringify({ projectId: session.projectId, specPath: sc.specPath }),
           });
+          if (res?.id) runIds.push(res.id);
         }
-        setRunInfo(`Triggered ${runnable.length} run(s) for this page.`);
-        await loadRecentRuns(session.projectId);
+        if (runIds.length === 1) {
+          navigate(`/test-runs/${runIds[0]}`);
+        } else {
+          setRunInfo(`Triggered ${runnable.length} run(s) for this page.`);
+          await loadRecentRuns(session.projectId);
+        }
       }
 
       // optimistically mark page running

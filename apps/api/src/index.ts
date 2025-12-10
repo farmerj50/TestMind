@@ -31,7 +31,8 @@ import testmindRoutes from './testmind/routes';
 
 
 const app = Fastify({ logger: true });
-const REPO_ROOT = path.resolve(process.cwd());
+// API runs from apps/api; repo root is two levels up
+const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST;
 const shouldStartWorkers = validatedEnv.START_WORKERS;
@@ -72,20 +73,21 @@ if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
   app.register(fastifyStatic, {
     root: PLAYWRIGHT_REPORT_ROOT,
     prefix: "/_static/playwright-report/",
+    decorateReply: false,
   });
 }
 const RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
-if (fs.existsSync(RUNNER_LOGS_ROOT)) {
-  app.register(fastifyStatic, {
-    root: RUNNER_LOGS_ROOT,
-    prefix: "/_static/runner-logs/",
-  });
-}
 const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
-if (fs.existsSync(API_RUNNER_LOGS_ROOT)) {
+const STATIC_RUNNER_ROOT = fs.existsSync(API_RUNNER_LOGS_ROOT)
+  ? API_RUNNER_LOGS_ROOT
+  : fs.existsSync(RUNNER_LOGS_ROOT)
+  ? RUNNER_LOGS_ROOT
+  : null;
+if (STATIC_RUNNER_ROOT) {
   app.register(fastifyStatic, {
-    root: API_RUNNER_LOGS_ROOT,
+    root: STATIC_RUNNER_ROOT,
     prefix: "/_static/runner-logs/",
+    decorateReply: false,
   });
 }
 
@@ -365,23 +367,46 @@ startWorkersOnce();
 
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch
 const startRecorderHelper = () => {
-  if (recorderState.__tmRecorderHelperStarted || !validatedEnv.START_RECORDER_HELPER) return;
-  recorderState.__tmRecorderHelperStarted = true;
+  if (recorderState.__tmRecorderHelperStarted) return;
+  if (!validatedEnv.START_RECORDER_HELPER) {
+    app.log.info("[recorder] START_RECORDER_HELPER=false; skipping auto-start");
+    return;
+  }
   const helperPath = path.join(REPO_ROOT, "recorder-helper.js");
   if (!fs.existsSync(helperPath)) {
     app.log.warn(`[recorder] helper not found at ${helperPath}; skipping auto-start`);
     return;
   }
-  const child = spawn(process.execPath, [helperPath], {
-    cwd: REPO_ROOT,
-    stdio: "ignore",
-    detached: true,
-  });
-  child.unref();
-  app.log.info("[recorder] helper auto-started (detached)");
+  try {
+    recorderState.__tmRecorderHelperStarted = true;
+    const child = spawn(process.execPath, [helperPath], {
+      cwd: REPO_ROOT,
+      stdio: "ignore",
+      detached: true,
+    });
+    child.unref();
+    app.log.info("[recorder] helper auto-started (detached)");
+  } catch (err) {
+    recorderState.__tmRecorderHelperStarted = false;
+    app.log.error({ err }, "[recorder] failed to start helper");
+  }
 };
 
+// start on bootstrap and after server is ready
 startRecorderHelper();
+app.addHook("onReady", async () => startRecorderHelper());
+
+// Recorder helper status/start endpoints for UI "recheck" buttons
+app.get("/recorder/helper/status", async () => ({
+  started: !!recorderState.__tmRecorderHelperStarted,
+  configured: !!validatedEnv.START_RECORDER_HELPER,
+  helperPath: path.join(REPO_ROOT, "recorder-helper.js"),
+}));
+
+app.post("/recorder/helper/start", async () => {
+  startRecorderHelper();
+  return { started: !!recorderState.__tmRecorderHelperStarted };
+});
 
 if (allowDebugRoutes) {
   app.get("/runner/debug/list", async () => {
