@@ -1,0 +1,34 @@
+﻿¦";
+    if (rerunsInProgress) return "Self-heal reruns are still running.";
+    if (rerunsCompleted.length > 0) return "Self-heal reruns have completed.";
+    if (reruns.length > 0) return "Self-heal reruns are queued.";
+    if (hasHealingAttempts) return "Self-heal attempts have finished.";
+    return "Self-heal will start shortly.";
+  })();
+
+  // load + (light) poll until finished
+  useEffect(() => {
+    if (!runId) return;
+
+    let cancelled = false;
+    let interval: number | undefined;
+
+    const load = async () => {
+      try {
+        const { run: r } = await apiFetch<{ run: Run }>(`/runner/test-runs/${runId}`);
+        if (!cancelled) {
+          setRun(r);
+          setErr(null);
+        }
+      } catch (e: any) {
+        if (!cancelled) setErr(e?.message || "Failed to load run");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+
+    const shouldPoll =
+      !run ||
+      

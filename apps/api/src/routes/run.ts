@@ -24,14 +24,6 @@ import { decryptSecret } from "../lib/crypto";
 // replace your installDeps with this
 async function installDeps(repoRoot: string, workspaceCwd: string) {
   const nodeModulesExists = fsSync.existsSync(path.join(repoRoot, "node_modules"));
-  if (process.env.TM_SKIP_INSTALL === "1" && nodeModulesExists) {
-    console.log("[runner] TM_SKIP_INSTALL=1 and node_modules present; skipping installDeps");
-    return;
-  }
-  if (process.env.TM_SKIP_INSTALL === "1" && !nodeModulesExists) {
-    console.log("[runner] TM_SKIP_INSTALL=1 but node_modules missing; installing anyway");
-  }
-
   const tStart = Date.now();
 
   const has = (p: string) => fsSync.existsSync(path.join(repoRoot, p));
@@ -52,8 +44,22 @@ async function installDeps(repoRoot: string, workspaceCwd: string) {
     pm = "npm"; installArgs = ["install", "--silent"];
   }
 
-  // install at the **repo root** so workspaces are wired correctly
-  await execa(pm, installArgs, { cwd: repoRoot, stdio: "pipe" });
+  const shouldRunFullInstall =
+    !(process.env.TM_SKIP_INSTALL === "1" && nodeModulesExists) &&
+    !(process.env.TM_REUSE_WORKSPACE === "1" && nodeModulesExists);
+
+  if (shouldRunFullInstall) {
+    if (process.env.TM_SKIP_INSTALL === "1") {
+      console.log("[runner] TM_SKIP_INSTALL=1 but node_modules missing; installing anyway");
+    }
+    if (process.env.TM_REUSE_WORKSPACE === "1" && nodeModulesExists) {
+      console.log("[runner] TM_REUSE_WORKSPACE=1 but running minimal install to refresh deps");
+    }
+    // install at the **repo root** so workspaces are wired correctly
+    await execa(pm, installArgs, { cwd: repoRoot, stdio: "pipe" });
+  } else {
+    console.log("[runner] Reusing workspace; skipping full install");
+  }
 
   // ensure @playwright/test is resolvable from the **workspace cwd**
   const canResolve = () => {
@@ -220,6 +226,7 @@ async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: str
 const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
   baseUrl: z.string().url().optional(), // optional override
+  suiteId: z.string().optional(), // spec suite to link edits back to
   file: z.string().optional(),   // relative path to spec to run
   specPath: z.string().optional(), // alias used by agent UI
   files: z.array(z.string()).optional(), // multiple specs
@@ -277,6 +284,7 @@ export default async function runRoutes(app: FastifyInstance) {
 
   const pid = parsed.data.projectId.trim();
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
+    const suiteId = parsed.data.suiteId?.trim() || undefined;
     const requestedBaseUrl = parsed.data.baseUrl;
     let effectiveBaseUrl = requestedBaseUrl ?? DEFAULT_BASE_URL;
     // Default to honoring file/grep selection unless caller explicitly sets runAll.
@@ -329,7 +337,7 @@ export default async function runRoutes(app: FastifyInstance) {
         status: TestRunStatus.running,
         startedAt: new Date(),
         trigger: "user",
-        paramsJson: { headful },
+        paramsJson: { headful, suiteId },
       },
     });
 
@@ -426,7 +434,8 @@ export default async function runRoutes(app: FastifyInstance) {
         );
 
 
-        // 3) Install deps in the workspace (this is what was missing)
+        // 3) Install deps in the workspace
+        // - skip for localRepoRoot (user-managed) or when explicitly reusing workspace
         if (localRepoRoot || reuseWorkspace) {
           await fs.writeFile(
             path.join(outDir, "stdout.txt"),
@@ -863,6 +872,7 @@ export default defineConfig({
           TM_SOURCE_ROOT: work,
           PW_JSON_OUTPUT: resultsPath,
           PW_ALLURE_RESULTS: allureResultsDir,
+          ALLURE_RESULTS_DIR: allureResultsDir,
           TM_PORT: String(serverPort),
           ...secretEnv,
         };
@@ -1093,6 +1103,7 @@ export default defineConfig({
 
     const params = (run.paramsJson as any) ?? {};
     const headful = Boolean((params as any)?.headful);
+    const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
@@ -1100,7 +1111,7 @@ export default defineConfig({
         status: TestRunStatus.running,
         startedAt: new Date(),
         trigger: "manual",
-        paramsJson: { headful },
+        paramsJson: { headful, suiteId },
       },
     });
 

@@ -1,39 +1,49 @@
 {
   "cookies": [
     {
-      "name": "CFID",
-      "value": "Zlay106q0bt0h40qcevucj58euwxzqk9ltj5a69udau2380e2p-188469376",
-      "domain": ".inteletravel.com",
+      "name": "datr",
+      "value": "T0I3aRVT--uS2DKa-MzYO2Bn",
+      "domain": ".facebook.com",
       "path": "/",
-      "expires": 1799181955.187529,
-      "httpOnly": true,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "CFTOKEN",
-      "value": "Zlay106q0bt0h40qcevucj58euwxzqk9ltj5a69udau2380e2p-6d37d06e8b05ad51-94A619E7-D90C-D241-C3CEFF6009780B03",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1799181955.187874,
-      "httpOnly": true,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "__cf_bm",
-      "value": "EqbrgWCKldGI2uq346HzfTT8KzIw0P.SzXoKnNfKxx4-1764621956-1.0.1.1-7WBDFCc2MGs0.BGhadANqRgrtLyA1nuvl7EBtq9M5kwkO75L8u3AZUbrRNUqeRWo9bYJXSD_z6FRNDzgFaIMkI36GNbfDxxT.iCCRgQ_RXI",
-      "domain": ".www2.inteletravel.com",
-      "path": "/",
-      "expires": 1764623755.654691,
+      "expires": 1799789135.929318,
       "httpOnly": true,
       "secure": true,
       "sameSite": "None"
     },
     {
-      "name": "_cfuvid",
-      "value": "Zu78zIIifp9JL0Gm_33iWhhNF6jHzikkZ5Rf8wd7K0M-1764621956767-0.0.1.1-604800000",
-      "domain": ".www2.inteletravel.com",
+      "name": "fr",
+      "value": "0NZhkTe7roqdsnJYc..BpN0JP..AAA.0.0.BpN0JP.AWcmbiOA4Edh8p12glKXxoUyYo0",
+      "domain": ".facebook.com",
+      "path": "/",
+      "expires": 1773005136.060751,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "wd",
+      "value": "1280x720",
+      "domain": ".facebook.com",
+      "path": "/",
+      "expires": 1765834026,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "dpr",
+      "value": "1.0000000149011612",
+      "domain": ".facebook.com",
+      "path": "/",
+      "expires": 1765834030,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "checkpoint",
+      "value": "%7B%22u%22%3A1648625977%2C%22t%22%3A1765229209%2C%22step%22%3A0%2C%22n%22%3A%22HY6jVJLLysE%3D%22%2C%22inst%22%3A10227654399419382%2C%22f%22%3A465803052217681%2C%22st%22%3A%22c%22%2C%22aid%22%3Anull%2C%22ca%22%3Anull%2C%22la%22%3A%22%22%2C%22ta%22%3A%221765229223.ch.s%3An619%3Apw.9zBFAiEAv7ksVpABl1F8omK_ZvpfYzc8gyjJGa5jx9FOXHGMH-gCIEMKAPW4thCfRSbQvuPhR61E1Mc-ORzGwmZdG4jCwr0L%22%2C%22tfvaid%22%3Anull%2C%22tfvasec%22%3Anull%2C%22sat%22%3Anull%2C%22idg%22%3Afalse%2C%22cidue%22%3A%22%22%2C%22tfuln%22%3Anull%2C%22tfvri%22%3Anull%2C%22ct%22%3A%22ARF-CGGQNIDCDhkFeep6dDAnwPzhD1gj6gxFF9z7uNK0BC9ihKmBAYKBH2KqURow87OXQ1Ocv0iSDlC7oFovw07ltkfV-CinUgRIPw5vbjwj8iUN3kGlA5FCensyzlZabaD503hKzbSEz4yPkbdEwbf2GUestwn1IePg3Dr-Dd_en7aNSlwAygI4j5u6ro2CAK-o9WMakJ06y409MUSDTr_0hlceGxfzXfdqZdpQztOfhEGE5L_XCZhHhV9xPsLtkgbBf0sGprUYVDyhdRqDxVdjbcKL4276aksCOVUMKIiqEEB7yhcn7yuNvZKrV71uQ8UG8tQe9lGBXuiOHnyL377blnngr5LwbSjUOGIlTkMLX7A7cP3Q0qmH8hwa9pDXVjII40ht-ZBkvrymIKw78M_w9We0%22%2C%22s%22%3A%22AWXcvmwLw9O0dT_GKPo%22%2C%22cs%22%3A%5B%5D%2C%22ssp%22%3A1%7D",
+      "domain": ".facebook.com",
       "path": "/",
       "expires": -1,
       "httpOnly": true,
@@ -41,153 +51,53 @@
       "sameSite": "None"
     },
     {
-      "name": "__cf_bm",
-      "value": "OUTKBdU7kv39rqyqLrEuVZviEhxSeQ7SZlC9WLhZlzg-1764621957-1.0.1.1-R8wYGnumOSe1bU6o9hqSVQNigSYlVXXcMkGANRP2G30ORPvs3urLESvC7zt9VjqzTWg3s3oLTD_jc.DjQ_aW4lOq263LJ1G5LprjOrA9JEk",
-      "domain": ".hubspot.com",
+      "name": "locale",
+      "value": "en_US",
+      "domain": ".facebook.com",
       "path": "/",
-      "expires": 1764623756.877755,
+      "expires": 1765834024.580161,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "sb",
+      "value": "mUI3aZbPiFlX-W6Tw-DpzUNv",
+      "domain": ".facebook.com",
+      "path": "/",
+      "expires": 1799789224.580191,
       "httpOnly": true,
       "secure": true,
       "sameSite": "None"
-    },
-    {
-      "name": "_cfuvid",
-      "value": "3RyyQAZg0XIRSHbP4mujyi0k7qcTjaIpgXaULlltZ2Y-1764621957846-0.0.1.1-604800000",
-      "domain": ".hubspot.com",
-      "path": "/",
-      "expires": -1,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "None"
-    },
-    {
-      "name": "_cfuvid",
-      "value": "8HXqd2S9cPKe6zuXvCtFDNzDZ4vQlEZ7sWCMHSIfoAI-1764621958209-0.0.1.1-604800000",
-      "domain": ".hsforms.com",
-      "path": "/",
-      "expires": -1,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "None"
-    },
-    {
-      "name": "__hstc",
-      "value": "89306052.5602ca429f5e136111a1a570a12170eb.1764621958358.1764621958358.1764621958358.1",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1780174056,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "hubspotutk",
-      "value": "5602ca429f5e136111a1a570a12170eb",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1780174056,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "__hssrc",
-      "value": "1",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": -1,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "__hs_opt_out",
-      "value": "no",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1780174006,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "__hs_initial_opt_in",
-      "value": "true",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1765226806,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_gid",
-      "value": "GA1.2.252153061.1764622007",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1764708456,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_ga",
-      "value": "GA1.2.1221077801.1764621958",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1799182056.093666,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_hjSessionUser_2500256",
-      "value": "eyJpZCI6ImVhYmM5YmM5LTdlYjktNTFjMC05ZjE0LWYzZmZlNmE5MTgwOCIsImNyZWF0ZWQiOjE3NjQ2MjIwNTYyMTksImV4aXN0aW5nIjpmYWxzZX0=",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1796158056,
-      "httpOnly": false,
-      "secure": true,
-      "sameSite": "None"
-    },
-    {
-      "name": "_hjSession_2500256",
-      "value": "eyJpZCI6IjY4NGUxNDdlLWJmOTUtNGU2MC05NjMyLTA2YjExNmM3NDllZiIsImMiOjE3NjQ2MjIwNTYyMjEsInMiOjAsInIiOjAsInNiIjowLCJzciI6MCwic2UiOjAsImZzIjoxLCJzcCI6MH0=",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1764623886,
-      "httpOnly": false,
-      "secure": true,
-      "sameSite": "None"
-    },
-    {
-      "name": "__hssc",
-      "value": "89306052.2.1764621958358",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1764623856,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_ga_PBDEKQBRWC",
-      "value": "GS2.1.s1764621956$o1$g1$t1764622398$j60$l0$h0",
-      "domain": ".inteletravel.com",
-      "path": "/",
-      "expires": 1799182398.114096,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
     }
   ],
   "origins": [
     {
-      "origin": "https://www.google.com",
+      "origin": "https://www.facebook.com",
       "localStorage": [
         {
-          "name": "rc::a",
-          "value": "MWFjZ2kwZzFodjRpb2I="
+          "name": "signal_flush_timestamp",
+          "value": "1765229136580"
+        },
+        {
+          "name": "Session",
+          "value": "4l4ygy:1765229265964"
+        },
+        {
+          "name": "falco_queue_critical^$^$fbc68ac0e7d374b91",
+          "value": "{\"items\":[{\"name\":\"ods_web_batch\",\"policy\":{\"r\":1,\"s\":1},\"time\":1765229230484.2,\"extra\":\"{\\\"batch\\\":{\\\"110\\\":{\\\"TransportSelectingClient\\\":{\\\"FBGQLS:BATCH_NOTIFICATION_STATE_CHANGE_SUBSCRIBE.dgw_client.request_stream\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"FBGQLS:NOTIFICATION_STATE_CHANGE_SUBSCRIBE.dgw_client.request_stream\\\":{\\\"n\\\":1,\\\"d\\\":null}}},\\\"1678\\\":{\\\"www_client_navigations\\\":{\\\"NAVIGATE\\\":{\\\"n\\\":2,\\\"d\\\":null}}},\\\"2966\\\":{\\\"feed_ads\\\":{\\\"ghlTestUBT.init\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"ghlTestUBT.done.false.false.false\\\":{\\\"n\\\":1,\\\"d\\\":null}}},\\\"3589\\\":{\\\"dgw_web_client\\\":{\\\"RAWDGWClient.unauthenticated\\\":{\\\"n\\\":2,\\\"d\\\":null}}},\\\"4929\\\":{\\\"comet.dark_mode_audit\\\":{\\\"system_setting_is_dark_mode\\\":{\\\"n\\\":0,\\\"d\\\":1},\\\"initial_setting_is_use_system\\\":{\\\"n\\\":0,\\\"d\\\":1},\\\"server_guess_is_incorrect\\\":{\\\"n\\\":0,\\\"d\\\":1}}},\\\"7173\\\":{\\\"entities.ff_js_web.web_time_spent_navigation.2220391788200892.1030.C3\\\":{\\\"event.logged\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.captured\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.info.upload_method.banzai.log_immediately\\\":{\\\"n\\\":2,\\\"d\\\":null},\\\"event.info.banzai.log_immediately.upload_processing\\\":{\\\"n\\\":2,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":2,\\\"d\\\":null}},\\\"entities.ff_js_web.perf.2220391788200892.1030.C3\\\":{\\\"event.info.upload_method.banzai.log_immediately\\\":{\\\"n\\\":2,\\\"d\\\":null},\\\"event.info.banzai.log_immediately.upload_processing\\\":{\\\"n\\\":2,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":2,\\\"d\\\":null},\\\"event.logged\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.captured\\\":{\\\"n\\\":1,\\\"d\\\":null}},\\\"entities.ff_js_web.web_time_spent_bit_array.2220391788200892.1030.C3\\\":{\\\"event.info.upload_method.banzai.log_immediately\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.info.banzai.log_immediately.upload_processing\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":1,\\\"d\\\":null}},\\\"entities.ff_js_web.jstl_migration.2220391788200892.1030.C3\\\":{\\\"event.logged\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.info.banzai.log.upload_processing\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.captured\\\":{\\\"n\\\":1,\\\"d\\\":null}},\\\"entities.ff_js_web.comet_topnav_item_click.2220391788200892.1030.C3\\\":{\\\"event.logged\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.info.banzai.log.upload_processing\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.captured\\\":{\\\"n\\\":1,\\\"d\\\":null}},\\\"entities.ff_js_web.web_perf_device_info_log.2220391788200892.1030.C3\\\":{\\\"event.logged\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.info.banzai.log.upload_processing\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.captured\\\":{\\\"n\\\":1,\\\"d\\\":null}},\\\"entities.ff_js_web.ghl_test_ubt.2220391788200892.1030.C3\\\":{\\\"event.logged\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.info.banzai.log.upload_processing\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.uploaded\\\":{\\\"n\\\":1,\\\"d\\\":null},\\\"event.captured\\\":{\\\"n\\\":1,\\\"d\\\":null}}}}}\",\"tags\":[1,128],\"sessionId\":\"4l4ygy:sc3sol:yw4rew\",\"deviceId\":\"$^|AcaJZYRh3UROHipypydSbVYqTBTZPIt2MiuhXvz1DOHBEV4-ozLiBe8IAkLJ-apG_m7rsiCX71uXPfAZVsEZ3CTfef-VwWJ75UquhhSoVfJ1r2B04RB0HZz4luZ6eGHiFtK18yDg2NQsHpJDIPF0B0ataFGZJLK1HA|fd.AcZzWt8RRKUhkj_y8C295OuJtlOnyZYGCyGWVMeI977WU_RZ02stnHfE-asoTNaS3Va4JbEiyLN6AqI87Qczyk8r\",\"appVersion\":\"1030.767.849.0 (1030767849)\"}],\"ts\":1765229230964.1}"
+        },
+        {
+          "name": "hb_timestamp",
+          "value": "1765229166562"
+        },
+        {
+          "name": "banzai:last_storage_flush",
+          "value": "1765229137471"
+        },
+        {
+          "name": "falco_queue_immediately^$^$fe1362054c0b87614",
+          "value": "{\"items\":[{\"name\":\"web_time_spent_navigation\",\"policy\":{\"r\":1},\"time\":1765229230484.7,\"extra\":\"{\\\"cause\\\":\\\"unload\\\",\\\"custom_data_json\\\":\\\"{\\\\\\\"source_pa\\\\\\\":\\\\\\\"{\\\\\\\\\\\\\\\"0\\\\\\\\\\\\\\\":{\\\\\\\\\\\\\\\"bookmark_id\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\"tp-comet.auth_platform.afad\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\"bookmark_type_name\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\"session\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\"4l4ygy:sc3sol:yw4rew\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\"subsession\\\\\\\\\\\\\\\":1,\\\\\\\\\\\\\\\"tap_point\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\"via_cold_start\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\"timestamp\\\\\\\\\\\\\\\":1765229225873,\\\\\\\\\\\\\\\"trace_policy\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\"comet.auth_platform.afad\\\\\\\\\\\\\\\"}}\\\\\\\",\\\\\\\"source_pav2\\\\\\\":\\\\\\\"FBAuthPlatformApproveFromAnotherDeviceRoot.react,comet.auth_platform.afad,via_cold_start,1765229225873,180297,,,\\\\\\\",\\\\\\\"source_uri\\\\\\\":\\\\\\\"/auth_platform/afad/?apc=AdmfrUTvCAP04NY8QoALSspTpBn0daXySAIxVXt0bZSMFtm4nqJRkBshF6FWefOQFEwC5auiVOM-sa8IhmiJ2JmieMHtRsFtr0wEJpsL5tbzyn-na1tqMCaBYTdkA1wTg544N6I6VzwrpqmF_uNZSAIgASv3_1LZP5dFhgRWxHDqECrC3CoTV0nZs9Vx0E8JXnDZ_9TfOPe104faavxaNxD3yOCx0eIGzxBgAKWI9GDVKYTxeXWMyoeULUIEmOhCUZbuCQD73kzoIkJ1wRh9hBiZS1kHHJEAF_rKdYethoLpg6Q0b32SaaEWr7rvQQbDrnXZWtuU8RCqt8YxDYNJNA6bjMhwqag960UEDHHdhk33NkeFBK13v195FV01jIpSKmUajoPaJcWJ6a40fEkGiivSxSu0ROw33UUb76LXFmpQHhv8cSmv550CctBCZXCykwy-LkU8O29C1lwf7IOngkhBac0surwfkIehbwJM3Id2f5OVJH1C2jwPS5-LMCJNVsJr4lWWJP3TaIxg5KKVaqfmytV8GsVk_14wdx5_nE4qkrycOVYKhG1CGtqDQrT_b7W51pyfA-hivxMTyf3qQf6wJ9O96PagCFZNnolsdQDC8otbZbKYMsv8SbXhvc0b2bX3STwYQq659axBTSxq3GD_kKD_ESfxwVap4c60UaiIumga5NF1MV3j67i-noSpVVUAqy0-oFym_CJim8-Gm2kjG8Guu3oSky672aKkAufAXlTYjsvLiVf2lADOPPffgCQErcEn7y6BTPdIpLI4-Rlhus_wRiSWGN7dRMOXXiedu9UocnejkH9uoOyJgDKf1onSHFrJwfRkuvvDRSV-XVCkd8ITkyk9bZ5rdMjnTT3ksQRnDghfGllXkZF8GGf597GMW0_ZCbLHwtP_YZbE2K1KrEWKEs4Ufh3MzAzl5bPJ-zrW_1k4BMI_3VF7ddtoI87HwI96xiQjJIlyF6VbkiFY084yw0QISf3E4ruicihYsMFQjGrsL-YswTvGmLak7ikRqHlnmMWcQOEg_DnQTSj-mFWdgrPXamvOuem7wgdM575hNcoRYTp9RZEwKBmz0BnOL9-gGTcaKxIivSNc3837qQYzYy1rPJZ8Xi03Uyh0HfTu-0pgB7HvudKF7PODs5UpyDyfMR_n2VuFJ_qrUmYxt6sSJeOOB-ftL4o07mOgAbGQgTf20TGGFc5sC2EayupwZiJbSquqRTYkx8HXdlgHlPrrQim4876rsAZXO8AOCUlN_bo48aOrCoVMtbQ8ZbCAGjHqenZyGwGqNa3XZR1axyNiJ_ir2Ql4sOgpTzdLZ90P8DQgcdDYBsmff04MmnIZxnfLAOPsVzrxMFv8Ih61JUwMF0wnUvyUC2ejqNJybWun51GjiXgUYZsA1cHEtJi9eSQeIdClXkatWL2xSoqs8ZPdG_vBi9Rw0zDXkKake0nbRD7Z5WZ4s9_mLyw8eoF5SSKFNlMAGeNpEqC3i6XwNb0GXT-KSSo7QCIDi0uE0tBRVEdI-VFPtKicjESezddOqh3fpxV5vIrNvZfMD3mQDAy2ZhDmmeQmI9TddB480tKA4pvsUH4v0xeZy7WJm2BVezmMiQGmjz7NNfVTYNJWLo_eHczwpzlN8gyK_WDwianvFhowzzsFUZblHtqscujxoEZsD8TZ9cGvF_Ztl3Hac-WWUb8GCZjTVpoP3Q44i6PlxwadO6pQ1VPp-zgWiodf3bDtsd-EwZLY5oe3avdBN04ikKSygkJeageNNAiVqUpwoaZhyPOuqK5IRIeCy71dcZvpTOyF9rONKpwljdKL4kPvVKqcm90TQHOoXgm_x207jqJ6aZdTARFF0tTgcgZ9cBRlxYnBPCnU8uor19NX8V3soSMC_bkmLKsS--4JDEm1uYAk0RIC-bbpPyHikDS2KPcFl0OryfQxNiSgQlV0i7HPDIoKR3bg3zNaKzEeS24lFwl9mj0g3veWCqJ2IR1h5toBk4uWi7K735TLXfvDqxuPSFyJpzhfyvqh4v_Drd9uCuvA026WJw5LgwP4caLfPTlXHP9iTylB9RyGD7LPfxR5NYFdrwjkonkeb_2vhVgdLx9doeoYxX-F0VLN0FuuwaX_iElJeAtFZ1K1Zj5dBidSWZHJfGG_SouRhq72vUUlPJC09z0qtFMmF03FqjvxoOeqWP1OzG65fm1uNiaD9n5ywx85fG5k_00EGP98ZibVMG3DNMx1rJkmrMkshU49Gictb-LVmXR-cBzilDulrpwjWDT4Ej3zdnjFEJukOfAcyV12MPEP4PDmu92KGW0OA309jCbPZh9k-F3_ZpqvGXj8HtgDW7fLhgmScrAv0_QfaQ%7Caplc\\\\\\\",\\\\\\\"source_imp_id\\\\\\\":\\\\\\\"0oIPuHNRg3EAVcmy8\\\\\\\",\\\\\\\"source_visitation_id\\\\\\\":\\\\\\\"comet.auth_platform.afad:yw4rew:1:1765229225.874\\\\\\\"}\\\",\\\"sid_raw\\\":\\\"4l4ygy:sc3sol:yw4rew\\\",\\\"source_path\\\":\\\"comet.auth_platform.afad\\\"}\",\"tags\":[1,128],\"sessionId\":\"4l4ygy:sc3sol:yw4rew\",\"deviceId\":\"$^|AcaJZYRh3UROHipypydSbVYqTBTZPIt2MiuhXvz1DOHBEV4-ozLiBe8IAkLJ-apG_m7rsiCX71uXPfAZVsEZ3CTfef-VwWJ75UquhhSoVfJ1r2B04RB0HZz4luZ6eGHiFtK18yDg2NQsHpJDIPF0B0ataFGZJLK1HA|fd.AcZzWt8RRKUhkj_y8C295OuJtlOnyZYGCyGWVMeI977WU_RZ02stnHfE-asoTNaS3Va4JbEiyLN6AqI87Qczyk8r\",\"appVersion\":\"1030.767.849.0 (1030767849)\"},{\"name\":\"web_time_spent_bit_array\",\"policy\":{\"r\":1},\"time\":1765229230484.9001,\"extra\":\"{\\\"sid_raw\\\":\\\"4l4ygy:sc3sol:yw4rew\\\",\\\"start_endpoint\\\":\\\"comet.auth_platform.afad\\\",\\\"start_event\\\":\\\"init\\\",\\\"start_time\\\":1765229225,\\\"tos_array\\\":[17,0],\\\"tos_cum\\\":2,\\\"tos_id\\\":\\\"yw4rew\\\",\\\"tos_len\\\":6,\\\"tos_seq\\\":0}\",\"tags\":[1,128],\"sessionId\":\"4l4ygy:sc3sol:yw4rew\",\"deviceId\":\"$^|AcaJZYRh3UROHipypydSbVYqTBTZPIt2MiuhXvz1DOHBEV4-ozLiBe8IAkLJ-apG_m7rsiCX71uXPfAZVsEZ3CTfef-VwWJ75UquhhSoVfJ1r2B04RB0HZz4luZ6eGHiFtK18yDg2NQsHpJDIPF0B0ataFGZJLK1HA|fd.AcZzWt8RRKUhkj_y8C295OuJtlOnyZYGCyGWVMeI977WU_RZ02stnHfE-asoTNaS3Va4JbEiyLN6AqI87Qczyk8r\",\"appVersion\":\"1030.767.849.0 (1030767849)\"}],\"ts\":1765229230964.7}"
         }
       ]
     }

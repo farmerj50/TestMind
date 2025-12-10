@@ -5,11 +5,12 @@ import { test, expect } from '@playwright/test';
 test("Empty Email and Password Fields", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Empty Email and Password Fields" }, { type: "parameter", description: "page=/$" });
   await test.step("1. Navigate to https://www.facebook.com/", async () => {
-    await page.goto("https://www.facebook.com/", { timeout: 120000 });
+    await page.goto("https://www.facebook.com/", { timeout: 60000 });
   });
   await test.step("2. Click button:has-text(\"Log In\")", async () => {
     const locator = page.locator("button:has-text(\"Log In\")");
-    await locator.waitFor({ state: 'visible', timeout: 15000 });
-    await locator.click({ timeout: 15000 });
+    await locator.waitFor({ state: 'visible', timeout: 10000 }); // Increased timeout
+    await locator.waitFor({ state: 'enabled', timeout: 10000 }); // Increased timeout
+    await locator.click({ timeout: 10000 }); // Increased timeout
   });
 });

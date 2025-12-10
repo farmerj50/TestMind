@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useApi } from "../lib/api";
-import { CheckCircle2, XCircle, CircleAlert } from "lucide-react";
+import { CheckCircle2, XCircle, CircleAlert, RotateCcw } from "lucide-react";
+import { Button } from "./ui/button";
 
 type Result = {
   id: string;
@@ -13,11 +15,22 @@ type Result = {
   stderr?: string[];
 };
 
-export default function RunResults({ runId, active }: { runId: string; active: boolean }) {
+export default function RunResults({
+  runId,
+  active,
+  projectId,
+  suiteId,
+}: {
+  runId: string;
+  active: boolean;
+  projectId?: string;
+  suiteId?: string;
+}) {
   const { apiFetch } = useApi();
   const [results, setResults] = useState<Result[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  const [rerunLoadingId, setRerunLoadingId] = useState<string | null>(null);
 
   const stop = () => {
     if (pollRef.current) {
@@ -58,74 +71,119 @@ export default function RunResults({ runId, active }: { runId: string; active: b
       <CircleAlert className="h-4 w-4 text-amber-500" />
     );
 
+  const handleRerun = async (specPath?: string | null) => {
+    if (!specPath) return;
+    try {
+      setRerunLoadingId(specPath);
+      await apiFetch(`/runner/test-runs/${runId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ specFile: specPath, grep: null }),
+      });
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to trigger rerun");
+    } finally {
+      setRerunLoadingId(null);
+    }
+  };
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-slate-500">
-          <tr>
-            <th className="px-2 py-2">Case</th>
-            <th className="px-2 py-2">Status</th>
-            <th className="px-2 py-2">Duration</th>
-            <th className="px-2 py-2">Message</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {results.map((r) => {
-            const path = r.case.key?.split("#")[0]?.replace(/\\/g, "/");
-            return (
-              <tr key={r.id}>
-                <td className="px-2 py-2 align-top">
-                  <div className="font-medium">{r.case.title}</div>
-                  {path && <div className="text-xs text-slate-500 font-mono">{path}</div>}
-                </td>
-                <td className="px-2 py-2 capitalize align-top flex items-center gap-1">
-                  {icon(r.status)}
-                  {r.status}
-                </td>
-                <td className="px-2 py-2 align-top">
-                  {r.durationMs != null ? `${r.durationMs} ms` : "—"}
-                </td>
-                <td className="px-2 py-2 align-top space-y-2">
-                  {r.message && (
-                    <pre className="whitespace-pre-wrap text-xs text-slate-700">{r.message}</pre>
-                  )}
-                  {r.steps && r.steps.length > 0 && (
+    <div className="space-y-3">
+      {results.map((r) => {
+        const path = r.case.key?.split("#")[0]?.replace(/\\/g, "/");
+        const targetSuiteId =
+          suiteId ||
+          (projectId && projectId.startsWith("agent-") ? projectId : projectId ? `agent-${projectId}` : null);
+        return (
+          <div
+            key={r.id}
+            className="rounded-md border border-slate-200 bg-white shadow-sm p-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-medium text-slate-800">{r.case.title}</div>
+                {path && <div className="text-xs text-slate-500 font-mono">{path}</div>}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                {icon(r.status)}
+                <span className="capitalize text-slate-700">{r.status}</span>
+                <span className="text-slate-500">
+                  {r.durationMs != null ? `${r.durationMs} ms` : "-"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-2 space-y-2 text-sm text-slate-700">
+              {r.message && (
+                <pre className="whitespace-pre-wrap text-xs text-slate-700">{r.message}</pre>
+              )}
+              {r.steps && r.steps.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-slate-600">Steps</div>
+                  <ol className="list-decimal pl-4 text-xs text-slate-600 space-y-1">
+                    {r.steps.map((step, idx) => (
+                      <li key={idx}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {(r.stdout?.length || r.stderr?.length) ? (
+                <div className="space-y-1">
+                  {r.stdout && r.stdout.length > 0 && (
                     <div>
-                      <div className="text-xs font-semibold text-slate-600">Steps</div>
-                      <ol className="list-decimal pl-4 text-xs text-slate-600 space-y-1">
-                        {r.steps.map((step, idx) => (
-                          <li key={idx}>{step}</li>
-                        ))}
-                      </ol>
+                      <div className="text-xs font-semibold text-slate-600">Stdout</div>
+                      <pre className="whitespace-pre-wrap text-xs text-slate-500">
+                        {r.stdout.join("\n")}
+                      </pre>
                     </div>
                   )}
-                  {(r.stdout?.length || r.stderr?.length) ? (
-                    <div className="space-y-1">
-                      {r.stdout && r.stdout.length > 0 && (
-                        <div>
-                          <div className="text-xs font-semibold text-slate-600">Stdout</div>
-                          <pre className="whitespace-pre-wrap text-xs text-slate-500">
-                            {r.stdout.join("\n")}
-                          </pre>
-                        </div>
-                      )}
-                      {r.stderr && r.stderr.length > 0 && (
-                        <div>
-                          <div className="text-xs font-semibold text-slate-600">Stderr</div>
-                          <pre className="whitespace-pre-wrap text-xs text-slate-500">
-                            {r.stderr.join("\n")}
-                          </pre>
-                        </div>
-                      )}
+                  {r.stderr && r.stderr.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold text-slate-600">Stderr</div>
+                      <pre className="whitespace-pre-wrap text-xs text-slate-500">
+                        {r.stderr.join("\n")}
+                      </pre>
                     </div>
-                  ) : null}
-                  {!r.message && (!r.steps || r.steps.length === 0) && (!r.stdout?.length && !r.stderr?.length) && "—"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  )}
+                </div>
+              ) : null}
+              {!r.message && (!r.steps || r.steps.length === 0) && (!r.stdout?.length && !r.stderr?.length) && (
+                <div className="text-xs text-slate-500">No additional details.</div>
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={
+                    path && targetSuiteId
+                      ? `/suite/${encodeURIComponent(
+                          targetSuiteId
+                        )}?project=${encodeURIComponent(
+                          targetSuiteId
+                        )}&spec=${encodeURIComponent(path)}&returnTo=${encodeURIComponent(`/test-runs/${runId}`)}`
+                      : path
+                        ? `/suites?spec=${encodeURIComponent(path)}&returnTo=${encodeURIComponent(`/test-runs/${runId}`)}`
+                        : `/suites?returnTo=${encodeURIComponent(`/test-runs/${runId}`)}`
+                  }
+                >
+                  Edit in suite
+                </Link>
+              </Button>
+              {path && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={rerunLoadingId === path}
+                  onClick={() => handleRerun(path)}
+                >
+                  <RotateCcw className="mr-1 h-4 w-4" />
+                  {rerunLoadingId === path ? "Rerunning..." : "Rerun this spec"}
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
