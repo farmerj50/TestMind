@@ -8,7 +8,7 @@ test("Button Functionality Check", async ({ page }) => {
     await page.goto("http://localhost:5173/", { waitUntil: 'networkidle', timeout: 60000 });
   });
   await test.step("2. Click the first button that says 'Start'", async () => {
-    const locator = page.getByRole('button', { name: /^(start|get started|run|submit|begin)$/i });
+    const locator = page.getByRole('button', { name: /^(start|get started|run|submit|begin).first().first().first().first().first().first().first()$/i });
     await expect(locator).toBeVisible({ timeout: 15000 });
     await locator.click();
   });

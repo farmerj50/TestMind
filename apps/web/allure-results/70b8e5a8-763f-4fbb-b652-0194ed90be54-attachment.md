@@ -1,0 +1,243 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic:
+    - banner "Cookie Consent Banner":
+      - dialog "Cookie Information Banner" [ref=e2]:
+        - generic [ref=e3]:
+          - paragraph [ref=e6]: By using this website you agree to cookies.
+          - navigation "Cookie Banner Actions" [ref=e7]:
+            - generic [ref=e8]:
+              - link "About cookies" [ref=e9] [cursor=pointer]:
+                - /url: "#"
+              - button "Decline marketing" [ref=e10] [cursor=pointer]
+              - button "Accept all" [ref=e11] [cursor=pointer]
+              - button "Close banner" [ref=e12] [cursor=pointer]: ×
+  - banner [ref=e16]:
+    - link [ref=e18] [cursor=pointer]:
+      - /url: /
+      - img [ref=e20]
+    - navigation [ref=e27]:
+      - generic [ref=e28]:
+        - link "Sports" [ref=e29] [cursor=pointer]:
+          - /url: /sports
+        - link "CASINO" [ref=e30] [cursor=pointer]:
+          - /url: /casino
+        - link "Live Dealer" [ref=e31] [cursor=pointer]:
+          - /url: /live-dealer
+        - link "Poker" [ref=e32] [cursor=pointer]:
+          - /url: /poker
+        - link "Horses" [ref=e33] [cursor=pointer]:
+          - /url: /horses
+    - generic [ref=e34]:
+      - generic [ref=e36]:
+        - link "Join" [ref=e37] [cursor=pointer]:
+          - /url: /join
+        - link "Login" [ref=e38] [cursor=pointer]:
+          - /url: /login
+      - generic [ref=e39]:
+        - button [ref=e41] [cursor=pointer]:
+          - img [ref=e42]
+        - button "EN" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]:
+            - img [ref=e47]
+            - generic [ref=e49]: EN
+  - generic [ref=e53]:
+    - generic [ref=e55]:
+      - heading "GET READY TO PLAY SPORTS CASINO POKER" [level=1] [ref=e56]:
+        - generic [ref=e57]: GET READY TO PLAY
+        - generic [ref=e58]: SPORTS
+        - generic [ref=e59]: CASINO
+        - generic [ref=e60]: POKER
+      - generic [ref=e61]:
+        - text: SCORE UP TO $3,750 IN
+        - text: WELCOME BONUSES
+      - link "JOIN NOW" [ref=e62] [cursor=pointer]:
+        - /url: https://www.bovada.lv/?overlay=join
+    - generic [ref=e64]:
+      - generic [ref=e65]:
+        - link [ref=e66] [cursor=pointer]:
+          - /url: https://www.bovada.lv/sports
+        - img "Online Sportsbook" [ref=e67]
+      - generic [ref=e68]:
+        - link [ref=e69] [cursor=pointer]:
+          - /url: https://www.bovada.lv/casino
+        - img "Online Casino" [ref=e70]
+      - generic [ref=e71]:
+        - link [ref=e72] [cursor=pointer]:
+          - /url: https://www.bovada.lv/live-dealer
+        - img "Live Casino Games" [ref=e73]
+      - generic [ref=e74]:
+        - link [ref=e75] [cursor=pointer]:
+          - /url: https://www.bovada.lv/casino/hot-drop-jackpots
+        - img "Hot Drop Jackpots" [ref=e76]
+    - generic [ref=e77]:
+      - generic [ref=e78]:
+        - generic [ref=e79]: BOOST YOUR
+        - generic [ref=e80]: PLAY WITH
+        - generic [ref=e81]: CRYPTO
+      - generic [ref=e82]:
+        - text: BIGGER BONUSES, BETTER
+        - text: SECURITY, FASTER PAYOUTS
+      - link "LEARN MORE" [ref=e83] [cursor=pointer]:
+        - /url: https://www.bovada.lv/crypto-promotion
+    - generic [ref=e85]:
+      - generic [ref=e86]:
+        - link [ref=e87] [cursor=pointer]:
+          - /url: https://www.bovada.lv/rewards
+        - heading "GET REWARDED" [level=2] [ref=e88]
+        - paragraph [ref=e89]: Earn redeemable points while you play
+      - generic [ref=e90]:
+        - link [ref=e91] [cursor=pointer]:
+          - /url: https://www.bovada.lv/help/financial-faq/deposit-methods
+        - heading "TRANSACTIONS YOUR WAY" [level=2] [ref=e92]
+        - paragraph [ref=e93]: Multiple deposit and cash out methods
+      - generic [ref=e94]:
+        - link [ref=e95] [cursor=pointer]:
+          - /url: https://community.bovada.lv/
+        - heading "JOIN A COMMUNITY" [level=2] [ref=e96]
+        - paragraph [ref=e97]: Interact with other players
+      - generic [ref=e98]:
+        - link [ref=e99] [cursor=pointer]:
+          - /url: https://www.bovada.lv/refer
+        - heading "REFER YOUR FRIENDS" [level=2] [ref=e100]
+        - paragraph [ref=e101]: Earn cash for every bud you bring
+    - generic [ref=e103]:
+      - img "12 years" [ref=e104]
+      - generic [ref=e105]: 24/7 SUPPORT | FAST PAYOUTS THE WAY YOU WANT
+  - generic [ref=e108]:
+    - heading "Online Casino, Sports Betting and Poker at Bovada" [level=2] [ref=e109]
+    - paragraph [ref=e110]:
+      - text: Bovada is a top USA-based gambling and
+      - link "sports betting" [ref=e111] [cursor=pointer]:
+        - /url: /sports
+      - text: website. Join Bovada
+      - link "sportsbook" [ref=e112] [cursor=pointer]:
+        - /url: /sports
+      - text: to find unmissable
+      - link "odds on your favorite sports" [ref=e113] [cursor=pointer]:
+        - /url: /sports
+      - text: including
+      - link "NFL" [ref=e114] [cursor=pointer]:
+        - /url: /sports/football/nfl
+      - text: ","
+      - link "basketball" [ref=e115] [cursor=pointer]:
+        - /url: /sports/basketball
+      - text: ","
+      - link "soccer" [ref=e116] [cursor=pointer]:
+        - /url: /sports/soccer
+      - text: and more. Bovada is also home to tons of
+      - link "casino games" [ref=e117] [cursor=pointer]:
+        - /url: /casino
+      - text: for you to play, including
+      - link "slots" [ref=e118] [cursor=pointer]:
+        - /url: /casino/slots
+      - text: ","
+      - link "blackjack" [ref=e119] [cursor=pointer]:
+        - /url: /casino/blackjack-games
+      - text: ", and"
+      - link "roulette" [ref=e120] [cursor=pointer]:
+        - /url: /casino/roulette-games
+      - text: . So whether you want to place a bet on
+      - link "football" [ref=e121] [cursor=pointer]:
+        - /url: /sports/football
+      - text: ", or play a round or two of"
+      - link "poker" [ref=e122] [cursor=pointer]:
+        - /url: /poker
+      - text: ", Bovada is the place to play. With a generous"
+      - link "welcome bonus" [ref=e123] [cursor=pointer]:
+        - /url: /crypto-promotion
+      - text: ", and multiple ways to deposit and withdraw - including several crypto options - Bovada is ready for you."
+  - contentinfo [ref=e124]:
+    - list [ref=e126]:
+      - link "Help Center" [ref=e127] [cursor=pointer]:
+        - /url: /help
+      - link "Affiliate Program" [ref=e128] [cursor=pointer]:
+        - /url: https://www.bovada.lv/new-bovada-affiliate-program
+      - link "About" [ref=e129] [cursor=pointer]:
+        - /url: /about
+      - link "Terms of Service" [ref=e130] [cursor=pointer]:
+        - /url: /terms-of-service
+      - link "Forms & Agreements" [ref=e131] [cursor=pointer]:
+        - /url: /forms-and-agreements
+      - link "Privacy Policy" [ref=e132] [cursor=pointer]:
+        - /url: /privacy-policy
+      - link "Responsible Gaming" [ref=e133] [cursor=pointer]:
+        - /url: /responsible-gaming
+      - link "Self Exclusion" [ref=e134] [cursor=pointer]:
+        - /url: /pages/self-exclusion
+      - link "Bug Bounty" [ref=e135] [cursor=pointer]:
+        - /url: /bug-bounty
+      - link "Anti-Money Laundering" [ref=e136] [cursor=pointer]:
+        - /url: /pages/anti-money-laundering
+      - link "Fairness and RNG Testing Methods" [ref=e137] [cursor=pointer]:
+        - /url: /pages/fairness-and-rng-testing-methods
+      - link "KYC Policies" [ref=e138] [cursor=pointer]:
+        - /url: /pages/kyc-policies
+      - link "Accounts Payouts and Bonuses" [ref=e139] [cursor=pointer]:
+        - /url: /pages/accounts-payouts-and-bonuses
+      - link "Dispute Resolution" [ref=e140] [cursor=pointer]:
+        - /url: /pages/dispute-resolution
+      - link "Bovada Instagram" [ref=e141] [cursor=pointer]:
+        - /url: https://www.instagram.com/bovada/
+    - generic [ref=e144]:
+      - generic [ref=e145]:
+        - img "Bitcoin Logo" [ref=e146]
+        - img "Bitcoin Cash Logo" [ref=e147]
+        - img "Tether Logo" [ref=e148]
+        - img "Ethereum Logo" [ref=e149]
+        - img "Litecoin Logo" [ref=e150]
+        - img "VISA Logo" [ref=e151]
+        - img "Mastercard Logo" [ref=e152]
+      - generic [ref=e153]:
+        - link "YouTube" [ref=e154] [cursor=pointer]:
+          - /url: https://www.youtube.com/@bovadaYT/featured
+          - img "YouTube" [ref=e155]
+        - link "TikTok" [ref=e156] [cursor=pointer]:
+          - /url: https://www.tiktok.com/@bovada_official
+          - img "TikTok" [ref=e157]
+        - link "Telegram" [ref=e158] [cursor=pointer]:
+          - /url: https://t.me/+gtLA9tSp0u0zNGM8
+          - img "Telegram" [ref=e159]
+        - link "Facebook" [ref=e160] [cursor=pointer]:
+          - /url: https://www.facebook.com/BovadaLV
+          - img "Facebook" [ref=e161]
+        - link "Instagram" [ref=e162] [cursor=pointer]:
+          - /url: https://www.instagram.com/bovada
+          - img "Instagram" [ref=e163]
+        - link "Twitter/X" [ref=e164] [cursor=pointer]:
+          - /url: https://twitter.com/BovadaOfficial
+          - img "Twitter/X" [ref=e165]
+    - generic [ref=e169]:
+      - paragraph [ref=e170]:
+        - text: Gambling should be entertaining. Remember that you always risk losing the money you bet, so do not spend more than you can afford to lose. If you think you may have a problem,
+        - link "click here" [ref=e171] [cursor=pointer]:
+          - /url: /responsible-gaming
+        - text: .
+      - paragraph [ref=e172]:
+        - text: This site is protected by reCAPTCHA and the Google
+        - link "Privacy Policy" [ref=e173] [cursor=pointer]:
+          - /url: https://policies.google.com/privacy
+        - text: and
+        - link "Terms of Service" [ref=e174] [cursor=pointer]:
+          - /url: https://policies.google.com/terms
+        - text: apply.
+    - generic [ref=e178]:
+      - paragraph [ref=e179]:
+        - generic [ref=e180]: Bovada.lv is licensed and regulated by the Union of the Comoros and the Central Reserve Authority of Western Sahara.
+      - paragraph [ref=e181]:
+        - generic [ref=e182]:
+          - text: In order to register for this website, the user is required to accept the
+          - link "General Terms and Conditions" [ref=e183] [cursor=pointer]:
+            - /url: /terms-of-service
+          - text: . In the event the General Terms and Conditions are updated, existing users may choose to discontinue using the products and services before the said update shall become effective, which is a minimum of two weeks after it has been announced.
+    - generic:
+      - generic:
+        - paragraph
+  - generic [ref=e188]:
+    - button [ref=e189]:
+      - img
+    - textbox "Select an item" [ref=e190]: English
+  - alert [ref=e191]
+```
