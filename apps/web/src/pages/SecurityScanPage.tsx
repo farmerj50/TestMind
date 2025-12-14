@@ -28,6 +28,26 @@ type SecurityFinding = {
   tool?: string | null;
 };
 
+// Keep only the newest job per page/baseUrl so duplicate scans don't pile up in the UI.
+function uniqByPage(jobs: SecurityJob[]) {
+  const byKey = new Map<string, SecurityJob>();
+  for (const job of jobs) {
+    const key =
+      job.summary?.url ||
+      job.summary?.baseUrl ||
+      job.summary?.page ||
+      (job as any)?.baseUrl ||
+      "unknown";
+    const existing = byKey.get(key);
+    if (!existing || new Date(job.createdAt) > new Date(existing.createdAt)) {
+      byKey.set(key, job);
+    }
+  }
+  return Array.from(byKey.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
 export default function SecurityScanPage() {
   const { apiFetch } = useApi();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -77,7 +97,7 @@ export default function SecurityScanPage() {
   useEffect(() => {
     if (!projectId) return;
     apiFetch<{ jobs: SecurityJob[] }>(`/security/scans?projectId=${projectId}`)
-      .then((res) => setRecent(res.jobs || []))
+      .then((res) => setRecent(uniqByPage(res.jobs || [])))
       .catch(() => {});
   }, [apiFetch, projectId]);
 
@@ -138,7 +158,7 @@ export default function SecurityScanPage() {
       pollJob(res.job.id);
       // refresh list
       apiFetch<{ jobs: SecurityJob[] }>(`/security/scans?projectId=${projectId}`)
-        .then((r) => setRecent(r.jobs || []))
+        .then((r) => setRecent(uniqByPage(r.jobs || [])))
         .catch(() => {});
     } catch (err: any) {
       setError(err?.message ?? "Failed to start security scan");

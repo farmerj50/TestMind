@@ -174,6 +174,23 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
     };
 
     raw.suites.forEach((suite: any) => walkSuite(suite));
+
+    // If no suites were produced but errors exist, surface them so the UI can show a failure.
+    if (!out.length && Array.isArray(raw.errors) && raw.errors.length) {
+      for (const err of raw.errors) {
+        out.push({
+          file: normalizePath(err.location?.file || err.file),
+          fullName: err.message ? stripAnsi(err.message) || "Playwright error" : "Playwright error",
+          durationMs: undefined,
+          status: "failed",
+          message: stripAnsi(err.message || null),
+          steps: [],
+          stdout: [],
+          stderr: [],
+          attachments: [],
+        });
+      }
+    }
     return out;
   }
 

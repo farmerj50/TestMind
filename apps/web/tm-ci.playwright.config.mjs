@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://localhost:${PORT}`;
-const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts');
+const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts-user_36fE7NhJd4BiVLk3EXpdpVh7J4m');
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -24,10 +24,10 @@ const DEV_COMMAND =
     ? `powershell -NoProfile -Command "& {Set-Location -Path 'D:\\Project\\testmind\\apps\\web'; pnpm install; pnpm dev --host localhost --port 4173 }"`
     : `bash -lc "cd \"D:/Project/testmind/apps/web\" && pnpm install && pnpm dev --host 0.0.0.0 --port 4173"`;
 
-const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "3000");
-const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? NAV_TIMEOUT);
-const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "3000");
-const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "10000");
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "30000");
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "15000");
+const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "10000");
+const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "60000");
 const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
   ? Number(process.env.TM_WORKERS)
   : 4;

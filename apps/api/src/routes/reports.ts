@@ -3,11 +3,11 @@ import { prisma } from "../prisma";
 import fs from "node:fs/promises";
 import path from "node:path";
 import fsSync from "node:fs";
+import { getAuth } from "@clerk/fastify";
 
 export default async function reportsRoutes(app: FastifyInstance) {
   // small helpers
-  const clamp = (n: number, lo: number, hi: number) =>
-    Math.max(lo, Math.min(hi, n));
+  const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
   const parseIntSafe = (v: unknown, def = 20) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.trunc(n) : def;
@@ -16,12 +16,26 @@ export default async function reportsRoutes(app: FastifyInstance) {
   // GET /reports/summary?projectId=...
   app.get("/reports/summary", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { projectId } = (req.query ?? {}) as { projectId?: string };
+
+      const allowedProjects = await prisma.project.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      const projectIds = allowedProjects.map((p) => p.id);
+      if (!projectIds.length) {
+        const empty = { queued: 0, running: 0, succeeded: 0, failed: 0, total: 0 };
+        return reply.send({ counts: empty, lastRun: null });
+      }
 
       // counts by status
       const grouped = await prisma.testRun.groupBy({
         by: ["status"],
-        where: projectId ? { projectId } : undefined,
+        where: projectId
+          ? { projectId, project: { ownerId: userId } }
+          : { projectId: { in: projectIds } },
         _count: { _all: true },
       });
 
@@ -38,9 +52,11 @@ export default async function reportsRoutes(app: FastifyInstance) {
         counts.total += g._count._all;
       }
 
-      // latest run — prefer most recently finished, then started, then created
+      // latest run – prefer most recently finished, then started, then created
       const lastRun = await prisma.testRun.findFirst({
-        where: projectId ? { projectId } : undefined,
+        where: projectId
+          ? { projectId, project: { ownerId: userId } }
+          : { projectId: { in: projectIds } },
         orderBy: [
           { finishedAt: "desc" },
           { startedAt: "desc" },
@@ -63,9 +79,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
       return reply.send({ counts, lastRun });
     } catch (err: any) {
       req.log.error({ err }, "reports/summary failed");
-      return reply
-        .code(500)
-        .send({ statusCode: 500, error: "Internal Server Error" });
+      return reply.code(500).send({ statusCode: 500, error: "Internal Server Error" });
     }
   });
 
@@ -83,8 +97,10 @@ export default async function reportsRoutes(app: FastifyInstance) {
    */
   app.get("/reports/recent", async (req, reply) => {
     try {
-      const { projectId, take, cursorId, since, status } = (req.query ??
-        {}) as {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+      const { projectId, take, cursorId, since, status } = (req.query ?? {}) as {
         projectId?: string;
         take?: string;
         cursorId?: string;
@@ -92,12 +108,20 @@ export default async function reportsRoutes(app: FastifyInstance) {
         status?: "queued" | "running" | "succeeded" | "failed";
       };
 
+      const allowedProjects = await prisma.project.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      const projectIds = allowedProjects.map((p) => p.id);
+      if (!projectIds.length) return reply.send({ runs: [], nextCursor: undefined, hasMore: false });
+
       // hard clamp to keep memory sane
       const n = clamp(parseIntSafe(take, 20), 1, 50);
 
       // build filters
-      const where: any = {};
-      if (projectId) where.projectId = projectId;
+      const where: any = projectId
+        ? { projectId, project: { ownerId: userId } }
+        : { projectId: { in: projectIds } };
       if (status) where.status = status;
       if (since) {
         const d = new Date(since);
@@ -112,9 +136,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
         orderBy,
         // fetch one extra to know if there's a next page
         take: n + 1,
-        ...(cursorId
-          ? { cursor: { id: cursorId }, skip: 1 } // exclude the cursor row
-          : {}),
+        ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
         select: {
           id: true,
           projectId: true,
@@ -145,9 +167,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
       });
     } catch (err: any) {
       req.log.error({ err }, "reports/recent failed");
-      return reply
-        .code(500)
-        .send({ statusCode: 500, error: "Internal Server Error" });
+      return reply.code(500).send({ statusCode: 500, error: "Internal Server Error" });
     }
   });
 
@@ -161,6 +181,9 @@ export default async function reportsRoutes(app: FastifyInstance) {
    */
   app.post("/reports/runs/delete", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
       const body = (req.body ?? {}) as {
         ids?: string[];
         projectId?: string;
@@ -178,8 +201,9 @@ export default async function reportsRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "Provide ids[], or olderThanDays, or all=true" });
       }
 
-      const where: any = {};
-      if (body.projectId) where.projectId = body.projectId;
+      const where: any = body.projectId
+        ? { projectId: body.projectId, project: { ownerId: userId } }
+        : { project: { ownerId: userId } };
       if (ids.length) where.id = { in: ids };
       if (olderThanDays) {
         const cutoff = new Date(Date.now() - olderThanDays * 24 * 3600 * 1000);
@@ -218,9 +242,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
       reply.send({ deleted: deleteIds.length });
     } catch (err: any) {
       req.log.error({ err }, "reports/runs/delete failed");
-      return reply
-        .code(500)
-        .send({ statusCode: 500, error: "Internal Server Error" });
+      return reply.code(500).send({ statusCode: 500, error: "Internal Server Error" });
     }
   });
 }

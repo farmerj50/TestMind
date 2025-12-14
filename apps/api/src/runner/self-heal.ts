@@ -18,6 +18,7 @@ export async function scheduleSelfHealingForRun(runId: string) {
   });
   if (!run) return;
   const headful = Boolean((run.paramsJson as any)?.headful);
+  const baseUrl: string | undefined = (run.paramsJson as any)?.baseUrl;
 
   const failedResults = await prisma.testResult.findMany({
     where: { runId, status: TestResultStatus.failed },
@@ -40,15 +41,16 @@ export async function scheduleSelfHealingForRun(runId: string) {
       },
     });
 
-    await enqueueSelfHeal({
-      runId,
-      testResultId: result.id,
-      testCaseId: result.testCaseId,
-      attemptId: healingAttempt.id,
-      projectId: run.projectId,
-      totalFailed: failedResults.length,
-      testTitle: result.testCase?.title ?? null,
-      headed: headful,
-    });
+      await enqueueSelfHeal({
+        runId,
+        testResultId: result.id,
+        testCaseId: result.testCaseId,
+        attemptId: healingAttempt.id,
+        projectId: run.projectId,
+        totalFailed: failedResults.length,
+        testTitle: result.testCase?.title ?? null,
+        headed: headful,
+        baseUrl,
+      });
   }
 }

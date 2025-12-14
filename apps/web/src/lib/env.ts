@@ -1,9 +1,14 @@
 // apps/web/src/lib/env.ts
-export const API_URL: string = import.meta.env.VITE_API_URL ?? "";
+// Preferred: set VITE_API_URL to the API origin. Dev fallback uses localhost:8787.
+const DEV_API_FALLBACK = "http://localhost:8787";
 
-// Optional: helper to build API links with a fallback
+const configuredApi = import.meta.env.VITE_API_URL;
+export const API_URL: string =
+  configuredApi && configuredApi.trim().length > 0 ? configuredApi : DEV_API_FALLBACK;
+
+// Helper to build API links against the configured (or fallback) origin
 export function apiHref(path: string) {
   // ensure path starts with a single leading slash
   const p = path.startsWith("/") ? path : `/${path}`;
-  return API_URL ? `${API_URL}${p}` : p; // fallback to same-origin if API_URL is empty
+  return `${API_URL}${p}`;
 }

@@ -15,6 +15,8 @@ export default defineConfig({
       '/repos':   { target: 'http://localhost:8787', changeOrigin: true },
       '/me':      { target: 'http://localhost:8787', changeOrigin: true },
       '/_static': { target: 'http://localhost:8787', changeOrigin: true },
+      '/auth':    { target: 'http://localhost:8787', changeOrigin: true },
+      '/github':  { target: 'http://localhost:8787', changeOrigin: true },
     },
   },
 })

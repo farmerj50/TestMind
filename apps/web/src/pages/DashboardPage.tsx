@@ -22,7 +22,7 @@ import HowToHint from "../components/HowToHint";
 type Project = {
   id: string;
   name: string;
-  repoUrl: string;
+  repoUrl?: string;
   ownerId: string;
   createdAt: string;
 };
@@ -74,7 +74,7 @@ export default function DashboardPage() {
     e.preventDefault();
     setErr(null);
 
-    const v = validateProject({ name, repoUrl });
+    const v = validateProject({ name, repoUrl: repoUrl.trim() || undefined });
     if (!v.ok) {
       setFormErrors(v.errors);
       return;
@@ -84,7 +84,10 @@ export default function DashboardPage() {
     try {
       await apiFetch<{ project: Project }>("/projects", {
         method: "POST",
-        body: JSON.stringify({ name, repoUrl }),
+        body: JSON.stringify({
+          name,
+          ...(repoUrl.trim() ? { repoUrl: repoUrl.trim() } : {}),
+        }),
       });
       setName("");
       setRepoUrl("");
@@ -158,7 +161,7 @@ export default function DashboardPage() {
             </div>
 
             <div>
-              <label className="text-xs text-slate-600">Repository URL</label>
+              <label className="text-xs text-slate-600">Repository URL (optional)</label>
               <Input
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
@@ -210,14 +213,18 @@ export default function DashboardPage() {
                     >
                       {p.name}
                     </Link>
-                    <a
-                      href={p.repoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="break-all text-xs text-slate-500 underline"
-                    >
-                      {p.repoUrl}
-                    </a>
+                    {p.repoUrl ? (
+                      <a
+                        href={p.repoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-xs text-slate-500 underline"
+                      >
+                        {p.repoUrl}
+                      </a>
+                    ) : (
+                      <p className="text-xs text-slate-500">No repo linked</p>
+                    )}
                   </div>
 
                   {/* Actions */}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Button } from "../components/ui/button";
+import { useApi } from "../lib/api";
 
 type FileItem = { path: string; size: number };
 
@@ -8,21 +9,25 @@ export default function GeneratedTestsPanel() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [content, setContent] = useState<string>("");
+  const { apiFetch } = useApi();
   const adapterId = (localStorage.getItem("tm-adapterId") || "playwright-ts") as string;
 
   async function load() {
     const qs = new URLSearchParams({ adapterId }).toString();
-    const r = await fetch(`/tm/generated/list?${qs}`);
-    const d = await r.json();
-    setFiles(d.files || []);
-    if (d.files?.length && !active) setActive(d.files[0].path);
+    const d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${qs}`);
+    const list = d.files || [];
+    setFiles(list);
+    if (list.length && !active) setActive(list[0].path);
   }
 
   async function openFile(p: string) {
     setActive(p);
     const qs = new URLSearchParams({ adapterId, file: p }).toString();
-    const r = await fetch(`/tm/generated/file?${qs}`);
-    setContent(await r.text());
+    const text = await apiFetch<string>(`/tm/generated/file?${qs}`, {
+      // apiFetch treats non-JSON as text when content-type isn't JSON; force that here
+      headers: { Accept: "text/plain" } as any,
+    });
+    setContent(text);
   }
 
   useEffect(() => { load(); }, [adapterId]);

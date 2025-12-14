@@ -10,6 +10,25 @@ import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library.js";
 
 const defaultCoverage: Prisma.InputJsonValue = {};
+const CURATED_ADAPTER = "playwright-ts";
+
+async function ensureCuratedSuiteRecord(projectId: string, projectName: string, ownerId: string) {
+  try {
+    const suiteId = agentSuiteId(projectId);
+    const existing = await prisma.curatedSuite.findUnique({ where: { id: suiteId } });
+    if (existing) return existing;
+    return prisma.curatedSuite.create({
+      data: {
+        id: suiteId,
+        projectId,
+        name: `Agent - ${projectName}`,
+        rootRel: `agent-${projectId}`,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
 
 function normalizePath(baseUrl: string, pathOrUrl: string): { path: string; url: string } {
   if (/^https?:\/\//i.test(pathOrUrl)) {
@@ -311,6 +330,7 @@ export async function attachScenarioToProject(userId: string, scenarioId: string
 
   const project = await prisma.project.findFirst({
     where: { id: targetProjectId, ownerId: userId },
+    select: { id: true, name: true, ownerId: true },
   });
   if (!project) throw new Error("Project not found or not owned by user");
 
@@ -334,6 +354,7 @@ export async function attachScenarioToProject(userId: string, scenarioId: string
   }));
 
   const suiteId = agentSuiteId(project.id);
+  await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
   const { root } = ensureCuratedProjectEntry(suiteId, `Agent - ${project.name}`);
   const destRoots = [root];
   const localSpecs = process.env.TM_LOCAL_SPECS;
@@ -363,7 +384,7 @@ export async function attachScenarioToProject(userId: string, scenarioId: string
 export async function regenerateAttachedSpecs(userId: string, projectId: string) {
   const project = await prisma.project.findFirst({
     where: { id: projectId, ownerId: userId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, ownerId: true },
   });
   if (!project) {
     throw new PrismaClientKnownRequestError("Project not found or not owned by user", {
@@ -379,6 +400,7 @@ export async function regenerateAttachedSpecs(userId: string, projectId: string)
   if (!attached.length) return { specPaths: [] };
 
   const suiteId = agentSuiteId(project.id);
+  await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
   const { root } = ensureCuratedProjectEntry(suiteId, `Agent - ${project.name}`);
   const destRoots = [root];
   if (process.env.TM_LOCAL_SPECS) destRoots.push(process.env.TM_LOCAL_SPECS);

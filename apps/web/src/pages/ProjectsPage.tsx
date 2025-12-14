@@ -124,7 +124,7 @@ export default function ProjectsPage() {
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : (
-                              <span className="text-slate-500">—</span>
+                              <span className="text-slate-500">No repo linked</span>
                             )}
                           </div>
                           <div className="pt-1 space-y-1">
