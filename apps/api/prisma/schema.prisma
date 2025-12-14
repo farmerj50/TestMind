@@ -116,6 +116,7 @@ model Project {
   owner     User     @relation(fields: [ownerId], references: [id])
   plan      PlanTier @default(free)
   createdAt DateTime @default(now())
+  sharedSteps Json?   @default("{}")
 
   testRuns         TestRun[]
   suites           TestSuite[]
@@ -126,6 +127,7 @@ model Project {
   integrations     Integration[]
   secrets          ProjectSecret[]
   securityScans    SecurityScanJob[]
+  curatedSuites    CuratedSuite[]
 }
 
 model GitAccount {
@@ -133,6 +135,8 @@ model GitAccount {
   provider  String   @default("github")
   userId    String
   token     String
+  githubUserId Int?
+  githubLogin  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -433,5 +437,18 @@ model ProjectSecret {
   updatedAt DateTime @updatedAt
 
   @@unique([projectId, key])
+  @@index([projectId])
+}
+
+model CuratedSuite {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  rootRel   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, name])
   @@index([projectId])
 }

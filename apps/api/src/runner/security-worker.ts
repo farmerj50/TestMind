@@ -85,7 +85,7 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
     return findings;
   }
   try {
-    const res = await request(job.baseUrl, { method: "GET", maxRedirections: 3 });
+    const res = await request(job.baseUrl, { method: "GET" });
     findings.push({
       type: "recon",
       severity: "info",

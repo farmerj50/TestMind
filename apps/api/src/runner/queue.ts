@@ -13,6 +13,8 @@ export type RunPayload = {
   trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
   grep?: string;
   file?: string;
+  baseUrl?: string;
+  localRepoRoot?: string;
 };
 
 export type SelfHealPayload = {
@@ -24,6 +26,7 @@ export type SelfHealPayload = {
   totalFailed: number;
   testTitle?: string | null;
   headed?: boolean;
+  baseUrl?: string;
 };
 
 export type SecurityScanPayload = {

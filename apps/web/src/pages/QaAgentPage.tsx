@@ -23,7 +23,11 @@ type QaJob = {
 export default function QaAgentPage() {
   const { apiFetch } = useApi();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [suites, setSuites] = useState<
+    Array<{ id: string; name: string; type: string; projectId?: string }>
+  >([]);
   const [projectId, setProjectId] = useState("");
+  const [suiteId, setSuiteId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [parallel, setParallel] = useState(false);
   const [includeApi, setIncludeApi] = useState(false);
@@ -45,11 +49,25 @@ export default function QaAgentPage() {
         if (!mounted) return;
         setError(err?.message ?? "Failed to load projects");
       });
+
+    apiFetch<{
+      projects: Array<{ id: string; name: string; type: string; projectId?: string }>;
+    }>("/tm/suite/projects")
+      .then((res) => {
+        if (!mounted) return;
+        const curated = (res.projects || []).filter((p) => p.type === "curated");
+        setSuites(curated);
+        if (!suiteId && curated.length) {
+          setSuiteId(curated[0].id);
+          if (!projectId && curated[0].projectId) setProjectId(curated[0].projectId);
+        }
+      })
+      .catch(() => {});
     return () => {
       mounted = false;
       if (pollRef.current) window.clearInterval(pollRef.current);
     };
-  }, [apiFetch]);
+  }, [apiFetch, projectId, suiteId]);
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId),
@@ -61,12 +79,17 @@ export default function QaAgentPage() {
       setError("Pick a project first.");
       return;
     }
+    if (!suiteId) {
+      setError("Pick a suite (curated) to run.");
+      return;
+    }
     setError(null);
     try {
       const res = await apiFetch<{ job: QaJob }>("/qa-agent/start", {
         method: "POST",
         body: JSON.stringify({
           projectId,
+          suiteId,
           baseUrl: baseUrl.trim() || undefined,
           parallel,
           includeApi,
@@ -118,6 +141,21 @@ export default function QaAgentPage() {
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Suite (curated)</label>
+              <Select value={suiteId} onValueChange={setSuiteId}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="Select suite" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suites.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -33,6 +33,11 @@ async function startGeneratedRun(runId: string, projectId: string, caseId?: stri
   const runDir = path.join(RUNS_DIR, runId);
   const workspaceRoot = path.join(os.tmpdir(), "tm-runner");
   const workspaceDir = path.join(workspaceRoot, runId);
+  const projectRecord = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { sharedSteps: true },
+  });
+  const projectSharedSteps = projectRecord?.sharedSteps;
   // Kick off background work (no blocking)
   (async () => {
     try {
@@ -67,6 +72,11 @@ async function startGeneratedRun(runId: string, projectId: string, caseId?: stri
         RUN_TESTS: "false", // we run tests explicitly below
         LOCAL_RUN: "1", // instruct runner to skip GitHub and run locally
       };
+      if (projectSharedSteps !== undefined) {
+        env.TM_PROJECT_SHARED_STEPS = JSON.stringify(projectSharedSteps);
+      } else {
+        delete env.TM_PROJECT_SHARED_STEPS;
+      }
 
       // If this run was triggered from a manual case, synthesize a simple spec so Playwright has something to run.
       let manualSpecDir: string | null = null;
@@ -264,7 +274,7 @@ export async function testRoutes(app: FastifyInstance) {
     // ensure the project belongs to the signed-in user
     const project = await prisma.project.findFirst({
       where: { id: projectId, ownerId: userId },
-      select: { id: true },
+      select: { id: true, sharedSteps: true },
     });
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
@@ -274,6 +284,7 @@ export async function testRoutes(app: FastifyInstance) {
         projectId,
         status: "queued",
         trigger: "user",
+        paramsJson: project?.sharedSteps ? { sharedSteps: project.sharedSteps } : undefined,
       },
     });
     const updatedRun = await prisma.testRun.update({
@@ -659,7 +670,7 @@ export async function testRoutes(app: FastifyInstance) {
 
       const ownerOk = await prisma.project.findFirst({
         where: { id: tc.projectId, ownerId: userId },
-        select: { id: true },
+        select: { id: true, sharedSteps: true },
       });
       if (!ownerOk) return reply.code(404).send({ error: "Case not found" });
 
@@ -668,6 +679,7 @@ export async function testRoutes(app: FastifyInstance) {
           projectId: tc.projectId,
           status: "queued",
           summary: `Generate Playwright for case "${tc.title}"`,
+          paramsJson: ownerOk?.sharedSteps ? { sharedSteps: ownerOk.sharedSteps } : undefined,
         },
       });
       const updatedRun = await prisma.testRun.update({

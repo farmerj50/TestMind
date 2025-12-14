@@ -2,6 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 
+const LOCAL_REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT?.trim()
+  ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
+  : null;
+
+function isLocalRootTarget(dest: string) {
+  return !!LOCAL_REPO_ROOT && path.resolve(dest) === LOCAL_REPO_ROOT;
+}
+
+async function ensureCleanDest(dest: string) {
+  await fs.rm(dest, { recursive: true, force: true }).catch(() => {});
+  await fs.mkdir(dest, { recursive: true });
+}
+
 async function copyLocalRepo(src: string, dest: string) {
   await fs.cp(src, dest, {
     recursive: true,
@@ -17,10 +30,18 @@ async function copyLocalRepo(src: string, dest: string) {
 }
 
 export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
+  const destResolved = path.resolve(dest);
+  if (isLocalRootTarget(destResolved)) {
+    console.log(`[runner] TM_LOCAL_REPO_ROOT=${destResolved} detected; skipping clone`);
+    return;
+  }
+
+  await ensureCleanDest(destResolved);
+
   const localOverride = process.env.TM_LOCAL_REPO_PATH;
   if (localOverride) {
     console.log(`[runner] using local repo snapshot from ${localOverride}`);
-    await copyLocalRepo(localOverride, dest);
+    await copyLocalRepo(localOverride, destResolved);
     return;
   }
 
@@ -29,5 +50,5 @@ export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
   if (token && /^https:\/\/github\.com\//i.test(repoUrl)) {
     url = repoUrl.replace("https://", `https://${token}@`);
   }
-  await execa("git", ["clone", "--depth=1", url, dest], { stdio: "pipe" });
+  await execa("git", ["clone", "--depth=1", url, destResolved], { stdio: "pipe" });
 }

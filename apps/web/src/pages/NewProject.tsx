@@ -13,6 +13,10 @@ export default function NewProjectPage() {
     e.preventDefault();
     setStatus(null);
 
+    const payload: Record<string, string> = { name: name.trim() };
+    const trimmedRepo = repoUrl.trim();
+    if (trimmedRepo) payload.repoUrl = trimmedRepo;
+
     const token = await getToken(); // Clerk session token (JWT)
     const res = await fetch(`${API}/projects`, {
       method: 'POST',
@@ -20,7 +24,7 @@ export default function NewProjectPage() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token ?? ''}`
       },
-      body: JSON.stringify({ name, repoUrl })
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
