@@ -6,6 +6,7 @@ type QaJobStatus = "queued" | "running" | "succeeded" | "failed";
 type QaJob = {
   id: string;
   projectId: string;
+  suiteId?: string;
   baseUrl?: string;
   parallel?: boolean;
   includeApi?: boolean;
@@ -22,6 +23,7 @@ const jobs = new Map<string, QaJob>();
 export default async function qaAgentRoutes(app: FastifyInstance) {
   const StartBody = z.object({
     projectId: z.string().min(1, "projectId is required"),
+    suiteId: z.string().min(1, "suiteId is required"),
     baseUrl: z.string().url().optional(),
     parallel: z.boolean().optional(),
     includeApi: z.boolean().optional(),
@@ -33,11 +35,17 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() });
     }
 
+    // capture auth header so internal injections carry user context
+    const authHeader =
+      (req.headers.authorization as string | undefined) ||
+      (req.headers.Authorization as string | undefined);
+
     const id = typeof crypto !== "undefined" && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const now = new Date().toISOString();
     const job: QaJob = {
       id,
       projectId: parsed.data.projectId,
+      suiteId: parsed.data.suiteId,
       baseUrl: parsed.data.baseUrl,
       parallel: parsed.data.parallel ?? false,
       includeApi: parsed.data.includeApi ?? false,
@@ -49,6 +57,7 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
 
     // Fire-and-forget: mark running, invoke runner(s), store runId(s), then mark done.
     setTimeout(async () => {
+      const originalWorkers = process.env.TM_WORKERS;
       try {
         const running = jobs.get(id);
         if (!running) return;
@@ -57,7 +66,6 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
         jobs.set(id, running);
 
         // optional: set workers based on parallel flag (global env tweak)
-        const originalWorkers = process.env.TM_WORKERS;
         if (job.parallel) process.env.TM_WORKERS = "4";
         else process.env.TM_WORKERS = "1";
 
@@ -67,11 +75,13 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
           url: "/runner/run",
           payload: {
             projectId: job.projectId,
+            suiteId: job.suiteId,
             baseUrl: job.baseUrl,
           },
+          headers: authHeader ? { authorization: authHeader } : undefined,
         });
         let runId: string | undefined;
-        if (res.statusCode === 200) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             const body = res.json() as any;
             runId = body?.id;
@@ -88,10 +98,12 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
             url: "/runner/run",
             payload: {
               projectId: job.projectId,
+              suiteId: job.suiteId,
               baseUrl: job.baseUrl,
             },
+            headers: authHeader ? { authorization: authHeader } : undefined,
           });
-          if (resApi.statusCode === 200) {
+          if (resApi.statusCode >= 200 && resApi.statusCode < 300) {
             try {
               const body = resApi.json() as any;
               apiRunId = body?.id;
@@ -108,11 +120,16 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
         if (!done) return;
         done.runId = runId;
         done.apiRunId = apiRunId;
-        const okPrimary = res.statusCode === 200 && runId;
-        const okApi = !job.includeApi || (apiRunId !== undefined);
+        const okPrimary = !!runId;
+        const okApi = !job.includeApi || !!apiRunId;
         done.status = okPrimary && okApi ? "succeeded" : "failed";
-        if (!okPrimary) done.error = res.body?.toString() ?? `Runner failed (${res.statusCode})`;
-        else if (!okApi) done.error = done.error ?? "API run failed";
+        if (!okPrimary) {
+          done.error = res.body?.toString() ?? `Runner failed (${res.statusCode})`;
+        } else if (!okApi) {
+          done.error = done.error ?? "API run failed";
+        } else {
+          done.error = undefined;
+        }
         done.updatedAt = new Date().toISOString();
         jobs.set(id, done);
 
@@ -127,7 +144,8 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
         fail.updatedAt = new Date().toISOString();
         jobs.set(id, fail);
         // restore env
-        delete process.env.TM_WORKERS;
+        if (originalWorkers === undefined) delete process.env.TM_WORKERS;
+        else process.env.TM_WORKERS = originalWorkers;
       }
     }, 10);
 

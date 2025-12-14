@@ -153,7 +153,11 @@ if (fs.existsSync(WEB_DIST)) {
   app.setNotFoundHandler((req, reply) => {
     const accept = req.headers.accept || "";
     if (req.method === "GET" && accept.includes("text/html")) {
-      return reply.sendFile("index.html");
+      const indexPath = path.join(WEB_DIST, "index.html");
+      if (fs.existsSync(indexPath)) {
+        reply.type("text/html");
+        return reply.send(fs.createReadStream(indexPath));
+      }
     }
     return reply.code(404).send({ message: `Route ${req.method}:${req.url} not found`, error: "Not Found", statusCode: 404 });
   });
@@ -180,14 +184,22 @@ if (allowDebugRoutes) {
 app.get("/health", async () => ({ ok: true }));
 
 // ---------- Schemas ----------
+const optionalRepoUrl = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v === "" ? undefined : v))
+  .refine((v) => !v || z.string().url().safeParse(v).success, { message: "Enter a valid URL" });
+
 const CreateProjectSchema = z.object({
   name: z.string().min(1, "Project name is required"),
-  repoUrl: z.string().url("Enter a valid URL"),
+  repoUrl: optionalRepoUrl,
 });
 
 const UpdateProjectSchema = z.object({
   name: z.string().min(1).optional(),
-  repoUrl: z.string().url().optional(),
+  repoUrl: optionalRepoUrl,
+  sharedSteps: z.any().optional(),
 });
 type UpdateProjectBody = z.infer<typeof UpdateProjectSchema>;
 
@@ -246,7 +258,7 @@ app.post("/projects", async (req, reply) => {
 
   const { name, repoUrl } = parsed.data;
   const project = await prisma.project.create({
-    data: { name, repoUrl, ownerId: userId },
+    data: { name, repoUrl: repoUrl ?? "", ownerId: userId },
   });
 
   return reply.code(201).send({ project });
@@ -270,9 +282,21 @@ app.patch<{ Params: { id: string }; Body: UpdateProjectBody }>(
     });
     if (!existing) return reply.code(404).send({ error: "Not found" });
 
+    const data: any = { ...parsed.data };
+    if (parsed.data.repoUrl === undefined) {
+      delete data.repoUrl;
+    } else {
+      data.repoUrl = parsed.data.repoUrl ?? "";
+    }
+    if (parsed.data.sharedSteps === undefined) {
+      delete data.sharedSteps;
+    } else {
+      data.sharedSteps = parsed.data.sharedSteps;
+    }
+
     const updated = await prisma.project.update({
       where: { id },
-      data: parsed.data,
+      data,
     });
 
     return { project: updated };

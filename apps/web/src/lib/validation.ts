@@ -3,7 +3,12 @@ import { z } from "zod";
 
 export const projectSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  repoUrl: z.string().trim().url("Enter a valid URL"),
+  repoUrl: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v))
+    .refine((v) => !v || z.string().url().safeParse(v).success, { message: "Enter a valid URL" }),
 });
 
 export type ProjectInput = z.infer<typeof projectSchema>;

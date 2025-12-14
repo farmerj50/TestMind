@@ -32,6 +32,8 @@ const runners: Record<string, Runner> = {
   "xctest": xctestRunner,
 };
 
+const SHARED_STEPS_ENV = "TM_PROJECT_SHARED_STEPS";
+
 /** Try to get static routes from the repo (optional). */
 async function getSeedRoutesFromRepo(repoPath: string): Promise<string[]> {
   try {
@@ -59,6 +61,7 @@ export interface GenerateOptions {
   maxRoutes?: number;
   authEmail?: string;
   authPassword?: string;
+  sharedSteps?: Record<string, any>;
 }
 
 export async function generateAndWrite({
@@ -74,7 +77,7 @@ export async function generateAndWrite({
   adapterId: string;
   options?: GenerateOptions;
 }) {
-  const { include, exclude, maxRoutes, authEmail, authPassword } = options;
+  const { include, exclude, maxRoutes, authEmail, authPassword, sharedSteps } = options;
 
   // Keep old env-based knobs working
   if (include) process.env.TM_INCLUDE = include;
@@ -82,6 +85,13 @@ export async function generateAndWrite({
   if (maxRoutes) process.env.TM_MAX_ROUTES = String(maxRoutes);
   if (authEmail) process.env.E2E_EMAIL = authEmail;
   if (authPassword) process.env.E2E_PASS = authPassword;
+
+  const prevSharedStepsEnv = process.env[SHARED_STEPS_ENV];
+  if (sharedSteps !== undefined) {
+    process.env[SHARED_STEPS_ENV] = JSON.stringify(sharedSteps);
+  } else {
+    delete process.env[SHARED_STEPS_ENV];
+  }
 
   const fs = await import("fs");
   const path = await import("path");
@@ -108,7 +118,15 @@ export async function generateAndWrite({
   const plan: TestPlan = generatePlan(patternInput, "sdet");
 
   // 4) Emit Playwright specs
-  await writeSpecsFromPlan(outRoot, plan, adapterId);
+  try {
+    await writeSpecsFromPlan(outRoot, plan, adapterId);
+  } finally {
+    if (prevSharedStepsEnv === undefined) {
+      delete process.env[SHARED_STEPS_ENV];
+    } else {
+      process.env[SHARED_STEPS_ENV] = prevSharedStepsEnv;
+    }
+  }
 
   return {
     manifest: { plan },

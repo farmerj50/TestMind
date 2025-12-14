@@ -65,6 +65,9 @@ export default function ProjectPage() {
   const [runs, setRuns] = useState<TestRun[]>([]);
   const [genBusy, setGenBusy] = useState(false);
   const [runNote, setRunNote] = useState("");
+  const [sharedStepsText, setSharedStepsText] = useState("{}");
+  const [savingSharedSteps, setSavingSharedSteps] = useState(false);
+  const [sharedStepsError, setSharedStepsError] = useState<string | null>(null);
 
   const hasActiveRun = useMemo(
     () => runs.some((r) => r.status === "queued" || r.status === "running"),
@@ -78,7 +81,7 @@ export default function ProjectPage() {
     const load = async () => {
       try {
         const [{ project }, suitesRes, casesRes, runsRes] = await Promise.all([
-          apiFetch<{ project: { name: string } }>(`/projects/${id}`),
+          apiFetch<{ project: { name: string; sharedSteps?: Record<string, any> } }>(`/projects/${id}`),
           apiFetch<{ suites: Suite[] }>(`/tests/suites?projectId=${id}`),
           apiFetch<{ cases: CaseListItem[] }>(`/tests/cases?projectId=${id}`),
           apiFetch<{ runs: TestRun[] }>(`/projects/${id}/test-runs`).catch(() => ({
@@ -86,6 +89,7 @@ export default function ProjectPage() {
           })),
         ]);
         setProjectName(project.name);
+        setSharedStepsText(JSON.stringify(project.sharedSteps ?? {}, null, 2));
         setSuites(suitesRes.suites);
         setCases(casesRes.cases);
         setRuns(runsRes.runs);
@@ -128,6 +132,25 @@ export default function ProjectPage() {
     if (!selectedSuiteId) return cases;
     return cases.filter((c) => c.suiteId === selectedSuiteId);
   }, [cases, selectedSuiteId]);
+
+  function formatCaseTitle(title: string) {
+    // Split optional path from step description (e.g., "path/spec.ts > Navigate /...")
+    const [rawPath, ...restParts] = title.split(">");
+    const pathBits = rawPath.split(/[/\\]/);
+    const base = (pathBits[pathBits.length - 1] || rawPath).trim();
+    const rest = restParts.join(">").trim();
+    return rest ? `${base} > ${rest}` : base;
+  }
+
+  const dedupedCases = useMemo(() => {
+    const seen = new Set<string>();
+    return visibleCases.filter((c) => {
+      const key = formatCaseTitle(c.title).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [visibleCases]);
 
   async function refreshCases() {
     if (!id) return;
@@ -238,6 +261,29 @@ export default function ProjectPage() {
     }
   }
 
+  async function handleSaveSharedSteps() {
+    if (!id) return;
+    setSavingSharedSteps(true);
+    setSharedStepsError(null);
+    try {
+      const parsed = sharedStepsText.trim()
+        ? JSON.parse(sharedStepsText)
+        : {};
+      await apiFetch(`/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sharedSteps: parsed }),
+      });
+      toast.success("Shared steps saved");
+      setSharedStepsText(JSON.stringify(parsed, null, 2));
+    } catch (e: any) {
+      const message = e?.message || "Invalid JSON";
+      setSharedStepsError(message);
+      toast.error(message);
+    } finally {
+      setSavingSharedSteps(false);
+    }
+  }
+
   async function handleGeneratePlaywright() {
     if (!caseDetail) return;
     try {
@@ -303,8 +349,31 @@ export default function ProjectPage() {
     return map;
   }, [suites]);
 
+  const summarizeRun = (r: TestRun) => {
+    if (r.summary) {
+      try {
+        const parsed = JSON.parse(r.summary);
+        const parts: string[] = [];
+        if (parsed.framework) parts.push(String(parsed.framework));
+        if (parsed.baseUrl) parts.push(String(parsed.baseUrl));
+        const counts = [
+          `parsed:${parsed.parsedCount ?? 0}`,
+          `passed:${parsed.passed ?? 0}`,
+          `failed:${parsed.failed ?? 0}`,
+          `skipped:${parsed.skipped ?? 0}`,
+        ];
+        parts.push(counts.join(" "));
+        return parts.filter(Boolean).join(" \u00b7 ");
+      } catch {
+        /* fall through */
+      }
+    }
+    if (r.error) return r.error;
+    return "Run started";
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Project</p>
@@ -321,7 +390,7 @@ export default function ProjectPage() {
 
       <div className="grid gap-4 lg:grid-cols-[320px,1fr]">
         {/* Left: suites + cases */}
-        <Card>
+        <Card className="bg-white shadow-sm border border-slate-200">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Manual suites</CardTitle>
             <Button size="sm" variant="outline" onClick={handleAddSuite}>
@@ -340,7 +409,7 @@ export default function ProjectPage() {
                 <button
                   key={s.id}
                   onClick={() => setSelectedSuiteId(s.id)}
-                  className={`w-full rounded border px-3 py-2 text-left text-sm ${
+                  className={`w-full rounded border px-3 py-2 text-left text-sm bg-white ${
                     selectedSuiteId === s.id
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-slate-200 hover:border-slate-300"
@@ -361,36 +430,38 @@ export default function ProjectPage() {
               </Button>
             </div>
             <div className="space-y-2">
-              {visibleCases.map((c) => (
+              {dedupedCases.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => {
                     setSelectedCaseId(c.id);
                     setSelectedSuiteId(c.suiteId ?? null);
                   }}
-                  className={`w-full rounded border px-3 py-2 text-left text-sm ${
+                  className={`w-full rounded border px-3 py-2 text-left text-sm bg-white ${
                     selectedCaseId === c.id
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
                     <span
                       className={
                         "font-semibold " +
                         (selectedCaseId === c.id ? "text-blue-800" : "text-slate-900")
                       }
                     >
-                      {c.title}
+                      <span className="break-words">{formatCaseTitle(c.title)}</span>
                     </span>
-                    <span className="text-xs uppercase text-slate-500">{c.priority}</span>
+                    <span className="text-xs uppercase text-slate-500 shrink-0">
+                      {c.priority}
+                    </span>
                   </div>
                   <div className="text-xs text-slate-500">
                     {suiteLookup.get(c.suiteId || "")?.name || "Unassigned"}
                   </div>
                 </button>
               ))}
-              {visibleCases.length === 0 && (
+              {dedupedCases.length === 0 && (
                 <p className="text-sm text-slate-500">No cases in this suite.</p>
               )}
             </div>
@@ -399,7 +470,7 @@ export default function ProjectPage() {
 
         {/* Right: case editor */}
         <div className="space-y-4">
-          <Card>
+          <Card className="bg-white shadow-sm border border-slate-200">
             <CardHeader>
               <CardTitle>Manual test</CardTitle>
             </CardHeader>
@@ -595,9 +666,9 @@ export default function ProjectPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-slate-800">Run history</div>
-                    {caseDetail.runs.length === 0 ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-slate-800">Run history</div>
+              {caseDetail.runs.length === 0 ? (
                       <p className="text-sm text-slate-500">No manual runs recorded.</p>
                     ) : (
                       <ul className="divide-y">
@@ -649,8 +720,31 @@ export default function ProjectPage() {
             </div>
           </Card>
 
+          <Card className="bg-white shadow-sm border border-slate-200">
+            <CardHeader>
+              <CardTitle>Shared steps</CardTitle>
+            </CardHeader>
+            <div className="space-y-3 p-6">
+              <p className="text-sm text-slate-600">
+                Define the shared navigation/login steps as JSON. These values drive manual execution and generated suites.
+              </p>
+              <Textarea
+                rows={6}
+                className="font-mono text-xs"
+                value={sharedStepsText}
+                onChange={(e) => setSharedStepsText(e.target.value)}
+              />
+              {sharedStepsError && (
+                <p className="text-sm text-red-500">{sharedStepsError}</p>
+              )}
+              <Button onClick={handleSaveSharedSteps} disabled={savingSharedSteps}>
+                {savingSharedSteps ? "Saving..." : "Save shared steps"}
+              </Button>
+            </div>
+          </Card>
+
           {/* Automated runs */}
-          <Card>
+          <Card className="bg-white shadow-sm border border-slate-200">
             <CardHeader>
               <CardTitle>Automated test runs</CardTitle>
             </CardHeader>
@@ -662,7 +756,7 @@ export default function ProjectPage() {
                   {runs.map((r) => (
                     <li key={r.id} className="flex items-start justify-between gap-3 py-2">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 leading-tight">
                           <span
                             className={
                               "inline-flex items-center rounded-full px-2 py-0.5 text-xs " +
@@ -675,8 +769,8 @@ export default function ProjectPage() {
                           >
                             {r.status}
                           </span>
-                          <span className="truncate text-sm text-slate-700">
-                            {r.summary || r.error || "Run started"}
+                          <span className="text-sm text-slate-700 whitespace-normal break-words leading-snug min-w-0">
+                            {summarizeRun(r)}
                           </span>
                           <a
                             className="text-xs underline text-slate-600 hover:text-slate-900"

@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Link } from "react-router-dom";
+import { SignUpButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useScrollToHash } from "../lib/useScrollToHash";
 
 
@@ -69,12 +70,22 @@ function SiteHeader() {
           <Button asChild variant="ghost" className="hidden md:inline-flex">
             <Link to="/signin">Sign in</Link>
           </Button>
-          <Button asChild className="group">
-            <Link to="/signup">
-              Start free
-              <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </Button>
+          <SignedOut>
+            <SignUpButton mode="modal">
+              <Button className="group">
+                Start free
+                <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Button>
+            </SignUpButton>
+          </SignedOut>
+          <SignedIn>
+            <Button asChild className="group">
+              <Link to="/dashboard">
+                Go to dashboard
+                <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </Button>
+          </SignedIn>
         </div>
       </div>
     </header>
@@ -99,9 +110,18 @@ function Hero() {
             <span className="font-semibold text-slate-900"> self-heals</span> brittle selectors with AI.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button asChild size="lg" className="h-11 px-6">
-          <Link to="/signup">Start free</Link>
-        </Button>
+        <SignedOut>
+          <SignUpButton mode="modal">
+            <Button size="lg" className="h-11 px-6">
+              Start free
+            </Button>
+          </SignUpButton>
+        </SignedOut>
+        <SignedIn>
+          <Button asChild size="lg" className="h-11 px-6">
+            <Link to="/dashboard">Go to dashboard</Link>
+          </Button>
+        </SignedIn>
 
         <Button asChild size="lg" variant="outline" className="h-11 px-6">
           <a
@@ -416,9 +436,20 @@ function PriceCard({
         </ul>
 
         {to ? (
-          <Button asChild className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
-            <Link to={to}>{cta}</Link>
-          </Button>
+          <>
+            <SignedOut>
+          <SignUpButton mode="modal">
+                <Button className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
+                  {cta}
+                </Button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <Button asChild className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
+                <Link to="/dashboard">{cta}</Link>
+              </Button>
+            </SignedIn>
+          </>
         ) : (
           <Button className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
             {cta}
@@ -481,15 +512,24 @@ function FAQ() {
 function CTA() {
   return (
     <section className="border-y border-slate-300 bg-[var(--tm-input-bg)]">
-      <div className="mx-auto max-w-5xl px-4 py-16 text-center">
-        <h3 className="text-3xl font-bold">Ready to slash QA time and ship faster?</h3>
-        <p className="mx-auto mt-2 max-w-2xl text-slate-800">
-          Get started in minutes. Connect your repo, open a PR, and watch tests appear.
-        </p>
-        <div className="mt-6 flex justify-center gap-3">
-          <Button asChild size="lg">
-            <Link to="/signup">Start free</Link>
-          </Button>
+        <div className="mx-auto max-w-5xl px-4 py-16 text-center">
+          <h3 className="text-3xl font-bold">Ready to slash QA time and ship faster?</h3>
+          <p className="mx-auto mt-2 max-w-2xl text-slate-800">
+            Get started in minutes. Connect your repo, open a PR, and watch tests appear.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+          <SignedOut>
+            <SignUpButton mode="modal">
+              <Button size="lg">
+                Start free
+              </Button>
+            </SignUpButton>
+          </SignedOut>
+          <SignedIn>
+            <Button asChild size="lg">
+              <Link to="/dashboard">Go to dashboard</Link>
+            </Button>
+          </SignedIn>
           <Button asChild size="lg" variant="outline">
             <Link to="/contact">Book a demo</Link>
           </Button>

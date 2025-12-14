@@ -3,6 +3,8 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
 import { globby } from "globby";
+import { getAuth } from "@clerk/fastify";
+import { prisma } from "../prisma";
 
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
@@ -11,7 +13,6 @@ import {
   CURATED_ROOT,
   readCuratedManifest,
   writeCuratedManifest,
-  getCuratedProject,
   slugify,
   ensureWithin,
 } from "./curated-store.js";
@@ -36,59 +37,100 @@ const REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT
   ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
   : path.resolve(process.cwd(), '..', '..');
 
-const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
-  ? path.resolve(process.env.TM_GENERATED_ROOT)
-  // fallback to repo-root/testmind-generated
-  : path.join(REPO_ROOT, 'testmind-generated');
+// If project ids are user-scoped (e.g., playwright-ts-user_xxx), strip the user suffix to resolve paths.
+const stripUserSuffix = (projectId: string) => {
+  const m = projectId.match(/^(.*)-(user_[A-Za-z0-9]+)$/);
+  return m ? m[1] : projectId;
+};
+const extractUserSuffix = (projectId: string) => {
+  const m = projectId.match(/^(.*)-(user_[A-Za-z0-9]+)$/);
+  return m ? m[2] : null;
+  };
+
+// Determine where generated specs live.
+// Priority: explicit env override -> repo-root/testmind-generated -> apps/web/testmind-generated
+const GENERATED_ROOT = (() => {
+  if (process.env.TM_GENERATED_ROOT) {
+    return path.resolve(process.env.TM_GENERATED_ROOT);
+  }
+  const candidates = [
+    path.join(REPO_ROOT, "testmind-generated"),
+    path.join(REPO_ROOT, "apps", "web", "testmind-generated"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
+  }
+  return candidates[candidates.length - 1];
+})();
 type CuratedManifest = ReturnType<typeof readCuratedManifest>;
 
-function listSpecProjects() {
-  const base = [
-    {
-      id: "playwright-ts",
-      name: "Generated (playwright-ts)",
+type CuratedSuiteWithOwner = {
+  id: string;
+  name: string;
+  rootRel: string;
+  projectId: string;
+  ownerId: string;
+};
+
+async function listSpecProjectsForUser(userId: string) {
+  const adapters = ["playwright-ts", "cucumber-js", "cypress-js", "appium-js", "xctest"];
+  const generated = adapters
+    .map((a) => ({
+      id: `${a}-${userId}`,
+      name: `Generated (${a})`,
       type: "generated" as const,
-    },
-    {
-      id: "cucumber-js",
-      name: "Generated (cucumber-js)",
-      type: "generated" as const,
-    },
-    {
-      id: "cypress-js",
-      name: "Generated (cypress-js)",
-      type: "generated" as const,
-    },
-    {
-      id: "appium-js",
-      name: "Generated (appium-js)",
-      type: "generated" as const,
-    },
-    {
-      id: "xctest",
-      name: "Generated (xctest)",
-      type: "generated" as const,
-    },
-  ];
-  const curatedExisting = readCuratedManifest().projects
-    .map((proj) => ({
-      id: proj.id,
-      name: proj.name || proj.id,
-      type: "curated" as const,
-      locked: proj.locked ?? [],
-      root: proj.root ?? proj.id,
+      dir: path.join(GENERATED_ROOT, `${a}-${userId}`),
+      legacyDir: path.join(GENERATED_ROOT, a),
     }))
-    // Drop curated entries whose root directory no longer exists (e.g., after deletion)
-    .filter((proj) => {
-      const abs = path.resolve(CURATED_ROOT, proj.root);
-      return fs.existsSync(abs);
+    .map((item) => {
+      try {
+        const { dir, legacyDir } = item;
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        // If this user directory is empty but a legacy shared folder exists, seed it by copying.
+        const hasEntries =
+          fs.existsSync(dir) &&
+          fs.readdirSync(dir, { withFileTypes: true }).some((d) => d.name !== ".DS_Store");
+        if (!hasEntries && fs.existsSync(legacyDir)) {
+          try {
+            fs.cpSync(legacyDir, dir, { recursive: true, force: false, errorOnExist: false });
+          } catch (err) {
+            console.warn("[TM] failed to copy legacy specs", { legacyDir, dir, err });
+          }
+        }
+        const st = fs.statSync(dir);
+        if (!st.isDirectory()) return null;
+        const { dir: _dir, legacyDir: _legacyDir, ...rest } = item;
+        return rest;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as Array<{ id: string; name: string; type: "generated" }>;
+
+  const curated: Array<{ id: string; name: string; type: "curated"; projectId: string }> = [];
+  try {
+    const suites = await prisma.curatedSuite.findMany({
+      where: { project: { ownerId: userId } },
+      select: { id: true, name: true, projectId: true },
+      orderBy: { updatedAt: "desc" },
     });
-  return [...base, ...curatedExisting];
+    suites.forEach((s) => curated.push({ id: s.id, name: `${s.name} (curated)`, type: "curated", projectId: s.projectId }));
+  } catch {
+    // ignore curated fetch errors; still return generated
+  }
+
+  return [...generated, ...curated];
 }
 
-function setSpecLock(projectId: string, relativePath: string, locked: boolean) {
+function setSpecLock(projectId: string, relativePath: string, locked: boolean, rootRel?: string, name?: string) {
   const manifest = readCuratedManifest();
-  const target = manifest.projects.find((p) => p.id === projectId);
+  let target = manifest.projects.find((p) => p.id === projectId);
+  if (!target && rootRel) {
+    target = { id: projectId, name, root: rootRel, locked: [] };
+    manifest.projects.push(target);
+  }
   if (!target) throw new Error("Project not found");
   target.locked = target.locked ?? [];
   const idx = target.locked.indexOf(relativePath);
@@ -122,32 +164,58 @@ function assertUrl(u: string) {
 }
 // --- helper: find this project's generated specs directory ---
 async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
-  const curated = getCuratedProject(projectId);
-  if (curated) {
-    const rel = curated.root ?? projectId;
-    const abs = path.resolve(CURATED_ROOT, rel);
-    if (fs.existsSync(abs)) {
-      return abs;
+  const userSuffix = extractUserSuffix(projectId);
+  const hasUserSuffix = !!userSuffix;
+  const baseId = stripUserSuffix(projectId);
+  try {
+    const curatedSuite = await prisma.curatedSuite.findUnique({
+      where: { id: projectId },
+      select: { rootRel: true },
+    });
+    if (curatedSuite) {
+      const abs = path.resolve(CURATED_ROOT, curatedSuite.rootRel);
+      if (fs.existsSync(abs)) return abs;
     }
+  } catch {
+    /* ignore */
   }
 
-  const candidates = [
-    optionalRoot ? path.resolve(optionalRoot) : null,
-    path.join(GENERATED_ROOT, projectId),
-    path.join(GENERATED_ROOT, projectId, "playwright"),
-    // curated fallback (when generated specs are missing)
-    path.join(CURATED_ROOT, projectId),
-    path.join(CURATED_ROOT, projectId, "playwright-ts"),
-    // monorepo fallbacks
-    path.join(REPO_ROOT, "apps", "api", "testmind-generated", "playwright-ts"),
-    path.join(REPO_ROOT, "apps", "web", "testmind-generated", "playwright-ts"),
-    path.join(REPO_ROOT, "testmind-generated", "playwright-ts"),
-  ].filter(Boolean) as string[];
+  const candidates = hasUserSuffix
+    ? [
+        optionalRoot ? path.resolve(optionalRoot) : null,
+        // user-scoped generated directory (required when suffix present)
+        path.join(GENERATED_ROOT, projectId),
+      ].filter(Boolean) as string[]
+    : ([
+        optionalRoot ? path.resolve(optionalRoot) : null,
+        path.join(GENERATED_ROOT, baseId),
+        path.join(GENERATED_ROOT, baseId, "playwright"),
+        // curated fallback (when generated specs are missing)
+        path.join(CURATED_ROOT, baseId),
+        path.join(CURATED_ROOT, baseId, "playwright-ts"),
+        // monorepo fallbacks (legacy)
+        path.join(REPO_ROOT, "apps", "api", "testmind-generated", "playwright-ts"),
+        path.join(REPO_ROOT, "apps", "web", "testmind-generated", "playwright-ts"),
+        path.join(REPO_ROOT, "testmind-generated", "playwright-ts"),
+      ].filter(Boolean) as string[]);
 
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  throw new Error(`No spec root found for ${projectId}. Checked: ${candidates.join(", ")}`);
+  // Fallback: create a home so new projects/users always have a root.
+  if (hasUserSuffix) {
+    const fallback = path.join(GENERATED_ROOT, projectId);
+    try {
+      fs.mkdirSync(fallback, { recursive: true });
+      return fallback;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`No spec root found for ${projectId}. Checked: ${candidates.join(", ")}, fallback=${fallback}`);
+  } else {
+    // Non-suffixed IDs: treat as curated; create manifest entry and directory.
+    throw new Error(`No spec root found for ${projectId}. Checked: ${candidates.join(", ")}`);
+  }
 }
 
 
@@ -208,6 +276,8 @@ function renderGenerateForm(defaultBaseUrl = ''): string {
 
 export default async function testmindRoutes(app: FastifyInstance): Promise<void> {
   app.log.info({ GENERATED_ROOT }, '[TM] using generated output root');
+  const adapterDir = (adapterId: string, userId: string) =>
+    path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
 
   // ----------------------------------------------------------------------------
   // GET /tm/generate  (shows form if no baseUrl; runs generation if baseUrl given)
@@ -246,7 +316,15 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       assertDirExists(repoPath);
       assertUrl(baseUrl);
 
-      const outRoot = path.join(GENERATED_ROOT, adapterId);
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+      const outRoot = adapterDir(adapterId, userId);
+      try {
+        await fs.promises.rm(outRoot, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
       fs.mkdirSync(outRoot, { recursive: true });
 
       const result = await generateAndWrite({
@@ -299,7 +377,15 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       assertDirExists(repoPath);
       assertUrl(baseUrl);
 
-      const outRoot = path.join(GENERATED_ROOT, adapterId);
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+      const outRoot = adapterDir(adapterId, userId);
+      try {
+        await fs.promises.rm(outRoot, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
       fs.mkdirSync(outRoot, { recursive: true });
 
       const result = await generateAndWrite({
@@ -329,7 +415,11 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!baseUrl) throw new Error('baseUrl is required');
       assertUrl(baseUrl);
 
-      const outRoot = path.join(GENERATED_ROOT, adapterId);
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+      const outRoot = adapterDir(adapterId, userId);
+      fs.mkdirSync(outRoot, { recursive: true });
 
       reply.raw.setHeader('Content-Type', 'text/event-stream');
       reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -367,8 +457,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ----------------------------------------------------------------------------
   app.get('/generated/list', async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { adapterId = 'playwright-ts' } = (req.query as any) || {};
-      const root = path.join(GENERATED_ROOT, adapterId);
+      const root = adapterDir(adapterId, userId);
       if (!fs.existsSync(root)) return reply.send({ files: [] });
 
       const list: { path: string; size: number }[] = [];
@@ -394,10 +486,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ----------------------------------------------------------------------------
   app.get('/generated/file', async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
       const { adapterId = 'playwright-ts', file } = (req.query as any) || {};
       if (!file) return reply.code(400).send({ ok: false, error: 'file required' });
 
-      const base = path.join(GENERATED_ROOT, adapterId);
+      const base = adapterDir(adapterId, userId);
       const abs = path.join(base, file);
 
       if (!abs.startsWith(base)) return reply.code(400).send({ ok: false, error: 'bad path' });
@@ -414,40 +509,60 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ---------------------------------------------------------------------------
 
   // GET /tm/suite/projects -> list generated + curated spec roots
-  app.get("/suite/projects", async (_req, reply) => {
-    return { projects: listSpecProjects() };
+  app.get("/suite/projects", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+    return { projects: await listSpecProjectsForUser(userId) };
   });
   app.patch("/suite/projects/:id", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { id } = req.params as { id: string };
       const body = (req.body as any) || {};
       const newName = (body.name || "").trim();
       if (!newName) {
         return reply.code(400).send({ error: "name is required" });
       }
-      const manifest = readCuratedManifest();
-      const proj = manifest.projects.find((p) => p.id === id);
-      if (!proj) {
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { id: true, name: true, rootRel: true, projectId: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
         return reply.code(404).send({ error: "Project not found" });
       }
-      proj.name = newName;
+      const updated = await prisma.curatedSuite.update({ where: { id }, data: { name: newName } });
+      const manifest = readCuratedManifest();
+      const existing = manifest.projects.find((p) => p.id === id);
+      if (existing) {
+        existing.name = newName;
+      } else {
+        manifest.projects.push({ id, name: newName, root: updated.rootRel, locked: [] });
+      }
       writeCuratedManifest(manifest);
-      return reply.send({ project: { id, name: newName, type: "curated", locked: proj.locked ?? [] } });
+      return reply.send({ project: { id, name: newName, type: "curated", locked: existing?.locked ?? [] } });
     } catch (err) {
       return sendError(app, reply, err);
     }
   });
   app.delete("/suite/projects/:id", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { id } = req.params as { id: string };
-      const manifest = readCuratedManifest();
-      const idx = manifest.projects.findIndex((p) => p.id === id);
-      if (idx === -1) {
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
         return reply.code(404).send({ error: "Project not found" });
       }
-      const [proj] = manifest.projects.splice(idx, 1);
+      await prisma.curatedSuite.delete({ where: { id } });
+      const manifest = readCuratedManifest();
+      const idx = manifest.projects.findIndex((p) => p.id === id);
+      if (idx !== -1) manifest.projects.splice(idx, 1);
       writeCuratedManifest(manifest);
-      const dir = path.resolve(CURATED_ROOT, proj.root ?? proj.id);
+      const dir = path.resolve(CURATED_ROOT, suite.rootRel);
       await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
       return reply.code(204).send();
     } catch (err) {
@@ -457,38 +572,114 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
   app.post("/suite/projects", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
       const body = (req.body as any) || {};
       const name = (body.name || "").trim();
-      let requestedId = (body.id || "").trim();
-      if (!name) {
-        return reply.code(400).send({ error: "Name is required" });
+      const projectId = (body.projectId || "").trim();
+      if (!name || !projectId) {
+        return reply.code(400).send({ error: "projectId and name are required" });
       }
 
-      if (requestedId && !/^[a-z0-9-]+$/i.test(requestedId)) {
-        return reply.code(400).send({ error: "id must be alphanumeric/hyphen" });
+      const proj = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { ownerId: true },
+      });
+      if (!proj || proj.ownerId !== userId) {
+        return reply.code(404).send({ error: "Project not found" });
       }
+
+      const slug = slugify(name);
+      const rootRel = `project-${projectId}/${slug}`;
+      const abs = path.resolve(CURATED_ROOT, rootRel);
+      fs.mkdirSync(abs, { recursive: true });
+
+      const suite = await prisma.curatedSuite.create({
+        data: { projectId, name, rootRel },
+      });
 
       const manifest = readCuratedManifest();
-      let slug = requestedId || slugify(name);
-      let attempt = slug;
-      let suffix = 2;
-      while (manifest.projects.some((p) => p.id === attempt)) {
-        attempt = `${slug}-${suffix++}`;
+      const existing = manifest.projects.find((p) => p.id === suite.id);
+      if (existing) {
+        existing.name = suite.name;
+        existing.root = suite.rootRel;
+      } else {
+        manifest.projects.push({ id: suite.id, name: suite.name, root: suite.rootRel, locked: [] });
       }
-      slug = attempt;
-
-      const rel = slug;
-      const abs = path.resolve(CURATED_ROOT, rel);
-      if (!fs.existsSync(abs)) {
-        fs.mkdirSync(abs, { recursive: true });
-      }
-
-      manifest.projects.push({ id: slug, name, root: rel });
       writeCuratedManifest(manifest);
 
       return reply.code(201).send({
-        project: { id: slug, name, type: "curated" },
+        project: { id: suite.id, name: suite.name, type: "curated", projectId },
       });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
+  // Sync a curated suite from generated specs
+  app.post("/suite/projects/:id/sync-from-generated", async (req, reply) => {
+    try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      const { id } = req.params as { id: string };
+      const body = (req.body as any) || {};
+      const adapterId = (body.adapterId || "playwright-ts").trim();
+      const mode = (body.mode || "replaceSuite") as "replaceSuite" | "overwriteMatches" | "addMissing";
+
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
+        return reply.code(404).send({ error: "Project not found" });
+      }
+
+      const sourceRoot = path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
+      if (!fs.existsSync(sourceRoot)) {
+        return reply.code(404).send({ error: `No generated specs found for ${adapterId}` });
+      }
+
+      const destRoot = path.resolve(CURATED_ROOT, suite.rootRel);
+      fs.mkdirSync(destRoot, { recursive: true });
+
+      if (mode === "replaceSuite") {
+        await fs.promises.rm(destRoot, { recursive: true, force: true }).catch(() => {});
+        await fs.promises.mkdir(destRoot, { recursive: true });
+      }
+
+      const existingSet = new Set<string>();
+      if (mode === "overwriteMatches") {
+        const existing = await globby(["**/*"], { cwd: destRoot, dot: false, onlyFiles: true });
+        existing.forEach((f) => existingSet.add(f.replace(/\\/g, "/")));
+      }
+
+      const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: sourceRoot, dot: false, onlyFiles: true });
+      const copied: string[] = [];
+      const skipped: string[] = [];
+      for (const rel of files) {
+        const relPosix = rel.replace(/\\/g, "/");
+        const src = path.resolve(sourceRoot, rel);
+        const dest = path.resolve(destRoot, rel);
+        ensureWithin(sourceRoot, src);
+        ensureWithin(destRoot, dest);
+
+        const exists = fs.existsSync(dest);
+        if (mode === "overwriteMatches" && !exists && !existingSet.has(relPosix)) {
+          skipped.push(relPosix);
+          continue;
+        }
+        if (mode === "addMissing" && exists) {
+          skipped.push(relPosix);
+          continue;
+        }
+
+        await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+        await fs.promises.copyFile(src, dest);
+        copied.push(relPosix);
+      }
+
+      return reply.send({ ok: true, mode, copied, skipped });
     } catch (err) {
       return sendError(app, reply, err);
     }
@@ -497,8 +688,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   app.post("/suite/projects/:id/specs", async (req, reply) => {
     try {
       const { id } = req.params as { id: string };
-      const destProject = getCuratedProject(id);
-      if (!destProject) {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      const destSuite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!destSuite || destSuite.project.ownerId !== userId) {
         return reply.code(404).send({ error: "Project not found" });
       }
 
@@ -510,7 +706,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const sourceProjectId = (body.sourceProjectId || "playwright-ts").trim();
 
       const sourceRoot = await resolveProjectRoot(sourceProjectId);
-      const destRoot = path.resolve(CURATED_ROOT, destProject.root ?? destProject.id);
+      const destRoot = path.resolve(CURATED_ROOT, destSuite.rootRel);
       const sourceAbs = path.resolve(sourceRoot, relativePath);
       const destAbs = path.resolve(destRoot, relativePath);
 
@@ -532,6 +728,8 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
   app.patch("/suite/projects/:id/specs", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { id } = req.params as { id: string };
       const body = (req.body as any) || {};
       const relPath = (body.path || "").trim();
@@ -539,7 +737,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!relPath || typeof lockedFlag !== "boolean") {
         return reply.code(400).send({ error: "path and locked flag are required" });
       }
-      const proj = setSpecLock(id, relPath, lockedFlag);
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
+        return reply.code(404).send({ error: "Project not found" });
+      }
+      const proj = setSpecLock(id, relPath, lockedFlag, suite.rootRel);
       return reply.send({
         ok: true,
         projectId: id,
@@ -550,17 +755,75 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     }
   });
 
+  // Delete a single spec from a curated suite
+  app.delete("/suite/projects/:id/specs", async (req, reply) => {
+    try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      const { id } = req.params as { id: string };
+      const { path: relPath } = (req.query as any) || {};
+      const bodyPath = (req.body as any)?.path;
+      const targetPath = (relPath || bodyPath || "").trim();
+      if (!targetPath) return reply.code(400).send({ error: "path is required" });
+
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
+        return reply.code(404).send({ error: "Project not found" });
+      }
+
+      const root = path.resolve(CURATED_ROOT, suite.rootRel);
+      const abs = path.resolve(root, targetPath);
+      ensureWithin(root, abs);
+      const exists = fs.existsSync(abs);
+      if (exists) {
+        await fs.promises.rm(abs, { force: true });
+        // clean up empty dirs up to root
+        let dir = path.dirname(abs);
+        while (dir.startsWith(root)) {
+          try {
+            const entries = fs.readdirSync(dir);
+            if (entries.length) break;
+            fs.rmdirSync(dir);
+          } catch {
+            break;
+          }
+          dir = path.dirname(dir);
+        }
+      }
+
+      // remove from manifest locked list if present
+      const manifest = readCuratedManifest();
+      const proj = manifest.projects.find((p) => p.id === id);
+      if (proj?.locked?.length) {
+        proj.locked = proj.locked.filter((p) => p !== targetPath);
+        writeCuratedManifest(manifest);
+      }
+
+      return reply.code(exists ? 200 : 404).send({ ok: exists, deleted: exists });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
   app.get("/suite/spec-content", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { projectId, path: relPath } = (req.query as any) || {};
       if (!projectId || !relPath) {
         return reply.code(400).send({ error: "Missing projectId or path" });
       }
-      const curated = getCuratedProject(projectId);
-      if (!curated) {
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id: projectId },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
         return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
       }
-      const root = path.resolve(CURATED_ROOT, curated.root ?? curated.id);
+      const root = path.resolve(CURATED_ROOT, suite.rootRel);
       const abs = path.resolve(root, relPath);
       ensureWithin(root, abs);
       if (!fs.existsSync(abs)) {
@@ -575,6 +838,8 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
   app.put("/suite/spec-content", async (req, reply) => {
     try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const body = (req.body as any) || {};
       const projectId = (body.projectId || "").trim();
       const relPath = (body.path || "").trim();
@@ -582,11 +847,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!projectId || !relPath || content === null) {
         return reply.code(400).send({ error: "projectId, path, and content are required" });
       }
-      const curated = getCuratedProject(projectId);
-      if (!curated) {
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id: projectId },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+      if (!suite || suite.project.ownerId !== userId) {
         return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
       }
-      const root = path.resolve(CURATED_ROOT, curated.root ?? curated.id);
+      const root = path.resolve(CURATED_ROOT, suite.rootRel);
       const abs = path.resolve(root, relPath);
       ensureWithin(root, abs);
       await fs.promises.mkdir(path.dirname(abs), { recursive: true });
@@ -599,25 +867,115 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
   // GET /tm/suite/specs?projectId=<id>&root=<optional override>
   app.get("/suite/specs", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
     const { projectId, root } = (req.query as any) || {};
     if (!projectId) return reply.code(400).send({ error: "Missing projectId" });
 
-    const specRoot = await resolveProjectRoot(projectId, root);
-    const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
-    return files.map((rel: string) => ({ path: rel }));
+    // Allow either user-suffixed generated suites OR projects owned by this user.
+    let isAllowed = projectId.endsWith(userId);
+    let curatedSuite: CuratedSuiteWithOwner | null = null;
+    if (!isAllowed) {
+      try {
+        const suite = await prisma.curatedSuite.findUnique({
+          where: { id: projectId },
+          select: {
+            id: true,
+            name: true,
+            rootRel: true,
+            projectId: true,
+            project: { select: { ownerId: true } },
+          },
+        });
+        if (suite && suite.project.ownerId === userId) {
+          curatedSuite = {
+            id: suite.id,
+            name: suite.name,
+            rootRel: suite.rootRel,
+            projectId: suite.projectId,
+            ownerId: suite.project.ownerId,
+          };
+          isAllowed = true;
+        } else {
+          const proj = await prisma.project.findUnique({
+            where: { id: projectId },
+            select: { ownerId: true },
+          });
+          if (proj?.ownerId === userId) isAllowed = true;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!isAllowed) return reply.code(404).send({ error: "Suite not found" });
+
+    try {
+      const specRoot = curatedSuite
+        ? path.resolve(CURATED_ROOT, curatedSuite.rootRel)
+        : await resolveProjectRoot(projectId, root);
+      const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+      return files.map((rel: string) => ({ path: rel }));
+    } catch {
+      // Last resort: return empty list so UI can still render and allow new suites to be created.
+      return [];
+    }
   });
 
   // GET /tm/suite/cases?projectId=<id>&path=<repo-relative>&root=<optional>
   app.get("/suite/cases", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
     const { projectId, path: relPath, root } = (req.query as any) || {};
     if (!projectId || !relPath) return reply.code(400).send({ error: "Missing projectId or path" });
 
-    const base = await resolveProjectRoot(projectId, root);
-    const abs = path.join(base, relPath);
-    if (!fs.existsSync(abs)) {
-      return [];
+    // Allow either user-suffixed generated suites OR projects owned by this user.
+    let isAllowed = projectId.endsWith(userId);
+    let curatedSuite: CuratedSuiteWithOwner | null = null;
+    if (!isAllowed) {
+      try {
+        const suite = await prisma.curatedSuite.findUnique({
+          where: { id: projectId },
+          select: {
+            id: true,
+            name: true,
+            rootRel: true,
+            projectId: true,
+            project: { select: { ownerId: true } },
+          },
+        });
+        if (suite && suite.project.ownerId === userId) {
+          curatedSuite = {
+            id: suite.id,
+            name: suite.name,
+            rootRel: suite.rootRel,
+            projectId: suite.projectId,
+            ownerId: suite.project.ownerId,
+          };
+          isAllowed = true;
+        } else {
+          const proj = await prisma.project.findUnique({
+            where: { id: projectId },
+            select: { ownerId: true },
+          });
+          if (proj?.ownerId === userId) isAllowed = true;
+        }
+      } catch {
+        /* ignore */
+      }
     }
-    const src = await fs.promises.readFile(abs, "utf8");
+    if (!isAllowed) return reply.code(404).send({ error: "Suite not found" });
+
+    try {
+      const base = curatedSuite
+        ? path.resolve(CURATED_ROOT, curatedSuite.rootRel)
+        : await resolveProjectRoot(projectId, root);
+      const abs = path.join(base, relPath);
+      if (!fs.existsSync(abs)) {
+        return [];
+      }
+      const src = await fs.promises.readFile(abs, "utf8");
 
     const CASE_RE = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['"`]([^'"`]+)['"`]\s*,/g;
     const out: Array<{ title: string; line: number }> = [];
@@ -629,7 +987,11 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       CASE_RE.lastIndex = 0;
       while ((m = CASE_RE.exec(line))) out.push({ title: m[1], line: i + 1 });
     }
-    return out;
+      return out;
+    } catch {
+      // If we still can't read cases, treat as empty so the UI can proceed.
+      return [];
+    }
   });
 
   // ----------------------------------------------------------------------------
@@ -701,6 +1063,3 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 export async function discoverRoutesFromRepo(_repoPath: string) {
   return { routes: ["/", "/pricing", "/login", "/signup", "/case-type-selection"] };
 }
-
-
-

@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
-import { Button } from "../components/ui/button"; // if you don't have shadcn Button, swap to a plain <a>
+﻿import { useEffect, useState } from "react";
+import { Button } from "../components/ui/button";
 import { useApi } from "../lib/api";
 import { apiHref } from "../lib/env";
 import { toast } from "sonner";
+import { useUser } from "@clerk/clerk-react";
+import { useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type Repo = { name: string; url: string; private: boolean };
 
@@ -12,46 +15,145 @@ type Props = {
 
 export default function ConnectGitHubCard({ onPickRepo }: Props) {
   const { apiFetch } = useApi();
-  const [connected, setConnected] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
+  const { user } = useUser();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const prevUserId = useRef<string | null>(null);
+  const STORAGE_KEY = "tm:lastGithubUser";
+  const [connected, setConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
+  const showConnected = connected && repos.length > 0;
+
+  async function disconnect() {
+    setLoading(true);
+    setError(null);
+    try {
+      // Clear backend token and status so the next connect forces GitHub auth
+      await apiFetch("/auth/github/reset", { method: "POST", auth: "include" }).catch(() => {});
+      await apiFetch("/github/status", { method: "DELETE", auth: "include" }).catch(() => {});
+      localStorage.removeItem(STORAGE_KEY);
+      setConnected(false);
+      setRepos([]);
+      toast("Disconnected from GitHub");
+    } catch (e: any) {
+      const msg = e?.message || "Failed to disconnect GitHub";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function refresh() {
     setLoading(true);
     setError(null);
     try {
-      console.log("[GitHubCard] fetching status…");
-      const s = await apiFetch<{ connected: boolean }>("/github/status");
-      setConnected(s.connected);
-      if (s.connected) {
-        console.log("[GitHubCard] fetching repos…");
-        const r = await apiFetch<{ repos: Repo[] }>("/github/repos");
-        setRepos(r.repos);
+      const status = await apiFetch<{ connected: boolean }>("/github/status", { auth: "include" });
+      let list: Repo[] = [];
+      if (status.connected) {
+        const r = await apiFetch<{ repos: Repo[] }>("/github/repos", { auth: "include" });
+        list = r.repos || [];
       }
+
+      const hasRepos = list.length > 0;
+      setConnected(status.connected && hasRepos);
+      setRepos(hasRepos ? list : []);
     } catch (e: any) {
       const msg = e?.message || "Failed to check GitHub status";
-      console.error("[GitHubCard] error:", msg);
+      setConnected(false);
+      setRepos([]);
       setError(msg);
-      // still render the card with a retry + connect button
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    console.log("[GitHubCard] mounted");
-    refresh();
+    // when user changes (sign in/out), always reset state; if different user, drop any old token
+    (async () => {
+      setConnected(false);
+      setRepos([]);
+      setError(null);
+
+      const currentId = user?.id || null;
+      if (!currentId) {
+        prevUserId.current = null;
+        localStorage.removeItem(STORAGE_KEY);
+        setLoading(false);
+        return;
+      }
+
+      const storedId = localStorage.getItem(STORAGE_KEY);
+      // If no stored id or it differs, drop any lingering token to avoid cross-user reuse
+      const switched = storedId !== currentId;
+      if (switched) {
+        try {
+          await apiFetch("/github/status", { method: "DELETE", auth: "include" });
+        } catch {
+          // ignore; user will reconnect
+        }
+      }
+
+      localStorage.setItem(STORAGE_KEY, currentId);
+      prevUserId.current = currentId;
+      // Do not auto-refresh; require explicit connect or ?github=connected
+      setLoading(false);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
+
+  // If redirected back with ?github=connected, force a status/rep refresh and then clean the URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("github") === "connected") {
+      (async () => {
+        try {
+          await refresh();
+        } finally {
+          params.delete("github");
+          navigate({ search: params.toString() }, { replace: true });
+        }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, user?.id]);
+
+  async function startConnect() {
+    setLoading(true);
+    setError(null);
+    try {
+      // Start a fresh auth flow; do not reset here to avoid wiping newly saved tokens
+      setConnected(false);
+      setRepos([]);
+      // Try to fetch a signed GitHub auth URL (uses Clerk auth); if that fails, fallback to direct redirect.
+      try {
+        const { url } = await apiFetch<{ url: string }>("/auth/github/start-url", { auth: "include" });
+        window.location.href = url;
+        return;
+      } catch (inner: any) {
+        const msg = inner?.message || "Starting GitHub connect failed; retrying direct redirect";
+        toast.error(msg);
+        // direct fallback (server will redirect to GitHub)
+        window.location.href = apiHref("/auth/github/start");
+      }
+    } catch (e: any) {
+      const msg = e?.message || "Failed to start GitHub connect";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="rounded-lg border bg-white p-4">
       <h2 className="mb-3 text-sm font-medium text-slate-800">GitHub</h2>
 
       {loading ? (
-        <div className="text-sm text-slate-500">Checking connection…</div>
-      ) : !connected ? (
+        <div className="text-sm text-slate-500">Checking connection...</div>
+      ) : !showConnected ? (
         <>
           {error && (
             <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -60,16 +162,9 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
           )}
           <p className="mb-3 text-sm text-slate-600">Connect your account to pick a repo.</p>
           <div className="flex items-center gap-2">
-            <Button asChild>
-              <a href={apiHref("/auth/github/start")}>Connect GitHub</a>
-            </Button>
+            <Button onClick={startConnect}>Connect GitHub</Button>
             <Button variant="outline" onClick={refresh}>Retry</Button>
           </div>
-        </>
-      ) : repos.length === 0 ? (
-        <>
-          <div className="text-sm text-slate-500">No repos found.</div>
-          <Button variant="outline" className="mt-2" onClick={refresh}>Refresh</Button>
         </>
       ) : (
         <div className="space-y-2">
@@ -90,7 +185,7 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
             }}
           >
             <option value="" disabled>
-              Select a repo…
+              Select a repo...
             </option>
             {repos.map((r) => (
               <option key={r.name} value={r.name}>
@@ -98,7 +193,10 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
               </option>
             ))}
           </select>
-          <Button variant="outline" onClick={refresh}>Refresh</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={refresh}>Refresh</Button>
+            <Button variant="outline" onClick={disconnect}>Disconnect</Button>
+          </div>
         </div>
       )}
     </div>

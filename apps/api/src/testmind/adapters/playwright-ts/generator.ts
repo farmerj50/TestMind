@@ -16,6 +16,65 @@ type TestCase = {
   steps: Step[];
 };
 
+type SharedLoginConfigSpec = {
+  usernameSelector?: string;
+  passwordSelector?: string;
+  submitSelector?: string;
+  usernameEnv?: string;
+  passwordEnv?: string;
+  usernameValue?: string;
+  passwordValue?: string;
+};
+
+type SharedStepsConfig = {
+  login?: SharedLoginConfigSpec;
+};
+
+type ResolvedLoginConfig = {
+  usernameSelector: string;
+  passwordSelector: string;
+  submitSelector: string;
+  usernameEnv: string;
+  passwordEnv: string;
+  usernameValue?: string;
+  passwordValue?: string;
+};
+
+const SHARED_STEPS_ENV = "TM_PROJECT_SHARED_STEPS";
+const DEFAULT_LOGIN_CONFIG: ResolvedLoginConfig = {
+  usernameSelector: 'input[name="username"], input[name="email"], #username, #email',
+  passwordSelector: 'input[name="password"], #password',
+  submitSelector: 'button[type="submit"], button:has-text("Login"), button:has-text("Sign in")',
+  usernameEnv: "USERNAME",
+  passwordEnv: "PASSWORD",
+};
+
+function parseSharedSteps(): SharedStepsConfig {
+  const raw = process.env[SHARED_STEPS_ENV];
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch (err) {
+    console.warn(`[tm-gen] failed to parse ${SHARED_STEPS_ENV}:`, err);
+  }
+  return {};
+}
+
+function resolveLoginConfig(shared: SharedStepsConfig): ResolvedLoginConfig {
+  const login = shared.login ?? {};
+  const trim = (value?: string) => (value && value.trim() ? value.trim() : undefined);
+  return {
+    usernameSelector: trim(login.usernameSelector) ?? DEFAULT_LOGIN_CONFIG.usernameSelector,
+    passwordSelector: trim(login.passwordSelector) ?? DEFAULT_LOGIN_CONFIG.passwordSelector,
+    submitSelector: trim(login.submitSelector) ?? DEFAULT_LOGIN_CONFIG.submitSelector,
+    usernameEnv: trim(login.usernameEnv) ?? DEFAULT_LOGIN_CONFIG.usernameEnv,
+    passwordEnv: trim(login.passwordEnv) ?? DEFAULT_LOGIN_CONFIG.passwordEnv,
+    usernameValue: login.usernameValue,
+    passwordValue: login.passwordValue,
+  };
+}
+
 export function groupByPage(cases: TestCase[]): Map<string, TestCase[]> {
   const grouped = new Map<string, TestCase[]>();
   for (const tc of cases ?? []) {
@@ -35,6 +94,18 @@ function makeUniqTitleFactory() {
     seen.set(base, next);
     return next === 1 ? base : `${base} [${next}]`;
   };
+}
+
+function toRelativeTarget(url: string | undefined): string {
+  if (!url) return "/";
+  try {
+    const parsed = new URL(url);
+    const rel = `${parsed.pathname || "/"}${parsed.search || ""}${parsed.hash || ""}`;
+    return rel || "/";
+  } catch {
+    if (url.startsWith("/")) return url;
+    return `/${url}`;
+  }
 }
 
 function describeStep(step: Step): string {
@@ -59,7 +130,10 @@ function describeStep(step: Step): string {
 function emitAction(step: Step): string {
   switch (step.kind) {
     case "goto":
-      return `await page.goto(${JSON.stringify(step.url)});`;
+      {
+        const rel = toRelativeTarget(step.url);
+        return `await navigateTo(page, ${JSON.stringify(rel)});`;
+      }
     case "expect-text":
       return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });`;
     case "expect-visible":
@@ -127,15 +201,46 @@ function emitAnnotations(pagePath: string, caseName: string): string {
 function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string): string {
   const title = uniqTitle(tc.name);
   const hasGoto = tc.steps.some((s) => s.kind === "goto");
-  const navTarget = tc.group?.url || pagePath;
+  const navTarget = toRelativeTarget(tc.group?.url || pagePath);
   const preNav = hasGoto
     ? ""
-    : `  // Auto-nav added because no explicit goto step was provided\n  await page.goto(${JSON.stringify(navTarget)}, { waitUntil: 'networkidle' });\n`;
+    : `  // Auto-nav added because no explicit goto step was provided\n  await navigateTo(page, ${JSON.stringify(navTarget)});\n`;
 
-  const body =
-    tc.steps.length > 0
-      ? preNav + tc.steps.map((step, idx) => emitStep(step, idx)).join("\n")
-      : `${preNav}  await test.step('Placeholder step', async () => {\n    // TODO: add steps\n  });`;
+  const needsLogin =
+    /login/i.test(tc.name) ||
+    /signin/i.test(tc.name) ||
+    /sign in/i.test(tc.name) ||
+    /auth/i.test(tc.name) ||
+    tc.steps.some(
+      (s) =>
+        s.kind === "fill" &&
+        typeof s.selector === "string" &&
+        /(user|email|pass)/i.test(s.selector)
+    );
+
+  const loginCall = needsLogin ? "  await sharedLogin(page);" : "";
+
+  const stepStrings: string[] = [];
+  let loginInserted = false;
+  tc.steps.forEach((step, idx) => {
+    const stepStr = emitStep(step, idx);
+    stepStrings.push(stepStr);
+    if (needsLogin && !loginInserted && step.kind === "goto") {
+      stepStrings.push(loginCall);
+      loginInserted = true;
+    }
+  });
+
+  let body = preNav;
+  if (needsLogin && !loginInserted && loginCall) {
+    body += `${loginCall}\n`;
+    loginInserted = true;
+  }
+  if (stepStrings.length > 0) {
+    body += stepStrings.join("\n");
+  } else {
+    body += `  await test.step('Placeholder step', async () => {\n    // TODO: add steps\n  });`;
+  }
 
   return `
 test(${JSON.stringify(title)}, async ({ page }) => {
@@ -144,12 +249,58 @@ ${emitAnnotations(pagePath, tc.name)}${body}
 }
 
 export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
+  const sharedSteps = parseSharedSteps();
+  const loginConfig = resolveLoginConfig(sharedSteps);
   const uniqTitle = makeUniqTitleFactory();
   const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath)).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} – ${tests?.length ?? 0} test(s)`;
+  const helperLines = [
+    "import { Page, test, expect } from '@playwright/test';",
+    "",
+    "const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';",
+    "",
+    `const SHARED_LOGIN_CONFIG = ${JSON.stringify(loginConfig, null, 2)};`,
+    "",
+    "function escapeForRegex(value: string) {",
+    "  return value.replace(/[.*+?^${}()|[\\\\]\\\\]/g, '\\\\$&');",
+    "}",
+    "",
+    "async function navigateTo(page: Page, target: string) {",
+    "  const url = new URL(target, BASE_URL);",
+    "  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });",
+    "  if (target.startsWith('/')) {",
+    "    const pathRe = target === '/' ? '/?' : `${target}/?`;",
+    "    await expect(page).toHaveURL(new RegExp(`^(https?:\\\\/\\\\/[^/]+)?${escapeForRegex(pathRe)}(?:\\\\?.*)?$`));",
+    "  } else {",
+    "    await expect(page).toHaveURL(target);",
+    "  }",
+    "}",
+    "",
+    "async function sharedLogin(page: Page) {",
+    "  const usernameEnv = SHARED_LOGIN_CONFIG.usernameEnv;",
+    "  const passwordEnv = SHARED_LOGIN_CONFIG.passwordEnv;",
+    "  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? '';",
+    "  const envPassword = process.env[passwordEnv] ?? process.env.PASSWORD ?? '';",
+    "  const username = SHARED_LOGIN_CONFIG.usernameValue ?? envUsername;",
+    "  const password = SHARED_LOGIN_CONFIG.passwordValue ?? envPassword;",
+    "  const userLocator = page.locator(SHARED_LOGIN_CONFIG.usernameSelector);",
+    "  await userLocator.first().waitFor({ state: 'visible', timeout: 30000 });",
+    "  await userLocator.first().fill(username);",
+    "  const passLocator = page.locator(SHARED_LOGIN_CONFIG.passwordSelector);",
+    "  await passLocator.first().waitFor({ state: 'visible', timeout: 30000 });",
+    "  await passLocator.first().fill(password);",
+    "  if (SHARED_LOGIN_CONFIG.submitSelector) {",
+    "    const submit = page.locator(SHARED_LOGIN_CONFIG.submitSelector);",
+    "    if (await submit.first().isVisible()) {",
+    "      await submit.first().click({ timeout: 10000 });",
+    "    }",
+    "  }",
+    "}",
+  ];
+  const helper = helperLines.join("\n");
 
   return `
-import { test, expect } from '@playwright/test';
+${helper}
 
 ${banner}
 
