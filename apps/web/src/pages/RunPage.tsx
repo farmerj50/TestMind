@@ -1,4 +1,4 @@
-// apps/web/src/pages/RunPage.tsx
+﻿// apps/web/src/pages/RunPage.tsx
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -248,7 +248,7 @@ export default function RunPage() {
 
     if (run.status === "succeeded") return "Original run passed; self-heal was not required.";
 
-    if (healingInProgress) return "Tests failed. Self-heal is running…";
+    if (healingInProgress) return "Tests failed. Self-heal is runningâ€¦";
 
     if (rerunsInProgress) return "Self-heal reruns are still running.";
 
@@ -261,6 +261,24 @@ export default function RunPage() {
     return "Self-heal will start shortly.";
 
   })();
+
+  const friendlyError = useCallback((raw?: string | null) => {
+    if (!raw) return "Failed to load run";
+    const msg = String(raw);
+    if (msg.includes("P1001") || msg.toLowerCase().includes("can't reach database server")) {
+      return "Could not load run: API cannot reach the database (is Postgres running on the configured host/port?).";
+    }
+    if (msg.toLowerCase().includes("unauthorized")) {
+      return "You are not authorized to view this run. Please sign in and try again.";
+    }
+    try {
+      const parsed = JSON.parse(msg);
+      if (parsed?.message) return parsed.message;
+    } catch {
+      /* ignore */
+    }
+    return msg.length > 400 ? `${msg.slice(0, 400)}â€¦` : msg;
+  }, []);
 
 
 
@@ -294,7 +312,7 @@ export default function RunPage() {
 
       } catch (e: any) {
 
-        if (!cancelled) setErr(e?.message || "Failed to load run");
+        if (!cancelled) setErr(friendlyError(e?.message ?? (e as any)?.error ?? null));
 
       } finally {
 
@@ -514,7 +532,11 @@ export default function RunPage() {
 
 
 
-      {err && <div className="text-rose-600">{err}</div>}
+      {err && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {err}
+        </div>
+      )}
 
       {loading && !run && <div>Loading…</div>}
 
@@ -554,9 +576,9 @@ export default function RunPage() {
 
               <div className="grid gap-1 text-sm text-slate-700 md:grid-cols-2">
 
-                <div>Framework: {parsedSummary.framework ?? "—"}</div>
+                <div>Framework: {parsedSummary.framework ?? "â€”"}</div>
 
-                <div>Base URL: {parsedSummary.baseUrl ?? "—"}</div>
+                <div>Base URL: {parsedSummary.baseUrl ?? "â€”"}</div>
 
                 <div>Parsed: {parsedSummary.parsedCount ?? 0}</div>
 
@@ -570,7 +592,7 @@ export default function RunPage() {
 
             ) : (
 
-              <div>Summary: {run.summary || "—"}</div>
+              <div>Summary: {run.summary || "â€”"}</div>
 
             )}
 
@@ -578,9 +600,9 @@ export default function RunPage() {
 
               <div className="text-xs text-slate-500">
 
-                Options: reporter {params.reporter ?? "json"} � {params.headful ? "headed" : "headless"}
+                Options: reporter {params.reporter ?? "json"} ï¿½ {params.headful ? "headed" : "headless"}
 
-                {params.specFile ? ` � file ${params.specFile}` : ""}{params.grep ? ` � grep "${params.grep}"` : ""}
+                {params.specFile ? ` ï¿½ file ${params.specFile}` : ""}{params.grep ? ` ï¿½ grep "${params.grep}"` : ""}
 
               </div>
 
@@ -691,7 +713,7 @@ export default function RunPage() {
                           <div className="font-medium">Rerun #{idx + 1}</div>
                           <div className="text-xs text-slate-500">
                             Started: {fmt(child.startedAt ?? child.createdAt)}
-                            {child.finishedAt ? ` • Finished: ${fmt(child.finishedAt)}` : ""}
+                            {child.finishedAt ? ` â€¢ Finished: ${fmt(child.finishedAt)}` : ""}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -809,7 +831,7 @@ export default function RunPage() {
 
                 >
 
-                  {triggeringRerun ? "Starting rerun…" : "Rerun this suite"}
+                  {triggeringRerun ? "Starting rerunâ€¦" : "Rerun this suite"}
 
                 </Button>
 
@@ -863,7 +885,7 @@ export default function RunPage() {
 
                 >
 
-                  {creatingIssue ? "Creating…" : "Create GitHub issue"}
+                  {creatingIssue ? "Creatingâ€¦" : "Create GitHub issue"}
 
                 </Button>
 
@@ -902,7 +924,6 @@ export default function RunPage() {
   );
 
 }
-
 
 
 

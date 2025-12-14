@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, UserButton, SignUpButton } from "@clerk/clerk-react";
 
 function NavA({ to, children }: { to: string; children: React.ReactNode }) {
   return (
@@ -44,12 +44,14 @@ export default function TopNav() {
             >
               Sign in
             </Link>
-            <Link
-              to="/signup"
-              className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
-            >
-              Get started
-            </Link>
+            <SignUpButton mode="modal">
+              <button
+                type="button"
+                className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
+              >
+                Get started
+              </button>
+            </SignUpButton>
           </SignedOut>
 
           <SignedIn>

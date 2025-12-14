@@ -180,7 +180,11 @@ export default function AppRoutes() {
       {/* Auth-only pages (no sidebar) */}
       <Route element={<BareLayout />}>
         <Route path="/signin" element={<SignInPage />} />
+        {/* Allow Clerk subroutes like /signin/verify-email-address */}
+        <Route path="/signin/*" element={<SignInPage />} />
         <Route path="/signup" element={<SignUpPage />} />
+        {/* Allow Clerk subroutes like /signup/verify-email-address */}
+        <Route path="/signup/*" element={<SignUpPage />} />
         <Route path="/reset" element={<ResetPage />} />
       </Route>
 

@@ -1,5 +1,6 @@
 // apps/api/src/routes/run.ts
 import type { FastifyInstance } from "fastify";
+import { getAuth } from "@clerk/fastify";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
@@ -233,6 +234,7 @@ const RunBody = z.object({
   grep: z.string().optional(),   // test title to match
   headful: z.boolean().optional(),
   runAll: z.boolean().optional(), // if true, ignore file/files/grep and run full suite
+  extraGlobs: z.array(z.string()).optional(), // legacy selector; populated internally
 });
 
 function parseBool(val: unknown, fallback: boolean) {
@@ -331,13 +333,15 @@ export default async function runRoutes(app: FastifyInstance) {
     }
 
     // create run entry
+    const runParams: Record<string, any> = { headful, suiteId };
+    if (effectiveBaseUrl) runParams.baseUrl = effectiveBaseUrl;
     const run = await prisma.testRun.create({
       data: {
         projectId: pid,
         status: TestRunStatus.running,
         startedAt: new Date(),
         trigger: "user",
-        paramsJson: { headful, suiteId },
+        paramsJson: runParams,
       },
     });
 
@@ -544,6 +548,11 @@ export default async function runRoutes(app: FastifyInstance) {
         const unixServerDirEsc = serverDirAbsolute
           .replace(/\\/g, "/")
           .replace(/"/g, '\\"');
+        const adapter = "playwright-ts";
+        const userSuffix = project.ownerId ? `${adapter}-${project.ownerId}` : adapter;
+        const userGenDest = path.join(cwd, "testmind-generated", userSuffix);
+        const sharedGenDest = path.join(cwd, "testmind-generated", adapter);
+        let genDestName = adapter;
         const PORT_PLACEHOLDER = "__TM_PORT__";
         const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} }"`;
         const unixDevCommand = `bash -lc "cd \\"${unixServerDirEsc}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT_PLACEHOLDER}"`;
@@ -553,7 +562,7 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://localhost:\${PORT}\`;
-const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts');
+const GEN_DIR = path.resolve(DIR, 'testmind-generated', '__GEN_DEST__');
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -573,10 +582,10 @@ const DEV_COMMAND =
     ? \`${winDevCommand}\`
     : \`${unixDevCommand}\`;
 
-const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "3000");
-const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? NAV_TIMEOUT);
-const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "3000");
-const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "10000");
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "30000");
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "15000");
+const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "10000");
+const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "60000");
 const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
   ? Number(process.env.TM_WORKERS)
   : 4;
@@ -622,23 +631,22 @@ export default defineConfig({
 
 
 
-        const finalConfig = ciConfig.replace(
-          new RegExp(PORT_PLACEHOLDER, "g"),
-          String(serverPort)
-        );
-        await fs.writeFile(ciConfigPath, finalConfig, "utf8");
         // --- bring generated specs into the temp workspace ---
-        // destination inside the workspace
-        const genDest = path.join(cwd, 'testmind-generated', 'playwright-ts');
+        // destination inside the workspace (user-scoped when available)
+        let genDest = sharedGenDest;
 
         // resolve source based on env
         const MODE = (process.env.TM_SPECS_MODE || 'auto').toLowerCase() as 'auto' | 'local' | 'repo';
+        const preferRepo = MODE === 'repo';
         const localPath = process.env.TM_LOCAL_SPECS && fsSync.existsSync(process.env.TM_LOCAL_SPECS)
           ? path.resolve(process.env.TM_LOCAL_SPECS)
           : null;
-        const repoPath = path.join(work, 'apps', 'api', 'testmind-generated', 'playwright-ts');
-        const repoAlt = path.join(work, 'testmind-generated', 'playwright-ts');
-        const webPath  = path.join(work, 'apps', 'web', 'testmind-generated', 'playwright-ts'); // common dev location
+        const repoPath = path.join(work, 'apps', 'api', 'testmind-generated', adapter);
+        const repoAlt = path.join(work, 'testmind-generated', adapter);
+        const repoPathUser = path.join(work, 'apps', 'api', 'testmind-generated', userSuffix);
+        const repoAltUser = path.join(work, 'testmind-generated', userSuffix);
+        const webPath  = path.join(work, 'apps', 'web', 'testmind-generated', adapter); // common dev location
+        const webPathUser = path.join(work, 'apps', 'web', 'testmind-generated', userSuffix);
         const curatedPath = path.join(CURATED_ROOT, project.id);
 
         function pickSource(): string | null {
@@ -646,18 +654,28 @@ export default defineConfig({
           const curatedExists = fsSync.existsSync(curatedPath);
           if (curatedExists) return curatedPath;
 
-          // If a dev build already produced specs under apps/web, use that next.
-          if (fsSync.existsSync(webPath)) return webPath;
+          // Repo-first for repo mode or empty user folder
+          if (preferRepo) {
+            if (fsSync.existsSync(repoPathUser)) return repoPathUser;
+            if (fsSync.existsSync(repoAltUser)) return repoAltUser;
+            if (fsSync.existsSync(repoPath)) return repoPath;
+            if (fsSync.existsSync(repoAlt)) return repoAlt;
+            // if nothing repo-side, fall through to local/web
+          }
+
+          // Prefer user-specific generated specs when they exist (local cache)
+          if (fsSync.existsSync(webPathUser)) return webPathUser;
+
+          // If a dev build already produced specs under apps/web, use that next (auto/local only).
+          if (!preferRepo && fsSync.existsSync(webPath)) return webPath;
 
           if (MODE === 'local') return localPath;
-          if (MODE === 'repo') return fsSync.existsSync(repoPath) ? repoPath
-            : fsSync.existsSync(repoAlt) ? repoAlt
-            : (curatedExists ? curatedPath : null);
-
-          // auto
-          return fsSync.existsSync(repoPath) ? repoPath
-            : fsSync.existsSync(repoAlt) ? repoAlt
-            : (curatedExists ? curatedPath : localPath);
+          // auto fallback order: repo, then local
+          if (fsSync.existsSync(repoPathUser)) return repoPathUser;
+          if (fsSync.existsSync(repoAltUser)) return repoAltUser;
+          if (fsSync.existsSync(repoPath)) return repoPath;
+          if (fsSync.existsSync(repoAlt)) return repoAlt;
+          return localPath;
         }
 
         // always clean the repo-copy roots to avoid stale mixes
@@ -668,7 +686,19 @@ export default defineConfig({
 
         // wipe destination if requested (but don't delete if source==dest)
         const srcPicked = pickSource();
+        if (srcPicked && srcPicked.includes(userSuffix)) {
+          genDest = userGenDest;
+          genDestName = userSuffix;
+        } else {
+          genDest = sharedGenDest;
+          genDestName = adapter;
+        }
         const samePath = srcPicked ? path.resolve(srcPicked) === path.resolve(genDest) : false;
+        const finalConfig = ciConfig
+          .replace(new RegExp(PORT_PLACEHOLDER, "g"), String(serverPort))
+          .replace("__GEN_DEST__", genDestName);
+        await fs.writeFile(ciConfigPath, finalConfig, "utf8");
+
         if ((process.env.TM_CLEAN_DEST || '1') !== '0' && !samePath) {
           try { await fs.rm(genDest, { recursive: true, force: true }); } catch { }
         }
@@ -767,14 +797,15 @@ export default defineConfig({
           await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
         }
         await logSpecs(cwd, "apps/web");
-        await logSpecs(path.join(cwd, "testmind-generated", "playwright-ts"), "generated");
+        await logSpecs(genDest, "generated");
 
         // If the caller provided specific files, restrict to those
         if (!runAll && parsed.data.files && parsed.data.files.length) {
           const requested = new Set(parsed.data.files.map((f: string) => path.resolve(cwd, f)));
-          // prune extraGlobs and force to requested
+          // prune extraGlobs and force to requested (respect user-scoped generated dir)
+          const genBase = path.posix.join("testmind-generated", genDestName);
           parsed.data.extraGlobs = parsed.data.files.map((f: string) =>
-            path.posix.join("testmind-generated/playwright-ts", f.replace(/\\/g, "/"))
+            path.posix.join(genBase, f.replace(/\\/g, "/"))
           );
         }
 
@@ -837,8 +868,7 @@ export default defineConfig({
           } catch {
             // ignore copy failures
           }
-          const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
-          extraGlobs.push(relFromCwd);
+          extraGlobs.push(abs.replace(/\\/g, "/"));
         }
 
         // normalize grep: Playwright matches against "path spec.ts Test title",
@@ -1046,9 +1076,21 @@ export default defineConfig({
 
   // GET /runner/test-runs
   app.get("/test-runs", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
     const { projectId } = (req.query ?? {}) as { projectId?: string };
+    const allowedProjects = await prisma.project.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+    const projectIds = allowedProjects.map((p) => p.id);
+    if (!projectIds.length) return reply.send([]);
+
     const runs = await prisma.testRun.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: projectId
+        ? { projectId, project: { ownerId: userId } }
+        : { projectId: { in: projectIds } },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {
@@ -1068,6 +1110,9 @@ export default defineConfig({
 
   // GET /runner/test-runs/:id
   app.get("/test-runs/:id", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
     const { id } = req.params as { id: string };
     const run = await prisma.testRun.findUnique({
       where: { id },
@@ -1104,6 +1149,8 @@ export default defineConfig({
     const params = (run.paramsJson as any) ?? {};
     const headful = Boolean((params as any)?.headful);
     const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
+    const rerunParams: Record<string, any> = { headful, suiteId };
+    if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
@@ -1111,11 +1158,15 @@ export default defineConfig({
         status: TestRunStatus.running,
         startedAt: new Date(),
         trigger: "manual",
-        paramsJson: { headful, suiteId },
+        paramsJson: rerunParams,
       },
     });
 
-    await enqueueRun(rerun.id, { projectId: run.projectId, headed: headful });
+    await enqueueRun(rerun.id, {
+      projectId: run.projectId,
+      headed: headful,
+      baseUrl: (params as any)?.baseUrl,
+    });
     return reply.send({ runId: rerun.id });
   });
 

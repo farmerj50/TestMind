@@ -47,6 +47,7 @@ export const worker = new Worker(
       where: { id: runId },
       include: {
         project: { select: { id: true, ownerId: true, repoUrl: true } },
+        paramsJson: true,
       },
     });
     if (!run || !run.project?.repoUrl) {
@@ -54,6 +55,17 @@ export const worker = new Worker(
     }
 
     const project = run.project;
+    const runParams = (run.paramsJson as Record<string, any> | undefined) ?? undefined;
+    const targetSpec =
+      payload?.file ?? runParams?.targetSpec ?? runParams?.file ?? undefined;
+    const fileTarget = targetSpec;
+    const localRepoRoot =
+      payload?.localRepoRoot ?? runParams?.localRepoRoot ?? undefined;
+    const prevLocalRepoRoot = process.env.TM_LOCAL_REPO_ROOT;
+    const localRootInjected = Boolean(localRepoRoot);
+    if (localRootInjected) {
+      process.env.TM_LOCAL_REPO_ROOT = localRepoRoot!;
+    }
 
     const outDir = path.join(process.cwd(), 'runner-logs', runId);
     await fs.mkdir(outDir, { recursive: true });
@@ -77,25 +89,26 @@ export const worker = new Worker(
       const resultsPath = path.join(outDir, 'report.json');
       const extraGlobs: string[] = [];
       const grep = payload?.grep;
-      if (payload?.file) {
-        const abs = path.isAbsolute(payload.file) ? payload.file : path.join(work, payload.file);
+      if (fileTarget) {
+        const abs = path.isAbsolute(fileTarget) ? fileTarget : path.join(work, fileTarget);
         const rel = path.relative(work, abs).replace(/\\/g, "/");
         extraGlobs.push(rel);
       }
 
+      const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
       const exec = await runTests({
         workdir: work,
         jsonOutPath: resultsPath,
         headed: payload?.headed,
         grep,
         extraGlobs,
-        baseUrl: DEFAULT_BASE_URL,
+        baseUrl: jobBaseUrl,
       });
 
       // write logs
       await fs.writeFile(
         path.join(outDir, "stdout.txt"),
-        `[worker] headful=${payload?.headed ? "true" : "false"} file=${payload?.file || ""} grep=${grep || ""}\n${exec.stdout ?? ""}`,
+        `[worker] headful=${payload?.headed ? "true" : "false"} file=${fileTarget || ""} grep=${grep || ""} baseUrl=${jobBaseUrl}\n${exec.stdout ?? ""}`,
         { flag: "w" }
       );
       await fs.writeFile(path.join(outDir, 'stderr.txt'), exec.stderr ?? '');
@@ -147,7 +160,7 @@ export const worker = new Worker(
           reportPath: exec.resultsPath ?? resultsPath,
           grep,
           file: payload?.file,
-          baseUrl: DEFAULT_BASE_URL,
+          baseUrl: jobBaseUrl,
         });
       }
       await prisma.testRun.update({
@@ -177,6 +190,13 @@ export const worker = new Worker(
       throw err;
     } finally {
       await rmrf(work).catch(() => {});
+      if (localRootInjected) {
+        if (prevLocalRepoRoot === undefined) {
+          delete process.env.TM_LOCAL_REPO_ROOT;
+        } else {
+          process.env.TM_LOCAL_REPO_ROOT = prevLocalRepoRoot;
+        }
+      }
     }
   },
   { connection: redis }

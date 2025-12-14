@@ -37,9 +37,8 @@ export function useApi() {
     async <T = any>(path: string, init: ApiInit = {}): Promise<T> => {
       const url = buildUrl(path);
 
-      const method = (init.method ?? "GET").toString().toUpperCase();
-      // Include auth token for non-GET, or when explicitly requested
-      const wantAuth = method !== "GET" ? true : init.auth === "include";
+      // Always include auth unless explicitly opted out with auth: "omit"
+      const wantAuth = init.auth !== "omit";
       const token = wantAuth ? await getToken().catch(() => undefined) : undefined;
 
       const headers = new Headers(init.headers || {});

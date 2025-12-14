@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
+import { existsSync } from 'node:fs';
 import { createTwoFilesPatch } from 'diff';
 import { redis } from './redis';
 import { prisma } from '../prisma';
@@ -24,7 +25,99 @@ const HealingStatus = {
   failed: "failed",
 } as const;
 
-async function triggerRerun(projectId: string, rerunOfId: string, grep?: string, headed?: boolean) {
+const toPosix = (value: string) => value.replace(/\\/g, "/");
+
+function guessRepoRoot() {
+  const explicit = process.env.TM_LOCAL_REPO_ROOT;
+  if (explicit) return path.resolve(explicit);
+  const candidates = [
+    path.resolve(process.cwd(), "..", ".."),
+    path.resolve(process.cwd(), ".."),
+    process.cwd(),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, "apps", "api"))) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+}
+
+function buildSpecCandidates(repoRoot: string, normalizedSpecPath: string, rawPath: string) {
+  const fallback = normalizedSpecPath || "unknown-spec";
+  const candidates = new Set<string>();
+  if (path.isAbsolute(rawPath)) {
+    candidates.add(rawPath);
+  }
+  if (normalizedSpecPath && !normalizedSpecPath.startsWith("apps/")) {
+    candidates.add(path.join(repoRoot, "apps", "web", normalizedSpecPath));
+    candidates.add(path.join(repoRoot, "apps", "api", normalizedSpecPath));
+  }
+  if (normalizedSpecPath) {
+    candidates.add(path.join(repoRoot, normalizedSpecPath));
+  }
+  candidates.add(
+    path.join(
+      repoRoot,
+      "apps",
+      "web",
+      "testmind-generated",
+      "playwright-ts",
+      path.basename(fallback)
+    )
+  );
+  candidates.add(
+    path.join(
+      repoRoot,
+      "apps",
+      "api",
+      "testmind-generated",
+      "playwright-ts",
+      path.basename(fallback)
+    )
+  );
+  if (process.env.TM_LOCAL_SPECS) {
+    const localSpecsRoot = path.resolve(process.env.TM_LOCAL_SPECS);
+    if (normalizedSpecPath) {
+      candidates.add(path.join(localSpecsRoot, normalizedSpecPath));
+    }
+    candidates.add(path.join(localSpecsRoot, path.basename(fallback)));
+  }
+  return Array.from(candidates);
+}
+
+async function findExistingPath(paths: string[]): Promise<string | null> {
+  for (const candidate of paths) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // ignore missing paths
+    }
+  }
+  return null;
+}
+
+async function triggerRerun(
+  projectId: string,
+  rerunOfId: string,
+  grep?: string,
+  headed?: boolean,
+  baseUrl?: string,
+  localRepoRoot?: string,
+  targetSpec?: string
+) {
+  const projectRecord = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { sharedSteps: true },
+  });
+  const sharedSteps = projectRecord?.sharedSteps;
+  const params: Record<string, any> = {};
+  if (headed !== undefined) params.headful = headed;
+  if (baseUrl) params.baseUrl = baseUrl;
+  if (sharedSteps !== undefined) params.sharedSteps = sharedSteps;
+  if (localRepoRoot) params.localRepoRoot = localRepoRoot;
+  if (targetSpec) params.targetSpec = targetSpec;
   const rerun = await prisma.testRun.create({
     data: {
       projectId,
@@ -32,21 +125,38 @@ async function triggerRerun(projectId: string, rerunOfId: string, grep?: string,
       status: TestRunStatus.running,
       startedAt: new Date(),
       trigger: "self-heal",
-      paramsJson: headed !== undefined ? { headful: headed } : undefined,
+      paramsJson: Object.keys(params).length ? params : undefined,
     },
   });
 
-  const payload: RunPayload = { projectId };
+  const payload: RunPayload = {
+    projectId,
+    localRepoRoot,
+    file: targetSpec,
+  };
   if (grep) payload.grep = grep;
   if (headed !== undefined) payload.headed = headed;
 
-  await enqueueRun(rerun.id, payload);
-  console.log("[self-heal] queued rerun", rerun.id, "grep =", grep ?? "(full suite)");
+  try {
+    await enqueueRun(rerun.id, payload);
+    console.log(
+      "[self-heal] queued rerun",
+      rerun.id,
+      "grep:",
+      grep ?? "(full suite)",
+      "headed:",
+      headed ?? "(default)"
+    );
+  } catch (err) {
+    console.error(`[self-heal] failed to enqueue rerun ${rerun.id}:`, err);
+    throw err;
+  }
 }
 
 type FailureContext = {
   repoRelativePath: string;
   repoAbsolutePath: string;
+  repoRoot: string;
   runSpecPath?: string;
   specContent?: string;
   stdout?: string;
@@ -88,25 +198,8 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   const key = result?.testCase?.key ?? job.testCaseId ?? 'unknown-spec';
   const runSpecPathRaw = key.split("#")[0] || key;
   const runSpecPath = runSpecPathRaw.replace(/\\/g, "/");
-
-  let repoRelativePath = runSpecPath;
-  const anchor = runSpecPath.indexOf("testmind-generated/");
-  if (anchor >= 0) {
-    const remainder = runSpecPath
-      .slice(anchor)
-      .replace(/\\/g, "/")
-      .split("/")
-      .filter(Boolean);
-    repoRelativePath = path.join("apps", "api", ...remainder);
-  } else if (!runSpecPath.startsWith("apps/")) {
-    repoRelativePath = path.join(
-      "apps",
-      "api",
-      "testmind-generated",
-      "playwright-ts",
-      path.basename(runSpecPath)
-    );
-  }
+  const normalizedSpecPath = runSpecPath.replace(/^\.?\/+/, "").replace(/^\/+/, "") || "unknown-spec";
+  const repoRoot = guessRepoRoot();
 
   let preferredAbsolutePath: string | null = null;
   if (runSpecPath.includes("__agent/agent-")) {
@@ -114,16 +207,23 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
     if (match) {
       const suiteId = match[1];
       const remainder = match[2]?.replace(/^\/+/, "") ?? "";
-      preferredAbsolutePath = path.join(CURATED_ROOT, suiteId, remainder);
+      const candidate = path.join(CURATED_ROOT, suiteId, remainder);
+      if (existsSync(candidate)) {
+        preferredAbsolutePath = candidate;
+      }
     }
   }
 
-  const repoAbsolutePath = preferredAbsolutePath
-    ? preferredAbsolutePath
-    : path.join(process.cwd(), repoRelativePath);
+  if (!preferredAbsolutePath) {
+    const candidates = buildSpecCandidates(repoRoot, normalizedSpecPath, runSpecPathRaw);
+    preferredAbsolutePath = await findExistingPath(candidates);
+  }
+
+  const repoAbsolutePath =
+    preferredAbsolutePath ?? path.join(repoRoot, normalizedSpecPath);
   const relativeForDiff = preferredAbsolutePath
-    ? path.relative(process.cwd(), preferredAbsolutePath)
-    : repoRelativePath;
+    ? toPosix(path.relative(repoRoot, preferredAbsolutePath))
+    : toPosix(normalizedSpecPath);
 
   const repoSpecContent = await fs.readFile(repoAbsolutePath, "utf8").catch(() => undefined);
   const runSpecContent = await fs.readFile(runSpecPathRaw, "utf8").catch(() => undefined);
@@ -132,6 +232,7 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   return {
     repoRelativePath: relativeForDiff,
     repoAbsolutePath,
+    repoRoot,
     runSpecPath: runSpecContent ? runSpecPathRaw : undefined,
     specContent,
     stdout,
@@ -142,7 +243,7 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
 }
 
 const SELF_HEAL_CONCURRENCY = Number(process.env.SELF_HEAL_CONCURRENCY ?? '2');
-const SELF_HEAL_TIMEOUT_MS = Number(process.env.SELF_HEAL_TIMEOUT_MS ?? '30000');
+const SELF_HEAL_TIMEOUT_MS = Number(process.env.SELF_HEAL_TIMEOUT_MS ?? '120000');
 
 async function withTimeout<T>(promise: Promise<T>, ms: number) {
   return Promise.race<T>([
@@ -188,7 +289,15 @@ export const selfHealWorker = new Worker(
             response: { raw: note },
           },
         });
-        await triggerRerun(job.data.projectId, job.data.runId, context.testTitle ?? undefined, job.data.headed);
+        await triggerRerun(
+          job.data.projectId,
+          job.data.runId,
+          context.testTitle ?? undefined,
+          job.data.headed,
+          job.data.baseUrl,
+          context.repoRoot,
+          context.repoRelativePath
+        );
       };
 
       // Quick rule-based nav URL fix before invoking LLM
@@ -319,13 +428,29 @@ export const selfHealWorker = new Worker(
       );
 
       if (job.data.totalFailed <= 1) {
-        await triggerRerun(job.data.projectId, job.data.runId, context.testTitle ?? undefined, job.data.headed);
+        await triggerRerun(
+          job.data.projectId,
+          job.data.runId,
+          context.testTitle ?? undefined,
+          job.data.headed,
+          job.data.baseUrl,
+          context.repoRoot,
+          context.repoRelativePath
+        );
       } else {
         const remaining = await prisma.testHealingAttempt.count({
           where: { runId: job.data.runId, status: { not: HealingStatus.succeeded } },
         });
         if (remaining === 0) {
-          await triggerRerun(job.data.projectId, job.data.runId, undefined, job.data.headed);
+          await triggerRerun(
+            job.data.projectId,
+            job.data.runId,
+            undefined,
+            job.data.headed,
+            job.data.baseUrl,
+            context.repoRoot,
+            context.repoRelativePath
+          );
         }
       }
     } catch (err: any) {

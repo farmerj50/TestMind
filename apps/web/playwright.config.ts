@@ -2,7 +2,10 @@
 import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const WEB = __dirname;
 
 // Try multiple locations for generated specs:
@@ -21,7 +24,7 @@ const GEN = candidates.find(p => fs.existsSync(p));
 
 export default defineConfig({
   reporter: [['json']],
-  webServer: { command: 'vite preview --port 4173', port: 4173, reuseExistingServer: true },
+  webServer: { command: 'vite dev --host 0.0.0.0 --port 4173', port: 4173, reuseExistingServer: true },
   use: { baseURL: 'http://localhost:4173' },
   projects: [
     { name: 'web', testDir: WEB, testMatch: ['**/*.spec.ts', '**/*.test.ts'], timeout: 30_000 },

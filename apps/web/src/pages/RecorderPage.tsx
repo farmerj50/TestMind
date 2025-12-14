@@ -5,7 +5,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 type SpecMeta = { projectId: string; name: string; path: string; pathRelative?: string };
-type Project = { id: string; name: string; repoUrl: string };
+type Project = { id: string; name: string; repoUrl?: string };
 
 export default function RecorderPage() {
   const { apiFetch } = useApi();
@@ -116,7 +116,7 @@ export default function RecorderPage() {
       })();
       const res = await apiFetch<{ project: Project }>("/projects", {
         method: "POST",
-        body: JSON.stringify({ name, repoUrl: url }),
+        body: JSON.stringify({ name, ...(url ? { repoUrl: url } : {}) }),
       });
       setProjects((prev) => [...prev, res.project]);
       setProjectId(res.project.id);
@@ -395,5 +395,4 @@ export default function RecorderPage() {
     </div>
   );
 }
-
 

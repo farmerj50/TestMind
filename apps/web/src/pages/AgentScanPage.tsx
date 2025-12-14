@@ -21,7 +21,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 type Project = {
   id: string;
   name: string;
-  repoUrl: string;
+  repoUrl?: string;
 };
 
 type AgentScenario = {
@@ -667,7 +667,6 @@ export default function AgentScanPage() {
     </div>
   );
 }
-
 
 
 

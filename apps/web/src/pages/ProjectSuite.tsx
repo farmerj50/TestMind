@@ -181,7 +181,10 @@ export default function ProjectSuite() {
   const [copySelectValue, setCopySelectValue] = useState(COPY_PLACEHOLDER);
   const [specReloadKey, setSpecReloadKey] = useState(0);
   const [renamingSuite, setRenamingSuite] = useState(false);
+  const [syncingSuite, setSyncingSuite] = useState<false | "replaceSuite" | "overwriteMatches" | "addMissing">(false);
+  const [deletingSpec, setDeletingSpec] = useState(false);
   const [deletingSuite, setDeletingSuite] = useState(false);
+  const [baseUrl, setBaseUrl] = useState<string>(() => localStorage.getItem("tm:lastBaseUrl") || "");
   const [headful, setHeadful] = useState(false);
   const [reporter, setReporter] = useState<ReporterId>("json");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -338,6 +341,10 @@ export default function ProjectSuite() {
     () => specProjects.filter((proj) => proj.type === "curated"),
     [specProjects]
   );
+  const generatedSuites = useMemo(
+    () => specProjects.filter((proj) => proj.type === "generated"),
+    [specProjects]
+  );
   const activeSuite = specProjects.find((proj) => proj.id === pid);
   const isActiveCurated = activeSuite?.type === "curated";
   const activeSpecLocked = useMemo(() => {
@@ -346,12 +353,16 @@ export default function ProjectSuite() {
   }, [activeSuite, activeSpec, isActiveCurated]);
   const specTree = useMemo(() => buildTree(specs), [specs]);
   const suiteTree = useMemo(() => {
-    return specProjects.map((proj) => ({
+    const toNode = (proj: SpecProjectOption) => ({
       name: proj.type === "curated" ? `${proj.name} (curated)` : proj.name,
       suiteId: proj.id,
       children: proj.id === pid ? cloneNodes(specTree) : undefined,
-    }));
-  }, [specProjects, specTree, pid]);
+    });
+    return {
+      generated: generatedSuites.map(toNode),
+      curated: curatedSuites.map(toNode),
+    };
+  }, [specProjects, specTree, pid, generatedSuites, curatedSuites]);
   const suiteOptions = useMemo(
     () => specProjects.map((p) => ({ value: p.id, label: p.name, type: p.type })),
     [specProjects]
@@ -362,12 +373,16 @@ export default function ProjectSuite() {
     if (!proposed) return;
     const name = proposed.trim();
     if (!name) return;
+    if (!runProjectId) {
+      setSpecProjectErr("Select a project first (top bar).");
+      return;
+    }
     setCreatingSuite(true);
     try {
       const res = await fetch("/tm/suite/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, projectId: runProjectId }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to create suite");
@@ -449,6 +464,53 @@ export default function ProjectSuite() {
       setSpecProjectErr(err instanceof Error ? err.message : "Failed to update lock");
     } finally {
       setLockingSpec(false);
+    }
+  }
+
+  async function handleDeleteSpec() {
+    if (!activeSpec || !isActiveCurated || !activeSuite) return;
+    setDeletingSpec(true);
+    try {
+      const res = await fetch(`/tm/suite/projects/${activeSuite.id}/specs?path=${encodeURIComponent(activeSpec.path)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok && res.status !== 404) {
+        const text = await res.text().catch(() => "Failed to delete spec");
+        throw new Error(text);
+      }
+      setSpecReloadKey((k) => k + 1);
+      setSpecProjectErr(null);
+      setActiveSpec(null);
+    } catch (err) {
+      console.error(err);
+      setSpecProjectErr(err instanceof Error ? err.message : "Failed to delete spec");
+    } finally {
+      setDeletingSpec(false);
+    }
+  }
+
+  async function handleSyncSuite(mode: "replaceSuite" | "overwriteMatches" | "addMissing") {
+    if (!activeSuite || !isActiveCurated) return;
+    setSyncingSuite(mode);
+    try {
+      const res = await fetch(`/tm/suite/projects/${activeSuite.id}/sync-from-generated`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adapterId: "playwright-ts", mode }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "Failed to sync suite");
+        throw new Error(text);
+      }
+      await res.json().catch(() => null);
+      setSpecReloadKey((k) => k + 1);
+      setSpecProjectErr(null);
+    } catch (err) {
+      console.error(err);
+      setSpecProjectErr(err instanceof Error ? err.message : "Failed to sync suite");
+    } finally {
+      setSyncingSuite(false);
     }
   }
 
@@ -579,6 +641,17 @@ export default function ProjectSuite() {
 
   // load spec list
   useEffect(() => {
+    if (!specProjects.length) {
+      setSpecs([]);
+      setActiveSpec(null);
+      setSpecProjectErr("No suites available for this account.");
+      return;
+    }
+    if (!specProjects.some((p) => p.id === pid)) {
+      setSpecs([]);
+      setActiveSpec(null);
+      return;
+    }
     const qs = new URLSearchParams({ projectId: pid });
     fetch(`/tm/suite/specs?${qs.toString()}`)
       .then(async (r) => {
@@ -593,7 +666,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load specs");
       });
-  }, [pid, specReloadKey]);
+  }, [pid, specReloadKey, specProjects]);
 
   // If a spec path is provided via query (?spec=...), auto-select it once specs are loaded.
   useEffect(() => {
@@ -762,10 +835,15 @@ export default function ProjectSuite() {
       setRunError("Pick at least one test case.");
       return;
     }
+    if (!baseUrl.trim()) {
+      setRunError("Enter a base URL before running.");
+      return;
+    }
     if (!runProjectId) {
       setRunError("Select a project to run against.");
       return;
     }
+    localStorage.setItem("tm:lastBaseUrl", baseUrl.trim());
 
     setRunning(true);
     setRunError(null);
@@ -786,6 +864,7 @@ export default function ProjectSuite() {
             suiteId: pid,
             files,
             grep,
+            baseUrl: baseUrl.trim(),
             headful,
             reporter,
           }),
@@ -804,6 +883,7 @@ export default function ProjectSuite() {
             suiteId: pid,
             file: activeSpec.path,
             grep,
+            baseUrl: baseUrl.trim(),
             headful,
             reporter,
           }),
@@ -824,10 +904,15 @@ export default function ProjectSuite() {
       setRunError("No specs in this suite.");
       return;
     }
+    if (!baseUrl.trim()) {
+      setRunError("Enter a base URL before running.");
+      return;
+    }
     if (!runProjectId) {
       setRunError("Select a project to run against.");
       return;
     }
+    localStorage.setItem("tm:lastBaseUrl", baseUrl.trim());
     setRunningSuite(true);
     setRunError(null);
     try {
@@ -838,6 +923,7 @@ export default function ProjectSuite() {
           projectId: runProjectId,
           suiteId: pid,
           files,
+          baseUrl: baseUrl.trim(),
           headful,
           reporter,
         }),
@@ -941,6 +1027,15 @@ export default function ProjectSuite() {
                   )}
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center text-red-600 border-red-400 hover:bg-red-50"
+                onClick={handleDeleteSpec}
+                disabled={deletingSpec}
+              >
+                {deletingSpec ? "Deleting spec..." : "Delete spec"}
+              </Button>
             </>
           )}
           {isActiveCurated && (
@@ -955,6 +1050,35 @@ export default function ProjectSuite() {
                 <GitBranch className="h-4 w-4 mr-1" />
                 {renamingSuite ? "Renaming..." : "Rename suite"}
               </Button>
+              <div className="grid grid-cols-1 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => handleSyncSuite("replaceSuite")}
+                  disabled={!!syncingSuite}
+                >
+                  {syncingSuite === "replaceSuite" ? "Replacing..." : "Replace suite (from generated)"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => handleSyncSuite("overwriteMatches")}
+                  disabled={!!syncingSuite}
+                >
+                  {syncingSuite === "overwriteMatches" ? "Overwriting..." : "Overwrite matches only"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => handleSyncSuite("addMissing")}
+                  disabled={!!syncingSuite}
+                >
+                  {syncingSuite === "addMissing" ? "Adding..." : "Add missing only"}
+                </Button>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -969,125 +1093,184 @@ export default function ProjectSuite() {
         </div>
         <Separator />
         <ScrollArea className="h-[calc(100vh-64px)] p-2 space-y-1">
-          {suiteTree.map((node) => (
-            <TreeItem
-              key={node.suiteId || node.name}
-              node={node}
-              onSelect={(spec) => {
-                setSuiteSelected(false);
-                setActiveSpec(spec);
-              }}
-              onSelectSuite={(suiteId) => {
-                if (suiteId !== pid) navigate(`/suite/${suiteId}`);
-                setSuiteSelected(false);
-              }}
-              activeSuiteId={pid}
-              activePath={activeSpec?.path || null}
-            />
-          ))}
+          {!!suiteTree.generated.length && (
+            <div className="space-y-1">
+              <div className="text-[11px] uppercase tracking-wide text-slate-700 px-2">Generated</div>
+              {suiteTree.generated.map((node) => (
+                <TreeItem
+                  key={node.suiteId || node.name}
+                  node={node}
+                  onSelect={(spec) => {
+                    setSuiteSelected(false);
+                    setActiveSpec(spec);
+                  }}
+                  onSelectSuite={(suiteId) => {
+                    if (suiteId !== pid) navigate(`/suite/${suiteId}`);
+                    setSuiteSelected(false);
+                  }}
+                  activeSuiteId={pid}
+                  activePath={activeSpec?.path || null}
+                />
+              ))}
+            </div>
+          )}
+          {!!suiteTree.curated.length && (
+            <div className="space-y-1 mt-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-700 px-2">Curated</div>
+              {suiteTree.curated.map((node) => (
+                <TreeItem
+                  key={node.suiteId || node.name}
+                  node={node}
+                  onSelect={(spec) => {
+                    setSuiteSelected(false);
+                    setActiveSpec(spec);
+                  }}
+                  onSelectSuite={(suiteId) => {
+                    if (suiteId !== pid) navigate(`/suite/${suiteId}`);
+                    setSuiteSelected(false);
+                  }}
+                  activeSuiteId={pid}
+                  activePath={activeSpec?.path || null}
+                />
+              ))}
+            </div>
+          )}
         </ScrollArea>
       </div>
 
       {/* Right: cases */}
       <div className="flex flex-col">
-        {/* top bar */}
-        <div className="flex items-center gap-2 p-3 border-b border-slate-300 bg-[#8eb7ff] text-slate-900">
-          <div className="flex items-center gap-2 mr-3">
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/dashboard">Dashboard</Link>
+                {/* top bar */}
+        <div className="p-3 border-b border-slate-300 bg-[#8eb7ff] text-slate-900">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* left nav */}
+            <div className="flex items-center gap-2 mr-2 shrink-0">
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/dashboard">Dashboard</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/integrations">Integrations</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/projects">Projects</Link>
+              </Button>
+            </div>
+
+            {/* suite */}
+            <div className="shrink-0 w-[220px]">
+              <Select value={activeSuite?.id} onValueChange={(val) => navigate(`/suite/${val}`)}>
+                <SelectTrigger className="w-full h-10" disabled={!suiteOptions.length}>
+                  <SelectValue placeholder={suiteOptions.length ? "Select suite" : "No suites"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {suiteOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label} {opt.type === "generated" ? "(generated)" : "(curated)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* project */}
+            <div className="shrink-0 w-[220px]">
+              <Select
+                value={runProjectId ?? undefined}
+                onValueChange={(val) => {
+                  setRunProjectId(val);
+                  localStorage.setItem("tm:lastProjectId", val);
+                }}
+              >
+                <SelectTrigger className="w-full h-10" disabled={!projects.length}>
+                  <SelectValue placeholder={projects.length ? "Select project" : "No projects"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((proj) => (
+                    <SelectItem key={proj.id} value={proj.id}>
+                      {proj.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* branch */}
+            <div className="flex items-center gap-2 shrink-0">
+              <GitBranch className="h-4 w-4" />
+              <Select value={branch} onValueChange={setBranch}>
+                <SelectTrigger className="w-[160px] h-10">
+                  <SelectValue placeholder="Branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">main</SelectItem>
+                  <SelectItem value="develop">develop</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* reporter */}
+            <div className="shrink-0">
+              <Select value={reporter} onValueChange={(val) => setReporter(val as ReporterId)}>
+                <SelectTrigger className="w-[160px] h-10">
+                  <SelectValue placeholder="Reporter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="json">JSON only</SelectItem>
+                  <SelectItem value="allure">JSON + Allure</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* headed */}
+            <label className="flex items-center gap-2 text-xs text-slate-600 shrink-0">
+              <Checkbox checked={headful} onCheckedChange={(val) => setHeadful(Boolean(val))} />
+              Headed (capture media)
+            </label>
+
+            {/* base url */}
+            <div className="flex items-center gap-2 shrink-0 w-[320px]">
+              <span className="text-xs text-slate-600 whitespace-nowrap">Base URL</span>
+              <Input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://example.com"
+                className="bg-white/80 h-10"
+              />
+            </div>
+
+            {/* back to run */}
+            {returnTo && (
+              <Button asChild variant="outline" className="border-white/90 shrink-0 h-10">
+                <Link to={returnTo}>Back to run</Link>
+              </Button>
+            )}
+
+            {/* search grows */}
+            <div className="relative flex-1 min-w-[240px] max-w-[480px]">
+              <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 opacity-60" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search test titles…"
+                className="pl-8 h-10"
+              />
+            </div>
+
+            {/* actions */}
+            <Button variant="outline" onClick={() => setSelected({})} className="shrink-0 h-10">
+              <RefreshCw className="h-4 w-4 mr-1" /> Clear
             </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/integrations">Integrations</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/projects">Projects</Link>
+
+            <Button
+              disabled={!anySelected || running}
+              onClick={handleRunSelection}
+              className="border border-white/90 shrink-0 h-10"
+            >
+              <Play className="h-4 w-4 mr-1" /> {running ? "Starting..." : "Run selection"}
             </Button>
           </div>
-
-          <Select
-            value={pid}
-            onValueChange={(val) => navigate(`/suite/${val}`)}
-          >
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Select suite" />
-            </SelectTrigger>
-            <SelectContent>
-              {suiteOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label} {opt.type === "generated" ? "(generated)" : "(curated)"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={runProjectId ?? undefined}
-            onValueChange={(val) => {
-              setRunProjectId(val);
-              localStorage.setItem("tm:lastProjectId", val);
-            }}
-          >
-            <SelectTrigger className="w-[220px]" disabled={!projects.length}>
-              <SelectValue placeholder={projects.length ? "Select project" : "No projects"} />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((proj) => (
-                <SelectItem key={proj.id} value={proj.id}>
-                  {proj.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <GitBranch className="h-4 w-4" />
-          <Select value={branch} onValueChange={setBranch}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Branch" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="main">main</SelectItem>
-              <SelectItem value="develop">develop</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <Checkbox
-              checked={headful}
-              onCheckedChange={(val) => setHeadful(Boolean(val))}
-            />
-            Headed (capture media)
-          </label>
-
-          <Select value={reporter} onValueChange={(val) => setReporter(val as ReporterId)}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Reporter" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="json">JSON only</SelectItem>
-              <SelectItem value="allure">JSON + Allure</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {returnTo && (
-            <Button asChild variant="outline" className="border-white/90">
-              <Link to={returnTo}>Back to run</Link>
-            </Button>
-          )}
-
-          <div className="relative flex-1 max-w-[480px] ml-2">
-            <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 opacity-60" />
-            <Input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Search test titles…" className="pl-8" />
-          </div>
-
-          <Button variant="outline" onClick={()=>setSelected({})}>
-            <RefreshCw className="h-4 w-4 mr-1" /> Clear
-          </Button>
-
-          {/* NOTE: wiring the Run button in Step 2 */}
-          <Button
-            disabled={!anySelected || running}
-            onClick={handleRunSelection}
-            className="border border-white/90"
-          >
-            <Play className="h-4 w-4 mr-1" /> {running ? "Starting..." : "Run selection"}
-          </Button>
         </div>
+
         {(runError || projectLoadErr || specProjectErr) && (
           <div className="px-3 pb-2 text-xs text-rose-600">
             {runError || projectLoadErr || specProjectErr}
