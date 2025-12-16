@@ -10,6 +10,7 @@ import type { SelfHealPayload, RunPayload } from './queue';
 import { enqueueRun } from './queue';
 import { requestSpecHeal, HealPrompt } from './llm';
 import { CURATED_ROOT } from "../testmind/curated-store";
+import { extractTestTitle } from './test-title';
 
 const TestRunStatus = {
   queued: "queued",
@@ -228,6 +229,8 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   const repoSpecContent = await fs.readFile(repoAbsolutePath, "utf8").catch(() => undefined);
   const runSpecContent = await fs.readFile(runSpecPathRaw, "utf8").catch(() => undefined);
   const specContent = repoSpecContent ?? runSpecContent;
+  const rawTitle = result?.testCase?.title ?? job.testTitle ?? null;
+  const testTitle = extractTestTitle(rawTitle);
 
   return {
     repoRelativePath: relativeForDiff,
@@ -238,7 +241,7 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
     stdout,
     stderr,
     message: result?.message,
-    testTitle: result?.testCase?.title ?? job.testTitle ?? null,
+    testTitle,
   };
 }
 

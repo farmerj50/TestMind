@@ -1328,6 +1328,7 @@ export default function ProjectSuite() {
                     className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white shadow-sm cursor-pointer"
                     onClick={() => {
                       if (c.specPath) {
+                        setSuiteSelected(false);
                         setActiveSpec({ path: c.specPath });
                       }
                     }}

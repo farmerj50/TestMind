@@ -78,11 +78,8 @@ if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
 }
 const RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
 const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
-const STATIC_RUNNER_ROOT = fs.existsSync(API_RUNNER_LOGS_ROOT)
-  ? API_RUNNER_LOGS_ROOT
-  : fs.existsSync(RUNNER_LOGS_ROOT)
-  ? RUNNER_LOGS_ROOT
-  : null;
+const AVAILABLE_RUNNER_ROOTS = [API_RUNNER_LOGS_ROOT, RUNNER_LOGS_ROOT].filter((candidate) => fs.existsSync(candidate));
+const STATIC_RUNNER_ROOT = AVAILABLE_RUNNER_ROOTS[0] ?? null;
 if (STATIC_RUNNER_ROOT) {
   app.register(fastifyStatic, {
     root: STATIC_RUNNER_ROOT,
@@ -139,6 +136,46 @@ app.get("/runner-logs/*", async (req, reply) => {
 
   return reply.code(404).send("Not found");
 });
+
+if (AVAILABLE_RUNNER_ROOTS.length > 0) {
+  app.get("/assets/*", async (req, reply) => {
+    const splat = (req.params as any)["*"] as string | undefined;
+    const rest = splat || "";
+    const referer = (req.headers.referer || "").toString();
+    const match = referer.match(/\/runner-logs\/([^/]+)\//);
+    if (!match) {
+      return reply.code(404).send("Not found");
+    }
+    const id = match[1];
+    for (const root of AVAILABLE_RUNNER_ROOTS) {
+      const base = path.resolve(root, id);
+      const target = path.resolve(base, "allure-report", rest);
+      if (!target.startsWith(base)) continue;
+      try {
+        const data = fs.readFileSync(target);
+        const ext = path.extname(target).toLowerCase();
+        const type =
+          ext === ".html"
+            ? "text/html"
+            : ext === ".js"
+            ? "application/javascript"
+            : ext === ".css"
+            ? "text/css"
+            : ext === ".json"
+            ? "application/json"
+            : ext === ".svg"
+            ? "image/svg+xml"
+            : "application/octet-stream";
+        reply.header("Content-Type", `${type}; charset=utf-8`);
+        return reply.send(data);
+      } catch (err) {
+        continue;
+      }
+    }
+
+    return reply.code(404).send("Not found");
+  });
+}
 
 // Serve built web assets (SPA) when available
 const WEB_DIST = path.join(REPO_ROOT, "apps", "web", "dist");

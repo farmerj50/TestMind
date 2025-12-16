@@ -1178,15 +1178,22 @@ export default defineConfig({
     if (!run) return reply.code(404).send({ error: "Run not found" });
 
     const t = type === "stderr" ? "stderr" : "stdout";
-    const logPath = path.join(process.cwd(), "runner-logs", id, `${t}.txt`);
-    try {
-      const data = await fs.readFile(logPath, "utf8");
-      reply.header("Content-Type", "text/plain; charset=utf-8");
-      return reply.send(data);
-    } catch {
-      reply.header("Content-Type", "text/plain; charset=utf-8");
-      return reply.send("");
+    const candidateDirs = [
+      path.join(process.cwd(), "runner-logs"),
+      path.join(process.cwd(), "apps", "api", "runner-logs"),
+    ];
+    for (const base of candidateDirs) {
+      const logPath = path.join(base, id, `${t}.txt`);
+      try {
+        const data = await fs.readFile(logPath, "utf8");
+        reply.header("Content-Type", "text/plain; charset=utf-8");
+        return reply.send(data);
+      } catch {
+        // try next location
+      }
     }
+    reply.header("Content-Type", "text/plain; charset=utf-8");
+    return reply.send("");
   });
 
   // Serve runner artifacts (e.g., allure-report) directly from runner-logs

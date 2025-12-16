@@ -84,12 +84,13 @@ export type RunExecRequest = {
   workdir: string;              // repo root (temp clone)
   jsonOutPath: string;          // where to write report.json
   baseUrl?: string;             // e.g., http://localhost:5173
-    extraGlobs?: string[];        // optional file globs/paths
+  extraGlobs?: string[];        // optional file globs/paths
   extraEnv?: Record<string, string>;
-    grep?: string;                // optional test grep
+  grep?: string;                // optional test grep
   configPath?: string;
   sourceRoot?: string;
   headed?: boolean;
+  runTimeout?: number;
 };
 
 export type RunExecResult = {
@@ -280,11 +281,12 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     );
 
     // Force reporters so JSON + allure artifacts are emitted
+    const timeoutMs = req.runTimeout ?? runTimeout;
     const proc = await execa(npx, args, {
       cwd: found.cwd,
       env,
       reject: false,
-      timeout: runTimeout,
+      timeout: timeoutMs,
       stdio: "pipe",
     });
 
