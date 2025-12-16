@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import { enqueueSelfHeal } from './queue';
+import { extractTestTitle } from './test-title';
 const TestResultStatus = {
   passed: "passed",
   failed: "failed",
@@ -14,9 +15,10 @@ const TestResultStatus = {
 export async function scheduleSelfHealingForRun(runId: string) {
   const run = await prisma.testRun.findUnique({
     where: { id: runId },
-    select: { projectId: true, paramsJson: true },
+    select: { projectId: true, paramsJson: true, trigger: true },
   });
   if (!run) return;
+  if (run.trigger === "self-heal") return;
   const headful = Boolean((run.paramsJson as any)?.headful);
   const baseUrl: string | undefined = (run.paramsJson as any)?.baseUrl;
 
@@ -41,16 +43,16 @@ export async function scheduleSelfHealingForRun(runId: string) {
       },
     });
 
-      await enqueueSelfHeal({
-        runId,
-        testResultId: result.id,
-        testCaseId: result.testCaseId,
-        attemptId: healingAttempt.id,
-        projectId: run.projectId,
-        totalFailed: failedResults.length,
-        testTitle: result.testCase?.title ?? null,
-        headed: headful,
-        baseUrl,
-      });
+    await enqueueSelfHeal({
+      runId,
+      testResultId: result.id,
+      testCaseId: result.testCaseId,
+      attemptId: healingAttempt.id,
+      projectId: run.projectId,
+      totalFailed: failedResults.length,
+      testTitle: extractTestTitle(result.testCase?.title ?? null),
+      headed: headful,
+      baseUrl,
+    });
   }
 }

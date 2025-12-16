@@ -10,6 +10,35 @@ export type AnalysisResult = {
   model: string;
 };
 
+export type FixPlanAction =
+  | {
+      kind: "replace_block";
+      file: string;
+      matchStart: string;
+      matchEnd: string;
+      replacement: string;
+      reason: string;
+    }
+  | {
+      kind: "replace_literal";
+      file: string;
+      find: string;
+      replace: string;
+      reason: string;
+    };
+
+export type FixPlan = {
+  version: 1;
+  runId: string;
+  specPath?: string;
+  fingerprint?: string;
+  actions: FixPlanAction[];
+};
+
+export type AnalysisDocument = AnalysisResult & {
+  plan?: FixPlan;
+};
+
 const flagEnabled = () => {
   const v = (process.env.ENABLE_AI_ANALYSIS || "").toLowerCase();
   return ["1", "true", "yes", "on"].includes(v) && !!process.env.OPENAI_API_KEY;
@@ -87,10 +116,57 @@ Context:
       };
     }
 
+    const plan = buildFixPlan(opts, parsed);
+    const doc: AnalysisDocument = {
+      ...parsed,
+      plan,
+    };
     const analysisPath = path.join(opts.outDir, "analysis.json");
-    await fs.writeFile(analysisPath, JSON.stringify(parsed, null, 2), "utf8");
+    await fs.writeFile(analysisPath, JSON.stringify(doc, null, 2), "utf8");
     return parsed;
   } catch {
     return null;
   }
+}
+
+function buildFixPlan(
+  opts: Parameters<typeof analyzeFailure>[0],
+  parsed: AnalysisResult
+): FixPlan | undefined {
+  const actions: FixPlanAction[] = [];
+  const targetFile = opts.file;
+  const failureText = `${opts.stderr || ""} ${opts.stdout || ""} ${parsed.cause || ""} ${parsed.suggestion || ""}`;
+
+  if (
+    failureText.includes("Invalid regular expression") ||
+    failureText.includes("Nothing to repeat")
+  ) {
+    if (targetFile) {
+      actions.push({
+        kind: "replace_block",
+        file: targetFile,
+        matchStart: "async function navigateTo(page: Page, target: string) {",
+        matchEnd: "async function sharedLogin(page: Page) {",
+        replacement: [
+          "async function navigateTo(page: Page, target: string) {",
+          "  const url = new URL(target, BASE_URL);",
+          "  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });",
+          "  await expect(page).toHaveURL(url.toString());",
+          "}",
+          "",
+          "async function sharedLogin(page: Page) {",
+        ].join("\n"),
+        reason: "Replace fragile regex nav helper with deterministic URL comparison",
+      });
+    }
+  }
+
+  if (actions.length === 0) return undefined;
+  return {
+    version: 1,
+    runId: opts.runId,
+    specPath: targetFile,
+    fingerprint: failureText.slice(0, 200),
+    actions,
+  };
 }
