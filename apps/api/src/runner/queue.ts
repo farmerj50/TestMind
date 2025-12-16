@@ -15,6 +15,7 @@ export type RunPayload = {
   file?: string;
   baseUrl?: string;
   localRepoRoot?: string;
+  timeoutMs?: number;
 };
 
 export type SelfHealPayload = {

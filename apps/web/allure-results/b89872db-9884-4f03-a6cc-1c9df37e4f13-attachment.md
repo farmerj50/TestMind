@@ -1,0 +1,193 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "TestMind AI" [ref=e7] [cursor=pointer]:
+            - /url: /
+          - navigation [ref=e8]:
+            - link "Pricing" [ref=e9] [cursor=pointer]:
+              - /url: /pricing
+            - link "Contact" [ref=e10] [cursor=pointer]:
+              - /url: /contact
+        - generic [ref=e11]:
+          - link "Sign in" [ref=e12] [cursor=pointer]:
+            - /url: /signin
+          - button "Get started" [ref=e13] [cursor=pointer]
+    - complementary [ref=e14]:
+      - generic [ref=e15]:
+        - link "Dashboard" [ref=e16] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e17]
+          - generic [ref=e22]: Dashboard
+        - link "Scan pages" [ref=e23] [cursor=pointer]:
+          - /url: /agent
+          - img [ref=e24]
+          - generic [ref=e27]: Scan pages
+        - link "Agent sessions" [ref=e28] [cursor=pointer]:
+          - /url: /agent/sessions
+          - img [ref=e29]
+          - generic [ref=e32]: Agent sessions
+        - link "QA agent" [ref=e33] [cursor=pointer]:
+          - /url: /qa-agent
+          - img [ref=e34]
+          - generic [ref=e37]: QA agent
+        - link "Security scan" [ref=e38] [cursor=pointer]:
+          - /url: /security-scan
+          - img [ref=e39]
+          - generic [ref=e41]: Security scan
+        - link "Projects" [ref=e42] [cursor=pointer]:
+          - /url: /projects
+          - img [ref=e43]
+          - generic [ref=e45]: Projects
+        - link "Integrations" [ref=e46] [cursor=pointer]:
+          - /url: /integrations
+          - img [ref=e47]
+          - generic [ref=e50]: Integrations
+        - link "Recorder" [ref=e51] [cursor=pointer]:
+          - /url: /recorder
+          - img [ref=e52]
+          - generic [ref=e57]: Recorder
+        - link "Test builder" [ref=e58] [cursor=pointer]:
+          - /url: /test-builder
+          - img [ref=e59]
+          - generic [ref=e66]: Test builder
+        - link "Reports" [ref=e67] [cursor=pointer]:
+          - /url: /reports
+          - img [ref=e68]
+          - generic [ref=e70]: Reports
+        - link "Suites" [ref=e71] [cursor=pointer]:
+          - /url: /suite/playwright-ts
+          - img [ref=e72]
+          - generic [ref=e74]: Suites
+        - link "Pricing" [ref=e75] [cursor=pointer]:
+          - /url: /pricing
+          - img [ref=e76]
+          - generic [ref=e79]: Pricing
+        - link "Contact" [ref=e80] [cursor=pointer]:
+          - /url: /contact
+          - img [ref=e81]
+          - generic [ref=e84]: Contact
+    - main [ref=e85]:
+      - generic [ref=e87]:
+        - generic [ref=e88]:
+          - heading "Pricing" [level=1] [ref=e89]
+          - paragraph [ref=e90]: Pick a plan and start shipping. Upgrade as your team grows.
+        - generic [ref=e91]:
+          - generic [ref=e92]:
+            - generic [ref=e93]:
+              - generic [ref=e94]: Free
+              - generic [ref=e95]: $0/mo
+              - paragraph [ref=e96]: For solo devs testing the waters
+            - generic [ref=e97]:
+              - list [ref=e98]:
+                - listitem [ref=e99]:
+                  - img [ref=e100]
+                  - text: 50 runs/month
+                - listitem [ref=e102]:
+                  - img [ref=e103]
+                  - text: 1 project
+                - listitem [ref=e105]:
+                  - img [ref=e106]
+                  - text: AI generation (limited)
+                - listitem [ref=e108]:
+                  - img [ref=e109]
+                  - text: No self-heal
+                - listitem [ref=e111]:
+                  - img [ref=e112]
+                  - text: No security scanning
+              - link "Start free" [ref=e114] [cursor=pointer]:
+                - /url: /signup?plan=free
+          - generic [ref=e115]:
+            - generic [ref=e116]:
+              - generic [ref=e117]: Starter / Solo
+              - generic [ref=e118]: $39/mo
+              - paragraph [ref=e119]: For individual testers or devs
+            - generic [ref=e120]:
+              - list [ref=e121]:
+                - listitem [ref=e122]:
+                  - img [ref=e123]
+                  - text: 300 runs/month
+                - listitem [ref=e125]:
+                  - img [ref=e126]
+                  - text: 3 projects
+                - listitem [ref=e128]:
+                  - img [ref=e129]
+                  - text: Basic scans
+                - listitem [ref=e131]:
+                  - img [ref=e132]
+                  - text: No self-heal
+                - listitem [ref=e134]:
+                  - img [ref=e135]
+                  - text: No Slack reports
+              - link "Start Solo" [ref=e137] [cursor=pointer]:
+                - /url: /signup?plan=starter
+          - generic [ref=e138]:
+            - generic [ref=e139]: Popular
+            - generic [ref=e140]:
+              - generic [ref=e141]: Pro
+              - generic [ref=e142]: $99/mo
+              - paragraph [ref=e143]: For small teams
+            - generic [ref=e144]:
+              - list [ref=e145]:
+                - listitem [ref=e146]:
+                  - img [ref=e147]
+                  - text: 2,000 runs/month
+                - listitem [ref=e149]:
+                  - img [ref=e150]
+                  - text: 10 projects
+                - listitem [ref=e152]:
+                  - img [ref=e153]
+                  - text: Parallel runs
+                - listitem [ref=e155]:
+                  - img [ref=e156]
+                  - text: Security scans
+                - listitem [ref=e158]:
+                  - img [ref=e159]
+                  - text: Slack / email alerts
+                - listitem [ref=e161]:
+                  - img [ref=e162]
+                  - text: Self-heal suggestions
+                - listitem [ref=e164]:
+                  - img [ref=e165]
+                  - text: Test insights dashboard
+              - link "Start Pro" [ref=e167] [cursor=pointer]:
+                - /url: /signup?plan=pro
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - generic [ref=e170]: Team
+              - generic [ref=e171]: $249/mo
+              - paragraph [ref=e172]: For engineering teams with CI pipelines
+            - generic [ref=e173]:
+              - list [ref=e174]:
+                - listitem [ref=e175]:
+                  - img [ref=e176]
+                  - text: 10,000 runs/month
+                - listitem [ref=e178]:
+                  - img [ref=e179]
+                  - text: Unlimited projects
+                - listitem [ref=e181]:
+                  - img [ref=e182]
+                  - text: SAML SSO
+                - listitem [ref=e184]:
+                  - img [ref=e185]
+                  - text: Audit logs
+                - listitem [ref=e187]:
+                  - img [ref=e188]
+                  - text: Priority support
+                - listitem [ref=e190]:
+                  - img [ref=e191]
+                  - text: AI-heal patches
+                - listitem [ref=e193]:
+                  - img [ref=e194]
+                  - text: Multi-user access
+                - listitem [ref=e196]:
+                  - img [ref=e197]
+                  - text: Multi-tenant
+              - link "Contact sales" [ref=e199] [cursor=pointer]:
+                - /url: /signup?plan=team
+  - region "Notifications alt+T"
+```

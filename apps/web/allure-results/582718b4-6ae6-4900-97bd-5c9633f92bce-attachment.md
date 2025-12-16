@@ -1,0 +1,385 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e6]:
+        - link "TestMind AI" [ref=e7] [cursor=pointer]:
+          - /url: /
+        - navigation [ref=e8]:
+          - link "Pricing" [ref=e9] [cursor=pointer]:
+            - /url: /pricing
+          - link "Contact" [ref=e10] [cursor=pointer]:
+            - /url: /contact
+    - complementary [ref=e11]:
+      - generic [ref=e12]:
+        - link "Dashboard" [ref=e13] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e14]
+          - generic [ref=e19]: Dashboard
+        - link "Scan pages" [ref=e20] [cursor=pointer]:
+          - /url: /agent
+          - img [ref=e21]
+          - generic [ref=e24]: Scan pages
+        - link "Agent sessions" [ref=e25] [cursor=pointer]:
+          - /url: /agent/sessions
+          - img [ref=e26]
+          - generic [ref=e29]: Agent sessions
+        - link "QA agent" [ref=e30] [cursor=pointer]:
+          - /url: /qa-agent
+          - img [ref=e31]
+          - generic [ref=e34]: QA agent
+        - link "Security scan" [ref=e35] [cursor=pointer]:
+          - /url: /security-scan
+          - img [ref=e36]
+          - generic [ref=e38]: Security scan
+        - link "Projects" [ref=e39] [cursor=pointer]:
+          - /url: /projects
+          - img [ref=e40]
+          - generic [ref=e42]: Projects
+        - link "Integrations" [ref=e43] [cursor=pointer]:
+          - /url: /integrations
+          - img [ref=e44]
+          - generic [ref=e47]: Integrations
+        - link "Recorder" [ref=e48] [cursor=pointer]:
+          - /url: /recorder
+          - img [ref=e49]
+          - generic [ref=e54]: Recorder
+        - link "Test builder" [ref=e55] [cursor=pointer]:
+          - /url: /test-builder
+          - img [ref=e56]
+          - generic [ref=e63]: Test builder
+        - link "Reports" [ref=e64] [cursor=pointer]:
+          - /url: /reports
+          - img [ref=e65]
+          - generic [ref=e67]: Reports
+        - link "Suites" [ref=e68] [cursor=pointer]:
+          - /url: /suite/playwright-ts
+          - img [ref=e69]
+          - generic [ref=e71]: Suites
+        - link "Pricing" [ref=e72] [cursor=pointer]:
+          - /url: /pricing
+          - img [ref=e73]
+          - generic [ref=e76]: Pricing
+        - link "Contact" [ref=e77] [cursor=pointer]:
+          - /url: /contact
+          - img [ref=e78]
+          - generic [ref=e81]: Contact
+    - main [ref=e82]:
+      - generic [ref=e83]:
+        - generic [ref=e85]:
+          - link "TestMind AI" [ref=e86] [cursor=pointer]:
+            - /url: /
+            - img [ref=e88]
+            - generic [ref=e91]: TestMind AI
+          - navigation [ref=e92]:
+            - link "Features" [ref=e93] [cursor=pointer]:
+              - /url: /#features
+            - link "How it works" [ref=e94] [cursor=pointer]:
+              - /url: /#how
+            - link "Pricing" [ref=e95] [cursor=pointer]:
+              - /url: /#pricing
+            - link "FAQ" [ref=e96] [cursor=pointer]:
+              - /url: /#faq
+          - link "Sign in" [ref=e98] [cursor=pointer]:
+            - /url: /signin
+        - generic [ref=e100]:
+          - generic [ref=e101]:
+            - heading "Ship reliable tests in minutes, not weeks." [level=1] [ref=e102]
+            - paragraph [ref=e103]: TestMind is an autonomous QA agent that generates Playwright tests from stories or PRs, runs them in CI, and self-heals brittle selectors with AI.
+            - link "View on GitHub" [ref=e105] [cursor=pointer]:
+              - /url: https://github.com/your-org/your-repo
+              - img
+              - text: View on GitHub
+            - list [ref=e106]:
+              - listitem [ref=e107]:
+                - img [ref=e108]
+                - text: Generate tests from PRs & stories
+              - listitem [ref=e110]:
+                - img [ref=e111]
+                - text: Auto-run in GitHub Actions
+              - listitem [ref=e113]:
+                - img [ref=e114]
+                - text: AI self-healing selectors
+              - listitem [ref=e116]:
+                - img [ref=e117]
+                - text: Slack & email reports
+          - generic [ref=e120]:
+            - generic [ref=e121]:
+              - generic [ref=e122]: "PR #128 • e2e auto-generated"
+              - generic [ref=e123]: "import { test, expect } from '@playwright/test'; test('checkout flow', async ({ page }) => { await page.goto('https://demo.testmind.dev'); await page.getByRole('button', { name: 'Add to cart' }).click(); await page.getByRole('button', { name: 'Checkout' }).click(); await expect(page.getByRole('heading', { name: /Order confirmed/i })).toBeVisible(); });"
+            - generic [ref=e124]:
+              - generic [ref=e125]: PR opened → tests generated
+              - generic [ref=e126]: "CI run: 12 passed"
+              - generic [ref=e127]: 1 fixed by self-heal
+        - generic [ref=e128]:
+          - paragraph [ref=e129]: Trusted by builders from
+          - generic [ref=e130]:
+            - generic [ref=e131]: Acme
+            - generic [ref=e132]: Globex
+            - generic [ref=e133]: Initech
+            - generic [ref=e134]: Umbrella
+            - generic [ref=e135]: Stark
+            - generic [ref=e136]: Wayne
+        - generic [ref=e138]:
+          - heading "Built for speed • Designed for reliability" [level=2] [ref=e139]
+          - paragraph [ref=e140]: Everything you need to automate end-to-end testing from day one — without wrestling brittle scripts.
+          - generic [ref=e141]:
+            - generic [ref=e142]:
+              - generic [ref=e143]:
+                - img [ref=e145]
+                - generic [ref=e149]: PR-aware generation
+              - generic [ref=e150]: Turn PR diffs & stories into runnable Playwright tests.
+            - generic [ref=e151]:
+              - generic [ref=e152]:
+                - img [ref=e154]
+                - generic [ref=e156]: Self-healing tests
+              - generic [ref=e157]: AI proposes minimal patches for flaky selectors & waits.
+            - generic [ref=e158]:
+              - generic [ref=e159]:
+                - img [ref=e161]
+                - generic [ref=e163]: CI-first
+              - generic [ref=e164]: Runs in GitHub Actions or your CI — no vendor lock-in.
+            - generic [ref=e165]:
+              - generic [ref=e166]:
+                - img [ref=e168]
+                - generic [ref=e171]: Stability analytics
+              - generic [ref=e172]: Track pass rate, flakiness, and MTTR over time.
+            - generic [ref=e173]:
+              - generic [ref=e174]:
+                - img [ref=e176]
+                - generic [ref=e179]: Governance-ready
+              - generic [ref=e180]: Secretless design with cloud secret managers + audit logs.
+            - generic [ref=e181]:
+              - generic [ref=e182]:
+                - img [ref=e184]
+                - generic [ref=e187]: Proactive alerts
+              - generic [ref=e188]: Slack & email digests with actionable diffs.
+        - generic [ref=e191]:
+          - generic [ref=e192]:
+            - heading "From PR → passing tests in minutes" [level=2] [ref=e193]
+            - paragraph [ref=e194]: No brittle boilerplate. Use role-based locators, stable attributes, and AI guardrails by default.
+            - list [ref=e195]:
+              - listitem [ref=e196]:
+                - generic [ref=e197]: "1"
+                - generic [ref=e198]:
+                  - generic [ref=e199]: Connect your repo
+                  - generic [ref=e200]: Install the GitHub app and pick branches to watch.
+              - listitem [ref=e201]:
+                - generic [ref=e202]: "2"
+                - generic [ref=e203]:
+                  - generic [ref=e204]: Open a PR or paste a story
+                  - generic [ref=e205]: We parse diffs / specs and generate Playwright tests.
+              - listitem [ref=e206]:
+                - generic [ref=e207]: "3"
+                - generic [ref=e208]:
+                  - generic [ref=e209]: Run & self-heal
+                  - generic [ref=e210]: CI executes tests; AI patches flaky selectors with diffs for review.
+          - generic [ref=e211]:
+            - generic [ref=e213]: CI run summary
+            - generic [ref=e214]:
+              - generic [ref=e215]:
+                - generic [ref=e216]:
+                  - generic [ref=e217]: Total tests
+                  - generic [ref=e218]: "124"
+                - generic [ref=e219]:
+                  - generic [ref=e220]: Pass rate (7d)
+                  - generic [ref=e221]: 97%
+                - generic [ref=e222]:
+                  - generic [ref=e223]: Self-healed
+                  - generic [ref=e224]: 8 patches
+                - generic [ref=e225]:
+                  - generic [ref=e226]: Avg. run time
+                  - generic [ref=e227]: 4m 12s
+              - generic [ref=e228]:
+                - generic [ref=e229]: patch.diff
+                - generic [ref=e230]: "--- a/tests/ai/checkout.spec.ts +++ b/tests/ai/checkout.spec.ts @@ - await page.click('#buy'); + await page.getByRole('button', { name: /Add to cart/i }).click(); + await expect(page.getByRole('button', { name: /Checkout/i })).toBeEnabled();"
+        - generic [ref=e233]:
+          - generic [ref=e234]:
+            - heading "Why teams switch to TestMind" [level=3] [ref=e235]
+            - paragraph [ref=e236]: "Real ROI from day one: less manual scripting, cleaner CI signals, and AI that proposes safe, minimal diffs."
+          - list [ref=e237]:
+            - listitem [ref=e238]:
+              - img [ref=e239]
+              - text: Cuts authoring time by 80%+
+            - listitem [ref=e241]:
+              - img [ref=e242]
+              - text: Reduces flaky test noise
+            - listitem [ref=e244]:
+              - img [ref=e245]
+              - text: Works with your CI & repo
+            - listitem [ref=e247]:
+              - img [ref=e248]
+              - text: "Security-first: no raw tokens stored"
+        - generic [ref=e251]:
+          - heading "Simple, transparent pricing" [level=2] [ref=e252]
+          - paragraph [ref=e253]: Start free. Upgrade when your team is ready.
+          - generic [ref=e254]:
+            - generic [ref=e255]:
+              - generic [ref=e256]:
+                - generic [ref=e257]: Free
+                - generic [ref=e258]: $0/mo
+                - paragraph [ref=e259]: For solo devs testing the waters
+              - list [ref=e261]:
+                - listitem [ref=e262]:
+                  - img [ref=e263]
+                  - text: 50 runs/month
+                - listitem [ref=e265]:
+                  - img [ref=e266]
+                  - text: 1 project
+                - listitem [ref=e268]:
+                  - img [ref=e269]
+                  - text: AI generation (limited)
+                - listitem [ref=e271]:
+                  - img [ref=e272]
+                  - text: No self-heal
+                - listitem [ref=e274]:
+                  - img [ref=e275]
+                  - text: No security scanning
+            - generic [ref=e277]:
+              - generic [ref=e278]:
+                - generic [ref=e279]: Starter / Solo
+                - generic [ref=e280]: $39/mo
+                - paragraph [ref=e281]: For individual testers or devs
+              - list [ref=e283]:
+                - listitem [ref=e284]:
+                  - img [ref=e285]
+                  - text: 300 runs/month
+                - listitem [ref=e287]:
+                  - img [ref=e288]
+                  - text: 3 projects
+                - listitem [ref=e290]:
+                  - img [ref=e291]
+                  - text: Basic scans
+                - listitem [ref=e293]:
+                  - img [ref=e294]
+                  - text: No self-heal
+                - listitem [ref=e296]:
+                  - img [ref=e297]
+                  - text: No Slack reports
+            - generic [ref=e299]:
+              - generic [ref=e300]: Popular
+              - generic [ref=e301]:
+                - generic [ref=e302]: Pro
+                - generic [ref=e303]: $99/mo
+                - paragraph [ref=e304]: For small teams
+              - list [ref=e306]:
+                - listitem [ref=e307]:
+                  - img [ref=e308]
+                  - text: 2,000 runs/month
+                - listitem [ref=e310]:
+                  - img [ref=e311]
+                  - text: 10 projects
+                - listitem [ref=e313]:
+                  - img [ref=e314]
+                  - text: Parallel runs
+                - listitem [ref=e316]:
+                  - img [ref=e317]
+                  - text: Security scans
+                - listitem [ref=e319]:
+                  - img [ref=e320]
+                  - text: Slack / email alerts
+                - listitem [ref=e322]:
+                  - img [ref=e323]
+                  - text: Self-heal suggestions
+                - listitem [ref=e325]:
+                  - img [ref=e326]
+                  - text: Test insights dashboard
+            - generic [ref=e328]:
+              - generic [ref=e329]:
+                - generic [ref=e330]: Team
+                - generic [ref=e331]: $249/mo
+                - paragraph [ref=e332]: For engineering teams with CI pipelines
+              - list [ref=e334]:
+                - listitem [ref=e335]:
+                  - img [ref=e336]
+                  - text: 10,000 runs/month
+                - listitem [ref=e338]:
+                  - img [ref=e339]
+                  - text: Unlimited projects
+                - listitem [ref=e341]:
+                  - img [ref=e342]
+                  - text: SAML SSO
+                - listitem [ref=e344]:
+                  - img [ref=e345]
+                  - text: Audit logs
+                - listitem [ref=e347]:
+                  - img [ref=e348]
+                  - text: Priority support
+                - listitem [ref=e350]:
+                  - img [ref=e351]
+                  - text: AI-heal patches
+                - listitem [ref=e353]:
+                  - img [ref=e354]
+                  - text: Multi-user access
+                - listitem [ref=e356]:
+                  - img [ref=e357]
+                  - text: Multi-tenant
+        - generic [ref=e360]:
+          - heading "Loved by fast‑moving teams" [level=2] [ref=e361]
+          - generic [ref=e362]:
+            - generic [ref=e364]:
+              - text: “We turned flaky chaos into stable runs. The AI patches are shockingly good.”
+              - generic [ref=e365]: — Priya S., QA Lead @ Fintech
+            - generic [ref=e367]:
+              - text: “Cut our authoring time by ~70%. PR-to-test automation sold the team instantly.”
+              - generic [ref=e368]: — Marc D., VP Eng @ SaaS
+        - generic [ref=e369]:
+          - heading "Frequently asked questions" [level=2] [ref=e370]
+          - generic [ref=e371]:
+            - heading "Do you commit tests to our repo?" [level=3] [ref=e373]:
+              - button "Do you commit tests to our repo?" [ref=e374] [cursor=pointer]:
+                - text: Do you commit tests to our repo?
+                - img [ref=e375]
+            - heading "Will you store our secrets?" [level=3] [ref=e378]:
+              - button "Will you store our secrets?" [ref=e379] [cursor=pointer]:
+                - text: Will you store our secrets?
+                - img [ref=e380]
+            - heading "Which frameworks do you support?" [level=3] [ref=e383]:
+              - button "Which frameworks do you support?" [ref=e384] [cursor=pointer]:
+                - text: Which frameworks do you support?
+                - img [ref=e385]
+            - heading "How does self-heal work?" [level=3] [ref=e388]:
+              - button "How does self-heal work?" [ref=e389] [cursor=pointer]:
+                - text: How does self-heal work?
+                - img [ref=e390]
+        - generic [ref=e393]:
+          - heading "Ready to slash QA time and ship faster?" [level=3] [ref=e394]
+          - paragraph [ref=e395]: Get started in minutes. Connect your repo, open a PR, and watch tests appear.
+          - link "Book a demo" [ref=e397] [cursor=pointer]:
+            - /url: /contact
+        - generic [ref=e399]:
+          - generic [ref=e400]:
+            - generic [ref=e401]:
+              - generic [ref=e402]:
+                - img [ref=e404]
+                - generic [ref=e407]: TestMind AI
+              - paragraph [ref=e408]: Autonomous QA agents for modern teams.
+            - generic [ref=e409]:
+              - generic [ref=e410]: Product
+              - list [ref=e411]:
+                - listitem [ref=e412]:
+                  - link "Features" [ref=e413] [cursor=pointer]:
+                    - /url: /#features
+                - listitem [ref=e414]:
+                  - link "Pricing" [ref=e415] [cursor=pointer]:
+                    - /url: /#pricing
+                - listitem [ref=e416]:
+                  - link "How it works" [ref=e417] [cursor=pointer]:
+                    - /url: /#how
+            - generic [ref=e418]:
+              - generic [ref=e419]: Company
+              - list [ref=e420]:
+                - listitem [ref=e421]:
+                  - link "Docs" [ref=e422] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e423]:
+                  - link "Security" [ref=e424] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e425]:
+                  - link "Contact" [ref=e426] [cursor=pointer]:
+                    - /url: "#"
+          - generic [ref=e427]: © 2025 TestMind AI. All rights reserved.
+  - region "Notifications alt+T"
+```

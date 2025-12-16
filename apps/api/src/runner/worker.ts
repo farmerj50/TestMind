@@ -45,7 +45,7 @@ export const worker = new Worker(
 
     const run = await prisma.testRun.findUnique({
       where: { id: runId },
-      include: {
+      select: {
         project: { select: { id: true, ownerId: true, repoUrl: true } },
         paramsJson: true,
       },
@@ -53,6 +53,14 @@ export const worker = new Worker(
     if (!run || !run.project?.repoUrl) {
       throw new Error('Run or project/repoUrl not found');
     }
+
+    await prisma.testRun.update({
+      where: { id: runId },
+      data: {
+        status: TestRunStatus.running,
+        startedAt: new Date(),
+      },
+    });
 
     const project = run.project;
     const runParams = (run.paramsJson as Record<string, any> | undefined) ?? undefined;
@@ -87,28 +95,37 @@ export const worker = new Worker(
       // 3) Detect + run
       const framework = await detectFramework(work);
       const resultsPath = path.join(outDir, 'report.json');
+      const webDir = path.join(work, 'apps', 'web');
       const extraGlobs: string[] = [];
       const grep = payload?.grep;
-      if (fileTarget) {
-        const abs = path.isAbsolute(fileTarget) ? fileTarget : path.join(work, fileTarget);
-        const rel = path.relative(work, abs).replace(/\\/g, "/");
+      const normalizedFileTarget = fileTarget?.replace(/\\/g, "/");
+      let specPath = normalizedFileTarget;
+      if (specPath?.startsWith("apps/web/")) {
+        specPath = specPath.slice("apps/web/".length);
+      }
+      if (specPath) {
+        const abs = path.isAbsolute(specPath) ? specPath : path.join(webDir, specPath);
+        const rel = path.relative(webDir, abs).replace(/\\/g, "/");
         extraGlobs.push(rel);
       }
+      const loggedFile = specPath ?? normalizedFileTarget ?? fileTarget ?? "";
 
       const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
+      const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const exec = await runTests({
-        workdir: work,
+        workdir: webDir,
         jsonOutPath: resultsPath,
         headed: payload?.headed,
         grep,
         extraGlobs,
         baseUrl: jobBaseUrl,
+        runTimeout: timeoutMs,
       });
 
       // write logs
       await fs.writeFile(
         path.join(outDir, "stdout.txt"),
-        `[worker] headful=${payload?.headed ? "true" : "false"} file=${fileTarget || ""} grep=${grep || ""} baseUrl=${jobBaseUrl}\n${exec.stdout ?? ""}`,
+        `[worker] headful=${payload?.headed ? "true" : "false"} file=${loggedFile} grep=${grep || ""} baseUrl=${jobBaseUrl}\n${exec.stdout ?? ""}`,
         { flag: "w" }
       );
       await fs.writeFile(path.join(outDir, 'stderr.txt'), exec.stderr ?? '');

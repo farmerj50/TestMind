@@ -23,21 +23,26 @@ function requireUser(req: any, reply: any) {
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 const RUNNER_PATH = path.join(REPO_ROOT, "apps", "api", "src", "runner", "bot.ts");
 const RUNS_DIR = path.join(REPO_ROOT, "apps", "api", "runs");
+const GENERATED_ROOT =
+  process.env.TM_GENERATED_ROOT
+    ? path.resolve(process.env.TM_GENERATED_ROOT)
+    : path.join(REPO_ROOT, "testmind-generated");
 
 async function writeJson(file: string, data: any) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(data, null, 2));
 }
 
-async function startGeneratedRun(runId: string, projectId: string, caseId?: string) {
+async function startGeneratedRun(runId: string, projectId: string, userId: string, caseId?: string) {
   const runDir = path.join(RUNS_DIR, runId);
   const workspaceRoot = path.join(os.tmpdir(), "tm-runner");
   const workspaceDir = path.join(workspaceRoot, runId);
-  const projectRecord = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { sharedSteps: true },
+      const projectRecord = await prisma.project.findUnique({
+        where: { id: projectId },
+    select: { sharedSteps: true, ownerId: true },
   });
-  const projectSharedSteps = projectRecord?.sharedSteps;
+      const projectSharedSteps = projectRecord?.sharedSteps;
+      const adapterId = "playwright-ts";
   // Kick off background work (no blocking)
   (async () => {
     try {
@@ -61,7 +66,7 @@ async function startGeneratedRun(runId: string, projectId: string, caseId?: stri
         comment: { body: `/testmind ${command}` },
       });
 
-      const env = {
+      const env: NodeJS.ProcessEnv = {
         ...process.env,
         GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY ?? "owner/repo",
         GITHUB_EVENT_NAME: "issue_comment",
@@ -127,6 +132,15 @@ ${pre}${stepLines}
           env,
           stdio: "inherit",
         });
+        const generatedFolder = path.join(REPO_ROOT, "testmind-generated");
+        const userGeneratedDir = path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
+        await fs.rm(userGeneratedDir, { recursive: true, force: true }).catch(() => {});
+        await fs.mkdir(userGeneratedDir, { recursive: true });
+        await fs.cp(generatedFolder, userGeneratedDir, { recursive: true });
+        const webGeneratedDir = path.join(REPO_ROOT, "apps", "web", "testmind-generated", `${adapterId}-${userId}`);
+        await fs.rm(webGeneratedDir, { recursive: true, force: true }).catch(() => {});
+        await fs.mkdir(webGeneratedDir, { recursive: true });
+        await fs.cp(generatedFolder, webGeneratedDir, { recursive: true });
       }
       // Ensure at least one spec exists in the run folder to avoid "No tests found"
       if (!manualSpecDir) {
@@ -292,7 +306,7 @@ export async function testRoutes(app: FastifyInstance) {
       data: { summary: `Generate tests (run ${run.id})` },
     });
 
-    await startGeneratedRun(updatedRun.id, projectId);
+    await startGeneratedRun(updatedRun.id, projectId, userId);
 
     return reply.send({ run: updatedRun });
   });
@@ -692,7 +706,7 @@ export async function testRoutes(app: FastifyInstance) {
         data: { lastAiSyncAt: new Date() },
       });
 
-      await startGeneratedRun(updatedRun.id, tc.projectId, tc.id);
+      await startGeneratedRun(updatedRun.id, tc.projectId, userId, tc.id);
 
       reply.code(202).send({ runId: updatedRun.id });
     }

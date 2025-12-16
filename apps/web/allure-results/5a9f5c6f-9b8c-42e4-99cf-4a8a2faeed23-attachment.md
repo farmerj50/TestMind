@@ -1,0 +1,73 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "TestMind AI" [ref=e7] [cursor=pointer]:
+            - /url: /
+          - navigation [ref=e8]:
+            - link "Pricing" [ref=e9] [cursor=pointer]:
+              - /url: /pricing
+            - link "Contact" [ref=e10] [cursor=pointer]:
+              - /url: /contact
+        - generic [ref=e11]:
+          - link "Sign in" [ref=e12] [cursor=pointer]:
+            - /url: /signin
+          - button "Get started" [ref=e13] [cursor=pointer]
+    - main [ref=e14]:
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e19]:
+            - heading "Create your account" [level=1] [ref=e20]
+            - paragraph [ref=e21]: Welcome! Please fill in the details to get started.
+          - generic [ref=e22]:
+            - button "Sign in with Google Continue with Google" [ref=e25] [cursor=pointer]:
+              - generic [ref=e26]:
+                - img "Sign in with Google" [ref=e28]
+                - generic [ref=e29]: Continue with Google
+            - paragraph [ref=e32]: or
+            - generic [ref=e34]:
+              - generic [ref=e35]:
+                - generic [ref=e36]:
+                  - generic [ref=e38]:
+                    - generic [ref=e39]:
+                      - generic [ref=e40]: First name
+                      - generic [ref=e41]: Optional
+                    - textbox "First name" [ref=e42]
+                  - generic [ref=e45]:
+                    - generic [ref=e46]:
+                      - generic [ref=e47]: Last name
+                      - generic [ref=e48]: Optional
+                    - textbox "Last name" [ref=e49]
+                - generic [ref=e53]:
+                  - generic [ref=e55]: Email address
+                  - textbox "Email address" [ref=e56]:
+                    - /placeholder: Enter your email address
+                - generic [ref=e60]:
+                  - generic [ref=e62]: Password
+                  - generic [ref=e63]:
+                    - textbox "Password" [ref=e64]:
+                      - /placeholder: Enter your password
+                    - button "Show password" [ref=e65] [cursor=pointer]:
+                      - img [ref=e66]
+              - button "Continue" [ref=e72] [cursor=pointer]:
+                - generic [ref=e73]:
+                  - text: Continue
+                  - img [ref=e74]
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - generic [ref=e78]: Already have an account?
+            - link "Sign in" [ref=e79] [cursor=pointer]:
+              - /url: http://localhost:4173/signin
+          - generic [ref=e81]:
+            - generic [ref=e83]:
+              - paragraph [ref=e84]: Secured by
+              - link "Clerk logo" [ref=e85] [cursor=pointer]:
+                - /url: https://go.clerk.com/components
+                - img [ref=e86]
+            - paragraph [ref=e91]: Development mode
+  - region "Notifications alt+T"
+```
