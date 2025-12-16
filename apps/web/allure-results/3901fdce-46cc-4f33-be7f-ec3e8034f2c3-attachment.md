@@ -1,0 +1,56 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "⚖️ JusticePath" [ref=e6] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e7]:
+        - link "Home" [ref=e8] [cursor=pointer]:
+          - /url: /
+        - button "Start a Case" [ref=e10] [cursor=pointer]:
+          - text: Start a Case
+          - img [ref=e11]
+        - button "My Documents" [ref=e13] [cursor=pointer]
+        - link "Live Chat" [ref=e14] [cursor=pointer]:
+          - /url: /live-chat
+        - link "Pricing" [ref=e15] [cursor=pointer]:
+          - /url: /pricing
+        - link "Login" [ref=e16] [cursor=pointer]:
+          - /url: /login
+        - link "Sign Up" [ref=e17] [cursor=pointer]:
+          - /url: /signup
+        - button "Settings" [ref=e19] [cursor=pointer]:
+          - img [ref=e20]
+  - navigation [ref=e23]:
+    - generic [ref=e24]:
+      - link "⚖️ JusticePath" [ref=e25] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e26]:
+        - link "Home" [ref=e27] [cursor=pointer]:
+          - /url: /
+        - button "Start a Case" [ref=e29] [cursor=pointer]:
+          - text: Start a Case
+          - img [ref=e30]
+        - button "My Documents" [ref=e32] [cursor=pointer]
+        - link "Live Chat" [ref=e33] [cursor=pointer]:
+          - /url: /live-chat
+        - link "Pricing" [ref=e34] [cursor=pointer]:
+          - /url: /pricing
+        - link "Login" [ref=e35] [cursor=pointer]:
+          - /url: /login
+        - link "Sign Up" [ref=e36] [cursor=pointer]:
+          - /url: /signup
+        - button "Settings" [ref=e38] [cursor=pointer]:
+          - img [ref=e39]
+  - generic [ref=e43]:
+    - heading "Login" [level=2] [ref=e44]
+    - textbox "Email Address" [ref=e45]
+    - textbox "Password" [ref=e46]
+    - button "Login" [ref=e47] [cursor=pointer]
+    - paragraph [ref=e48]:
+      - text: Don't have an account?
+      - link "Sign up" [ref=e49] [cursor=pointer]:
+        - /url: /signup
+```

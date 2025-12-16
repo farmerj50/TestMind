@@ -1,0 +1,48 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "⚖️ JusticePath" [ref=e6] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e7]:
+        - link "Home" [ref=e8] [cursor=pointer]:
+          - /url: /
+        - button "Start a Case" [ref=e10] [cursor=pointer]:
+          - text: Start a Case
+          - img [ref=e11]
+        - button "My Documents" [ref=e13] [cursor=pointer]
+        - link "Live Chat" [ref=e14] [cursor=pointer]:
+          - /url: /live-chat
+        - link "Pricing" [ref=e15] [cursor=pointer]:
+          - /url: /pricing
+        - link "Login" [ref=e16] [cursor=pointer]:
+          - /url: /login
+        - link "Sign Up" [ref=e17] [cursor=pointer]:
+          - /url: /signup
+        - button "Settings" [ref=e19] [cursor=pointer]:
+          - img [ref=e20]
+  - generic [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - textbox "Jurisdiction (e.g., Atlanta, GA)" [ref=e27]
+        - combobox [ref=e28]:
+          - option "Court mode" [selected]
+          - option "Normal"
+        - combobox [ref=e29]:
+          - option "tenant" [selected]
+          - option "landlord"
+          - option "plaintiff"
+          - option "defendant"
+      - paragraph [ref=e30]: ⚠️ Make sure recording is allowed where you are. Many courts forbid recording devices.
+      - generic [ref=e31]:
+        - button "Enable microphone" [ref=e32] [cursor=pointer]
+        - button "Send to AI" [disabled] [ref=e33]
+      - generic [ref=e34]:
+        - generic [ref=e35]: Live Transcript
+        - generic [ref=e36]: —
+    - generic [ref=e37]:
+      - generic [ref=e38]: Advice & Drafts
+      - generic [ref=e40]: Nothing yet—speak and click “Send to AI”.
+```

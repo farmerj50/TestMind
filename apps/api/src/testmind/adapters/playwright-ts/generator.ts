@@ -42,8 +42,10 @@ type ResolvedLoginConfig = {
 
 const SHARED_STEPS_ENV = "TM_PROJECT_SHARED_STEPS";
 const DEFAULT_LOGIN_CONFIG: ResolvedLoginConfig = {
-  usernameSelector: 'input[name="username"], input[name="email"], #username, #email',
-  passwordSelector: 'input[name="password"], #password',
+  usernameSelector:
+    'input[placeholder="Email Address"], input[name="email"], input[type="email"], input[name="username"], #username, #email',
+  passwordSelector:
+    'input[placeholder="Password"], input[name="password"], input[type="password"], #password',
   submitSelector: 'button[type="submit"], button:has-text("Login"), button:has-text("Sign in")',
   usernameEnv: "USERNAME",
   passwordEnv: "PASSWORD",
@@ -132,7 +134,8 @@ function emitAction(step: Step): string {
     case "goto":
       {
         const rel = toRelativeTarget(step.url);
-        return `await navigateTo(page, ${JSON.stringify(rel)});`;
+        return `await navigateTo(page, ${JSON.stringify(rel)});
+  await ensurePageIdentity(page, ${JSON.stringify(rel)});`;
       }
     case "expect-text":
       return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });`;
@@ -204,7 +207,7 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
   const navTarget = toRelativeTarget(tc.group?.url || pagePath);
   const preNav = hasGoto
     ? ""
-    : `  // Auto-nav added because no explicit goto step was provided\n  await navigateTo(page, ${JSON.stringify(navTarget)});\n`;
+    : `  // Auto-nav added because no explicit goto step was provided\n  await navigateTo(page, ${JSON.stringify(navTarget)});\n  await ensurePageIdentity(page, ${JSON.stringify(navTarget)});\n`;
 
   const needsLogin =
     /login/i.test(tc.name) ||
@@ -259,22 +262,65 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "",
     "const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';",
     "",
-    `const SHARED_LOGIN_CONFIG = ${JSON.stringify(loginConfig, null, 2)};`,
+    "type IdentityDescriptor =",
+    "  | { kind: 'role'; role: string; name: string }",
+    "  | { kind: 'text'; text: string }",
+    "  | { kind: 'locator'; selector: string };",
     "",
-    "function escapeForRegex(value: string) {",
-    "  return value.replace(/[.*+?^${}()|[\\\\]\\\\]/g, '\\\\$&');",
-    "}",
+    "const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {",
+    "  '/': { kind: 'role', role: 'heading', name: 'Accessible Legal Help for Everyone' },",
+    "  '/login': { kind: 'role', role: 'heading', name: 'Login' },",
+    "  '/signup': { kind: 'role', role: 'heading', name: 'Sign Up' },",
+    "  '/case-type-selection': { kind: 'text', text: \"Select the type of legal issue you're dealing with:\" },",
+    "  '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },",
+    "};",
     "",
-    "async function navigateTo(page: Page, target: string) {",
-    "  const url = new URL(target, BASE_URL);",
-    "  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });",
-    "  if (target.startsWith('/')) {",
-    "    const pathRe = target === '/' ? '/?' : `${target}/?`;",
-    "    await expect(page).toHaveURL(new RegExp(`^(https?:\\\\/\\\\/[^/]+)?${escapeForRegex(pathRe)}(?:\\\\?.*)?$`));",
-    "  } else {",
-    "    await expect(page).toHaveURL(target);",
+    "const IDENTITY_CHECK_TIMEOUT = 10000;",
+    "",
+    "function normalizeIdentityPath(target: string): string {",
+    "  if (!target) return '/';",
+    "  try {",
+    "    const parsed = new URL(target, BASE_URL);",
+    "    const path = parsed.pathname || '/';",
+    "    const search = parsed.search || '';",
+    "    return `${path}${search}` || '/';",
+    "  } catch {",
+    "    if (target.startsWith('/')) return target;",
+    "    return `/${target}`;",
     "  }",
     "}",
+    "",
+    "async function ensurePageIdentity(page: Page, target: string) {",
+    "  const normalized = normalizeIdentityPath(target);",
+    "  let identity = PAGE_IDENTITIES[normalized];",
+    "  if (!identity) {",
+    "    const withoutQuery = normalized.split('?')[0] || normalized;",
+    "    identity = PAGE_IDENTITIES[withoutQuery];",
+    "  }",
+    "  if (!identity) return;",
+    "  switch (identity.kind) {",
+    "    case 'role':",
+    "      await expect(page.getByRole(identity.role, { name: identity.name })).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      break;",
+    "    case 'text':",
+    "      await expect(page.getByText(identity.text)).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      break;",
+    "    case 'locator': {",
+    "      const locator = page.locator(identity.selector);",
+    "      await locator.waitFor({ state: 'visible', timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      await expect(locator).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      break;",
+    "    }",
+    "  }",
+    "}",
+    "",
+    `const SHARED_LOGIN_CONFIG = ${JSON.stringify(loginConfig, null, 2)};`,
+    "",
+    "async function navigateTo(page: Page, target: string) {",
+  "  const url = new URL(target, BASE_URL);",
+  "  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });",
+  "  await expect(page).toHaveURL(url.toString());",
+  "}",
     "",
     "async function sharedLogin(page: Page) {",
     "  const usernameEnv = SHARED_LOGIN_CONFIG.usernameEnv;",
