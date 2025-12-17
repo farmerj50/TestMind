@@ -8,6 +8,25 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: testmind
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U user -d testmind
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       VITE_API_URL: http://localhost:8787
       CLERK_PUBLISHABLE_KEY: test-publishable-key
@@ -46,8 +65,21 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
 
+      - name: Start API server
+        run: |
+          pnpm --filter api start > api.log 2>&1 &
+          echo "API_PID=$!" >> $GITHUB_ENV
+          sleep 10
+
       - name: Playwright smoke tests
         run: pnpm exec playwright test -c tm-ci.playwright.config.ts --project=chromium
+
+      - name: Stop API server
+        if: ${{ always() }}
+        run: |
+          if [ -n "$API_PID" ]; then
+            kill "$API_PID" || true
+          fi
 
   deploy:
     needs: build-and-test
