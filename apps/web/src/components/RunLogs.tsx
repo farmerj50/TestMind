@@ -26,7 +26,6 @@ export default function RunLogs({ runId }: { runId: string }) {
 
   useEffect(() => {
     load(type);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, type]);
 
   return (

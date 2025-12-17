@@ -101,7 +101,6 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
       // Do not auto-refresh; require explicit connect or ?github=connected
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   // If redirected back with ?github=connected, force a status/rep refresh and then clean the URL
@@ -117,7 +116,6 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
         }
       })();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, user?.id]);
 
   async function startConnect() {

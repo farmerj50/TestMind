@@ -87,7 +87,6 @@ export default function RecorderPage() {
     }, 5000) as unknown as number;
 
     return () => window.clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCallback]);
 
   const handleProjectSelect = (pid: string) => {
@@ -395,4 +394,3 @@ export default function RecorderPage() {
     </div>
   );
 }
-

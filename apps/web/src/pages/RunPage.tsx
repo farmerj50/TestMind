@@ -360,7 +360,6 @@ export default function RunPage() {
 
     };
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
 
   }, [runId, run, healingInProgress, rerunsInProgress, hasHealingAttempts, rerunsCompleted.length]);
 
@@ -400,7 +399,6 @@ export default function RunPage() {
 
     };
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
 
   }, [runId, run?.status]);
 
