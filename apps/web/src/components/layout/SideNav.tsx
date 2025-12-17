@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, BadgeDollarSign, Mail, FolderKanban as FolderTree, Bot, Link2, Clapperboard, PencilRuler, BarChart3, ListTree, Wand2, Shield, FolderOpen } from "lucide-react";
+import { LayoutDashboard, BadgeDollarSign, Mail, FolderKanban as FolderTree, Bot, Link2, Clapperboard, PencilRuler, BarChart3, ListTree, Wand2, Shield, FolderOpen, BookOpen } from "lucide-react";
 
 function Item({
   to,
@@ -43,6 +43,7 @@ export default function SideNav() {
         <Item to="/integrations" icon={Link2} label="Integrations" />
         <Item to="/recorder" icon={Clapperboard} label="Recorder" />
         <Item to="/test-builder" icon={PencilRuler} label="Test builder" />
+        <Item to="/documents" icon={BookOpen} label="Documents" />
         <Item to="/reports" icon={BarChart3} label="Reports" />
         <Item to="/suite/playwright-ts" icon={FolderTree} label="Suites" />
         <Item to="/pricing" icon={BadgeDollarSign} label="Pricing" />

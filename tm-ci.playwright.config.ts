@@ -35,10 +35,10 @@ export default defineConfig({
   webServer: process.env.TM_SKIP_SERVER
     ? undefined
     : {
-        command:
-          process.platform === "win32"
-            ? `powershell -NoProfile -Command "cd apps/web; pnpm install; pnpm dev --host localhost --port ${PORT} --strictPort"`
-            : `bash -lc "cd apps/web && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT} --strictPort"`,
+      command:
+        process.platform === "win32"
+          ? `powershell -NoProfile -Command "cd apps/web; pnpm --filter testmind-web dev --host localhost --port ${PORT} --strictPort"`
+          : `bash -lc "cd apps/web && pnpm --filter testmind-web dev --host 0.0.0.0 --port ${PORT} --strictPort"`,
         url: `http://localhost:${PORT}`,
         reuseExistingServer: true,
         timeout: 120_000,
