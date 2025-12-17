@@ -56,7 +56,6 @@ export default function RunResults({
       pollRef.current = window.setInterval(load, 2000) as unknown as number;
     }
     return () => stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, active]);
 
   if (err) return <div className="text-sm text-rose-600">{err}</div>;

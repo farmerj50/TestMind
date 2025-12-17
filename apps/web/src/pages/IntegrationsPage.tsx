@@ -182,7 +182,6 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     loadIntegrations().catch((err) => setError(err?.message ?? "Failed to load integrations"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

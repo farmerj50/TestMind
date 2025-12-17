@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-
-/* eslint-disable react/no-unescaped-entities */
 const sections = [
   {
     id: "dashboard",
