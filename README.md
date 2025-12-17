@@ -54,6 +54,7 @@ Run `pnpm first-run` to:
 ## Deployment & CI/CD
 ### GitHub Actions
 - `ci.yml` now runs the usual install/build/test steps **plus** a `deploy` job that builds `apps/api/Dockerfile`, pushes the image to `ghcr.io/<owner>/testmind-api`, and (optionally) deploys it to Railway.
+  - The `build-and-test` job now brings up Postgres and Redis services and starts the API server before running the Playwright smoke tests so the UI hits a real backend.
 - Required secrets:
   - `DOCKER_USERNAME` / `DOCKER_PASSWORD` (for GHCR or your chosen registry).
   - `RAILWAY_API_KEY` and `RAILWAY_SERVICE_ID` to let `@railway/cli` push the image into your project.
