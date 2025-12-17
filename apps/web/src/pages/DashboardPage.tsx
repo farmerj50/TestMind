@@ -67,7 +67,6 @@ export default function DashboardPage() {
     apiFetch<{ plan: string }>("/billing/me")
       .then((d) => setPlan(d.plan))
       .catch(() => { });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function createProject(e: React.FormEvent) {

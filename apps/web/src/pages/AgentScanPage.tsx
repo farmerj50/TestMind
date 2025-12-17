@@ -105,7 +105,6 @@ export default function AgentScanPage() {
     setBaseUrl(stored);
     fetchSession(selectedProject);
     fetchSessionsForProject(selectedProject);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
 
   async function fetchSession(projectId: string, opts?: { silent?: boolean }) {
@@ -191,7 +190,6 @@ export default function AgentScanPage() {
       fetchSession(selectedProject, { silent: true });
     }, 4000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, hasInProgress]);
 
   async function handleScan(e: React.FormEvent) {
@@ -667,8 +665,6 @@ export default function AgentScanPage() {
     </div>
   );
 }
-
-
 
 
 
