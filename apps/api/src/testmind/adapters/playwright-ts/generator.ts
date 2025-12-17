@@ -141,7 +141,7 @@ function emitAction(step: Step): string {
       return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });`;
     case "expect-visible":
       if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `// TODO: missing selector for expect-visible`;
+        return `throw new Error("Missing selector for expect-visible step");`;
       }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
@@ -150,7 +150,7 @@ function emitAction(step: Step): string {
 }`;
     case "fill":
       if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `// TODO: missing selector for fill`;
+        return `throw new Error("Missing selector for fill step");`;
       }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
@@ -159,7 +159,7 @@ function emitAction(step: Step): string {
 }`;
     case "click":
       if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `// TODO: missing selector for click`;
+        return `throw new Error("Missing selector for click step");`;
       }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
@@ -168,7 +168,7 @@ function emitAction(step: Step): string {
 }`;
     case "upload":
       if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `// TODO: missing selector for upload`;
+        return `throw new Error("Missing selector for upload step");`;
       }
       return `{
   const locator = page.locator(${JSON.stringify(step.selector)});
@@ -242,7 +242,7 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
   if (stepStrings.length > 0) {
     body += stepStrings.join("\n");
   } else {
-    body += `  await test.step('Placeholder step', async () => {\n    // TODO: add steps\n  });`;
+    body += `  await test.step('Placeholder step', async () => {\n    throw new Error("No recorded steps for this test. Add selectors or actions.");\n  });`;
   }
 
   return `
@@ -257,7 +257,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
   const uniqTitle = makeUniqTitleFactory();
   const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath)).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} – ${tests?.length ?? 0} test(s)`;
-  const helperLines = [
+    const helperLines = [
     "import { Page, test, expect } from '@playwright/test';",
     "",
     "const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';",
@@ -271,7 +271,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "  '/': { kind: 'role', role: 'heading', name: 'Accessible Legal Help for Everyone' },",
     "  '/login': { kind: 'role', role: 'heading', name: 'Login' },",
     "  '/signup': { kind: 'role', role: 'heading', name: 'Sign Up' },",
-    "  '/case-type-selection': { kind: 'text', text: \"Select the type of legal issue you're dealing with:\" },",
+    "  '/case-type-selection': { kind: 'text', text: \"Select the type of legal issue you\'re dealing with:\" },",
     "  '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },",
     "};",
     "",
@@ -292,15 +292,22 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "",
     "async function ensurePageIdentity(page: Page, target: string) {",
     "  const normalized = normalizeIdentityPath(target);",
-    "  let identity = PAGE_IDENTITIES[normalized];",
+    "  const withoutQuery = normalized.split('?')[0] || normalized;",
+    "  let identity = PAGE_IDENTITIES[normalized] ?? PAGE_IDENTITIES[withoutQuery];",
     "  if (!identity) {",
-    "    const withoutQuery = normalized.split('?')[0] || normalized;",
-    "    identity = PAGE_IDENTITIES[withoutQuery];",
+    "    const candidates = Object.entries(PAGE_IDENTITIES).filter(([route]) =>",
+    "      matchesIdentityPrefix(withoutQuery, route)",
+    "    );",
+    "    if (candidates.length) {",
+    "      identity = candidates.sort((a, b) => b[0].length - a[0].length)[0][1];",
+    "    }",
     "  }",
     "  if (!identity) return;",
     "  switch (identity.kind) {",
     "    case 'role':",
-    "      await expect(page.getByRole(identity.role, { name: identity.name })).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      await expect(",
+    "        page.getByRole(identity.role, { name: identity.name })",
+    "      ).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
     "      break;",
     "    case 'text':",
     "      await expect(page.getByText(identity.text)).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
@@ -314,13 +321,46 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "  }",
     "}",
     "",
+    "function matchesIdentityPrefix(route: string, prefix: string): boolean {",
+    "  const normalizedPrefix = prefix || '/';",
+    "  if (normalizedPrefix === '/') {",
+    "    return route === '/';",
+    "  }",
+    "  if (route === normalizedPrefix) {",
+    "    return true;",
+    "  }",
+    "  const prefixWithSlash = normalizedPrefix.endsWith('/') ? normalizedPrefix : `${normalizedPrefix}/`;",
+    "  return route.startsWith(prefixWithSlash);",
+    "}",
+    "",
     `const SHARED_LOGIN_CONFIG = ${JSON.stringify(loginConfig, null, 2)};`,
     "",
     "async function navigateTo(page: Page, target: string) {",
-  "  const url = new URL(target, BASE_URL);",
-  "  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });",
-  "  await expect(page).toHaveURL(url.toString());",
-  "}",
+    "  const url = new URL(target, BASE_URL);",
+    "  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });",
+    "  await assertNavigationPath(page, url);",
+    "}",
+    "",
+    "async function assertNavigationPath(page: Page, expectedUrl: URL) {",
+    "  const currentUrl = new URL(await page.url());",
+    "  const expectedPath = expectedUrl.pathname || '/';",
+    "  if (currentUrl.origin !== expectedUrl.origin) {",
+    "    throw new Error(`Expected origin ${expectedUrl.origin} but saw ${currentUrl.origin}`);",
+    "  }",
+    "  if (expectedPath === '/') {",
+    "    if (currentUrl.pathname !== '/') {",
+    "      throw new Error(`Expected pathname / but saw ${currentUrl.pathname}`);",
+    "    }",
+    "    return;",
+    "  }",
+    "  if (currentUrl.pathname === expectedPath) {",
+    "    return;",
+    "  }",
+    "  const expectedWithSlash = expectedPath.endsWith('/') ? expectedPath : `${expectedPath}/`;",
+    "  if (!currentUrl.pathname.startsWith(expectedWithSlash)) {",
+    "    throw new Error(`Expected pathname to start with ${expectedPath} but saw ${currentUrl.pathname}`);",
+    "  }",
+    "}",
     "",
     "async function sharedLogin(page: Page) {",
     "  const usernameEnv = SHARED_LOGIN_CONFIG.usernameEnv;",
