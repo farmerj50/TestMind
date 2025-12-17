@@ -14,6 +14,7 @@ import IntegrationsPage from "../pages/IntegrationsPage";
 import RecorderPage from "../pages/RecorderPage";
 import TestBuilderPage from "../pages/TestBuilderPage";
 import ReportsPage from "../pages/ReportsPage";
+import DocumentsPage from "../pages/DocumentsPage";
 import AgentSessionsPage from "../pages/AgentSessionsPage";
 import AgentSessionDetailPage from "../pages/AgentSessionDetailPage";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -145,6 +146,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents"
+          element={
+            <ProtectedRoute>
+              <DocumentsPage />
             </ProtectedRoute>
           }
         />

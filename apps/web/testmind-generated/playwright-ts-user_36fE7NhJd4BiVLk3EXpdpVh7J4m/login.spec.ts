@@ -124,28 +124,14 @@ test("Form submits – /login", async ({ page }) => {
       await locator.fill("P@ssw0rd1!");
     }
   });
-  await test.step("4. Fill [name='Email Address'], #Email Address", async () => {
-    {
-      const locator = page.locator("[name='Email Address'], #Email Address");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.fill("qa+auto@example.com");
-    }
-  });
-  await test.step("5. Fill [name='Password'], #Password", async () => {
-    {
-      const locator = page.locator("[name='Password'], #Password");
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
-      await locator.fill("P@ssw0rd1!");
-    }
-  });
-  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
+  await test.step("4. Click button[type='submit'], input[type='submit']", async () => {
     {
       const locator = page.locator("button[type='submit'], input[type='submit']");
       await locator.waitFor({ state: 'visible', timeout: 10000 });
       await locator.click({ timeout: 10000 });
     }
   });
-  await test.step("7. Ensure text \"success\" is visible", async () => {
+  await test.step("5. Ensure text \"success\" is visible", async () => {
     await expect(page.getByText("success")).toBeVisible({ timeout: 10000 });
   });
 });
@@ -161,8 +147,8 @@ test("Navigate /login → /", async ({ page }) => {
     await navigateTo(page, "/");
     await ensurePageIdentity(page, "/");
   });
-  await test.step("3. Ensure text \"Page\" is visible", async () => {
-    await expect(page.getByText("Page")).toBeVisible({ timeout: 10000 });
+  await test.step("3. Ensure text \"Accessible Legal Help for Everyone\" is visible", async () => {
+    await expect(page.getByText("Accessible Legal Help for Everyone")).toBeVisible({ timeout: 10000 });
   });
 });
 
