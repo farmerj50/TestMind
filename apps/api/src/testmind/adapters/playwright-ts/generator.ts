@@ -1,8 +1,8 @@
-import type { LocatorStore } from "../../runtime/locator-store.js";
-import type { TestPlan } from "../../core/plan.js";
+import type { LocatorStore } from "../../runtime/locator-store";
+import type { TestPlan } from "../../core/plan";
 import fs from "node:fs";
 import path from "node:path";
-import { normalizeSharedSteps, resolveLocator, LocatorBucket } from "../../runtime/locator-store.js";
+import { normalizeSharedSteps, resolveLocator, LocatorBucket } from "../../runtime/locator-store";
 
 type Step =
   | { kind: "goto"; url: string }

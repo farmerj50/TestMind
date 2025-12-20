@@ -1,4 +1,4 @@
-import type { TestPlan } from "../../core/plan.js";
+import type { TestPlan } from "../../core/plan";
 
 export const xctestAdapter = {
   id: "xctest",

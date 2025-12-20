@@ -1,5 +1,5 @@
 // ✅ Reuse canonical test types from pattern.ts
-import type { TestCase, Step } from "./pattern.js";
+import type { TestCase, Step } from "./pattern";
 
 export type Persona = "manual" | "sdet" | "automation";
 

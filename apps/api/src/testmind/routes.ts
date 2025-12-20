@@ -8,14 +8,14 @@ import { prisma } from "../prisma";
 
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
-import { generateAndWrite, runAdapter } from './service.js';
+import { generateAndWrite, runAdapter } from './service';
 import {
   CURATED_ROOT,
   readCuratedManifest,
   writeCuratedManifest,
   slugify,
   ensureWithin,
-} from "./curated-store.js";
+} from "./curated-store";
 
 type GenerateCommon = {
   repoPath?: string;
