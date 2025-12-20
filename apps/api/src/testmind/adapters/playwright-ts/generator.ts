@@ -188,6 +188,7 @@ function extractHrefFromSelector(selector: string): string | undefined {
 }
 
 type LocatorKind = "click" | "fill" | "expect-visible";
+type Region = "navigation" | "header" | "main";
 
 function regionForKind(kind: LocatorKind): Region | undefined {
   if (kind === "click") return "navigation";
