@@ -2,7 +2,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { execa } from "execa";
-import type { TestRunner } from "../../core/adapter.js";
+import type { TestRunner } from "../../core/adapter";
 
 function findFeaturesRoot(cwd: string) {
   const candidates = [
