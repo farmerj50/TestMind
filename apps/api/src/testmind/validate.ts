@@ -1,5 +1,5 @@
 // apps/api/src/testmind/validate.ts
-import type { TestPlan, Discovery, TestCase } from './core/plan.js'; // <-- path is correct for this file location
+import type { TestPlan, Discovery, TestCase } from './core/plan'; // <-- path is correct for this file location
 
 /**
  * Lightweight validation for a generated plan.
