@@ -402,15 +402,15 @@ export default function TestBuilderPage() {
                     Curated file name
                   </label>
                   <Input
-                    value={test.curatedName ?? test.title}
-                    onChange={(e) => handleCuratedNameChange(test, e.target.value)}
+                    value={t.curatedName ?? t.title}
+                    onChange={(e) => handleCuratedNameChange(t, e.target.value)}
                     placeholder="custom name (no extension)"
                     className="text-xs"
                   />
                 </div>
                 <div className="mt-2 flex gap-2">
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="outline"
                     onClick={() => handleCurate(t)}
                   >
