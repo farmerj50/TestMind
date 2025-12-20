@@ -25,6 +25,8 @@ COPY apps/api ./apps/api
 RUN pnpm --filter api exec prisma generate
 
 RUN pnpm --filter api build
+RUN echo "=== API dist output ===" && ls -R /workspace/apps/api/dist || true
+
 
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -36,4 +38,7 @@ COPY --from=deps /workspace/node_modules ./node_modules
 COPY --from=builder /workspace/apps/api/prisma ./prisma
 
 EXPOSE 8787
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/src/index.js"]
+
+RUN echo "=== API dist output ===" && ls -R /workspace/apps/api/dist || true
+
