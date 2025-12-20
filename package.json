@@ -2,8 +2,8 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
-    "build": "npm --prefix apps/web run build",
-    "start": "npm --prefix apps/api run start",
+    "build": "pnpm --filter api build",
+    "start": "node apps/api/dist/index.js",
     "preview": "npm --prefix apps/web run preview",
     "worker": "tsx apps/worker/src/index.ts",
     "recorder:auto": "node recorder-helper-runner.js",
