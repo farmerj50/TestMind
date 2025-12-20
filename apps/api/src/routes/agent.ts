@@ -175,7 +175,14 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
-    const session = await createAgentSession({ userId, ...parsed.data });
+    const { baseUrl, name, projectId, instructions } = parsed.data;
+    const session = await createAgentSession({
+      userId,
+      baseUrl,
+      name,
+      projectId,
+      instructions,
+    });
     return reply.code(201).send({ session });
   });
 
@@ -291,7 +298,14 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!userId) return;
     const parsed = SessionBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const session = await createAgentSession({ userId, ...parsed.data });
+    const { baseUrl, name, projectId, instructions } = parsed.data;
+    const session = await createAgentSession({
+      userId,
+      baseUrl,
+      name,
+      projectId,
+      instructions,
+    });
     return reply.code(201).send({ session });
   });
 
