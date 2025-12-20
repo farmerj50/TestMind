@@ -1,9 +1,9 @@
-import type { TestPlan } from "../core/plan.js";
-import { emitSpecFile } from "../adapters/playwright-ts/generator.js";
-import { cucumberJSAdapter } from "../adapters/cucumber-js/generator.js";
-import { cypressJSAdapter } from "../adapters/cypress-js/generator.js";
-import { appiumJSAdapter } from "../adapters/appium-js/generator.js";
-import { xctestAdapter } from "../adapters/xctest/generator.js";
+import type { TestPlan } from "../core/plan";
+import { emitSpecFile } from "../adapters/playwright-ts/generator";
+import { cucumberJSAdapter } from "../adapters/cucumber-js/generator";
+import { cypressJSAdapter } from "../adapters/cypress-js/generator";
+import { appiumJSAdapter } from "../adapters/appium-js/generator";
+import { xctestAdapter } from "../adapters/xctest/generator";
 import fs from "node:fs/promises";
 import path from "node:path";
 // at top (under imports)

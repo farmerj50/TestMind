@@ -1,6 +1,6 @@
 // apps/api/src/testmind/analyze.ts
-import { discoverSite } from "./discover.js";
-import type { Discovery } from "./core/plan.js";
+import { discoverSite } from "./discover";
+import type { Discovery } from "./core/plan";
 
 /**
  * Minimal analyzer: just crawl the site and return Discovery.
