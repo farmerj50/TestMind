@@ -432,23 +432,6 @@ export const selfHealWorker = new Worker(
         }
       }
 
-        const locatorPattern =
-          /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\)(?!\s*\.(first|nth|filter|locator))/m;
-        const match = context.specContent.match(locatorPattern);
-        if (match) {
-          const target = match[0];
-          const patchedLocator = `${target}.first()`;
-          const patched = context.specContent.replace(target, patchedLocator);
-          await writeAndRecordSuccess(
-            patched,
-            "Auto-selected first match for strict-mode locator",
-            "rule-based strict-mode"
-          );
-          return;
-        }
-      }
-
-
       const promptPayload: HealPrompt = {
         specPath: context.repoRelativePath,
         failureMessage: context.message,
