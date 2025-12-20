@@ -16,6 +16,9 @@ type GeneratedTest = {
   steps: string[];
   runtime: string;
   fileName: string;
+  path: string;
+  curatedPath?: string;
+  curatedName?: string;
 };
 
 const TEST_TYPES = ["Smoke", "Regression", "Accessibility", "Security", "Performance"];
@@ -67,52 +70,135 @@ export default function TestBuilderPage() {
     setDocs(mapped);
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+    if (!projectId || !selectedTypes.length) return;
     setLoadingGen(true);
-    setTimeout(() => {
-      const seeds = docs.length ? docs : [{ name: "Landing page", size: 0, summary: "happy path login and dashboard" }];
-      const tests: GeneratedTest[] = seeds.flatMap((d, idx) =>
-        selectedTypes.map((t, tIdx) => ({
-          title: `${t} | ${d.name}`.slice(0, 80),
-          type: t,
-          language,
-          runtime: `${6 + tIdx + idx}m`,
-          fileName: `${d.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "spec"}-${t.toLowerCase()}.spec.${language === "javascript" ? "js" : language === "python" ? "py" : language === "java" ? "java" : "ts"}`,
-          steps: [
-            "Open base URL",
-            "Navigate to critical flow",
-            "Assert key elements render",
-            t === "Performance" ? "Capture timings" : "Validate form behaviors",
-          ],
-        }))
-      );
-      setGenerated(tests.slice(0, 6));
+    try {
+      const seeds =
+        docs.length > 0
+          ? docs
+          : [{ name: "Landing page", summary: "happy path login and dashboard" }];
+      const combos = seeds
+        .flatMap((doc) => selectedTypes.map((type) => ({ doc, type })))
+        .slice(0, 6);
+
+      for (const combo of combos) {
+        const steps = [
+          `Review ${combo.doc.name}`,
+          `Navigate through ${combo.doc.summary || "critical flow"}`,
+          combo.type === "Performance"
+            ? "Capture performance metrics"
+            : "Validate behavior expectations",
+        ];
+
+        const res = await apiFetch("/test-builder/generate", {
+          method: "POST",
+          body: JSON.stringify({
+            projectId,
+            title: `${combo.type} | ${combo.doc.name}`.slice(0, 80),
+            steps,
+            notes,
+            docs,
+          }),
+        });
+
+        setGenerated((prev) => [
+          {
+            title: res.spec.title,
+            type: combo.type,
+            language,
+            runtime: "~",
+            fileName: res.spec.fileName,
+            steps,
+            path: res.spec.relativePath,
+            curatedName: `${combo.type} ${combo.doc.name}`,
+          },
+          ...prev,
+        ]);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
       setLoadingGen(false);
-    }, 400);
+    }
   };
 
-  const handleManualGenerate = () => {
+  const handleManualGenerate = async () => {
+    if (!projectId) return;
     const text = manualSteps.trim();
     if (!text) return;
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const steps = lines.length ? lines : [text];
-    const fileSafe = `manual-steps-${Date.now()}.spec.${language === "javascript" ? "js" : language === "python" ? "py" : language === "java" ? "java" : "ts"}`;
-    const test: GeneratedTest = {
-      title: "Manual scenario",
-      type: "Manual",
-      language,
-      runtime: "~",
-      fileName: fileSafe,
-      steps,
-    };
-    setGenerated((prev) => [test, ...prev]);
-    setManualSteps("");
+    const steps = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!steps.length) return;
+    try {
+      const res = await apiFetch("/test-builder/generate", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          title: "Manual scenario",
+          steps,
+          notes,
+          docs,
+        }),
+      });
+      setGenerated((prev) => [
+        {
+          title: res.spec.title,
+          type: "Manual",
+          language,
+          runtime: "~",
+          fileName: res.spec.fileName,
+          steps,
+          path: res.spec.relativePath,
+          curatedName: "Manual scenario",
+        },
+        ...prev,
+      ]);
+      setManualSteps("");
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId),
     [projects, projectId]
   );
+
+  const handleCurate = async (test: GeneratedTest) => {
+    if (!projectId) return;
+    try {
+      const res = await apiFetch("/test-builder/curate", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          specPath: test.path,
+          title: test.title,
+          curatedName: test.curatedName,
+        }),
+      });
+      const curatedName = res.fileName.replace(/\.spec\.ts$/i, "");
+      setGenerated((prev) =>
+        prev.map((t) =>
+          t.fileName === test.fileName
+            ? { ...t, curatedPath: res.curatedPath, curatedName }
+            : t
+        )
+      );
+    } catch (error) {
+      console.error("Failed to curate spec", error);
+    }
+  };
+
+  const handleCuratedNameChange = (test: GeneratedTest, value: string) => {
+    setGenerated((prev) =>
+      prev.map((t) =>
+        t.fileName === test.fileName ? { ...t, curatedName: value } : t
+      )
+    );
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -299,12 +385,44 @@ export default function TestBuilderPage() {
                 <div className="text-xs text-slate-500">
                   {t.type} • {t.language} • {t.fileName}
                 </div>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div>
+                    Saved path:{" "}
+                    <code className="rounded bg-slate-100 px-1">{t.path}</code>
+                  </div>
+                  {t.curatedPath && (
+                    <div>
+                      Curated path:{" "}
+                      <code className="rounded bg-slate-100 px-1">{t.curatedPath}</code>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 space-y-1 text-xs text-slate-500">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    Curated file name
+                  </label>
+                  <Input
+                    value={test.curatedName ?? test.title}
+                    onChange={(e) => handleCuratedNameChange(test, e.target.value)}
+                    placeholder="custom name (no extension)"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => handleCurate(t)}
+                  >
+                    Copy to curated suite
+                  </Button>
+                </div>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  {t.steps.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              </div>
+                {t.steps.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </div>
             ))}
           </CardContent>
         </Card>

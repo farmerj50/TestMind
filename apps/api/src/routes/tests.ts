@@ -33,6 +33,17 @@ async function writeJson(file: string, data: any) {
   await fs.writeFile(file, JSON.stringify(data, null, 2));
 }
 
+const PLAYWRIGHT_BROWSERS_CACHE = path.join(REPO_ROOT, "node_modules", ".cache", "ms-playwright");
+
+async function browsersAlreadyInstalled() {
+  try {
+    await fs.access(PLAYWRIGHT_BROWSERS_CACHE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function startGeneratedRun(runId: string, projectId: string, userId: string, caseId?: string) {
   const runDir = path.join(RUNS_DIR, runId);
   const workspaceRoot = path.join(os.tmpdir(), "tm-runner");
@@ -58,7 +69,6 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
       const command = "plan+gen"; // also can be a client param
 
       await fs.mkdir(runDir, { recursive: true });
-      await fs.rm(workspaceDir, { recursive: true, force: true });
       await fs.mkdir(workspaceDir, { recursive: true });
       const eventPath = path.join(runDir, "event.json");
       await writeJson(eventPath, {
@@ -77,6 +87,9 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         RUN_TESTS: "false", // we run tests explicitly below
         LOCAL_RUN: "1", // instruct runner to skip GitHub and run locally
       };
+      const missingLocatorsPath = path.join(runDir, "missing-locators.json");
+      await fs.rm(missingLocatorsPath, { force: true }).catch(() => {});
+      env.TM_MISSING_LOCATORS_PATH = missingLocatorsPath;
       if (projectSharedSteps !== undefined) {
         env.TM_PROJECT_SHARED_STEPS = JSON.stringify(projectSharedSteps);
       } else {
@@ -188,12 +201,23 @@ export default defineConfig({
       const manualDir = manualSpecDir ? workspaceManualDir : "";
       const esc = (p: string) => p.replace(/\\/g, "/");
 
-      // 5) ensure browsers are installed (reuse existing workspace version)
-      await execa("pnpm", ["exec", "playwright", "install", "--with-deps"], {
-        cwd: REPO_ROOT,
-        env,
-        stdio: "inherit",
-      });
+      // 5) ensure browsers are installed (reuse existing workspace version when available)
+      const skipBrowserInstall =
+        env.LOCAL_RUN === "1" || process.env.SKIP_PLAYWRIGHT_INSTALL === "1";
+      if (skipBrowserInstall) {
+        console.log("[startGeneratedRun] skipping Playwright install (local run)");
+      } else {
+        const alreadyInstalled = await browsersAlreadyInstalled();
+        if (alreadyInstalled) {
+          console.log("[startGeneratedRun] Playwright browsers already installed, reusing cache");
+        } else {
+          await execa("pnpm", ["exec", "playwright", "install", "--with-deps"], {
+            cwd: REPO_ROOT,
+            env,
+            stdio: "inherit",
+          });
+        }
+      }
 
       // 6) run tests to produce 'playwright-report/'
       try {
@@ -329,6 +353,43 @@ export async function testRoutes(app: FastifyInstance) {
       take: 20,
     });
     return reply.send({ runs });
+  });
+
+  app.get<{
+    Params: { projectId: string; runId: string };
+  }>("/projects/:projectId/test-runs/:runId/missing-locators", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const { projectId, runId } = req.params;
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ownerId: userId },
+      select: { id: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const run = await prisma.testRun.findFirst({
+      where: { id: runId, projectId },
+      select: { id: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+
+    const missingLocatorsPath = path.join(RUNS_DIR, runId, "missing-locators.json");
+    let missingLocators: any[] = [];
+    try {
+      const raw = await fs.readFile(missingLocatorsPath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.items)) {
+        missingLocators = parsed.items;
+      }
+    } catch (error: any) {
+      if (error?.code && error.code !== "ENOENT") {
+        console.error("[missing-locators] failed to read", { runId, projectId, error });
+        return reply.code(500).send({ error: "Failed to read missing locators" });
+      }
+    }
+
+    reply.send({ missingLocators });
   });
 
   //

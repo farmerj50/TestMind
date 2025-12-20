@@ -52,8 +52,8 @@ Run `pnpm first-run` to:
 - **Generated specs keep their own ESLint overrides.** The recorder output lives under `apps/web/testmind-generated`, and `apps/web/eslint.config.js` explicitly disables the noisy rules for those files so lint stays green without mutating the stable UI logic.
 
 ## Deployment & CI/CD
-### GitHub Actions
 - `ci.yml` now runs the usual install/build/test steps **plus** a `deploy` job that builds `apps/api/Dockerfile`, pushes the image to `ghcr.io/<owner>/testmind-api`, and (optionally) deploys it to Railway.
+- The `build-and-test` job now spins up Postgres 16 and Redis 7 (for stability) services, applies Prisma migrations (`pnpm --filter api exec prisma migrate deploy`), and waits for the API to accept traffic before launching Playwright so smoke tests run against a real backend.
   - The `build-and-test` job now brings up Postgres and Redis services and starts the API server before running the Playwright smoke tests so the UI hits a real backend.
 - Required secrets:
   - `DOCKER_USERNAME` / `DOCKER_PASSWORD` (for GHCR or your chosen registry).

@@ -106,7 +106,8 @@ async function triggerRerun(
   headed?: boolean,
   baseUrl?: string,
   localRepoRoot?: string,
-  targetSpec?: string
+  targetSpec?: string,
+  options?: { healOnly?: boolean }
 ) {
   const projectRecord = await prisma.project.findUnique({
     where: { id: projectId },
@@ -129,6 +130,13 @@ async function triggerRerun(
       paramsJson: Object.keys(params).length ? params : undefined,
     },
   });
+
+  if (options?.healOnly) {
+    console.log(
+      `[self-heal] heal-only mode: skipping rerun queue for ${targetSpec ?? "full suite"} (run ${rerun.id})`
+    );
+    return;
+  }
 
   const payload: RunPayload = {
     projectId,
@@ -180,6 +188,11 @@ function containsStrictMode(msg?: string | null) {
     lower.includes("resolved to") ||
     lower.includes("matches 2 elements")
   );
+}
+
+function isInfraError(msg?: string | null) {
+  if (!msg) return false;
+  return INFRA_ERROR_PATTERNS.some((pattern) => pattern.test(msg));
 }
 
 async function collectFailureContext(job: SelfHealPayload): Promise<FailureContext> {
@@ -245,8 +258,16 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   };
 }
 
-const SELF_HEAL_CONCURRENCY = Number(process.env.SELF_HEAL_CONCURRENCY ?? '2');
+const SELF_HEAL_CONCURRENCY = Number(process.env.SELF_HEAL_CONCURRENCY ?? '1');
 const SELF_HEAL_TIMEOUT_MS = Number(process.env.SELF_HEAL_TIMEOUT_MS ?? '120000');
+const SELF_HEAL_HEAL_ONLY = (process.env.SELF_HEAL_HEAL_ONLY ?? "0") === "1";
+const INFRA_ERROR_PATTERNS = [
+  /net::/i,
+  /disconnected/i,
+  /chrome.*not reachable/i,
+  /connection refused/i,
+  /socket hang up/i,
+];
 
 async function withTimeout<T>(promise: Promise<T>, ms: number) {
   return Promise.race<T>([
@@ -299,7 +320,8 @@ export const selfHealWorker = new Worker(
           job.data.headed,
           job.data.baseUrl,
           context.repoRoot,
-          context.repoRelativePath
+          context.repoRelativePath,
+          { healOnly: SELF_HEAL_HEAL_ONLY }
         );
       };
 
@@ -430,6 +452,13 @@ export const selfHealWorker = new Worker(
         `[self-heal] finished attempt ${attemptId} for run ${job.data.runId} (status=succeeded)`
       );
 
+      if (isInfraError(context.message)) {
+        console.log(
+          `[self-heal] detected infra-like failure for run ${job.data.runId}; skipping rerun`
+        );
+        return;
+      }
+
       if (job.data.totalFailed <= 1) {
         await triggerRerun(
           job.data.projectId,
@@ -438,7 +467,8 @@ export const selfHealWorker = new Worker(
           job.data.headed,
           job.data.baseUrl,
           context.repoRoot,
-          context.repoRelativePath
+          context.repoRelativePath,
+          { healOnly: SELF_HEAL_HEAL_ONLY }
         );
       } else {
         const remaining = await prisma.testHealingAttempt.count({
@@ -452,7 +482,8 @@ export const selfHealWorker = new Worker(
             job.data.headed,
             job.data.baseUrl,
             context.repoRoot,
-            context.repoRelativePath
+            context.repoRelativePath,
+            { healOnly: SELF_HEAL_HEAL_ONLY }
           );
         }
       }

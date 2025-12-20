@@ -1,4 +1,8 @@
+import type { LocatorStore } from "../../runtime/locator-store.js";
 import type { TestPlan } from "../../core/plan.js";
+import fs from "node:fs";
+import path from "node:path";
+import { normalizeSharedSteps, resolveLocator, LocatorBucket } from "../../runtime/locator-store.js";
 
 type Step =
   | { kind: "goto"; url: string }
@@ -30,6 +34,10 @@ type SharedStepsConfig = {
   login?: SharedLoginConfigSpec;
 };
 
+type CombinedSharedSteps = SharedStepsConfig & {
+  locatorStore: ReturnType<typeof normalizeSharedSteps>;
+};
+
 type ResolvedLoginConfig = {
   usernameSelector: string;
   passwordSelector: string;
@@ -41,29 +49,31 @@ type ResolvedLoginConfig = {
 };
 
 const SHARED_STEPS_ENV = "TM_PROJECT_SHARED_STEPS";
+const MISSING_LOCATORS_ENV = "TM_MISSING_LOCATORS_PATH";
 const DEFAULT_LOGIN_CONFIG: ResolvedLoginConfig = {
   usernameSelector:
     'input[placeholder="Email Address"], input[name="email"], input[type="email"], input[name="username"], #username, #email',
   passwordSelector:
     'input[placeholder="Password"], input[name="password"], input[type="password"], #password',
   submitSelector: 'button[type="submit"], button:has-text("Login"), button:has-text("Sign in")',
-  usernameEnv: "USERNAME",
+  usernameEnv: "EMAIL_ADDRESS",
   passwordEnv: "PASSWORD",
 };
 
-function parseSharedSteps(): SharedStepsConfig {
+function parseSharedSteps(): CombinedSharedSteps {
   const raw = process.env[SHARED_STEPS_ENV];
-  if (!raw) return {};
+  if (!raw) return { locatorStore: normalizeSharedSteps({}) };
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed;
+    const share = parsed && typeof parsed === "object" ? (parsed as SharedStepsConfig) : {};
+    return { ...share, locatorStore: normalizeSharedSteps(parsed) };
   } catch (err) {
     console.warn(`[tm-gen] failed to parse ${SHARED_STEPS_ENV}:`, err);
+    return { locatorStore: normalizeSharedSteps({}) };
   }
-  return {};
 }
 
-function resolveLoginConfig(shared: SharedStepsConfig): ResolvedLoginConfig {
+function resolveLoginConfig(shared: CombinedSharedSteps): ResolvedLoginConfig {
   const login = shared.login ?? {};
   const trim = (value?: string) => (value && value.trim() ? value.trim() : undefined);
   return {
@@ -80,12 +90,24 @@ function resolveLoginConfig(shared: SharedStepsConfig): ResolvedLoginConfig {
 export function groupByPage(cases: TestCase[]): Map<string, TestCase[]> {
   const grouped = new Map<string, TestCase[]>();
   for (const tc of cases ?? []) {
-    const key = tc.group?.url || tc.group?.page || "/";
+    const key = derivePageKey(tc);
     const arr = grouped.get(key) ?? [];
     arr.push(tc);
     grouped.set(key, arr);
   }
   return grouped;
+}
+
+function derivePageKey(tc: TestCase): string {
+  const candidate = tc.group?.url ?? tc.group?.page;
+  if (candidate) {
+    return toRelativeTarget(candidate);
+  }
+  const firstGoto = tc.steps?.find((s) => s.kind === "goto");
+  if (firstGoto?.url) {
+    return toRelativeTarget(firstGoto.url);
+  }
+  return "/";
 }
 
 function makeUniqTitleFactory() {
@@ -129,7 +151,106 @@ function describeStep(step: Step): string {
   }
 }
 
-function emitAction(step: Step): string {
+type MissingLocatorItem = {
+  pagePath: string;
+  bucket: LocatorBucket;
+  name: string;
+  stepText: string;
+  suggestions: string[];
+};
+
+function semanticKeyFromString(value?: string): string {
+  if (!value) return "default";
+  const cleaned = value
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "default";
+}
+
+function generateSelectorSuggestions(name: string): string[] {
+  const normalized = name.replace(/[^a-z0-9]/g, "");
+  const candidates = [];
+  if (normalized) {
+    candidates.push(`input[name="${normalized}"]`);
+    candidates.push(`input[placeholder*="${normalized}"]`);
+    candidates.push(`[data-testid*="${normalized}"]`);
+  }
+  candidates.push("input");
+  candidates.push("button");
+  return Array.from(new Set(candidates));
+}
+
+function extractHrefFromSelector(selector: string): string | undefined {
+  const match = selector.match(/href\s*=\s*['"]([^'"]+)['"]/i);
+  return match ? match[1] : undefined;
+}
+
+type LocatorKind = "click" | "fill" | "expect-visible";
+
+function regionForKind(kind: LocatorKind): Region | undefined {
+  if (kind === "click") return "navigation";
+  if (kind === "fill") return "main";
+  if (kind === "expect-visible") return "main";
+  return undefined;
+}
+
+function buildLocatorExpression(selector: string, kind: LocatorKind): { expr: string; region?: Region } {
+  return {
+    expr: `chooseLocator(page, ${JSON.stringify(selector)}, ${JSON.stringify(regionForKind(kind))})`,
+    region: regionForKind(kind),
+  };
+}
+
+function recordMissingLocator(item: MissingLocatorItem) {
+  const filePath = process.env[MISSING_LOCATORS_ENV];
+  if (!filePath) return;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  let payload: { items: MissingLocatorItem[] } = { items: [] };
+  if (fs.existsSync(filePath)) {
+    try {
+      payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch {
+      payload = { items: [] };
+    }
+  }
+  payload.items = payload.items ?? [];
+  payload.items.push(item);
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function resolveStepSelector(
+  step: Step,
+  pagePath: string,
+  locatorStore: LocatorStore,
+  bucket: LocatorBucket
+): { selector?: string; missing?: MissingLocatorItem } {
+  const selectorRaw = "selector" in step ? step.selector : undefined;
+  const textRaw = step.kind === "expect-text" ? step.text : undefined;
+  const rawName = selectorRaw ?? textRaw ?? step.kind;
+  const name = semanticKeyFromString(rawName);
+  const { selector } = resolveLocator(locatorStore, pagePath, bucket, name);
+  if (selector) return { selector };
+  const missing: MissingLocatorItem = {
+    pagePath,
+    bucket,
+    name,
+    stepText: describeStep(step),
+    suggestions: generateSelectorSuggestions(name),
+  };
+  recordMissingLocator(missing);
+  return { missing };
+}
+
+function formatMissingLocatorAction(step: Step, detail?: MissingLocatorItem): string {
+  const why = detail
+    ? `${detail.bucket}.${detail.name} on ${detail.pagePath}`
+    : describeStep(step);
+  return `// Missing locator ${why}; add it to shared locators and rerun generation.`;
+}
+
+function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): string {
   switch (step.kind) {
     case "goto":
       {
@@ -138,55 +259,118 @@ function emitAction(step: Step): string {
   await ensurePageIdentity(page, ${JSON.stringify(rel)});`;
       }
     case "expect-text":
-      return `await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });`;
-    case "expect-visible":
-      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `throw new Error("Missing selector for expect-visible step");`;
-      }
       return `{
-  const locator = page.locator(${JSON.stringify(step.selector)});
+  const targetPath = identityPathForText(${JSON.stringify(step.text)});
+  if (targetPath) {
+    await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+    await ensurePageIdentity(page, targetPath);
+    return;
+  }
+  await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });
+}`;
+    case "expect-visible": {
+      const resolved = resolveStepSelector(step, pagePath, locatorStore, "locators");
+      if (!resolved.selector) {
+        return formatMissingLocatorAction(step, resolved.missing);
+      }
+      const selector = resolved.selector;
+      const built = buildLocatorExpression(selector, "expect-visible");
+      return `{
+  const locator = ${built.expr}.first();
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await expect(locator).toBeVisible({ timeout: 10000 });
 }`;
-    case "fill":
-      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `throw new Error("Missing selector for fill step");`;
+    }
+    case "fill": {
+      const resolved = resolveStepSelector(step, pagePath, locatorStore, "fields");
+      if (!resolved.selector) {
+        return formatMissingLocatorAction(step, resolved.missing);
       }
+      const selector = resolved.selector;
       return `{
-  const locator = page.locator(${JSON.stringify(step.selector)});
+  const locator = ${buildLocatorExpression(selector, "fill").expr}.first();
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await locator.fill(${JSON.stringify(step.value)});
 }`;
-    case "click":
-      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `throw new Error("Missing selector for click step");`;
+    }
+    case "click": {
+      const resolved = resolveStepSelector(step, pagePath, locatorStore, "buttons");
+      if (!resolved.selector) {
+        return formatMissingLocatorAction(step, resolved.missing);
       }
+      const selector = resolved.selector;
+      const navHref = extractHrefFromSelector(selector);
+      if (navHref) {
+        const normalizedHref = toRelativeTarget(navHref);
+        return `{
+  await clickNavLink(page, ${JSON.stringify(normalizedHref)});
+  await expect(page).toHaveURL(pathRegex(${JSON.stringify(normalizedHref)}), { timeout: 15000 });
+  await ensurePageIdentity(page, ${JSON.stringify(normalizedHref)});
+}`;
+      }
+      const locatorExpr = buildLocatorExpression(selector, "click").expr;
       return `{
-  const locator = page.locator(${JSON.stringify(step.selector)});
+  const locator = ${locatorExpr}.first();
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await locator.click({ timeout: 10000 });
 }`;
-    case "upload":
-      if (!step.selector || typeof step.selector !== "string" || !step.selector.trim()) {
-        return `throw new Error("Missing selector for upload step");`;
+    }
+    case "upload": {
+      const resolved = resolveStepSelector(step, pagePath, locatorStore, "fields");
+      if (!resolved.selector) {
+        return formatMissingLocatorAction(step, resolved.missing);
       }
+      const selector = resolved.selector;
       return `{
-  const locator = page.locator(${JSON.stringify(step.selector)});
+  const locator = page.locator(${JSON.stringify(selector)}).first();
   await locator.waitFor({ state: 'visible', timeout: 10000 });
   await locator.setInputFiles(${JSON.stringify(step.path)});
 }`;
+    }
     default:
       return `// TODO: custom step`;
   }
 }
 
-function emitStep(step: Step, index: number): string {
+function emitStep(step: Step, index: number, pagePath: string, locatorStore: LocatorStore): string {
   const title = `${index + 1}. ${describeStep(step)}`;
-  const action = emitAction(step)
+  const action = emitAction(step, pagePath, locatorStore)
     .split("\n")
     .map((line) => `    ${line}`)
     .join("\n");
   return `  await test.step(${JSON.stringify(title)}, async () => {\n${action}\n  });`;
+}
+
+function isHomeTextStep(step: Step): boolean {
+  if (step.kind !== 'expect-text') return false;
+  const text = (step.text ?? '').toLowerCase().trim();
+  if (!text) return false;
+  return (
+    text === 'page' ||
+    text.includes('justicepath') ||
+    text.includes('accessible legal help')
+  );
+}
+
+function makePostLoginCheck(): string {
+  return `  await test.step('Ensure case-type-selection page loads after login', async () => {
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toContain('/case-type-selection');
+    await ensurePageIdentity(page, '/case-type-selection');
+  });`;
+}
+
+function isLoginFieldStep(step: Step): boolean {
+  if (!("selector" in step) || !step.selector) return false;
+  const target = step.selector.toLowerCase();
+  return /user|email|pass|login/.test(target);
+}
+
+function isLoginSuccessCheck(step: Step): boolean {
+  if (step.kind !== "expect-text") return false;
+  const text = (step.text ?? "").toLowerCase();
+  return /success|logged in/.test(text);
 }
 
 function emitAnnotations(pagePath: string, caseName: string): string {
@@ -201,7 +385,7 @@ function emitAnnotations(pagePath: string, caseName: string): string {
     .join(", ")});\n`;
 }
 
-function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string): string {
+function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string, locatorStore: LocatorStore): string {
   const title = uniqTitle(tc.name);
   const hasGoto = tc.steps.some((s) => s.kind === "goto");
   const navTarget = toRelativeTarget(tc.group?.url || pagePath);
@@ -222,22 +406,51 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
     );
 
   const loginCall = needsLogin ? "  await sharedLogin(page);" : "";
-
+  const postLoginCheck = makePostLoginCheck();
   const stepStrings: string[] = [];
   let loginInserted = false;
+  let postLoginStepAdded = false;
   tc.steps.forEach((step, idx) => {
-    const stepStr = emitStep(step, idx);
+    if (needsLogin && loginInserted && isHomeTextStep(step)) {
+      return;
+    }
+    if (needsLogin && isLoginFieldStep(step)) {
+      return;
+    }
+    if (needsLogin && isLoginSuccessCheck(step)) {
+      return;
+    }
+    const stepStr = emitStep(step, idx, pagePath, locatorStore);
+    if (!stepStr.trim()) {
+      return;
+    }
     stepStrings.push(stepStr);
     if (needsLogin && !loginInserted && step.kind === "goto") {
       stepStrings.push(loginCall);
       loginInserted = true;
+      if (!postLoginStepAdded) {
+        stepStrings.push(postLoginCheck);
+        postLoginStepAdded = true;
+      }
     }
   });
+  if (needsLogin && !loginInserted && loginCall) {
+    stepStrings.push(loginCall);
+    loginInserted = true;
+    if (!postLoginStepAdded) {
+      stepStrings.push(postLoginCheck);
+      postLoginStepAdded = true;
+    }
+  }
 
   let body = preNav;
   if (needsLogin && !loginInserted && loginCall) {
     body += `${loginCall}\n`;
     loginInserted = true;
+    if (!postLoginStepAdded) {
+      body += `${postLoginCheck}\n`;
+      postLoginStepAdded = true;
+    }
   }
   if (stepStrings.length > 0) {
     body += stepStrings.join("\n");
@@ -254,8 +467,9 @@ ${emitAnnotations(pagePath, tc.name)}${body}
 export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
   const sharedSteps = parseSharedSteps();
   const loginConfig = resolveLoginConfig(sharedSteps);
+  const locatorStore = sharedSteps.locatorStore;
   const uniqTitle = makeUniqTitleFactory();
-  const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath)).join("\n\n");
+  const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath, locatorStore)).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} – ${tests?.length ?? 0} test(s)`;
     const helperLines = [
     "import { Page, test, expect } from '@playwright/test';",
@@ -331,6 +545,87 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "  }",
     "  const prefixWithSlash = normalizedPrefix.endsWith('/') ? normalizedPrefix : `${normalizedPrefix}/`;",
     "  return route.startsWith(prefixWithSlash);",
+    "}",
+    "",
+    "type Region = 'navigation' | 'header' | 'main';",
+    "",
+    "function getAttributeValue(selector: string, attr: string): string | undefined {",
+    "  const regex = new RegExp(`${attr}\\s*=\\s*['\"]([^'\"]+)['\"]`, 'i');",
+    "  const match = selector.match(regex);",
+    "  return match ? match[1] : undefined;",
+    "}",
+    "",
+    "function regionScope(page: Page, region?: Region) {",
+    "  switch (region) {",
+    "    case 'navigation':",
+    "      return page.getByRole('navigation');",
+    "    case 'header':",
+    "      return page.locator('header');",
+    "    case 'main':",
+    "      return page.locator('main');",
+    "    default:",
+    "      return page;",
+    "  }",
+    "}",
+    "",
+    "function chooseLocator(page: Page, selector: string, region?: Region) {",
+    "  const scope = regionScope(page, region);",
+    "  const testId = getAttributeValue(selector, 'data-testid');",
+    "  if (testId) {",
+    "    return scope.getByTestId(testId);",
+    "  }",
+    "  const role = getAttributeValue(selector, 'role');",
+    "  if (role) {",
+    "    const name = getAttributeValue(selector, 'name');",
+    "    return scope.getByRole(role, name ? { name } : undefined);",
+    "  }",
+    "  return scope.locator(selector);",
+    "}",
+    "",
+    "function escapeRegex(value: string): string {",
+    "  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
+    "}",
+    "",
+    "function pathRegex(target: string): RegExp {",
+    "  const escaped = escapeRegex(target);",
+    "  return new RegExp(`^${escaped}(?:$|[?#/])`);",
+    "}",
+    "",
+    "function identityPathForText(text?: string): string | undefined {",
+    "  if (!text) return undefined;",
+    "  const normalized = text.trim().toLowerCase();",
+    "  if (!normalized) return undefined;",
+    "  for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {",
+    "    if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {",
+    "      return path;",
+    "    }",
+    "    if (identity.kind === 'text' && identity.text?.toLowerCase().includes(normalized)) {",
+    "      return path;",
+    "    }",
+    "  }",
+    "  return undefined;",
+    "}",
+    "",
+    "async function clickNavLink(page: Page, target: string): Promise<void> {",
+    "  const normalizedPath = normalizeIdentityPath(target);",
+    "  const targetSelector = `a[href=\"${normalizedPath}\"]`;",
+    "  const scopes = [",
+    "    page.getByRole('navigation'),",
+    "    page.locator('header'),",
+    "    page.locator('main'),",
+    "  ];",
+    "  for (const scope of scopes) {",
+    "    const link = scope.locator(targetSelector);",
+    "    if (await link.count()) {",
+    "      const candidate = link.first();",
+    "      await candidate.waitFor({ state: 'visible', timeout: 15000 });",
+    "      await candidate.click({ timeout: 15000 });",
+    "      return;",
+    "    }",
+    "  }",
+    "  const fallback = page.locator(targetSelector).first();",
+    "  await fallback.waitFor({ state: 'visible', timeout: 15000 });",
+    "  await fallback.click({ timeout: 15000 });",
     "}",
     "",
     `const SHARED_LOGIN_CONFIG = ${JSON.stringify(loginConfig, null, 2)};`,
