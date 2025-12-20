@@ -9,7 +9,6 @@ export default defineConfig({
     alias: { '@': resolve(__dirname, 'src') },
   },
 
-  // Dev-only (local). This is NOT used in production preview.
   server: {
     host: true,
     port: 5173,
@@ -24,9 +23,12 @@ export default defineConfig({
     },
   },
 
-  // ✅ Production preview (Railway uses this)
   preview: {
     host: true,
     port: Number(process.env.PORT) || 4173,
+    allowedHosts: [
+      'testmind-web-production.up.railway.app',
+      'testmindai.com', // keep for later if/when domain is real
+    ],
   },
 })
