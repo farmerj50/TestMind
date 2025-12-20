@@ -396,8 +396,42 @@ export const selfHealWorker = new Worker(
         }
       }
 
-      // Rule: soften strict-mode locator errors by selecting first match
+      // Rule: handle strict-mode locator errors
       if (containsStrictMode(context.message)) {
+        const hrefMatch = context.message?.match(/href="([^"]+)"/);
+        if (hrefMatch) {
+          const href = hrefMatch[1];
+          const locatorLinePattern =
+            /(page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\))/m;
+          const locatorMatch = context.specContent.match(locatorLinePattern);
+          if (locatorMatch) {
+            const original = locatorMatch[0];
+            const replacement = `page.locator('a[href="${href}"]').first()`;
+            const patched = context.specContent.replace(original, replacement);
+            await writeAndRecordSuccess(
+              patched,
+              `Auto-fixed strict-mode locator via href=${href}`,
+              "rule-based strict-mode href"
+            );
+            return;
+          }
+        }
+        const locatorPattern =
+          /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\)(?!\s*\.(first|nth|filter|locator))/m;
+        const match = context.specContent.match(locatorPattern);
+        if (match) {
+          const target = match[0];
+          const patchedLocator = `${target}.first()`;
+          const patched = context.specContent.replace(target, patchedLocator);
+          await writeAndRecordSuccess(
+            patched,
+            "Auto-selected first match for strict-mode locator",
+            "rule-based strict-mode"
+          );
+          return;
+        }
+      }
+
         const locatorPattern =
           /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\)(?!\s*\.(first|nth|filter|locator))/m;
         const match = context.specContent.match(locatorPattern);

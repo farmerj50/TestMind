@@ -38,74 +38,72 @@ export async function scheduleSelfHealingForRun(runId: string) {
     select: { projectId: true, paramsJson: true, trigger: true },
   });
   if (!run) return;
-  if (run.trigger === "self-heal") return;
   const headful = Boolean((run.paramsJson as any)?.headful);
   const baseUrl: string | undefined = (run.paramsJson as any)?.baseUrl;
 
-  const failedResults = await prisma.testResult.findMany({
-    where: { runId, status: TestResultStatus.failed },
-    select: { id: true, testCaseId: true, testCase: { select: { key: true, title: true } } },
-  });
+  if (!SELF_HEAL_ENABLED) return;
 
-  if (!SELF_HEAL_ENABLED || failedResults.length === 0) return;
-
-  let totalAttempts = await prisma.testHealingAttempt.count({
-    where: { runId },
-  });
-
-  for (const result of failedResults) {
-    if (totalAttempts >= MAX_PATCHES_PER_RUN) {
-      console.log(
-        `[self-heal] run ${runId} reached max patches (${MAX_PATCHES_PER_RUN}); skipping remaining failures`
-      );
-      break;
-    }
-
-    const open = await prisma.testHealingAttempt.findFirst({
-      where: {
-        testResultId: result.id,
-        status: { in: [HealingStatus.queued, HealingStatus.running] },
-      },
-    });
-    if (open) {
-      console.log(
-        `[self-heal] skipping scheduling for testResult=${result.id} because an attempt is already in-flight`
-      );
-      continue;
-    }
-
-    const attemptsSoFar = await prisma.testHealingAttempt.count({
-      where: { testResultId: result.id },
-    });
-
-    if (attemptsSoFar >= MAX_ATTEMPTS_PER_SPEC) {
-      console.log(
-        `[self-heal] skipping testResult=${result.id}; exceeded max attempts (${MAX_ATTEMPTS_PER_SPEC})`
-      );
-      continue;
-    }
-
-    const healingAttempt = await prisma.testHealingAttempt.create({
-      data: {
-        run: { connect: { id: runId } },
-        testResult: { connect: { id: result.id } },
-        testCase: { connect: { id: result.testCaseId } },
-        attempt: attemptsSoFar + 1,
-        status: HealingStatus.queued,
-      },
-    });
-    totalAttempts++;
-
-    await enqueueSelfHeal({
+  const inflight = await prisma.testHealingAttempt.findFirst({
+    where: {
       runId,
-      testResultId: result.id,
-      testCaseId: result.testCaseId,
-      attemptId: healingAttempt.id,
-      projectId: run.projectId,
-      totalFailed: failedResults.length,
-      testTitle: extractTestTitle(result.testCase?.title ?? null),
-      headed: headful,
-      baseUrl,
-    });
+      status: { in: [HealingStatus.queued, HealingStatus.running] },
+    },
+    select: { id: true },
+  });
+  if (inflight) {
+    console.log(`[self-heal] run ${runId} already has an in-flight attempt; skipping schedule`);
+    return;
   }
+
+  const failedResultsCount = await prisma.testResult.count({
+    where: { runId, status: TestResultStatus.failed },
+  });
+  if (failedResultsCount === 0) return;
+
+  let totalAttempts = await prisma.testHealingAttempt.count({ where: { runId } });
+  if (totalAttempts >= MAX_PATCHES_PER_RUN) {
+    console.log(
+      `[self-heal] run ${runId} reached max patches (${MAX_PATCHES_PER_RUN}); skipping healing`
+    );
+    return;
+  }
+
+  const nextFailure = await prisma.testResult.findFirst({
+    where: { runId, status: TestResultStatus.failed },
+    orderBy: { id: "asc" },
+    select: { id: true, testCaseId: true, testCase: { select: { title: true } } },
+  });
+  if (!nextFailure) return;
+
+  const attemptsSoFar = await prisma.testHealingAttempt.count({
+    where: { testResultId: nextFailure.id },
+  });
+  if (attemptsSoFar >= MAX_ATTEMPTS_PER_SPEC) {
+    console.log(
+      `[self-heal] skipping testResult=${nextFailure.id}; exceeded max attempts (${MAX_ATTEMPTS_PER_SPEC})`
+    );
+    return;
+  }
+
+  const healingAttempt = await prisma.testHealingAttempt.create({
+    data: {
+      run: { connect: { id: runId } },
+      testResult: { connect: { id: nextFailure.id } },
+      testCase: { connect: { id: nextFailure.testCaseId } },
+      attempt: attemptsSoFar + 1,
+      status: HealingStatus.queued,
+    },
+  });
+
+  await enqueueSelfHeal({
+    runId,
+    testResultId: nextFailure.id,
+    testCaseId: nextFailure.testCaseId,
+    attemptId: healingAttempt.id,
+    projectId: run.projectId,
+    totalFailed: failedResultsCount,
+    testTitle: extractTestTitle(nextFailure.testCase?.title ?? null),
+    headed: headful,
+    baseUrl,
+  });
 }
