@@ -1,5 +1,6 @@
 // apps/api/src/routes/tests.ts
 import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma";
 import { z } from "zod";
@@ -437,7 +438,13 @@ export async function testRoutes(app: FastifyInstance) {
     });
     if (!ownerOk) return reply.code(404).send({ error: "Project not found" });
 
-    const suite = await prisma.testSuite.create({ data: parsed.data });
+    const suite = await prisma.testSuite.create({
+      data: {
+        projectId: parsed.data.projectId,
+        name: parsed.data.name,
+        parentId: parsed.data.parentId ?? undefined,
+      },
+    });
     reply.code(201).send({ suite });
   });
 
@@ -579,10 +586,22 @@ export async function testRoutes(app: FastifyInstance) {
     });
     if (!ownerOk) return reply.code(404).send({ error: "Project not found" });
 
-    const { steps, ...caseData } = parsed.data;
+    const { steps, ...casePayload } = parsed.data;
+    const { projectId, suiteId, ...caseFields } = casePayload;
 
     const created = await prisma.$transaction(async (tx) => {
-      const tc = await tx.testCase.create({ data: caseData });
+      const tc = await tx.testCase.create({
+        data: {
+          project: { connect: { id: projectId } },
+          title: caseFields.title,
+          suite: suiteId ? { connect: { id: suiteId } } : undefined,
+          priority: caseFields.priority,
+          status: caseFields.status,
+          type: caseFields.type,
+          tags: caseFields.tags ?? undefined,
+          preconditions: caseFields.preconditions ?? undefined,
+        },
+      });
       if (steps && steps.length) {
         await tx.testStep.createMany({
           data: steps.map((s, i) => ({
@@ -617,12 +636,25 @@ export async function testRoutes(app: FastifyInstance) {
     const parsed = Body.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
-    const { steps, ...caseData } = parsed.data;
+    const { steps, ...casePayload } = parsed.data;
 
     const updated = await prisma.$transaction(async (tx) => {
+      const updateData: Prisma.TestCaseUpdateInput = {};
+      if (casePayload.title) updateData.title = casePayload.title;
+      if (casePayload.priority) updateData.priority = casePayload.priority;
+      if (casePayload.status) updateData.status = casePayload.status;
+      if (casePayload.type) updateData.type = casePayload.type;
+      if (casePayload.tags !== undefined) updateData.tags = casePayload.tags;
+      if (casePayload.preconditions !== undefined) updateData.preconditions = casePayload.preconditions;
+      if (casePayload.suiteId !== undefined) {
+        updateData.suite = casePayload.suiteId
+          ? { connect: { id: casePayload.suiteId } }
+          : { disconnect: true };
+      }
+
       const tc = await tx.testCase.update({
         where: { id: req.params.id },
-        data: caseData as any,
+        data: updateData,
         select: {
           id: true,
           key: true,

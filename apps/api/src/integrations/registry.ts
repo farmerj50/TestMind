@@ -1,8 +1,8 @@
 import type { FastifyRequest } from "fastify";
-import type { Integration, Prisma, Project } from "@prisma/client";
+import type { Prisma as PrismaTypes, Integration, Project } from "@prisma/client";
 import githubIssuesProvider from "./providers/github";
 
-export type IntegrationWithProject = Integration & { project: Project };
+export type IntegrationWithProject = Integration & { project?: Project };
 
 export interface IntegrationActionContext<TPayload = any> {
   req: FastifyRequest;
@@ -17,14 +17,11 @@ export interface IntegrationProvider {
   description?: string;
   allowMultiple?: boolean;
   validateConfig?(input: unknown): {
-    config: Prisma.JsonValue;
-    secrets?: Prisma.JsonValue;
+    config: PrismaTypes.JsonValue;
+    secrets?: PrismaTypes.JsonValue;
   };
-  maskConfig?(config: Prisma.JsonValue | null): Prisma.JsonValue | null;
-  performAction?(
-    action: string,
-    ctx: IntegrationActionContext
-  ): Promise<any>;
+  maskConfig?(config: PrismaTypes.JsonValue | null): PrismaTypes.JsonValue | null;
+  performAction?(action: string, ctx: IntegrationActionContext): Promise<any>;
 }
 
 export const integrationProviders: Record<string, IntegrationProvider> = {
@@ -33,8 +30,6 @@ export const integrationProviders: Record<string, IntegrationProvider> = {
 
 export function assertProvider(key: string): IntegrationProvider {
   const provider = integrationProviders[key];
-  if (!provider) {
-    throw new Error(`Unknown integration provider: ${key}`);
-  }
+  if (!provider) throw new Error(`Unknown integration provider: ${key}`);
   return provider;
 }
