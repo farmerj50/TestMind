@@ -53,7 +53,16 @@ function casesFromScans(input: any): any[] {
 
     // 2) Happy-path form submit with fills (if fields + a submit/button)
     if ((scan.fields?.length || 0) > 0 && (scan.buttons?.length || 0) > 0) {
-      const fills = scan.fields.map((f: any) => ({
+      const seen = new Set<string>();
+      const uniqueFields = [];
+      for (const f of scan.fields) {
+        const key = `${f.name ?? ""}|${f.type ?? ""}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueFields.push(f);
+        }
+      }
+      const fills = uniqueFields.map((f: any) => ({
         kind: "fill",
         selector: `[name='${f.name}'], #${f.name}`,
         value: guessValue(f.name, f.type),

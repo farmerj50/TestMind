@@ -763,31 +763,6 @@ export default defineConfig({
 
         if (fsSync.existsSync(genDest)) {
           await catalogSpecs(genDest, 'FINAL');
-          // optional guard: if user forced local, ensure JusticePath text didn’t sneak in
-          if ((MODE === 'local') && process.env.TM_FAIL_ON_JP === '1') {
-            const jpHit = await (async () => {
-              const files: string[] = [];
-              const read = async (p: string) => {
-                const ents = await fs.readdir(p, { withFileTypes: true });
-                for (const e of ents as any[]) {
-                  const f = path.join(p, e.name);
-                  if (e.isDirectory()) await read(f);
-                  else if (/\.(spec|test)\.(t|j)sx?$/i.test(e.name)) {
-                    const t = await fs.readFile(f, 'utf8').catch(() => '');
-                    if (t.includes('JusticePath — Accessible Legal Help')) files.push(f);
-                  }
-                }
-              };
-              await read(genDest);
-              return files;
-            })();
-            if (jpHit.length) {
-              await fs.writeFile(path.join(outDir, 'stderr.txt'),
-                `[runner] ABORT: JusticePath strings found in LOCAL mode:\n${jpHit.join('\n')}\n`,
-                { flag: 'a' });
-              throw new Error('Spec source contamination detected (JusticePath markers present during LOCAL mode).');
-            }
-          }
         }
 
         async function logSpecs(root: string, label: string) {
@@ -1138,6 +1113,11 @@ export default defineConfig({
     return reply.send({ run: { ...rest, healingAttempts: TestHealingAttempt } });
   });
 
+  const RerunBody = z.object({
+    specFile: z.string().min(1).optional(),
+    grep: z.string().optional(),
+  });
+
   app.post("/test-runs/:id/rerun", async (req, reply) => {
     const { id } = req.params as { id: string };
     const run = await prisma.testRun.findUnique({
@@ -1151,6 +1131,11 @@ export default defineConfig({
     const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
     const rerunParams: Record<string, any> = { headful, suiteId };
     if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
+    const parsedBody = RerunBody.safeParse(req.body ?? {});
+    const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
+    const grep = parsedBody.success ? parsedBody.data.grep : undefined;
+    if (specFile) rerunParams.file = specFile;
+    if (grep) rerunParams.grep = grep ?? undefined;
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
@@ -1166,6 +1151,8 @@ export default defineConfig({
       projectId: run.projectId,
       headed: headful,
       baseUrl: (params as any)?.baseUrl,
+      file: specFile,
+      grep,
     });
     return reply.send({ runId: rerun.id });
   });
