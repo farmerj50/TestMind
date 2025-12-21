@@ -1,4 +1,4 @@
-import { runQueue, healingQueue, securityQueue } from "../runner/queue";
+import { runQueue, healingQueue, securityQueue } from "../runner/queue.js";
 
 async function main() {
   console.log("Pausing queues...");

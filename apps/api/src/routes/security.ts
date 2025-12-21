@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { enqueueSecurityScan } from "../runner/queue";
+import { prisma } from "../prisma.js";
+import { enqueueSecurityScan } from "../runner/queue.js";
 
 function requireUser(req: any, reply: any) {
   const { userId } = getAuth(req);

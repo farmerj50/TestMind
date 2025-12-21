@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { secretKeyBuffer } from "../config/env";
+import { secretKeyBuffer } from "../config/env.js";
 
 export function encryptSecret(plain: string): string {
   const iv = crypto.randomBytes(12);

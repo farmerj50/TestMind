@@ -1,6 +1,6 @@
 // apps/api/src/runner/queue.ts
 import { Queue } from 'bullmq';
-import { redis } from './redis';
+import { redis } from './redis.js';
 
 // What the worker expects to receive:
 export type RunPayload = {

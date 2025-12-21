@@ -1,6 +1,6 @@
 import OpenAI from "openai";
-import type { RouteScan } from "../testmind/discover";
-import type { PageAnalysisResult, AgentScenarioPayload } from "./types";
+import type { RouteScan } from "../testmind/discover.js";
+import type { PageAnalysisResult, AgentScenarioPayload } from "./types.js";
 
 const MODEL = process.env.AGENT_MODEL_MODEL || process.env.AGENT_MODEL || "gpt-4o-mini";
 

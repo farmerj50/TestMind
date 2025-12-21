@@ -4,8 +4,8 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { ensureCuratedProjectEntry } from "../testmind/curated-store";
+import { prisma } from "../prisma.js";
+import { ensureCuratedProjectEntry } from "../testmind/curated-store.js";
 
 const RECORD_ROOT = path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts", "recordings");
 const HELPER_PING = process.env.RECORDER_HELPER || "http://localhost:43117";
