@@ -34,32 +34,42 @@ const app = Fastify({ logger: true });
 // API runs from apps/api; repo root is two levels up
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
-const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST;
+const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST
+  .map((o) => o.trim().replace(/\/$/, ""));
+
+app.log.info(
+  { nodeEnv: validatedEnv.NODE_ENV, envCors: process.env.CORS_ORIGINS, allowedOrigins },
+  "[boot] cors config"
+);
+
+app.register(cors, {
+  origin: (origin, cb) => {
+    // Non-browser tools / internal requests
+    if (!origin) return cb(null, true);
+
+    const normalized = origin.trim().replace(/\/$/, "");
+    const ok = allowedOrigins.includes(normalized);
+
+    // Helpful for Railway logs
+    app.log.info({ origin, normalized, ok, allowedOrigins }, "[CORS] origin check");
+
+    // IMPORTANT: return boolean, do NOT throw an Error
+    return cb(null, ok);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+exposedHeaders: ["set-cookie"],
+
+});
+
+
 const shouldStartWorkers = validatedEnv.START_WORKERS;
 const skipServer = validatedEnv.TM_SKIP_SERVER;
 const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 app.log.info({ nodeEnv: validatedEnv.NODE_ENV, corsOrigins: process.env.CORS_ORIGINS, allowedOrigins }, "[boot] cors config");
 app.log.info({ allowedOrigins }, "[CORS] allowedOrigins at boot");
-
-
-app.register(cors, {
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-
-    const normalized = origin.trim().replace(/\/$/, "");
-    const allowed = allowedOrigins.map((o) => o.trim().replace(/\/$/, ""));
-
-    const ok = allowed.includes(normalized);
-    app.log.info({ origin, normalized, ok, allowed }, "[CORS] check");
-
-    return cb(null, ok); // IMPORTANT: no Error thrown
-  },
-  credentials: true,
-});
-
-
-
 
 app.register(clerkPlugin, {
   publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
