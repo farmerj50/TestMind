@@ -38,15 +38,6 @@ const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-app.register(cors, {
-  origin: allowedOrigins,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  exposedHeaders: ["set-cookie"],
-  optionsSuccessStatus: 204,
-});
-
 
 app.log.info(
   { nodeEnv: validatedEnv.NODE_ENV, envCors: process.env.CORS_ORIGINS, allowedOrigins },
@@ -63,6 +54,36 @@ const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boo
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 app.log.info({ nodeEnv: validatedEnv.NODE_ENV, corsOrigins: process.env.CORS_ORIGINS, allowedOrigins }, "[boot] cors config");
 app.log.info({ allowedOrigins }, "[CORS] allowedOrigins at boot");
+
+app.log.info({ allowedOrigins }, "[boot] CORS allowedOrigins");
+
+app.register(cors, {
+  origin: (origin, cb) => {
+    // Allow server-to-server / curl / Railway health checks
+    if (!origin) return cb(null, true);
+
+    const normalized = origin.trim().replace(/\/$/, "");
+    const ok = allowedOrigins.includes(normalized);
+
+    app.log.info({ origin, normalized, ok }, "[CORS] origin check");
+    return cb(null, ok);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  exposedHeaders: ["set-cookie"],
+  optionsSuccessStatus: 204,
+});
+
+// Similar to JusticePath "Vary" header (helps CDN/caches behave)
+app.addHook("onSend", async (req, reply, payload) => {
+  reply.header(
+    "Vary",
+    "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+  );
+  return payload;
+});
+
 
 app.register(clerkPlugin, {
   publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
