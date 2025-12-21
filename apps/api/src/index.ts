@@ -39,17 +39,32 @@ const shouldStartWorkers = validatedEnv.START_WORKERS;
 const skipServer = validatedEnv.TM_SKIP_SERVER;
 const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
+app.log.info({ nodeEnv: validatedEnv.NODE_ENV, corsOrigins: process.env.CORS_ORIGINS, allowedOrigins }, "[boot] cors config");
+
 
 app.register(cors, {
   origin: (origin, cb) => {
+    // allow same-origin / server-side / curl
     if (!origin) return cb(null, true);
-    if (allowedOrigins.some((allowed) => allowed === origin)) {
+
+    const o = origin.trim();
+
+    // exact match allowlist
+    if (allowedOrigins.includes(o)) return cb(null, true);
+
+    // small safety: allow Railway preview subdomains if you want
+    // (comment this out if you want to stay strict)
+    if (o.endsWith(".up.railway.app") && allowedOrigins.some(a => a.endsWith(".up.railway.app"))) {
       return cb(null, true);
     }
-    return cb(new Error("Not allowed"), false);
+
+    // IMPORTANT: log why it failed so we can see it in Railway logs
+    app.log.warn({ origin: o, allowedOrigins }, "[cors] blocked origin");
+    return cb(null, false);
   },
   credentials: true,
 });
+
 
 app.register(clerkPlugin, {
   publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
