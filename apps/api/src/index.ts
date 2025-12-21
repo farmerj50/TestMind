@@ -28,38 +28,48 @@ import recorderRoutes from "./routes/recorder.js";
 import { getLimitsForPlan } from "./config/plans.js";
 import type { PlanTier } from "./config/plans.js";
 import testmindRoutes from './testmind/routes.js';
+import type { FastifyCorsOptions } from "@fastify/cors";
+
+
 
 
 const app = Fastify({ logger: true });
-app.register(cors, {
+const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
+
+const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST
+  .map((o) => o.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
+const corsOpts: FastifyCorsOptions = {
   origin: (origin, cb) => {
-    // Allow server-to-server / curl / Railway health checks
     if (!origin) return cb(null, true);
 
     const normalized = origin.trim().replace(/\/$/, "");
     const ok = allowedOrigins.includes(normalized);
 
     app.log.info({ origin, normalized, ok }, "[CORS] origin check");
-    return cb(null, ok);
+    cb(null, ok);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  exposedHeaders: ["set-cookie"],
+  optionsSuccessStatus: 204,
+};
+
+await app.register(cors, {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+
+    const normalized = origin.trim().replace(/\/$/, "");
+    const ok = allowedOrigins.includes(normalized);
+
+    cb(null, ok);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   exposedHeaders: ["set-cookie"],
-  optionsSuccessStatus: 204,
 });
-// API runs from apps/api; repo root is two levels up
-const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
-const allowDebugRoutes = validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
-const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST
-  .map((o) => o.trim().replace(/\/$/, ""))
-  .filter(Boolean);
-
-
-app.log.info(
-  { nodeEnv: validatedEnv.NODE_ENV, envCors: process.env.CORS_ORIGINS, allowedOrigins },
-  "[boot] cors config"
-);
 
 
 
@@ -69,21 +79,8 @@ const skipServer = validatedEnv.NODE_ENV !== "production" && validatedEnv.TM_SKI
 
 const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
-app.log.info({ nodeEnv: validatedEnv.NODE_ENV, corsOrigins: process.env.CORS_ORIGINS, allowedOrigins }, "[boot] cors config");
-app.log.info({ allowedOrigins }, "[CORS] allowedOrigins at boot");
-
-app.log.info({ allowedOrigins }, "[boot] CORS allowedOrigins");
-
-
-
-// Similar to JusticePath "Vary" header (helps CDN/caches behave)
-app.addHook("onSend", async (req, reply, payload) => {
-  reply.header(
-    "Vary",
-    "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
-  );
-  return payload;
-});
+const allowDebugRoutes =
+  validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 
 
 app.register(clerkPlugin, {
