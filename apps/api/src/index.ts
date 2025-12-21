@@ -40,27 +40,24 @@ const skipServer = validatedEnv.TM_SKIP_SERVER;
 const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 app.log.info({ nodeEnv: validatedEnv.NODE_ENV, corsOrigins: process.env.CORS_ORIGINS, allowedOrigins }, "[boot] cors config");
+app.log.info({ allowedOrigins }, "[CORS] allowedOrigins at boot");
+
 
 app.register(cors, {
   origin: (origin, cb) => {
-    // Allow non-browser calls
     if (!origin) return cb(null, true);
 
-    // Normalize (kills trailing slash + whitespace issues)
     const normalized = origin.trim().replace(/\/$/, "");
-
     const allowed = allowedOrigins.map((o) => o.trim().replace(/\/$/, ""));
 
-    if (allowed.includes(normalized)) {
-      return cb(null, true);
-    }
+    const ok = allowed.includes(normalized);
+    app.log.info({ origin, normalized, ok, allowed }, "[CORS] check");
 
-    app.log.warn({ origin, normalized, allowed }, "[CORS] blocked origin");
-    // IMPORTANT: do not throw Error here
-    return cb(null, false);
+    return cb(null, ok); // IMPORTANT: no Error thrown
   },
   credentials: true,
 });
+
 
 
 
