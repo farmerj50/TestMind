@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 //import fetch from "node-fetch";
 import crypto from "node:crypto";
 import { getAuth } from "@clerk/fastify";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 
 const GH_AUTH = "https://github.com/login/oauth/authorize";
 const GH_TOKEN = "https://github.com/login/oauth/access_token";

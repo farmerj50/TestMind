@@ -1,6 +1,6 @@
-import { prisma } from '../prisma';
-import { enqueueSelfHeal } from './queue';
-import { extractTestTitle } from './test-title';
+import { prisma } from '../prisma.js';
+import { enqueueSelfHeal } from './queue.js';
+import { extractTestTitle } from './test-title.js';
 
 const TestResultStatus = {
   passed: "passed",

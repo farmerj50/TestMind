@@ -4,13 +4,13 @@ import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'node:fs';
 import { createTwoFilesPatch } from 'diff';
-import { redis } from './redis';
-import { prisma } from '../prisma';
-import type { SelfHealPayload, RunPayload } from './queue';
-import { enqueueRun } from './queue';
-import { requestSpecHeal, HealPrompt } from './llm';
-import { CURATED_ROOT } from "../testmind/curated-store";
-import { extractTestTitle } from './test-title';
+import { redis } from './redis.js';
+import { prisma } from '../prisma.js';
+import type { SelfHealPayload, RunPayload } from './queue.js';
+import { enqueueRun } from './queue.js';
+import { requestSpecHeal, HealPrompt } from './llm.js';
+import { CURATED_ROOT } from "../testmind/curated-store.js";
+import { extractTestTitle } from './test-title.js';
 
 const TestRunStatus = {
   queued: "queued",

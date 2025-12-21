@@ -1,5 +1,5 @@
-import type { TestPlan } from "../core/plan";
-import * as P from "../core/pattern";
+import type { TestPlan } from "../core/plan.js";
+import * as P from "../core/pattern.js";
 
 type Persona = "manual" | "sdet" | "automation";
 type PatternInput = any;

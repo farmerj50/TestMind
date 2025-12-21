@@ -1,15 +1,15 @@
 import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
-import { prisma } from '../prisma';
-import { redis } from './redis';
-import { makeWorkdir, rmrf } from './workdir';
-import { cloneRepo } from './git';
-import { detectFramework, installDeps, runTests } from './node-test-exec';
-import { parseResults } from './result-parsers';
-import { scheduleSelfHealingForRun } from './self-heal';
-import type { RunPayload } from './queue';
-import { analyzeFailure } from './ai-analysis';
+import { prisma } from '../prisma.js';
+import { redis } from './redis.js';
+import { makeWorkdir, rmrf } from './workdir.js';
+import { cloneRepo } from './git.js';
+import { detectFramework, installDeps, runTests } from './node-test-exec.js';
+import { parseResults } from './result-parsers.js';
+import { scheduleSelfHealingForRun } from './self-heal.js';
+import type { RunPayload } from './queue.js';
+import { analyzeFailure } from './ai-analysis.js';
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";

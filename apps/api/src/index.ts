@@ -10,24 +10,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
-import { githubRoutes } from "./routes/github";
-import { testRoutes } from "./routes/tests";
-import runRoutes from "./routes/run";
-import reportsRoutes from "./routes/reports";
-import integrationsRoutes from "./routes/integrations";
-import agentRoutes from "./routes/agent";
-import jiraRoutes from "./routes/jira";
-import { secretsRoutes } from "./routes/secrets";
-import qaAgentRoutes from "./routes/qaAgent";
-import securityRoutes from "./routes/security";
-import { prisma } from "./prisma";
-import { validatedEnv } from "./config/env";
-import recorderRoutes from "./routes/recorder";
+import { githubRoutes } from "./routes/github.js";
+import { testRoutes } from "./routes/tests.js";
+import runRoutes from "./routes/run.js";
+import reportsRoutes from "./routes/reports.js";
+import integrationsRoutes from "./routes/integrations.js";
+import agentRoutes from "./routes/agent.js";
+import jiraRoutes from "./routes/jira.js";
+import { secretsRoutes } from "./routes/secrets.js";
+import qaAgentRoutes from "./routes/qaAgent.js";
+import securityRoutes from "./routes/security.js";
+import { prisma } from "./prisma.js";
+import { validatedEnv } from "./config/env.js";
+import recorderRoutes from "./routes/recorder.js";
 
 // ✅ single source of truth for plan typing + limits
-import { getLimitsForPlan } from "./config/plans";
-import type { PlanTier } from "./config/plans";
-import testmindRoutes from './testmind/routes';
+import { getLimitsForPlan } from "./config/plans.js";
+import type { PlanTier } from "./config/plans.js";
+import testmindRoutes from './testmind/routes.js';
 
 
 const app = Fastify({ logger: true });
@@ -419,9 +419,9 @@ const startWorkersOnce = () => {
       app.log.error({ err }, `[worker] ${label} failed to start`);
     }
   };
-  start(import("./runner/worker"), "test-runs");
-  start(import("./runner/self-heal-worker"), "self-heal");
-  start(import("./runner/security-worker"), "security-scan");
+  start(import("./runner/worker.js"), "test-runs");
+  start(import("./runner/self-heal-worker.js"), "self-heal");
+  start(import("./runner/security-worker.js"), "security-scan");
 };
 
 startWorkersOnce();

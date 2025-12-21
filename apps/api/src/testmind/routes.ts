@@ -4,18 +4,18 @@ import path from 'path';
 import fs from 'fs';
 import { globby } from "globby";
 import { getAuth } from "@clerk/fastify";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
-import { generateAndWrite, runAdapter } from './service';
+import { generateAndWrite, runAdapter } from './service.js';
 import {
   CURATED_ROOT,
   readCuratedManifest,
   writeCuratedManifest,
   slugify,
   ensureWithin,
-} from "./curated-store";
+} from "./curated-store.js";
 
 type GenerateCommon = {
   repoPath?: string;

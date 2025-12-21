@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getAuth } from "@clerk/fastify";
-import { prisma } from "../prisma";
-import { encryptSecret } from "../lib/crypto";
+import { prisma } from "../prisma.js";
+import { encryptSecret } from "../lib/crypto.js";
 
 const CreateBody = z.object({
   name: z.string().trim().min(1).max(128),
