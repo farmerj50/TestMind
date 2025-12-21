@@ -6,20 +6,20 @@ import fsSync from "fs";
 import path from "path";
 import net from "net";
 import { z } from "zod";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 
 // runner pieces
-import { makeWorkdir, rmrf } from "../runner/workdir";
-import { cloneRepo } from "../runner/git";
-import { runTests } from "../runner/node-test-exec";
+import { makeWorkdir, rmrf } from "../runner/workdir.js";
+import { cloneRepo } from "../runner/git.js";
+import { runTests } from "../runner/node-test-exec.js";
 import { execa } from "execa";
 
-import { parseResults, ParsedCase } from "../runner/result-parsers";
-import { scheduleSelfHealingForRun } from "../runner/self-heal";
-import { enqueueRun } from "../runner/queue";
-import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store";
-import { regenerateAttachedSpecs } from "../agent/service";
-import { decryptSecret } from "../lib/crypto";
+import { parseResults, ParsedCase } from "../runner/result-parsers.js";
+import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
+import { enqueueRun } from "../runner/queue.js";
+import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
+import { regenerateAttachedSpecs } from "../agent/service.js";
+import { decryptSecret } from "../lib/crypto.js";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this

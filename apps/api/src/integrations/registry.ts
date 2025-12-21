@@ -1,6 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import type { Prisma as PrismaTypes, Integration, Project } from "@prisma/client";
-import githubIssuesProvider from "./providers/github";
+import githubIssuesProvider from "./providers/github.js";
 
 export type IntegrationWithProject = Integration & { project?: Project };
 

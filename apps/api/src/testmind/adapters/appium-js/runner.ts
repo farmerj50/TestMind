@@ -2,7 +2,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { execa } from "execa";
-import type { TestRunner } from "../../core/adapter";
+import type { TestRunner } from "../../core/adapter.js";
 
 function findSpecsRoot(cwd: string) {
   const candidates = [

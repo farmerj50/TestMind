@@ -1,12 +1,12 @@
 import { Prisma } from "@prisma/client";
 import path from "path";
 import fs from "fs/promises";
-import { prisma } from "../prisma";
-import { scanPage } from "../testmind/discover";
-import { requestPageAnalysis } from "./openai";
-import type { AgentScenarioPayload, AgentScenarioStep } from "./types";
-import { ensureCuratedProjectEntry, agentSuiteId } from "../testmind/curated-store";
-import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator";
+import { prisma } from "../prisma.js";
+import { scanPage } from "../testmind/discover.js";
+import { requestPageAnalysis } from "./openai.js";
+import type { AgentScenarioPayload, AgentScenarioStep } from "./types.js";
+import { ensureCuratedProjectEntry, agentSuiteId } from "../testmind/curated-store.js";
+import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library.js";
 
 const defaultCoverage: Prisma.InputJsonValue = {};

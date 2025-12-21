@@ -1,8 +1,8 @@
 // apps/api/src/runner/ci-entrypoint.ts
 // Minimal CI/CLI entrypoint to enqueue a TestMind run without the HTTP server.
 import "dotenv/config";
-import { enqueueRun } from "./queue";
-import { prisma } from "../prisma";
+import { enqueueRun } from "./queue.js";
+import { prisma } from "../prisma.js";
 
 type ArgMap = Record<string, string>;
 

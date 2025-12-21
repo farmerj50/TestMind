@@ -4,7 +4,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import fs from "node:fs/promises";
 import { exec as cpExec } from "node:child_process";
 import { promisify } from "node:util";
-import { generateAndWrite } from "../../src/testmind/service";
+import { generateAndWrite } from "../../src/testmind/service.js";
 import path from "node:path";
 
 const exec = promisify(cpExec);

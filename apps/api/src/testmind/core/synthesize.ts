@@ -1,13 +1,13 @@
-import { discoverSite } from "../discover";
-import { generatePlan } from "../pipeline/generate-plan";
-import { writeSpecsFromPlan } from "../pipeline/codegen"; 
+import { discoverSite } from "../discover.js";
+import { generatePlan } from "../pipeline/generate-plan.js";
+import { writeSpecsFromPlan } from "../pipeline/codegen.js"; 
 import path from "node:path";
 import type {
   Env as EnvT,
   Component as ComponentT,
   Requirement as RequirementT,
   Persona as PersonaT,
-} from "./plan";
+} from "./plan.js";
 
 export async function runOnce(params: {
   baseUrl: string;

@@ -1,12 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 import { Prisma } from "@prisma/client";
 import {
   assertProvider,
   integrationProviders,
-} from "../integrations/registry";
+} from "../integrations/registry.js";
 
 const ListQuery = z.object({
   projectId: z.string().min(1),

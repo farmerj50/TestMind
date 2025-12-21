@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { Worker, Job } from "bullmq";
-import { prisma } from "../prisma";
-import { redis } from "./redis";
-import type { SecurityScanPayload } from "./queue";
+import { prisma } from "../prisma.js";
+import { redis } from "./redis.js";
+import type { SecurityScanPayload } from "./queue.js";
 import { request } from "undici";
 import net from "node:net";
 import path from "node:path";
