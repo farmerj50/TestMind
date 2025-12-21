@@ -48,7 +48,17 @@ const corsList =
     .filter(Boolean);
 
 
-const prodFallbackCors = env.WEB_URL ? [env.WEB_URL.trim()] : [];
+const KNOWN_PROD_ORIGINS = [
+  "https://testmind-web-production.up.railway.app",
+  "https://api-production-a100.up.railway.app",
+];
+
+const prodFallbackCors = [
+  ...new Set([
+    ...(env.WEB_URL ? [env.WEB_URL.trim()] : []),
+    ...KNOWN_PROD_ORIGINS,
+  ]),
+];
 
 if (env.NODE_ENV === "production" && corsList.length === 0 && prodFallbackCors.length === 0) {
   throw new Error("CORS_ORIGINS is required in production (comma-separated list), or set WEB_URL.");
