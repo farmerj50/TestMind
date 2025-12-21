@@ -1,5 +1,5 @@
 // apps/api/src/testmind/core/adapter.ts
-import { TestPlan } from './plan';
+import { TestPlan } from './plan.js';
 export type RenderedFile = { path: string; content: string; };
 export interface TestAdapter {
   id: string;                       // e.g., 'playwright-ts', 'cypress-js'

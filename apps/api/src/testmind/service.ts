@@ -1,14 +1,14 @@
 // apps/api/src/testmind/service.ts
-import type { TestPlan } from "./core/plan";
-import { discoverSite } from "./discover";
-import { generatePlan } from "./pipeline/generate-plan";
-import { writeSpecsFromPlan } from "./pipeline/codegen";
-import { playwrightTSRunner } from "./adapters/playwright-ts/runner";
-import { cucumberJSRunner } from "./adapters/cucumber-js/runner";
-import { cypressJSRunner } from "./adapters/cypress-js/runner";
-import { appiumJSRunner } from "./adapters/appium-js/runner";
-import { xctestRunner } from "./adapters/xctest/runner";
-import { TestRunner } from "./core/adapter";
+import type { TestPlan } from "./core/plan.js";
+import { discoverSite } from "./discover.js";
+import { generatePlan } from "./pipeline/generate-plan.js";
+import { writeSpecsFromPlan } from "./pipeline/codegen.js";
+import { playwrightTSRunner } from "./adapters/playwright-ts/runner.js";
+import { cucumberJSRunner } from "./adapters/cucumber-js/runner.js";
+import { cypressJSRunner } from "./adapters/cypress-js/runner.js";
+import { appiumJSRunner } from "./adapters/appium-js/runner.js";
+import { xctestRunner } from "./adapters/xctest/runner.js";
+import { TestRunner } from "./core/adapter.js";
 import 'dotenv/config';
 // apps/api/src/server.ts (or wherever you build Fastify)
 

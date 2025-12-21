@@ -2,7 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { getAuth } from "@clerk/fastify";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 import { z } from "zod";
 import path from "node:path";
 import os from "node:os";

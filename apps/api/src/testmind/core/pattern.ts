@@ -1,7 +1,7 @@
 // Updated pattern generator using full scan data
 
 import { faker } from "@faker-js/faker";
-import { RouteScan } from "./scanner";
+import { RouteScan } from "./scanner.js";
 
 export type Step =
   | { kind: "goto"; url: string }

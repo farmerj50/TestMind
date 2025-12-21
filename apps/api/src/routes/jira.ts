@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getAuth } from "@clerk/fastify";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 
 const IntegrationBody = z.object({
   projectId: z.string().min(1),

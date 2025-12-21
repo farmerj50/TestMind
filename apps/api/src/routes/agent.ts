@@ -14,10 +14,10 @@ import {
   getOrCreateProjectSession,
   getLatestSessionForProject,
   regenerateAttachedSpecs,
-} from "../agent/service";
-import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator";
-import { agentSuiteId, ensureCuratedProjectEntry } from "../testmind/curated-store";
-import { prisma } from "../prisma";
+} from "../agent/service.js";
+import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
+import { agentSuiteId, ensureCuratedProjectEntry } from "../testmind/curated-store.js";
+import { prisma } from "../prisma.js";
 
 type CoverageSummary = {
   coverageTotals: Record<string, number>;

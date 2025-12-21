@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Octokit } from "@octokit/rest";
-import { prisma } from "../../prisma";
-import type { IntegrationProvider } from "../registry";
+import { prisma } from "../../prisma.js";
+import type { IntegrationProvider } from "../registry.js";
 
 const ConfigSchema = z
   .object({

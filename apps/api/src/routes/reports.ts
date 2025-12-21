@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import fsSync from "node:fs";
