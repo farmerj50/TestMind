@@ -99,6 +99,10 @@ process.on("SIGTERM", () => {
 const buildStamp = process.env.BUILD_STAMP ?? process.env.GIT_SHA ?? "unknown";
 app.log.info({ buildStamp }, "[boot] build stamp");
 
+function toVoidPromise(x: unknown): Promise<void> {
+  return Promise.resolve(x as any).then(() => {});
+}
+
 const getPlatformPort = () => {
   const rawPort = process.env.PORT;
   if (!rawPort) {
@@ -694,22 +698,18 @@ const startServer = async () => {
 
   try {
     console.log("[BOOT] calling app.ready()");
-    const readyPromise: Promise<void> = Promise.resolve(app.ready()).then(() => {});
     const readyTimeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("app.ready() timed out after 10s")), 10_000)
     );
-    await Promise.race([readyPromise, readyTimeout]);
+    await Promise.race([toVoidPromise(app.ready()), readyTimeout]);
     console.log("[BOOT] app.ready() resolved");
     console.log("[BOOT] app.ready() resolved");
 
     console.log("[BOOT] about to listen", { host: "0.0.0.0", port });
-    const listenPromise: Promise<void> = Promise.resolve(
-      app.listen({ host: "0.0.0.0", port })
-    ).then(() => {});
     const timeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("listen() timed out after 10s")), 10_000)
     );
-    await Promise.race([listenPromise, timeout]);
+    await Promise.race([toVoidPromise(app.listen({ host: "0.0.0.0", port })), timeout]);
     console.log("[BOOT] listen resolved OK");
     app.log.info({ port }, "[boot] API listening");
   } catch (err) {
