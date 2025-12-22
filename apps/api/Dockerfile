@@ -32,13 +32,17 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Prisma on alpine often needs openssl + libc compatibility
+RUN apk add --no-cache openssl libc6-compat
+
 COPY --from=builder /workspace/apps/api/dist ./dist
-COPY --from=builder /workspace/apps/api/package.json ./
+COPY --from=builder /workspace/apps/api/package.json ./package.json
 COPY --from=deps /workspace/node_modules ./node_modules
+
+# IMPORTANT: prisma schema + migrations must be present at runtime
 COPY --from=builder /workspace/apps/api/prisma ./prisma
 
 EXPOSE 8787
-CMD ["node", "dist/src/index.js"]
 
-RUN echo "=== API dist output ===" && ls -R /workspace/apps/api/dist || true
-
+# Run migrations THEN start server
+CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma && node dist/src/index.js"]
