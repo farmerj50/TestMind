@@ -175,6 +175,7 @@ const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boo
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 const allowDebugRoutes =
   validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
+const disableRecorderRoutes = process.env.TM_DISABLE_RECORDER === "1";
 
 
 await registerWithLog("clerk", () =>
@@ -195,7 +196,11 @@ await registerWithLog("secretsRoutes", () => app.register(secretsRoutes, { prefi
 await registerWithLog("qaAgentRoutes", () => app.register(qaAgentRoutes, { prefix: "/" }));
 await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
-await registerWithLog("recorderRoutes", () => app.register(recorderRoutes, { prefix: "/" }));
+if (!disableRecorderRoutes) {
+  await registerWithLog("recorderRoutes", () => app.register(recorderRoutes, { prefix: "/" }));
+} else {
+  app.log.warn("[boot] skipping recorderRoutes (TM_DISABLE_RECORDER=1)");
+}
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
 if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
   await registerWithLog("playwrightStatic", () =>
@@ -573,6 +578,10 @@ const startRecorderHelper = () => {
     app.log.info("[recorder] START_RECORDER_HELPER=false; skipping auto-start");
     return;
   }
+  if (disableRecorderRoutes) {
+    app.log.info("[recorder] TM_DISABLE_RECORDER=1; skipping helper auto-start");
+    return;
+  }
   const helperPath = path.join(REPO_ROOT, "recorder-helper.js");
   if (!fs.existsSync(helperPath)) {
     app.log.warn(`[recorder] helper not found at ${helperPath}; skipping auto-start`);
@@ -698,11 +707,21 @@ const startServer = async () => {
 
   try {
     console.log("[BOOT] calling app.ready()");
+    const heartbeat = setInterval(() => console.log("[BOOT] heartbeat"), 2000);
+    heartbeat.unref();
+    const establishTimeout = setTimeout(() => {
+      console.error("[BOOT] app.ready() still pending after 15s");
+      console.error("[BOOT] dumping active handles");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handles = (process as any)?._getActiveHandles?.() ?? [];
+      console.error("[BOOT] active handles:", handles.map((h: any) => h?.constructor?.name));
+      process.exit(1);
+    }, 15_000);
     const readyTimeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("app.ready() timed out after 10s")), 10_000)
     );
     await Promise.race([toVoidPromise(app.ready()), readyTimeout]);
-    console.log("[BOOT] app.ready() resolved");
+    clearTimeout(establishTimeout);
     console.log("[BOOT] app.ready() resolved");
 
     console.log("[BOOT] about to listen", { host: "0.0.0.0", port });
