@@ -37,12 +37,9 @@ const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
 
-const raw = validatedEnv.CORS_ORIGINS.join(",");
+const raw = validatedEnv.CORS_ORIGINS_RAW;
 
-const allowedOrigins = raw
-  .split(",")
-  .map((o) => o.trim().replace(/\/$/, ""))
-  .filter(Boolean);
+const allowedOrigins = validatedEnv.CORS_ALLOWED_ORIGINS.map((o) => o.trim().replace(/\/$/, "")).filter(Boolean);
 
 app.log.info(`[CORS] raw=${raw} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
 process.on("unhandledRejection", (err) => {
@@ -74,13 +71,16 @@ process.on("uncaughtException", (err) => {
 
 await app.register(cors, {
   origin: (origin, cb) => {
+    // allow server-to-server / curl
     if (!origin) return cb(null, true);
 
     const normalized = origin.trim().replace(/\/$/, "");
     const ok = allowedOrigins.includes(normalized);
 
-    // IMPORTANT: return boolean (not string) so fastify-cors handles headers consistently
-    return cb(null, ok);
+    // DEBUG: log every origin decision
+    app.log.info({ origin, normalized, ok }, "[CORS] check");
+
+    cb(null, ok);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -88,8 +88,6 @@ await app.register(cors, {
     "Content-Type",
     "Authorization",
     "X-Requested-With",
-
-    // ✅ Clerk commonly sends these (varies by SDK/version)
     "X-Clerk-Auth",
     "X-Clerk-Session",
     "X-Clerk-Client",
@@ -97,8 +95,10 @@ await app.register(cors, {
     "X-Clerk-Redirect-To",
   ],
   exposedHeaders: ["set-cookie"],
+  preflightContinue: false,
   optionsSuccessStatus: 204,
 });
+
 
 
 const shouldStartWorkers = validatedEnv.START_WORKERS;
@@ -625,4 +625,3 @@ const startServer = async () => {
 };
 
 startServer();
-

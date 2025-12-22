@@ -142,6 +142,7 @@ const agentWorker = new Worker('agent-sessions', async job => {
     let page = session.pages[0];
     if (!page) {
       page = await prisma.agentPage.create({
+        include: { scenarios: true },
         data: {
           sessionId: session.id,
           path: '/',
