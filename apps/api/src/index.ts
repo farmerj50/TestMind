@@ -37,7 +37,8 @@ const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
 
-const raw = (validatedEnv.CORS_ORIGIN_LIST ?? []).join(",");
+const raw = validatedEnv.CORS_ORIGIN_LIST.join(",");
+
 const allowedOrigins = raw
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
@@ -102,7 +103,7 @@ await app.register(cors, {
 
 const shouldStartWorkers = validatedEnv.START_WORKERS;
 // force server to always listen in production
-const skipServer = validatedEnv.NODE_ENV !== "production" && validatedEnv.TM_SKIP_SERVER;
+//const skipServer = validatedEnv.NODE_ENV !== "production" && validatedEnv.TM_SKIP_SERVER;
 
 const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boolean };
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
@@ -606,15 +607,17 @@ app.log.info(
 
 
 const startServer = async () => {
-  if (skipServer) {
-    app.log.info("TM_SKIP_SERVER=true; skipping HTTP listener");
-    return;
-  }
+  // Railway injects PORT. Always prefer it.
   const port = Number(process.env.PORT ?? validatedEnv.PORT ?? 8787);
+
+  app.log.info(
+    { port, PORT_env: process.env.PORT, nodeEnv: validatedEnv.NODE_ENV, tmSkipServer: validatedEnv.TM_SKIP_SERVER },
+    "[boot] starting server"
+  );
+
   try {
-    
-    await app.listen({ host: "0.0.0.0", port: validatedEnv.PORT });
-    app.log.info(`API listening on 0.0.0.0:${validatedEnv.PORT}`);
+    await app.listen({ host: "0.0.0.0", port });
+    app.log.info(`API listening on 0.0.0.0:${port}`);
   } catch (err) {
     app.log.error({ err }, "Failed to start server");
     process.exit(1);
@@ -622,3 +625,4 @@ const startServer = async () => {
 };
 
 startServer();
+
