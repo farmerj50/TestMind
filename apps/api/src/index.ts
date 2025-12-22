@@ -41,6 +41,12 @@ const app = Fastify({
   pluginTimeout: 10_000,
 });
 
+const registerWithLog = async (label: string, fn: () => Promise<any>) => {
+  console.log(`[BOOT] register ${label} start`);
+  await fn();
+  console.log(`[BOOT] register ${label} done`);
+};
+
 app.addHook("onRequest", async (req) => {
   const origin = req.headers.origin;
   req.log.info(
@@ -123,35 +129,37 @@ const getPlatformPort = () => {
 //   optionsSuccessStatus: 204,
 // };
 
-await app.register(cors, {
-  origin: (origin, cb) => {
-    // allow server-to-server / curl
-    if (!origin) return cb(null, true);
+await registerWithLog("cors", () =>
+  app.register(cors, {
+    origin: (origin, cb) => {
+      // allow server-to-server / curl
+      if (!origin) return cb(null, true);
 
-    const normalized = normalizeOrigin(origin);
-    const ok = allowedOrigins.includes(normalized);
+      const normalized = normalizeOrigin(origin);
+      const ok = allowedOrigins.includes(normalized);
 
-    // DEBUG: log every origin decision
-    app.log.info({ origin, normalized, ok }, "[CORS] check");
+      // DEBUG: log every origin decision
+      app.log.info({ origin, normalized, ok }, "[CORS] check");
 
-    cb(null, ok);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "X-Clerk-Auth",
-    "X-Clerk-Session",
-    "X-Clerk-Client",
-    "X-Clerk-Signature",
-    "X-Clerk-Redirect-To",
-  ],
-  exposedHeaders: ["set-cookie"],
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-});
+      cb(null, ok);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "X-Clerk-Auth",
+      "X-Clerk-Session",
+      "X-Clerk-Client",
+      "X-Clerk-Signature",
+      "X-Clerk-Redirect-To",
+    ],
+    exposedHeaders: ["set-cookie"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  })
+);
 
 
 
@@ -165,41 +173,46 @@ const allowDebugRoutes =
   validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 
 
-app.register(clerkPlugin, {
+await registerWithLog("clerk", () =>
+  app.register(clerkPlugin, {
   publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
   secretKey: validatedEnv.CLERK_SECRET_KEY,
 });
 
-app.register(githubRoutes);
-app.register(testRoutes);
-app.register(runRoutes, { prefix: "/runner" });
-app.register(reportsRoutes, { prefix: "/" });
-app.register(integrationsRoutes, { prefix: "/" });
-app.register(agentRoutes, { prefix: "/" });
-app.register(jiraRoutes, { prefix: "/" });
-app.register(secretsRoutes, { prefix: "/" });
-app.register(qaAgentRoutes, { prefix: "/" });
-app.register(securityRoutes, { prefix: "/" });
-app.register(testmindRoutes, { prefix: "/tm" });
-app.register(recorderRoutes, { prefix: "/" });
+await registerWithLog("githubRoutes", () => app.register(githubRoutes));
+await registerWithLog("testRoutes", () => app.register(testRoutes));
+await registerWithLog("runRoutes", () => app.register(runRoutes, { prefix: "/runner" }));
+await registerWithLog("reportsRoutes", () => app.register(reportsRoutes, { prefix: "/" }));
+await registerWithLog("integrationsRoutes", () => app.register(integrationsRoutes, { prefix: "/" }));
+await registerWithLog("agentRoutes", () => app.register(agentRoutes, { prefix: "/" }));
+await registerWithLog("jiraRoutes", () => app.register(jiraRoutes, { prefix: "/" }));
+await registerWithLog("secretsRoutes", () => app.register(secretsRoutes, { prefix: "/" }));
+await registerWithLog("qaAgentRoutes", () => app.register(qaAgentRoutes, { prefix: "/" }));
+await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
+await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
+await registerWithLog("recorderRoutes", () => app.register(recorderRoutes, { prefix: "/" }));
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
 if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
-  app.register(fastifyStatic, {
-    root: PLAYWRIGHT_REPORT_ROOT,
-    prefix: "/_static/playwright-report/",
-    decorateReply: false,
-  });
+  await registerWithLog("playwrightStatic", () =>
+    app.register(fastifyStatic, {
+      root: PLAYWRIGHT_REPORT_ROOT,
+      prefix: "/_static/playwright-report/",
+      decorateReply: false,
+    })
+  );
 }
 const RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
 const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
 const AVAILABLE_RUNNER_ROOTS = [API_RUNNER_LOGS_ROOT, RUNNER_LOGS_ROOT].filter((candidate) => fs.existsSync(candidate));
 const STATIC_RUNNER_ROOT = AVAILABLE_RUNNER_ROOTS[0] ?? null;
 if (STATIC_RUNNER_ROOT) {
-  app.register(fastifyStatic, {
-    root: STATIC_RUNNER_ROOT,
-    prefix: "/_static/runner-logs/",
-    decorateReply: false,
-  });
+  await registerWithLog("runnerLogsStatic", () =>
+    app.register(fastifyStatic, {
+      root: STATIC_RUNNER_ROOT,
+      prefix: "/_static/runner-logs/",
+      decorateReply: false,
+    })
+  );
 }
 
 // Serve runner artifacts (e.g., allure) directly from either runner-logs root
@@ -685,6 +698,7 @@ const startServer = async () => {
       setTimeout(() => reject(new Error("app.ready() timed out after 10s")), 10_000)
     );
     await Promise.race([readyPromise, readyTimeout]);
+    console.log("[BOOT] app.ready() resolved");
     console.log("[BOOT] app.ready() resolved");
 
     console.log("[BOOT] about to listen", { host: "0.0.0.0", port });
