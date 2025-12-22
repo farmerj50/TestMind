@@ -36,35 +36,38 @@ import type { FastifyCorsOptions } from "@fastify/cors";
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
-const allowedOrigins = validatedEnv.CORS_ORIGIN_LIST
-  .map((o) => o.trim().replace(/\/$/, ""))
+const raw = (validatedEnv as any).CORS_ORIGIN_LIST;
+
+const allowedOrigins = (Array.isArray(raw) ? raw : String(raw ?? "").split(","))
+  .map((o: string) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-const corsOpts: FastifyCorsOptions = {
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
+app.log.info({ raw, allowedOrigins }, "[CORS] allowed origins");
 
-    const normalized = origin.trim().replace(/\/$/, "");
-    const ok = allowedOrigins.includes(normalized);
 
-    app.log.info({ origin, normalized, ok }, "[CORS] origin check");
-    cb(null, ok);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  exposedHeaders: ["set-cookie"],
-  optionsSuccessStatus: 204,
-};
+// const corsOpts: FastifyCorsOptions = {
+//   origin: (origin, cb) => {
+//     if (!origin) return cb(null, true);
+
+//     const normalized = origin.trim().replace(/\/$/, "");
+//     const ok = allowedOrigins.includes(normalized);
+
+//     app.log.info({ origin, normalized, ok }, "[CORS] origin check");
+//     cb(null, ok);
+//   },
+//   credentials: true,
+//   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+//   exposedHeaders: ["set-cookie"],
+//   optionsSuccessStatus: 204,
+// };
 
 await app.register(cors, {
   origin: (origin, cb) => {
-    // allow server-to-server/health checks
     if (!origin) return cb(null, true);
 
     const normalized = origin.trim().replace(/\/$/, "");
     const ok = allowedOrigins.includes(normalized);
 
-    // IMPORTANT: return the origin string when allowed
     return cb(null, ok ? origin : false);
   },
   credentials: true,
@@ -74,6 +77,11 @@ await app.register(cors, {
   optionsSuccessStatus: 204,
 });
 
+
+// put this right after registering cors (or even before)
+app.options("*", async (_req, reply) => {
+  return reply.code(204).send();
+});
 
 
 
