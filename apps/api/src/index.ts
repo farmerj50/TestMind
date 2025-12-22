@@ -249,6 +249,14 @@ if (allowDebugRoutes) {
     };
   });
 }
+app.get("/debug/db-tables", async () => {
+  const tables = await prisma.$queryRaw<
+    { tablename: string }[]
+  >`SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;`;
+
+  return { count: tables.length, tables };
+});
+
 
 app.get("/health", async () => ({ ok: true }));
 
