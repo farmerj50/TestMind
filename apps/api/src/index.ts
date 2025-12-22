@@ -37,7 +37,7 @@ const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
 
-const raw = validatedEnv.CORS_ORIGIN_LIST.join(",");
+const raw = validatedEnv.CORS_ORIGINS.join(",");
 
 const allowedOrigins = raw
   .split(",")

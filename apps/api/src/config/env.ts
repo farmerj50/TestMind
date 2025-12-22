@@ -61,7 +61,7 @@ const prodFallbackCors = [
 ];
 
 if (env.NODE_ENV === "production" && corsList.length === 0 && prodFallbackCors.length === 0) {
-  throw new Error("CORS_ORIGIN_LIST is required in production (comma-separated list), or set WEB_URL.");
+  throw new Error("CORS_ORIGINS is required in production (comma-separated list) or set WEB_URL.");
 
 }
 
@@ -69,15 +69,20 @@ if (env.NODE_ENV === "production" && corsList.length === 0 && prodFallbackCors.l
 // Provide sane defaults for local dev without loosening production requirements.
 const devDefaultCors = ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"];
 
+const computedCorsOrigins =
+  corsList.length > 0
+    ? corsList
+    : env.NODE_ENV === "production"
+    ? prodFallbackCors
+    : devDefaultCors;
+
 export const validatedEnv = {
   ...env,
   NODE_ENV: env.NODE_ENV || "development",
   PORT: env.PORT ?? 8787,
 
-  CORS_ORIGIN_LIST:
-    corsList.length
-      ? corsList
-      : (env.NODE_ENV === "production" ? prodFallbackCors : devDefaultCors),
+  CORS_ORIGINS_RAW: env.CORS_ORIGINS ?? "",
+  CORS_ALLOWED_ORIGINS: computedCorsOrigins,
 
   SECRET_KEY: env.SECRET_KEY,
   START_WORKERS: parseBoolean(env.START_WORKERS, true, "START_WORKERS"),
