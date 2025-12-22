@@ -74,11 +74,10 @@ await app.register(cors, {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  allowedHeaders: "*",              // ✅ THIS FIXES IT
   exposedHeaders: ["set-cookie"],
   optionsSuccessStatus: 204,
 });
-
 
 const shouldStartWorkers = validatedEnv.START_WORKERS;
 // force server to always listen in production
