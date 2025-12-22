@@ -41,9 +41,9 @@ const app = Fastify({
   pluginTimeout: 10_000,
 });
 
-const registerWithLog = async (label: string, fn: () => Promise<any>) => {
+const registerWithLog = async (label: string, fn: () => unknown) => {
   console.log(`[BOOT] register ${label} start`);
-  await fn();
+  await toVoidPromise(fn());
   console.log(`[BOOT] register ${label} done`);
 };
 
