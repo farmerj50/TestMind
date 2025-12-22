@@ -42,7 +42,8 @@ const allowedOrigins = (Array.isArray(raw) ? raw : String(raw ?? "").split(","))
   .map((o: string) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-app.log.info({ raw, allowedOrigins }, "[CORS] allowed origins");
+app.log.info(`[CORS] raw=${String(raw)} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
+
 
 
 // const corsOpts: FastifyCorsOptions = {
