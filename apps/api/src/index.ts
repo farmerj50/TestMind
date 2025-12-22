@@ -37,9 +37,10 @@ const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
 
-const raw = validatedEnv.CORS_ORIGINS_RAW;
+const normalizeOrigin = (o: string) => o.trim().replace(/\/$/, "");
 
-const allowedOrigins = validatedEnv.CORS_ALLOWED_ORIGINS.map((o) => o.trim().replace(/\/$/, "")).filter(Boolean);
+const allowedOrigins = (validatedEnv.CORS_ALLOWED_ORIGINS ?? []).map(normalizeOrigin).filter(Boolean);
+const raw = validatedEnv.CORS_ORIGINS_RAW ?? "";
 
 app.log.info(`[CORS] raw=${raw} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
 process.on("unhandledRejection", (err) => {
@@ -74,7 +75,7 @@ await app.register(cors, {
     // allow server-to-server / curl
     if (!origin) return cb(null, true);
 
-    const normalized = origin.trim().replace(/\/$/, "");
+    const normalized = normalizeOrigin(origin);
     const ok = allowedOrigins.includes(normalized);
 
     // DEBUG: log every origin decision
@@ -605,9 +606,13 @@ app.log.info(
   "[boot] port check"
 );
 
+console.log("[BOOT] reached bottom of index.ts BEFORE startServer()");
+
 
 const startServer = async () => {
+  console.log("[BOOT] inside startServer()");
   const port = Number(process.env.PORT ?? validatedEnv.PORT ?? 8787);
+  console.log("[BOOT] chosen port =", port, "env.PORT =", process.env.PORT);
 
   app.log.info(
     {
@@ -622,9 +627,11 @@ const startServer = async () => {
 
   try {
     await app.listen({ host: "0.0.0.0", port });
+    console.log("[BOOT] listen resolved OK");
     app.log.info({ port }, "[boot] API listening");
   } catch (err) {
     app.log.error({ err }, "[boot] Failed to start server");
+    console.error("[BOOT] startServer failed", err);
     process.exit(1);
   }
 };
