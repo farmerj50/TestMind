@@ -36,7 +36,8 @@ import type { FastifyCorsOptions } from "@fastify/cors";
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
-const raw = (validatedEnv as any).CORS_ORIGIN_LIST;
+const raw = process.env.CORS_ORIGIN_LIST ?? "";
+
 
 const allowedOrigins = (Array.isArray(raw) ? raw : String(raw ?? "").split(","))
   .map((o: string) => o.trim().replace(/\/$/, ""))
