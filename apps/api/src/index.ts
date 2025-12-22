@@ -694,8 +694,8 @@ const startServer = async () => {
 
   try {
     console.log("[BOOT] calling app.ready()");
-    const readyPromise = app.ready();
-    const readyTimeout = new Promise((_, reject) =>
+    const readyPromise: Promise<void> = Promise.resolve(app.ready()).then(() => {});
+    const readyTimeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("app.ready() timed out after 10s")), 10_000)
     );
     await Promise.race([readyPromise, readyTimeout]);
@@ -703,8 +703,10 @@ const startServer = async () => {
     console.log("[BOOT] app.ready() resolved");
 
     console.log("[BOOT] about to listen", { host: "0.0.0.0", port });
-    const listenPromise = app.listen({ host: "0.0.0.0", port });
-    const timeout = new Promise((_, reject) =>
+    const listenPromise: Promise<void> = Promise.resolve(
+      app.listen({ host: "0.0.0.0", port })
+    ).then(() => {});
+    const timeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("listen() timed out after 10s")), 10_000)
     );
     await Promise.race([listenPromise, timeout]);
