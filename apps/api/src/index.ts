@@ -33,7 +33,40 @@ import type { FastifyCorsOptions } from "@fastify/cors";
 
 
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL ?? "info",
+  },
+  trustProxy: true,
+});
+
+app.addHook("onRequest", async (req) => {
+  const origin = req.headers.origin;
+  req.log.info(
+    {
+      method: req.method,
+      url: req.url,
+      origin,
+      requestId: req.id,
+      ip: req.ip,
+      host: req.headers.host,
+      ua: req.headers["user-agent"],
+    },
+    "[HTTP] request"
+  );
+});
+
+app.addHook("onResponse", async (req, reply) => {
+  req.log.info(
+    {
+      method: req.method,
+      url: req.url,
+      statusCode: reply.statusCode,
+      requestId: req.id,
+    },
+    "[HTTP] response"
+  );
+});
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
 
