@@ -607,19 +607,24 @@ app.log.info(
 
 
 const startServer = async () => {
-  // Railway injects PORT. Always prefer it.
   const port = Number(process.env.PORT ?? validatedEnv.PORT ?? 8787);
 
   app.log.info(
-    { port, PORT_env: process.env.PORT, nodeEnv: validatedEnv.NODE_ENV, tmSkipServer: validatedEnv.TM_SKIP_SERVER },
+    {
+      port,
+      PORT_env: process.env.PORT,
+      validatedPort: validatedEnv.PORT,
+      nodeEnv: validatedEnv.NODE_ENV,
+      tmSkipServer: validatedEnv.TM_SKIP_SERVER,
+    },
     "[boot] starting server"
   );
 
   try {
     await app.listen({ host: "0.0.0.0", port });
-    app.log.info(`API listening on 0.0.0.0:${port}`);
+    app.log.info({ port }, "[boot] API listening");
   } catch (err) {
-    app.log.error({ err }, "Failed to start server");
+    app.log.error({ err }, "[boot] Failed to start server");
     process.exit(1);
   }
 };
