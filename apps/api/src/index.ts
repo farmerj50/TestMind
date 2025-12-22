@@ -76,14 +76,33 @@ const allowedOrigins = (validatedEnv.CORS_ALLOWED_ORIGINS ?? []).map(normalizeOr
 const raw = validatedEnv.CORS_ORIGINS_RAW ?? "";
 
 app.log.info(`[CORS] raw=${raw} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
-process.on("unhandledRejection", (err) => {
-  app.log.error({ err }, "[boot] unhandledRejection");
-});
 
-process.on("uncaughtException", (err) => {
-  app.log.error({ err }, "[boot] uncaughtException");
+const fatalError = (label: string, err?: unknown) => {
+  app.log.error({ err }, `[boot] ${label}`);
+  console.error(`[BOOT] ${label}`, err);
+  process.exit(1);
+};
+process.on("unhandledRejection", (err) => fatalError("unhandledRejection", err));
+process.on("uncaughtException", (err) => fatalError("uncaughtException", err));
+process.on("SIGTERM", () => {
+  app.log.warn("[boot] SIGTERM received; shutting down");
   process.exit(1);
 });
+
+const buildStamp = process.env.BUILD_STAMP ?? process.env.GIT_SHA ?? "unknown";
+app.log.info({ buildStamp }, "[boot] build stamp");
+
+const getPlatformPort = () => {
+  const rawPort = process.env.PORT;
+  if (!rawPort) {
+    fatalError("missing PORT env (Railway should inject this)");
+  }
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    fatalError("invalid PORT env", rawPort);
+  }
+  return port;
+};
 
 
 
@@ -644,7 +663,7 @@ console.log("[BOOT] reached bottom of index.ts BEFORE startServer()");
 
 const startServer = async () => {
   console.log("[BOOT] inside startServer()");
-  const port = Number(process.env.PORT ?? validatedEnv.PORT ?? 8787);
+  const port = getPlatformPort();
   console.log("[BOOT] chosen port =", port, "env.PORT =", process.env.PORT);
 
   app.log.info(
