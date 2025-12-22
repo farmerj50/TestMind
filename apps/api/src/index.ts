@@ -733,7 +733,7 @@ const startServer = async () => {
     const timeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("listen() timed out after 10s")), 10_000)
     );
-    await Promise.race([toVoidPromise(app.listen({ host: "0.0.0.0", port })), timeout]);
+    await Promise.race([toVoidPromise(app.listen({ host: "::", port })), timeout]);
     console.log("[BOOT] listen resolved OK");
     app.log.info({ port }, "[boot] API listening");
     startWorkersOnce();
