@@ -45,4 +45,4 @@ COPY --from=builder /workspace/apps/api/prisma ./prisma
 EXPOSE 8787
 
 # Run migrations THEN start server
-CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma && node dist/src/index.js"]
+CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma && node dist/index.js"]
