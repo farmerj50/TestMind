@@ -569,8 +569,6 @@ const startWorkersOnce = () => {
   start(import("./runner/security-worker.js"), "security-scan");
 };
 
-startWorkersOnce();
-
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch
 const startRecorderHelper = () => {
   if (recorderState.__tmRecorderHelperStarted) return;
@@ -602,11 +600,9 @@ const startRecorderHelper = () => {
   }
 };
 
-// start on bootstrap and after server is ready
-startRecorderHelper();
-app.addHook("onReady", async () => startRecorderHelper());
+  app.addHook("onReady", async () => startRecorderHelper());
 
-// Recorder helper status/start endpoints for UI "recheck" buttons
+  // Recorder helper status/start endpoints for UI "recheck" buttons
 app.get("/recorder/helper/status", async () => ({
   started: !!recorderState.__tmRecorderHelperStarted,
   configured: !!validatedEnv.START_RECORDER_HELPER,
@@ -731,6 +727,8 @@ const startServer = async () => {
     await Promise.race([toVoidPromise(app.listen({ host: "0.0.0.0", port })), timeout]);
     console.log("[BOOT] listen resolved OK");
     app.log.info({ port }, "[boot] API listening");
+    startWorkersOnce();
+    startRecorderHelper();
   } catch (err) {
     app.log.error({ err }, "[boot] Failed to start server");
     console.error("[BOOT] startServer failed", err);
