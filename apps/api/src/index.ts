@@ -78,13 +78,6 @@ await app.register(cors, {
 });
 
 
-// put this right after registering cors (or even before)
-app.options("*", async (_req, reply) => {
-  return reply.code(204).send();
-});
-
-
-
 const shouldStartWorkers = validatedEnv.START_WORKERS;
 // force server to always listen in production
 const skipServer = validatedEnv.NODE_ENV !== "production" && validatedEnv.TM_SKIP_SERVER;
