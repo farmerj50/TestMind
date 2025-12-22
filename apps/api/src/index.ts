@@ -36,18 +36,22 @@ import type { FastifyCorsOptions } from "@fastify/cors";
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
-// CORS allowlist from validated env (always an array)
-const raw = validatedEnv.CORS_ORIGIN_LIST;
 
-// normalize + strip trailing slash
+const raw = (validatedEnv.CORS_ORIGIN_LIST ?? []).join(",");
 const allowedOrigins = raw
+  .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-app.log.info(
-  `[CORS] raw=${raw.join(",")} allowed=${allowedOrigins.join(" | ") || "(empty)"}`
-);
+app.log.info(`[CORS] raw=${raw} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
+process.on("unhandledRejection", (err) => {
+  app.log.error({ err }, "[boot] unhandledRejection");
+});
 
+process.on("uncaughtException", (err) => {
+  app.log.error({ err }, "[boot] uncaughtException");
+  process.exit(1);
+});
 
 
 
@@ -595,13 +599,20 @@ app.patch("/billing/me", async (req, reply) => {
 
   return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
 });
+app.log.info(
+  { PORT_env: process.env.PORT, validatedPort: validatedEnv.PORT, nodeEnv: validatedEnv.NODE_ENV },
+  "[boot] port check"
+);
+
 
 const startServer = async () => {
   if (skipServer) {
     app.log.info("TM_SKIP_SERVER=true; skipping HTTP listener");
     return;
   }
+  const port = Number(process.env.PORT ?? validatedEnv.PORT ?? 8787);
   try {
+    
     await app.listen({ host: "0.0.0.0", port: validatedEnv.PORT });
     app.log.info(`API listening on 0.0.0.0:${validatedEnv.PORT}`);
   } catch (err) {
