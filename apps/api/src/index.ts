@@ -678,7 +678,12 @@ const startServer = async () => {
   );
 
   try {
-    await app.listen({ host: "0.0.0.0", port });
+    console.log("[BOOT] about to listen", { host: "0.0.0.0", port });
+    const listenPromise = app.listen({ host: "0.0.0.0", port });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("listen() timed out after 10s")), 10_000)
+    );
+    await Promise.race([listenPromise, timeout]);
     console.log("[BOOT] listen resolved OK");
     app.log.info({ port }, "[boot] API listening");
   } catch (err) {
