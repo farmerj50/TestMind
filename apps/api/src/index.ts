@@ -724,6 +724,11 @@ const startServer = async () => {
     clearTimeout(establishTimeout);
     console.log("[BOOT] app.ready() resolved");
 
+    if ((globalThis as any).__TM_LISTEN_CALLED__) {
+      console.error("[BOOT] listen called twice – exiting");
+      process.exit(1);
+    }
+    (globalThis as any).__TM_LISTEN_CALLED__ = true;
     console.log("[BOOT] about to listen", { host: "0.0.0.0", port });
     const timeout: Promise<void> = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("listen() timed out after 10s")), 10_000)
