@@ -13,7 +13,7 @@ const EnvSchema = z.object({
   CLERK_PUBLISHABLE_KEY: z.string().trim().min(1, "CLERK_PUBLISHABLE_KEY is required"),
   CLERK_SECRET_KEY: z.string().trim().min(1, "CLERK_SECRET_KEY is required"),
 
-  CORS_ORIGINS: z.string().optional(),
+  CORS_ORIGIN_LIST: z.string().optional(),
   ALLOW_PLAN_PATCH: z.string().optional(),
   START_WORKERS: z.string().optional(),
   TM_SKIP_SERVER: z.string().optional(),
@@ -42,7 +42,7 @@ const parseBoolean = (value: string | undefined, fallback: boolean, name: string
 // Build the CORS origin list.
 // In production, allow fallback to WEB_URL so the container doesn't crash if Railway doesn't inject CORS_ORIGINS.
 const corsList =
-  (env.CORS_ORIGINS || "")
+  (env.CORS_ORIGIN_LIST || "")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
@@ -61,7 +61,8 @@ const prodFallbackCors = [
 ];
 
 if (env.NODE_ENV === "production" && corsList.length === 0 && prodFallbackCors.length === 0) {
-  throw new Error("CORS_ORIGINS is required in production (comma-separated list), or set WEB_URL.");
+  throw new Error("CORS_ORIGIN_LIST is required in production (comma-separated list), or set WEB_URL.");
+
 }
 
 
