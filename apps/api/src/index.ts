@@ -36,14 +36,17 @@ import type { FastifyCorsOptions } from "@fastify/cors";
 const app = Fastify({ logger: true });
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 
-const raw = validatedEnv.CORS_ORIGIN_LIST ?? "";
+// CORS allowlist from validated env (always an array)
+const raw = validatedEnv.CORS_ORIGIN_LIST;
 
-
+// normalize + strip trailing slash
 const allowedOrigins = raw
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-app.log.info(`[CORS] raw=${raw.join(",")} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
+app.log.info(
+  `[CORS] raw=${raw.join(",")} allowed=${allowedOrigins.join(" | ") || "(empty)"}`
+);
 
 
 
