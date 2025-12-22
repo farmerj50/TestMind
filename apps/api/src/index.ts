@@ -70,14 +70,27 @@ await app.register(cors, {
     const normalized = origin.trim().replace(/\/$/, "");
     const ok = allowedOrigins.includes(normalized);
 
-    return cb(null, ok ? origin : false);
+    // IMPORTANT: return boolean (not string) so fastify-cors handles headers consistently
+    return cb(null, ok);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: "*",              // ✅ THIS FIXES IT
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+
+    // ✅ Clerk commonly sends these (varies by SDK/version)
+    "X-Clerk-Auth",
+    "X-Clerk-Session",
+    "X-Clerk-Client",
+    "X-Clerk-Signature",
+    "X-Clerk-Redirect-To",
+  ],
   exposedHeaders: ["set-cookie"],
   optionsSuccessStatus: 204,
 });
+
 
 const shouldStartWorkers = validatedEnv.START_WORKERS;
 // force server to always listen in production
