@@ -58,18 +58,22 @@ const corsOpts: FastifyCorsOptions = {
 
 await app.register(cors, {
   origin: (origin, cb) => {
+    // allow server-to-server/health checks
     if (!origin) return cb(null, true);
 
     const normalized = origin.trim().replace(/\/$/, "");
     const ok = allowedOrigins.includes(normalized);
 
-    cb(null, ok);
+    // IMPORTANT: return the origin string when allowed
+    return cb(null, ok ? origin : false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   exposedHeaders: ["set-cookie"],
+  optionsSuccessStatus: 204,
 });
+
 
 
 
