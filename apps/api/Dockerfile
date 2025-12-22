@@ -25,7 +25,6 @@ COPY apps/api ./apps/api
 RUN pnpm --filter api exec prisma generate
 
 RUN pnpm --filter api build
-RUN echo "=== API dist output ===" && ls -R /workspace/apps/api/dist || true
 
 
 FROM node:20-alpine AS runner
@@ -37,10 +36,8 @@ RUN apk add --no-cache openssl libc6-compat
 
 COPY --from=builder /workspace/apps/api/dist ./dist
 COPY --from=builder /workspace/apps/api/package.json ./package.json
-COPY --from=deps /workspace/node_modules ./node_modules
-
-# IMPORTANT: prisma schema + migrations must be present at runtime
 COPY --from=builder /workspace/apps/api/prisma ./prisma
+COPY --from=deps /workspace/node_modules ./node_modules
 
 EXPOSE 8787
 
