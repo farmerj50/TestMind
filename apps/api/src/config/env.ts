@@ -13,7 +13,7 @@ const EnvSchema = z.object({
   CLERK_PUBLISHABLE_KEY: z.string().trim().min(1, "CLERK_PUBLISHABLE_KEY is required"),
   CLERK_SECRET_KEY: z.string().trim().min(1, "CLERK_SECRET_KEY is required"),
 
-  CORS_ORIGIN_LIST: z.string().optional(),
+  CORS_ORIGINS: z.string().optional(),
   ALLOW_PLAN_PATCH: z.string().optional(),
   START_WORKERS: z.string().optional(),
   TM_SKIP_SERVER: z.string().optional(),
@@ -42,7 +42,7 @@ const parseBoolean = (value: string | undefined, fallback: boolean, name: string
 // Build the CORS origin list.
 // In production, allow fallback to WEB_URL so the container doesn't crash if Railway doesn't inject CORS_ORIGINS.
 const corsList =
-  (env.CORS_ORIGIN_LIST || "")
+  (env.CORS_ORIGINS || "")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
