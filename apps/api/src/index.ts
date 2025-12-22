@@ -175,7 +175,8 @@ const globalState = globalThis as typeof globalThis & { __tmWorkersStarted?: boo
 const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStarted?: boolean };
 const allowDebugRoutes =
   validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
-const disableRecorderRoutes = process.env.TM_DISABLE_RECORDER === "1";
+const disableRecorderRoutes = ["1", "true"].includes((process.env.TM_DISABLE_RECORDER ?? "").toLowerCase());
+const printRoutesEnabled = (process.env.TM_PRINT_ROUTES ?? "").toLowerCase() === "1";
 
 
 await registerWithLog("clerk", () =>
@@ -196,10 +197,11 @@ await registerWithLog("secretsRoutes", () => app.register(secretsRoutes, { prefi
 await registerWithLog("qaAgentRoutes", () => app.register(qaAgentRoutes, { prefix: "/" }));
 await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
-if (!disableRecorderRoutes) {
-  await registerWithLog("recorderRoutes", () => app.register(recorderRoutes, { prefix: "/" }));
+console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
+if (disableRecorderRoutes) {
+  app.log.warn("[boot] recorderRoutes DISABLED via TM_DISABLE_RECORDER");
 } else {
-  app.log.warn("[boot] skipping recorderRoutes (TM_DISABLE_RECORDER=1)");
+  await registerWithLog("recorderRoutes", () => app.register(recorderRoutes, { prefix: "/" }));
 }
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
 if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
@@ -540,7 +542,9 @@ app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
 
 // debug helpers
 app.ready(() => {
-  console.log(app.printRoutes());
+  if (printRoutesEnabled) {
+    console.log(app.printRoutes());
+  }
 });
 
 // Start background workers when running the API (disable with START_WORKERS=false)
