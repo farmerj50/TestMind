@@ -175,9 +175,10 @@ const allowDebugRoutes =
 
 await registerWithLog("clerk", () =>
   app.register(clerkPlugin, {
-  publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
-  secretKey: validatedEnv.CLERK_SECRET_KEY,
-});
+    publishableKey: validatedEnv.CLERK_PUBLISHABLE_KEY,
+    secretKey: validatedEnv.CLERK_SECRET_KEY,
+  })
+);
 
 await registerWithLog("githubRoutes", () => app.register(githubRoutes));
 await registerWithLog("testRoutes", () => app.register(testRoutes));
