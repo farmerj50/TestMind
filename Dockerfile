@@ -15,6 +15,8 @@ RUN pnpm install --frozen-lockfile
 FROM node:20-alpine AS builder
 WORKDIR /workspace
 
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY --from=deps /workspace/node_modules ./node_modules
