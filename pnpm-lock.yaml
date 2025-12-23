@@ -48,6 +48,9 @@ importers:
       allure-playwright:
         specifier: ^3.4.3
         version: 3.4.3(@playwright/test@1.57.0)
+      prisma:
+        specifier: ^6.18.0
+        version: 6.18.0(typescript@5.9.3)
       tsx:
         specifier: ^4.20.6
         version: 4.20.6
