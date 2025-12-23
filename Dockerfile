@@ -27,12 +27,19 @@ COPY apps/api ./apps/api
 
 RUN pnpm install --frozen-lockfile
 
+# Install Linux dependencies so Playwright can run without invoking apt-get itself.
+RUN apt-get update && apt-get install -y \
+  libatk1.0-0 libatk-bridge2.0-0 libcups2 libdbus-1-3 libgdk-pixbuf2.0-0 \
+  libgtk-3-0 libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 \
+  libxrandr2 libxss1 libxtst6 xvfb xauth libgbm1 libpci3 libpangocairo-1.0-0 \
+  libasound2 libxshmfence1 libdrm2 ca-certificates fonts-liberation \
+  && rm -rf /var/lib/apt/lists/*
 
 # ✅ generate Prisma client before TS build
 RUN pnpm --filter api exec prisma generate
 
 # ✅ install Playwright browsers so runners have the headless shells
-RUN pnpm --filter api exec playwright install --with-deps
+RUN pnpm --filter api exec playwright install
 
 RUN pnpm --filter api build
 
