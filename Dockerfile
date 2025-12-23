@@ -24,6 +24,8 @@ COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /workspace/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /workspace/package.json ./package.json
 
+RUN pnpm install --frozen-lockfile
+
 COPY apps/api ./apps/api
 
 # ✅ generate Prisma client before TS build
