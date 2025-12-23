@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:20-bullseye-slim AS deps
 WORKDIR /workspace
 # Use Corepack to install a matching pnpm version without touching Node.js directly.
 RUN corepack enable && corepack prepare pnpm@9 --activate
@@ -12,7 +12,7 @@ COPY packages/runner/package.json ./packages/runner/package.json
 
 RUN pnpm install --frozen-lockfile
 
-FROM node:20-alpine AS builder
+FROM node:20-bullseye-slim AS builder
 WORKDIR /workspace
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
@@ -36,14 +36,19 @@ RUN pnpm --filter api exec playwright install --with-deps
 
 RUN pnpm --filter api build
 
-FROM node:20-alpine AS runner
+FROM node:20-bullseye-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Prisma on alpine often needs openssl + libc compatibility
-RUN apk add --no-cache openssl libc6-compat
+# Install Playwright/Chromium dependencies on Debian-based image.
+RUN apt-get update && apt-get install -y \
+  libatk1.0-0 libatk-bridge2.0-0 libcups2 libdbus-1-3 libgdk-pixbuf2.0-0 \
+  libgtk-3-0 libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 \
+  libxrandr2 libxss1 libxtst6 xvfb xauth libgbm1 libpci3 libpangocairo-1.0-0 \
+  libasound2 libxshmfence1 libdrm2 ca-certificates fonts-liberation \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /workspace/apps/api/dist ./dist
 COPY --from=builder /workspace/apps/api/package.json ./package.json
