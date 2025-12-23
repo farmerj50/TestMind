@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-
-const API = import.meta.env.VITE_API_URL as string;
+import { apiUrl } from '../lib/api';
 
 export default function NewProjectPage() {
   const [name, setName] = useState('');
@@ -18,7 +17,7 @@ export default function NewProjectPage() {
     if (trimmedRepo) payload.repoUrl = trimmedRepo;
 
     const token = await getToken(); // Clerk session token (JWT)
-    const res = await fetch(`${API}/projects`, {
+    const res = await fetch(apiUrl('/projects'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,6 +1,7 @@
 // apps/web/src/components/GenerateButton.tsx
 import { useState } from "react";
 import { Button } from "./ui/button";
+import { apiUrl } from "../lib/api";
 
 type Props = {
   projectId: string;            // stable ID/slug per project
@@ -45,7 +46,7 @@ export default function GenerateButton({
 
     setBusy(true);
     try {
-      const res = await fetch("/tm/generate", {
+      const res = await fetch(apiUrl("/tm/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
