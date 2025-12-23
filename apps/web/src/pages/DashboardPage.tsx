@@ -174,13 +174,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {githubSuccess && (
-        <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {githubSuccess}
-        </div>
-      )}
-
-
+      {/* old inline banner removed; pop-up already shows status */}
       <h1 className="text-2xl font-semibold">Dashboard</h1>
       <p className="mt-1 text-slate-600">
         Good morning{user?.firstName ? `, ${user.firstName}` : ""}! Create a project and link your
