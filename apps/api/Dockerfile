@@ -24,8 +24,10 @@ COPY apps/api ./apps/api
 # ✅ generate Prisma client before TS build
 RUN pnpm --filter api exec prisma generate
 
-RUN pnpm --filter api build
+# ✅ install Playwright browsers so runners have the headless shells
+RUN pnpm --filter api exec playwright install --with-deps
 
+RUN pnpm --filter api build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
