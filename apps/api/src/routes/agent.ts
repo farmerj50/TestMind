@@ -18,6 +18,7 @@ import {
 import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { agentSuiteId, ensureCuratedProjectEntry } from "../testmind/curated-store.js";
 import { prisma } from "../prisma.js";
+import { validatedEnv } from "../config/env.js";
 
 type CoverageSummary = {
   coverageTotals: Record<string, number>;
@@ -97,7 +98,7 @@ const ScenarioBody = z.object({
 });
 
 const agentQueue = new Queue("agent-sessions", {
-  connection: { url: process.env.REDIS_URL || "redis://127.0.0.1:6379" },
+  connection: { url: validatedEnv.REDIS_URL },
 });
 
 function registerProjectHelpers(
