@@ -64,7 +64,7 @@ export function useApi() {
       }
       return res.json() as Promise<T>;
     },
-    [BASE, getToken] // stable deps
+    [getToken] // stable deps
   );
 
   return { apiFetch };
