@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Github, ShieldCheck, Zap, Wrench, LineChart, GitPullRequest, Bell, Sparkles } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { SignUpButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useScrollToHash } from "../lib/useScrollToHash";
 
@@ -17,7 +17,16 @@ import { useScrollToHash } from "../lib/useScrollToHash";
 // ------------------------------------------------------
 
 export default function LandingPage() {
-    useScrollToHash();
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("github") === "connected") {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [location.search, navigate]);
+
+  useScrollToHash();
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--tm-bg)] text-slate-900">

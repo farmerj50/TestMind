@@ -244,8 +244,8 @@ export async function githubRoutes(app: FastifyInstance) {
       }
 
       app.log.info({ userId, ghLogin: ghUser.login }, "GitHub linked");
-      // Redirect back to dashboard with a hint query you can read for a toast
-      return reply.redirect(`${WEB_URL}/dashboard?github=connected`);
+      // Redirect back to landing page so SPA can handle the route and toast
+      return reply.redirect(`${WEB_URL}?github=connected`);
     } catch (err: any) {
       app.log.error(
         { err: err?.message || String(err), stack: err?.stack, userId },
