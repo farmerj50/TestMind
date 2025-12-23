@@ -325,7 +325,8 @@ export default function DashboardPage() {
           <h2 className="mb-3 text-sm font-medium text-slate-800">Recent runs</h2>
           <RecentRunsTable refreshKey={refreshKey} />
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
