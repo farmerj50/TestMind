@@ -27,14 +27,14 @@ const stateSecret =
     return Buffer.from("tm-dev-state-secret");
   })();
 
-function buildState(userId: string) {
+function buildState(userId: string, returnTo: string) {
   const nonce = crypto.randomBytes(16).toString("hex");
-  const payload = JSON.stringify({ userId, nonce, ts: Date.now() });
+  const payload = JSON.stringify({ userId, nonce, ts: Date.now(), returnTo });
   const sig = crypto.createHmac("sha256", stateSecret).update(payload).digest("base64url");
   return Buffer.from(`${payload}.${sig}`).toString("base64url");
 }
 
-type ParsedState = { userId: string; ts: number };
+type ParsedState = { userId: string; ts: number; returnTo: string };
 
 function parseState(state?: string | null): ParsedState | null {
   if (!state) return null;
@@ -47,11 +47,12 @@ function parseState(state?: string | null): ParsedState | null {
     const expBuf = Buffer.from(expected, "base64url");
     if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-    const parsed = JSON.parse(payload) as { userId?: string; ts?: number };
+  const parsed = JSON.parse(payload) as { userId?: string; ts?: number; returnTo?: string };
     if (!parsed.userId || typeof parsed.userId !== "string") return null;
     // 10 minute expiry to avoid replay across users/sessions
-    if (typeof parsed.ts !== "number" || Date.now() - parsed.ts > 10 * 60 * 1000) return null;
-    return { userId: parsed.userId, ts: parsed.ts };
+  if (typeof parsed.ts !== "number" || Date.now() - parsed.ts > 10 * 60 * 1000) return null;
+  if (!parsed.returnTo || typeof parsed.returnTo !== "string") return null;
+  return { userId: parsed.userId, ts: parsed.ts, returnTo: parsed.returnTo };
   } catch {
     return null;
   }
@@ -68,10 +69,15 @@ export async function githubRoutes(app: FastifyInstance) {
     });
   }
 
-  function buildAuthUrl(state: string) {
-    return `${GH_AUTH}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(
-      REDIRECT_URI
-    )}&scope=repo%20read:user&state=${state}&prompt=login`;
+function buildAuthUrl(state: string) {
+    const params = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      scope: "repo read:user",
+      state,
+      approval_prompt: "force",
+    });
+    return `${GH_AUTH}?${params.toString()}`;
   }
 
   async function parseJsonResponse(res: Response) {
@@ -102,25 +108,68 @@ export async function githubRoutes(app: FastifyInstance) {
     return parsed.data as { id: number; login: string };
   }
 
+  async function revokeGithubAuth(token: string) {
+    const basic = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+    const headers = {
+      Authorization: `Basic ${basic}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "TestMindAI",
+      "Content-Type": "application/json",
+    };
+    const body = JSON.stringify({ access_token: token });
+
+    async function revoke(path: "token" | "grant") {
+      const url = `https://api.github.com/applications/${CLIENT_ID}/${path}`;
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers,
+        body,
+      });
+      const text = await res.text().catch(() => "");
+      if (!res.ok) {
+        throw new Error(`GitHub revoke ${path} failed (${res.status}): ${text || res.statusText}`);
+      }
+      app.log.info({ path, status: res.status, text }, "GitHub revoke succeeded");
+    }
+
+    let tokenError: Error | null = null;
+    try {
+      await revoke("token");
+    } catch (err: any) {
+      tokenError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    try {
+      await revoke("grant");
+    } catch (err: any) {
+      const grantError = err instanceof Error ? err : new Error(String(err));
+      if (tokenError) {
+        throw new Error(`${tokenError.message}; ${grantError.message}`);
+      }
+      throw grantError;
+    }
+
+    if (tokenError) {
+      throw tokenError;
+    }
+  }
+
   // 1) Kick off OAuth
   app.get("/auth/github/start", async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     // Defensive: clear any existing token for this user before starting a new connect flow
-    const removed = await prisma.gitAccount.deleteMany({
-      where: { provider: "github", userId },
-    });
-    app.log.info({ userId, removed }, "GitHub connect: cleared existing tokens");
-
-    const state = buildState(userId); // unique, signed per-user state to prevent cross-user reuse
+    const returnTo = (req.query as any)?.returnTo ?? "/dashboard";
+    const state = buildState(userId, returnTo); // unique, signed per-user state to prevent cross-user reuse
     // `prompt=login` forces GitHub to show the account chooser/login even if a previous
     // GitHub session is active in the browser. This prevents reusing an old GitHub token
     // when a different TestMind user connects.
     const url = buildAuthUrl(state);
 
-    app.log.info({ userId, state }, "GitHub start -> redirect");
-    reply.redirect(url);
+    app.log.info({ userId }, "GitHub start -> redirect");
+    return reply.redirect(url);
   });
 
   // Return the GitHub auth URL (for SPA to navigate with auth headers)
@@ -128,14 +177,10 @@ export async function githubRoutes(app: FastifyInstance) {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-    const removed = await prisma.gitAccount.deleteMany({
-      where: { provider: "github", userId },
-    });
-    app.log.info({ userId, removed }, "GitHub connect-url: cleared existing tokens");
-
-    const state = buildState(userId);
+    const returnTo = (req.query as any)?.returnTo ?? "/dashboard";
+    const state = buildState(userId, returnTo);
     const url = buildAuthUrl(state);
-    app.log.info({ userId, state }, "GitHub start-url -> redirect");
+    app.log.info({ userId }, "GitHub start-url -> redirect");
     return reply.send({ url });
   });
 
@@ -243,9 +288,12 @@ export async function githubRoutes(app: FastifyInstance) {
         return reply.code(500).send({ error: "Failed to save GitHub account", message: dbErr?.message || String(dbErr) });
       }
 
-      app.log.info({ userId, ghLogin: ghUser.login }, "GitHub linked; redirecting to callback success");
-      // Redirect back to landing page so SPA can handle the route and toast
-      return reply.redirect(`${WEB_URL}?github=connected`);
+      app.log.info(
+        { userId, ghLogin: ghUser.login, returnTo: parsedState.returnTo },
+        "GitHub linked; redirecting to callback success"
+      );
+      const target = `${WEB_URL}${parsedState.returnTo}?github=connected`;
+      return reply.redirect(target);
     } catch (err: any) {
       app.log.error(
         { err: err?.message || String(err), stack: err?.stack, userId },
@@ -327,15 +375,29 @@ export async function githubRoutes(app: FastifyInstance) {
     });
   });
 
-  // 5) Disconnect GitHub (delete stored token for this user)
   app.delete("/github/status", async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-    await prisma.gitAccount.deleteMany({
+    const account = await getAccount(userId);
+    if (account?.token) {
+      try {
+        await revokeGithubAuth(account.token);
+      } catch (revErr: any) {
+        app.log.warn(
+          {
+            err: revErr?.message || String(revErr),
+            statusCode: revErr?.status,
+            userId,
+          },
+          "GitHub revoke failed during disconnect"
+        );
+      }
+    }
+
+    const removed = await prisma.gitAccount.deleteMany({
       where: { provider: "github", userId },
     });
-
-    return reply.code(204).send();
+    return reply.send({ ok: true, removed });
   });
 }
