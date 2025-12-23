@@ -20,9 +20,10 @@ export default function LandingPage() {
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
+    if (!location.search) return;
     const params = new URLSearchParams(location.search);
     if (params.get("github") === "connected") {
-      navigate("/dashboard", { replace: true });
+      navigate(`/dashboard${location.search}`, { replace: true });
     }
   }, [location.search, navigate]);
 
