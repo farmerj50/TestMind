@@ -243,7 +243,7 @@ export async function githubRoutes(app: FastifyInstance) {
         return reply.code(500).send({ error: "Failed to save GitHub account", message: dbErr?.message || String(dbErr) });
       }
 
-      app.log.info({ userId, ghLogin: ghUser.login }, "GitHub linked");
+      app.log.info({ userId, ghLogin: ghUser.login }, "GitHub linked; redirecting to callback success");
       // Redirect back to landing page so SPA can handle the route and toast
       return reply.redirect(`${WEB_URL}?github=connected`);
     } catch (err: any) {
@@ -261,6 +261,8 @@ export async function githubRoutes(app: FastifyInstance) {
   app.get("/github/status", async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ connected: false });
+
+    app.log.info({ userId }, "github/status requested");
 
     const account = await prisma.gitAccount.findUnique({
       where: { provider_userId: { provider: "github", userId } },

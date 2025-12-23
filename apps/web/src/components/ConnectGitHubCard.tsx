@@ -51,6 +51,7 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
     setError(null);
     try {
       const status = await apiFetch<{ connected: boolean }>("/github/status", { auth: "include" });
+      console.log("github/status:", status);
       let list: Repo[] = [];
       if (status.connected) {
         const r = await apiFetch<{ repos: Repo[] }>("/github/repos", { auth: "include" });
