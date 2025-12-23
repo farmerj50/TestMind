@@ -14,6 +14,8 @@ RUN pnpm install --frozen-lockfile
 FROM node:20-alpine AS builder
 WORKDIR /workspace
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 COPY --from=deps /workspace/node_modules ./node_modules
 COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /workspace/pnpm-workspace.yaml ./pnpm-workspace.yaml
@@ -33,6 +35,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Prisma on alpine often needs openssl + libc compatibility
 RUN apk add --no-cache openssl libc6-compat
 
@@ -40,6 +44,7 @@ COPY --from=builder /workspace/apps/api/dist ./dist
 COPY --from=builder /workspace/apps/api/package.json ./package.json
 COPY --from=builder /workspace/apps/api/prisma ./prisma
 COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /ms-playwright /ms-playwright
 
 EXPOSE 8787
 
