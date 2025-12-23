@@ -24,7 +24,7 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
-  const showConnected = connected && repos.length > 0;
+  const showConnected = connected;
 
   async function disconnect() {
     setLoading(true);
@@ -36,7 +36,12 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
       localStorage.removeItem(STORAGE_KEY);
       setConnected(false);
       setRepos([]);
-      toast("Disconnected from GitHub");
+      onPickRepo("");
+      toast("Disconnected from GitHub", {
+        description: "To connect a different GitHub account, log out of GitHub then click Connect again.",
+      });
+
+      window.open("https://github.com/logout", "_blank", "noopener,noreferrer");
     } catch (e: any) {
       const msg = e?.message || "Failed to disconnect GitHub";
       setError(msg);
@@ -58,9 +63,8 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
         list = r.repos || [];
       }
 
-      const hasRepos = list.length > 0;
-      setConnected(status.connected && hasRepos);
-      setRepos(hasRepos ? list : []);
+      setConnected(status.connected);
+      setRepos(status.connected ? list : []);
     } catch (e: any) {
       const msg = e?.message || "Failed to check GitHub status";
       setConnected(false);
@@ -84,17 +88,6 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
         localStorage.removeItem(STORAGE_KEY);
         setLoading(false);
         return;
-      }
-
-      const storedId = localStorage.getItem(STORAGE_KEY);
-      // If no stored id or it differs, drop any lingering token to avoid cross-user reuse
-      const switched = storedId !== currentId;
-      if (switched) {
-        try {
-          await apiFetch("/github/status", { method: "DELETE", auth: "include" });
-        } catch {
-          // ignore; user will reconnect
-        }
       }
 
       localStorage.setItem(STORAGE_KEY, currentId);
@@ -127,16 +120,14 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
       setConnected(false);
       setRepos([]);
       // Try to fetch a signed GitHub auth URL (uses Clerk auth); if that fails, fallback to direct redirect.
-      try {
-        const { url } = await apiFetch<{ url: string }>("/auth/github/start-url", { auth: "include" });
-        window.location.href = url;
-        return;
-      } catch (inner: any) {
-        const msg = inner?.message || "Starting GitHub connect failed; retrying direct redirect";
-        toast.error(msg);
-        // direct fallback (server will redirect to GitHub)
-        window.location.href = apiHref("/auth/github/start");
-      }
+    try {
+      const href = `${apiHref("/auth/github/start")}?returnTo=/dashboard`;
+      window.location.href = href;
+      return;
+    } catch (inner: any) {
+      const msg = inner?.message || "Starting GitHub connect failed";
+      toast.error(msg);
+    }
     } catch (e: any) {
       const msg = e?.message || "Failed to start GitHub connect";
       setError(msg);
