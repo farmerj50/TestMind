@@ -32,6 +32,9 @@ importers:
       openai:
         specifier: ^6.6.0
         version: 6.6.0(ws@8.18.3)(zod@3.25.76)
+      playwright:
+        specifier: ^1.57.0
+        version: 1.57.0
     devDependencies:
       '@playwright/test':
         specifier: ^1.57.0
