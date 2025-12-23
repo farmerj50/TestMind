@@ -39,7 +39,7 @@ RUN apk add --no-cache openssl libc6-compat
 COPY --from=builder /workspace/apps/api/dist ./dist
 COPY --from=builder /workspace/apps/api/package.json ./package.json
 COPY --from=builder /workspace/apps/api/prisma ./prisma
-COPY --from=deps /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/node_modules ./node_modules
 
 EXPOSE 8787
 
