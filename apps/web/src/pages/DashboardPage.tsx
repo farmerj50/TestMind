@@ -1,6 +1,6 @@
 // apps/web/src/pages/DashboardPage.tsx
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -31,6 +31,8 @@ export default function DashboardPage() {
   const [adapterId, setAdapterId] = useState<AdapterId>(
     (localStorage.getItem("tm-adapterId") as AdapterId) || "playwright-ts"
   );
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useUser();
   const { apiFetch } = useApi();
 
@@ -38,6 +40,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
+  const [githubSuccess, setGithubSuccess] = useState<string | null>(null);
 
   // form state
   const [name, setName] = useState("");
@@ -68,6 +71,22 @@ export default function DashboardPage() {
       .then((d) => setPlan(d.plan))
       .catch(() => { });
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("github") === "connected") {
+      setGithubSuccess("GitHub connected successfully");
+      params.delete("github");
+      const search = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: search ? `?${search}` : "",
+        },
+        { replace: true }
+      );
+    }
+  }, [location.pathname, location.search, navigate]);
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
@@ -134,6 +153,12 @@ export default function DashboardPage() {
           <AdapterDropdown value={adapterId} onChange={setAdapterId} />
         </div>
       </header>
+
+      {githubSuccess && (
+        <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {githubSuccess}
+        </div>
+      )}
 
 
       <h1 className="text-2xl font-semibold">Dashboard</h1>
