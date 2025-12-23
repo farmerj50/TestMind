@@ -1,6 +1,7 @@
 FROM node:20-alpine AS deps
 WORKDIR /workspace
-RUN corepack enable && corepack pnpm env use --global 9
+# Use Corepack to install a matching pnpm version without touching Node.js directly.
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
