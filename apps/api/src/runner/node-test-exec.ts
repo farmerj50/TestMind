@@ -280,18 +280,45 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       normalizePath(path.relative(found.cwd, found.configPath))
     );
 
-    // Force reporters so JSON + allure artifacts are emitted
     const timeoutMs = req.runTimeout ?? runTimeout;
-    const proc = await execa(npx, args, {
-      cwd: found.cwd,
-      env,
-      reject: false,
-      timeout: timeoutMs,
-      stdio: "pipe",
-    });
 
+    const missingBrowserError = (text: string | undefined) =>
+      !!text && /Executable doesn't exist|chrome-headless-shell/.test(text);
+
+    const installBrowsers = async () => {
+      try {
+        await execa(npx, ["-y", "playwright", "install", "--with-deps"], {
+          cwd: found.cwd,
+          stdio: "pipe",
+        });
+      } catch {
+        /* best effort */
+      }
+    };
+
+    const runPlaywright = () =>
+      execa(npx, args, {
+        cwd: found.cwd,
+        env,
+        reject: false,
+        timeout: timeoutMs,
+        stdio: "pipe",
+      });
+
+    let proc = await runPlaywright();
+    if (!req.extraEnv?.TM_SKIP_PLAYWRIGHT_INSTALL && missingBrowserError(proc.stderr)) {
+      await installBrowsers();
+      proc = await runPlaywright();
+    }
+
+    // Force reporters so JSON + allure artifacts are emitted
+    
     const stdout = proc.stdout ?? "";
-    const stderr = proc.stderr ?? "";
+    let stderr = proc.stderr ?? "";
+    if (missingBrowserError(stderr)) {
+      stderr +=
+        "\nPlaywright browser binary missing. Run `npx playwright install --with-deps` on the machine to fetch a headless shell.";
+    }
 
     let hasReport = await fs
       .stat(req.jsonOutPath)
