@@ -27,6 +27,7 @@
     "allure-js-commons": "^3.4.3",
     "allure-playwright": "^3.4.3",
     "tsx": "^4.20.6",
+    "prisma": "^6.18.0",
     "typescript": "^5.9.3"
   }
 }
