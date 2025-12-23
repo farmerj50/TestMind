@@ -28,6 +28,9 @@ WORKDIR /workspace
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
+# install production deps only
+RUN pnpm install --frozen-lockfile --prod
+
 # Bring installed deps forward
 COPY --from=deps /workspace/node_modules ./node_modules
 COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
