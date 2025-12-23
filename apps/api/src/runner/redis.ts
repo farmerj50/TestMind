@@ -1,4 +1,5 @@
 import { Redis } from 'ioredis';
+import { validatedEnv } from "../config/env.js";
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const REDIS_URL = validatedEnv.REDIS_URL;
 export const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
