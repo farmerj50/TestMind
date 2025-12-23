@@ -88,6 +88,12 @@ export default function DashboardPage() {
     }
   }, [location.pathname, location.search, navigate]);
 
+  useEffect(() => {
+    if (!githubSuccess) return;
+    const timer = setTimeout(() => setGithubSuccess(null), 6000);
+    return () => clearTimeout(timer);
+  }, [githubSuccess]);
+
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -126,8 +132,22 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="px-4">
-      <header className="mb-6 flex items-center gap-3">
+    <>
+      {githubSuccess && (
+        <div className="fixed right-4 top-4 z-50 flex w-full max-w-sm items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 shadow-lg">
+          <span className="flex-1">{githubSuccess}</span>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setGithubSuccess(null)}
+            className="rounded-full p-1 text-emerald-700 hover:text-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <div className="px-4">
+        <header className="mb-6 flex items-center gap-3">
         <div className="grid h-8 w-8 place-items-center rounded bg-slate-900 font-semibold text-white">
           TM
         </div>
