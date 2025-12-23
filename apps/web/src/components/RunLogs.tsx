@@ -2,17 +2,16 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { Button } from "../components/ui/button";
+import { apiUrl } from "../lib/api";
 
 export default function RunLogs({ runId }: { runId: string }) {
   const { getToken } = useAuth();
   const [type, setType] = useState<"stdout" | "stderr">("stdout");
   const [text, setText] = useState<string>("");
 
-  const base = import.meta.env.VITE_API_URL as string;
-
   const load = async (t: "stdout" | "stderr") => {
     const token = await getToken(); // Clerk token for the API
-    const res = await fetch(`${base}/runner/test-runs/${runId}/logs?type=${t}`, {
+    const res = await fetch(apiUrl(`/runner/test-runs/${runId}/logs?type=${t}`), {
       method: "GET",
       credentials: "include",
       headers: {

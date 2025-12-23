@@ -3,7 +3,21 @@ import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
 
 const DEFAULT_BASE = "http://localhost:8787"; // dev API URL
+const ENV_BASE = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+export const API_BASE = ENV_BASE || (import.meta.env.DEV ? DEFAULT_BASE : "");
 type ApiInit = RequestInit & { auth?: "include" | "omit" };
+
+function buildBaseUrl(path: string) {
+  const normalized = path.trim();
+  const relative = normalized.startsWith("/") ? normalized.slice(1) : normalized;
+  const base = API_BASE || DEFAULT_BASE;
+  const baseWithSlash = base.endsWith("/") ? base : `${base}/`;
+  return new URL(relative, baseWithSlash).toString();
+}
+
+export function apiUrl(path: string) {
+  return buildBaseUrl(path);
+}
 
 /** Helper used by Run button (sends JSON). */
 export async function startRun(apiFetch: any, projectId: string) {
@@ -15,21 +29,8 @@ export async function startRun(apiFetch: any, projectId: string) {
 
 export function useApi() {
   const { getToken } = useAuth();
-  const envBase = import.meta.env.VITE_API_URL as string | undefined;
-  const BASE = envBase || (import.meta.env.DEV ? DEFAULT_BASE : undefined);
-  const baseUrl = BASE || DEFAULT_BASE; // fall back to dev default to avoid undefined
-
-  function normalize(path: string) {
-    let p = (path || "").trim();
-    if (/^https?:\/\//i.test(p)) return p;            // full URL passed
-    return p.startsWith("/") ? p : `/${p}`;
-  }
-
   function buildUrl(path: string) {
-    const clean = normalize(path);
-    const baseWithSlash = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
-    const cleanPath = clean.replace(/^\//, "");
-    return new URL(cleanPath, baseWithSlash).toString();
+    return apiUrl(path);
   }
 
   /** Stable fetch wrapper for components/effects. */

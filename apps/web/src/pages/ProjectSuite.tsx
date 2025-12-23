@@ -10,7 +10,7 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import { FileText, FolderTree, ChevronDown, ChevronRight, GitBranch, Search, RefreshCw, Play, Plus, Lock, Unlock } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
-import { useApi } from "../lib/api";
+import { useApi, apiUrl } from "../lib/api";
 import HowToHint from "../components/HowToHint";
 
 type SpecFile = { path: string };
@@ -310,7 +310,7 @@ export default function ProjectSuite() {
   // load available spec projects (generated + curated)
   useEffect(() => {
     let active = true;
-    fetch("/tm/suite/projects")
+    fetch(apiUrl("/tm/suite/projects")
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text().catch(() => "Failed to load spec projects");
@@ -379,7 +379,7 @@ export default function ProjectSuite() {
     }
     setCreatingSuite(true);
     try {
-      const res = await fetch("/tm/suite/projects", {
+      const res = await fetch(apiUrl("/tm/suite/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, projectId: runProjectId }),
@@ -415,7 +415,7 @@ export default function ProjectSuite() {
     setCopyingSpec(true);
     setSpecProjectErr(null);
     try {
-      const res = await fetch(`/tm/suite/projects/${targetId}/specs`, {
+      const res = await fetch(apiUrl(`/tm/suite/projects/${targetId}/specs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: activeSpec.path, sourceProjectId: pid }),
@@ -440,7 +440,7 @@ export default function ProjectSuite() {
     if (!activeSpec || !isActiveCurated || !activeSuite) return;
     setLockingSpec(true);
     try {
-      const res = await fetch(`/tm/suite/projects/${activeSuite.id}/specs`, {
+      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: activeSpec.path, locked: nextLocked }),
@@ -471,7 +471,7 @@ export default function ProjectSuite() {
     if (!activeSpec || !isActiveCurated || !activeSuite) return;
     setDeletingSpec(true);
     try {
-      const res = await fetch(`/tm/suite/projects/${activeSuite.id}/specs?path=${encodeURIComponent(activeSpec.path)}`, {
+      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs?path=${encodeURIComponent(activeSpec.path)}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
@@ -494,7 +494,7 @@ export default function ProjectSuite() {
     if (!activeSuite || !isActiveCurated) return;
     setSyncingSuite(mode);
     try {
-      const res = await fetch(`/tm/suite/projects/${activeSuite.id}/sync-from-generated`, {
+      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}/sync-from-generated`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ adapterId: "playwright-ts", mode }),
@@ -522,7 +522,7 @@ export default function ProjectSuite() {
     if (!name || name === activeSuite.name) return;
     setRenamingSuite(true);
     try {
-      const res = await fetch(`/tm/suite/projects/${activeSuite.id}`, {
+      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -553,7 +553,7 @@ export default function ProjectSuite() {
     if (!confirmDelete) return;
     setDeletingSuite(true);
     try {
-      const res = await fetch(`/tm/suite/projects/${activeSuite.id}`, { method: "DELETE" });
+      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) {
         const text = await res.text().catch(() => "Failed to delete suite");
         throw new Error(text);
@@ -593,7 +593,7 @@ export default function ProjectSuite() {
     setEditorPath(activeSpec.path);
     try {
       const qs = new URLSearchParams({ projectId: activeSuite.id, path: activeSpec.path });
-      const res = await fetch(`/tm/suite/spec-content?${qs.toString()}`);
+      const res = await fetch(apiUrl(`/tm/suite/spec-content?${qs.toString()}`);
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to load spec content");
         throw new Error(friendlyError(text, "Failed to load spec"));
@@ -616,7 +616,7 @@ export default function ProjectSuite() {
     if (!activeSuite || !editorPath) return;
     setEditorSaving(true);
     try {
-      const res = await fetch("/tm/suite/spec-content", {
+      const res = await fetch(apiUrl("/tm/suite/spec-content", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: activeSuite.id, path: editorPath, content: editorContent }),
@@ -653,7 +653,7 @@ export default function ProjectSuite() {
       return;
     }
     const qs = new URLSearchParams({ projectId: pid });
-    fetch(`/tm/suite/specs?${qs.toString()}`)
+    fetch(apiUrl(`/tm/suite/specs?${qs.toString()}`)
       .then(async (r) => {
         if (!r.ok) {
           const text = await r.text().catch(() => "Failed to load specs");
@@ -701,7 +701,7 @@ export default function ProjectSuite() {
       setEditorPath(match.path);
       try {
         const qs = new URLSearchParams({ projectId: activeSuite.id, path: match.path });
-        const res = await fetch(`/tm/suite/spec-content?${qs.toString()}`);
+        const res = await fetch(apiUrl(`/tm/suite/spec-content?${qs.toString()}`);
         if (!res.ok) {
           const text = await res.text().catch(() => "Failed to load spec content");
           throw new Error(text);
@@ -748,7 +748,7 @@ export default function ProjectSuite() {
   useEffect(() => {
     if (!activeSpec || suiteSelected) return;
     const qs = new URLSearchParams({ projectId: pid, path: activeSpec.path });
-    fetch(`/tm/suite/cases?${qs.toString()}`)
+    fetch(apiUrl(`/tm/suite/cases?${qs.toString()}`)
       .then(async (r) => {
         if (!r.ok) {
           const text = await r.text().catch(() => "Failed to load cases");
@@ -813,7 +813,7 @@ export default function ProjectSuite() {
       const all: CaseItem[] = [];
       for (const spec of specs) {
         const qs = new URLSearchParams({ projectId: pid, path: spec.path });
-        const res = await fetch(`/tm/suite/cases?${qs.toString()}`);
+        const res = await fetch(apiUrl(`/tm/suite/cases?${qs.toString()}`);
         if (!res.ok) continue;
         const rows: CaseItem[] = await res.json();
         rows.forEach((r) => all.push({ ...r, specPath: spec.path }));
