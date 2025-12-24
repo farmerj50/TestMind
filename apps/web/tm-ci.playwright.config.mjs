@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://localhost:${PORT}`;
-const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts-user_36fE7NhJd4BiVLk3EXpdpVh7J4m');
+const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5');
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');

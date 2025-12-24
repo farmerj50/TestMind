@@ -95,13 +95,15 @@ export default function GenerateButton({
 
     try {
 
+      localStorage.setItem("tm:lastGeneratedProjectId", projectId);
       await apiFetch("/tm/generate", {
 
         method: "POST",
 
         body: JSON.stringify({
 
-          baseUrl,                 // ← send the actual URL
+          projectId,
+          baseUrl,                 // send the actual URL
 
           adapterId,
 
