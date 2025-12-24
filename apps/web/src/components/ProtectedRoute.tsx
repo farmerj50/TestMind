@@ -3,9 +3,10 @@ import { useAuth } from "@clerk/clerk-react";
 import { ReactNode } from "react";
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const { pathname, search } = useLocation();
 
+  if (!isLoaded) return null;
   if (!isSignedIn) {
     const redirect = encodeURIComponent(pathname + search);
     return <Navigate to={`/signin?redirect=${redirect}`} replace />;
