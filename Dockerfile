@@ -46,6 +46,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Copy manifests (include web manifest so pnpm workspace doesn't lstat fail)
