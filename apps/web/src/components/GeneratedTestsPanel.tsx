@@ -11,9 +11,13 @@ export default function GeneratedTestsPanel() {
   const [content, setContent] = useState<string>("");
   const { apiFetch } = useApi();
   const adapterId = (localStorage.getItem("tm-adapterId") || "playwright-ts") as string;
+  const projectId = localStorage.getItem("tm:lastGeneratedProjectId") || "";
 
   async function load() {
-    const qs = new URLSearchParams({ adapterId }).toString();
+    const qs = new URLSearchParams({
+      adapterId,
+      ...(projectId ? { projectId } : {}),
+    }).toString();
     const d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${qs}`);
     const list = d.files || [];
     setFiles(list);
@@ -22,7 +26,11 @@ export default function GeneratedTestsPanel() {
 
   async function openFile(p: string) {
     setActive(p);
-    const qs = new URLSearchParams({ adapterId, file: p }).toString();
+    const qs = new URLSearchParams({
+      adapterId,
+      file: p,
+      ...(projectId ? { projectId } : {}),
+    }).toString();
     const text = await apiFetch<string>(`/tm/generated/file?${qs}`, {
       // apiFetch treats non-JSON as text when content-type isn't JSON; force that here
       headers: { Accept: "text/plain" } as any,
@@ -30,7 +38,7 @@ export default function GeneratedTestsPanel() {
     setContent(text);
   }
 
-  useEffect(() => { load(); }, [adapterId]);
+  useEffect(() => { load(); }, [adapterId, projectId]);
 
   useEffect(() => { if (active) openFile(active); }, [active]);
 
