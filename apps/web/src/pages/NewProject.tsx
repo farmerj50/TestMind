@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useAuth } from '@clerk/clerk-react';
-import { apiUrl } from '../lib/api';
+import { useApi } from '../lib/api';
 
 export default function NewProjectPage() {
   const [name, setName] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [status, setStatus] = useState<string | null>(null);
-  const { getToken } = useAuth();
+  const { apiFetchRaw } = useApi();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -16,12 +15,10 @@ export default function NewProjectPage() {
     const trimmedRepo = repoUrl.trim();
     if (trimmedRepo) payload.repoUrl = trimmedRepo;
 
-    const token = await getToken(); // Clerk session token (JWT)
-    const res = await fetch(apiUrl('/projects'), {
+    const res = await apiFetchRaw('/projects', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token ?? ''}`
       },
       body: JSON.stringify(payload)
     });
