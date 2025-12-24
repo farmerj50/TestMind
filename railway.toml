@@ -1,7 +1,0 @@
-[build]
-builder = "NIXPACKS"
-buildCommand = "pnpm --filter api build"
-
-[deploy]
-startCommand = "node apps/api/dist/index.js"
-restartPolicyType = "ON_FAILURE"
