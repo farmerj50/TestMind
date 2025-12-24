@@ -10,6 +10,7 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import { FileText, FolderTree, ChevronDown, ChevronRight, GitBranch, Search, RefreshCw, Play, Plus, Lock, Unlock } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
 import { useApi, apiUrl } from "../lib/api";
 import HowToHint from "../components/HowToHint";
 
@@ -161,6 +162,7 @@ export default function ProjectSuite() {
   const navigate = useNavigate();
   const location = useLocation();
   const { apiFetch, apiFetchRaw } = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
   const [branch, setBranch] = useState("main");
   const [specs, setSpecs] = useState<SpecFile[]>([]);
   const [activeSpec, setActiveSpec] = useState<SpecFile | null>(null);
@@ -309,6 +311,7 @@ export default function ProjectSuite() {
 
   // load available spec projects (generated + curated)
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     let active = true;
     apiFetchRaw(apiUrl("/tm/suite/projects"))
       .then(async (res) => {
@@ -335,7 +338,7 @@ export default function ProjectSuite() {
     return () => {
       active = false;
     };
-  }, [pid, navigate, apiFetchRaw]);
+  }, [pid, navigate, apiFetchRaw, isLoaded, isSignedIn]);
 
   const curatedSuites = useMemo(
     () => specProjects.filter((proj) => proj.type === "curated"),
@@ -641,6 +644,7 @@ export default function ProjectSuite() {
 
   // load spec list
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     if (!specProjects.length) {
       setSpecs([]);
       setActiveSpec(null);
@@ -666,7 +670,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load specs");
       });
-  }, [pid, specReloadKey, specProjects, apiFetchRaw]);
+  }, [pid, specReloadKey, specProjects, apiFetchRaw, isLoaded, isSignedIn]);
 
   // If a spec path is provided via query (?spec=...), auto-select it once specs are loaded.
   useEffect(() => {
@@ -685,6 +689,7 @@ export default function ProjectSuite() {
 
   // If a spec is provided via query and it's a curated suite, auto-open the editor once.
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     if (initialAutoOpenApplied.current) return;
     if (!specFromQuery || !specs.length) return;
     if (!activeSuite || activeSuite.type !== "curated") return;
@@ -718,7 +723,7 @@ export default function ProjectSuite() {
         setEditorLoading(false);
       }
     })();
-  }, [specFromQuery, specs, activeSuite, apiFetchRaw]);
+  }, [specFromQuery, specs, activeSuite, apiFetchRaw, isLoaded, isSignedIn]);
 
   // fetch available projects for running
   useEffect(() => {
@@ -746,6 +751,7 @@ export default function ProjectSuite() {
 
   // load cases when a spec is selected (skip when viewing whole suite)
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     if (!activeSpec || suiteSelected) return;
     const qs = new URLSearchParams({ projectId: pid, path: activeSpec.path });
     apiFetchRaw(apiUrl(`/tm/suite/cases?${qs.toString()}`))
@@ -768,7 +774,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load cases");
       });
-  }, [pid, activeSpec, suiteSelected, apiFetchRaw]);
+  }, [pid, activeSpec, suiteSelected, apiFetchRaw, isLoaded, isSignedIn]);
 
 
   const filtered = useMemo(
