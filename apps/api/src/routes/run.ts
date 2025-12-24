@@ -369,13 +369,27 @@ export default async function runRoutes(app: FastifyInstance) {
       } else if (reuseWorkspace) {
         // Reuse an existing checkout; force monorepo root (../../ from apps/api)
         const fallbackRoot = path.resolve(process.cwd(), "../..");
-        work = fallbackRoot;
-        usingLocalRepo = true;
-        await fs.writeFile(
-          path.join(outDir, "stdout.txt"),
-          `[runner] TM_REUSE_WORKSPACE=1 using workdir=${work}\n`,
-          { flag: "a" }
-        );
+        const hasWorkspace =
+          fsSync.existsSync(path.join(fallbackRoot, "package.json")) ||
+          fsSync.existsSync(path.join(fallbackRoot, "pnpm-lock.yaml")) ||
+          fsSync.existsSync(path.join(fallbackRoot, "package-lock.json")) ||
+          fsSync.existsSync(path.join(fallbackRoot, "yarn.lock"));
+        if (hasWorkspace) {
+          work = fallbackRoot;
+          usingLocalRepo = true;
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] TM_REUSE_WORKSPACE=1 using workdir=${work}\n`,
+            { flag: "a" }
+          );
+        } else {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] TM_REUSE_WORKSPACE=1 but no repo root at ${fallbackRoot}; falling back to clone\n`,
+            { flag: "a" }
+          );
+          work = await makeWorkdir();
+        }
       } else if (!hasRepoUrl && allowLocalRepo) {
         // fall back to monorepo root (apps/api is one level below)
         work = path.resolve(process.cwd(), "..");

@@ -26,6 +26,7 @@ type GenerateCommon = {
   exclude?: string;      // comma-separated or single glob, e.g. "/admin*,/reset*"
   authEmail?: string;    // optional test user email
   authPassword?: string; // optional test user password
+  projectId?: string;    // optional project id for scoped generated outputs
 };
 
 type GenerateBody = GenerateCommon;
@@ -278,6 +279,8 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   app.log.info({ GENERATED_ROOT }, '[TM] using generated output root');
   const adapterDir = (adapterId: string, userId: string) =>
     path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
+  const adapterProjectDir = (adapterId: string, userId: string, projectId?: string) =>
+    projectId ? path.join(adapterDir(adapterId, userId), projectId) : adapterDir(adapterId, userId);
 
   // ----------------------------------------------------------------------------
   // GET /tm/generate  (shows form if no baseUrl; runs generation if baseUrl given)
@@ -294,6 +297,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         exclude,
         authEmail,
         authPassword,
+        projectId,
       } = (req.query as GenerateQuery) || {};
 
       // If no baseUrl -> render the HTML form (restores old UX)
@@ -319,7 +323,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-      const outRoot = adapterDir(adapterId, userId);
+      const outRoot = adapterProjectDir(adapterId, userId, projectId);
       try {
         await fs.promises.rm(outRoot, { recursive: true, force: true });
       } catch {
@@ -359,6 +363,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         exclude,
         authEmail,
         authPassword,
+        projectId,
       } = req.body || {};
 
       app.log.info(
@@ -380,7 +385,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-      const outRoot = adapterDir(adapterId, userId);
+      const outRoot = adapterProjectDir(adapterId, userId, projectId);
       try {
         await fs.promises.rm(outRoot, { recursive: true, force: true });
       } catch {
@@ -459,8 +464,12 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     try {
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-      const { adapterId = 'playwright-ts' } = (req.query as any) || {};
-      const root = adapterDir(adapterId, userId);
+      const { adapterId = 'playwright-ts', projectId } = (req.query as any) || {};
+      let root = adapterProjectDir(adapterId, userId, projectId);
+      if (projectId && !fs.existsSync(root)) {
+        const fallback = adapterDir(adapterId, userId);
+        if (fs.existsSync(fallback)) root = fallback;
+      }
       if (!fs.existsSync(root)) return reply.send({ files: [] });
 
       const list: { path: string; size: number }[] = [];
@@ -489,10 +498,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-      const { adapterId = 'playwright-ts', file } = (req.query as any) || {};
+      const { adapterId = 'playwright-ts', projectId, file } = (req.query as any) || {};
       if (!file) return reply.code(400).send({ ok: false, error: 'file required' });
 
-      const base = adapterDir(adapterId, userId);
+      let base = adapterProjectDir(adapterId, userId, projectId);
+      if (projectId && !fs.existsSync(base)) {
+        const fallback = adapterDir(adapterId, userId);
+        if (fs.existsSync(fallback)) base = fallback;
+      }
       const abs = path.join(base, file);
 
       if (!abs.startsWith(base)) return reply.code(400).send({ ok: false, error: 'bad path' });
