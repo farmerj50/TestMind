@@ -67,5 +67,25 @@ export function useApi() {
     [getToken] // stable deps
   );
 
-  return { apiFetch };
+  const apiFetchRaw = useCallback(
+    async (path: string, init: ApiInit = {}): Promise<Response> => {
+      const url = buildUrl(path);
+
+      const wantAuth = init.auth !== "omit";
+      const token = wantAuth ? await getToken().catch(() => undefined) : undefined;
+
+      const headers = new Headers(init.headers || {});
+      if (init.body && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+      if (token && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+
+      return fetch(url, { ...init, headers, credentials: "include" });
+    },
+    [getToken]
+  );
+
+  return { apiFetch, apiFetchRaw };
 }
