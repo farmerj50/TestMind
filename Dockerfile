@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 # Copy root/workspace manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
 
 # Install with dev deps (needed for prisma + tsc during build)
@@ -29,9 +30,11 @@ COPY --from=deps /workspace/node_modules ./node_modules
 COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /workspace/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /workspace/package.json ./package.json
+COPY --from=deps /workspace/apps/web/package.json ./apps/web/package.json
 
 # Copy actual sources
 COPY apps/api ./apps/api
+COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner ./packages/runner
 
 # Ensure workspace links are correct with full source present
@@ -58,6 +61,7 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 # Copy manifests for prod install
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
 
 # Install ONLY production deps
