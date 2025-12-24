@@ -439,13 +439,37 @@ export default async function runRoutes(app: FastifyInstance) {
 
 
         // 3) Install deps in the workspace
-        // - skip for localRepoRoot (user-managed) or when explicitly reusing workspace
+        // - for local/reuse workspaces, only install when @playwright/test is missing
+        const needsPlaywright = () => {
+          try {
+            require.resolve("@playwright/test", { paths: [cwd] });
+            return false;
+          } catch {
+            return true;
+          }
+        };
+
         if (localRepoRoot || reuseWorkspace) {
-          await fs.writeFile(
-            path.join(outDir, "stdout.txt"),
-            "[runner] local/reuse workspace: skipping installDeps (expect node_modules already present)\n",
-            { flag: "a" }
-          );
+          if (needsPlaywright()) {
+            const t0 = Date.now();
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] local/reuse workspace: @playwright/test missing, running installDeps\n",
+              { flag: "a" }
+            );
+            await installDeps(work, cwd);
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] installDeps done in ${Date.now() - t0}ms\n`,
+              { flag: "a" }
+            );
+          } else {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] local/reuse workspace: skipping installDeps (deps already present)\n",
+              { flag: "a" }
+            );
+          }
         } else {
           const t0 = Date.now();
           await installDeps(work, cwd);
