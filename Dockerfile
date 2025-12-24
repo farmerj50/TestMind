@@ -57,7 +57,8 @@ RUN pnpm install --frozen-lockfile --prod
 
 # prisma generate needs the schema at runtime image build time
 COPY apps/api/prisma ./apps/api/prisma
-RUN pnpm --filter api exec prisma generate
+RUN pnpm --filter api exec prisma generate --schema=apps/api/prisma/schema.prisma
+
 
 # copy built output + prisma schema if needed at runtime
 COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
