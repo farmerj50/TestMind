@@ -19,6 +19,7 @@
     "@fastify/static": "^6",
     "@octokit/rest": "^22.0.1",
     "@playwright/test": "^1.57.0",
+    "prisma": "^6.19.1",
     "@prisma/client": "^6.18.0",
     "archiver": "^7.0.1",
     "bullmq": "5.55.0",
