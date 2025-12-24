@@ -160,7 +160,7 @@ export default function ProjectSuite() {
   const pid = projectId ?? "playwright-ts";
   const navigate = useNavigate();
   const location = useLocation();
-  const { apiFetch } = useApi();
+  const { apiFetch, apiFetchRaw } = useApi();
   const [branch, setBranch] = useState("main");
   const [specs, setSpecs] = useState<SpecFile[]>([]);
   const [activeSpec, setActiveSpec] = useState<SpecFile | null>(null);
@@ -310,7 +310,7 @@ export default function ProjectSuite() {
   // load available spec projects (generated + curated)
   useEffect(() => {
     let active = true;
-    fetch(apiUrl("/tm/suite/projects"))
+    apiFetchRaw(apiUrl("/tm/suite/projects"))
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text().catch(() => "Failed to load spec projects");
@@ -335,7 +335,7 @@ export default function ProjectSuite() {
     return () => {
       active = false;
     };
-  }, [pid, navigate]);
+  }, [pid, navigate, apiFetchRaw]);
 
   const curatedSuites = useMemo(
     () => specProjects.filter((proj) => proj.type === "curated"),
@@ -379,7 +379,7 @@ export default function ProjectSuite() {
     }
     setCreatingSuite(true);
     try {
-      const res = await fetch(apiUrl("/tm/suite/projects"), {
+      const res = await apiFetchRaw(apiUrl("/tm/suite/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, projectId: runProjectId }),
@@ -415,7 +415,7 @@ export default function ProjectSuite() {
     setCopyingSpec(true);
     setSpecProjectErr(null);
     try {
-      const res = await fetch(apiUrl(`/tm/suite/projects/${targetId}/specs`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${targetId}/specs`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: activeSpec.path, sourceProjectId: pid }),
@@ -440,7 +440,7 @@ export default function ProjectSuite() {
     if (!activeSpec || !isActiveCurated || !activeSuite) return;
     setLockingSpec(true);
     try {
-      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: activeSpec.path, locked: nextLocked }),
@@ -471,7 +471,7 @@ export default function ProjectSuite() {
     if (!activeSpec || !isActiveCurated || !activeSuite) return;
     setDeletingSpec(true);
     try {
-      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs?path=${encodeURIComponent(activeSpec.path)}`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs?path=${encodeURIComponent(activeSpec.path)}`), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
@@ -494,7 +494,7 @@ export default function ProjectSuite() {
     if (!activeSuite || !isActiveCurated) return;
     setSyncingSuite(mode);
     try {
-      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}/sync-from-generated`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}/sync-from-generated`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ adapterId: "playwright-ts", mode }),
@@ -522,7 +522,7 @@ export default function ProjectSuite() {
     if (!name || name === activeSuite.name) return;
     setRenamingSuite(true);
     try {
-      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -553,7 +553,7 @@ export default function ProjectSuite() {
     if (!confirmDelete) return;
     setDeletingSuite(true);
     try {
-      const res = await fetch(apiUrl(`/tm/suite/projects/${activeSuite.id}`), { method: "DELETE" });
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}`), { method: "DELETE" });
       if (!res.ok && res.status !== 204) {
         const text = await res.text().catch(() => "Failed to delete suite");
         throw new Error(text);
@@ -593,7 +593,7 @@ export default function ProjectSuite() {
     setEditorPath(activeSpec.path);
     try {
       const qs = new URLSearchParams({ projectId: activeSuite.id, path: activeSpec.path });
-      const res = await fetch(apiUrl(`/tm/suite/spec-content?${qs.toString()}`));
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/spec-content?${qs.toString()}`));
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to load spec content");
         throw new Error(friendlyError(text, "Failed to load spec"));
@@ -616,7 +616,7 @@ export default function ProjectSuite() {
     if (!activeSuite || !editorPath) return;
     setEditorSaving(true);
     try {
-      const res = await fetch(apiUrl("/tm/suite/spec-content"), {
+      const res = await apiFetchRaw(apiUrl("/tm/suite/spec-content"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: activeSuite.id, path: editorPath, content: editorContent }),
@@ -653,7 +653,7 @@ export default function ProjectSuite() {
       return;
     }
     const qs = new URLSearchParams({ projectId: pid });
-    fetch(apiUrl(`/tm/suite/specs?${qs.toString()}`))
+    apiFetchRaw(apiUrl(`/tm/suite/specs?${qs.toString()}`))
       .then(async (r) => {
         if (!r.ok) {
           const text = await r.text().catch(() => "Failed to load specs");
@@ -666,7 +666,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load specs");
       });
-  }, [pid, specReloadKey, specProjects]);
+  }, [pid, specReloadKey, specProjects, apiFetchRaw]);
 
   // If a spec path is provided via query (?spec=...), auto-select it once specs are loaded.
   useEffect(() => {
@@ -701,7 +701,7 @@ export default function ProjectSuite() {
       setEditorPath(match.path);
       try {
         const qs = new URLSearchParams({ projectId: activeSuite.id, path: match.path });
-        const res = await fetch(apiUrl(`/tm/suite/spec-content?${qs.toString()}`));
+        const res = await apiFetchRaw(apiUrl(`/tm/suite/spec-content?${qs.toString()}`));
         if (!res.ok) {
           const text = await res.text().catch(() => "Failed to load spec content");
           throw new Error(text);
@@ -718,7 +718,7 @@ export default function ProjectSuite() {
         setEditorLoading(false);
       }
     })();
-  }, [specFromQuery, specs, activeSuite]);
+  }, [specFromQuery, specs, activeSuite, apiFetchRaw]);
 
   // fetch available projects for running
   useEffect(() => {
@@ -748,7 +748,7 @@ export default function ProjectSuite() {
   useEffect(() => {
     if (!activeSpec || suiteSelected) return;
     const qs = new URLSearchParams({ projectId: pid, path: activeSpec.path });
-    fetch(apiUrl(`/tm/suite/cases?${qs.toString()}`))
+    apiFetchRaw(apiUrl(`/tm/suite/cases?${qs.toString()}`))
       .then(async (r) => {
         if (!r.ok) {
           const text = await r.text().catch(() => "Failed to load cases");
@@ -768,7 +768,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load cases");
       });
-  }, [pid, activeSpec, suiteSelected]);
+  }, [pid, activeSpec, suiteSelected, apiFetchRaw]);
 
 
   const filtered = useMemo(
@@ -813,7 +813,7 @@ export default function ProjectSuite() {
       const all: CaseItem[] = [];
       for (const spec of specs) {
         const qs = new URLSearchParams({ projectId: pid, path: spec.path });
-        const res = await fetch(apiUrl(`/tm/suite/cases?${qs.toString()}`));
+        const res = await apiFetchRaw(apiUrl(`/tm/suite/cases?${qs.toString()}`));
         if (!res.ok) continue;
         const rows: CaseItem[] = await res.json();
         rows.forEach((r) => all.push({ ...r, specPath: spec.path }));
