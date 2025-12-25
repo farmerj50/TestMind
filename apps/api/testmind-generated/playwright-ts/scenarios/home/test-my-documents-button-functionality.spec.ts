@@ -210,7 +210,7 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page / – 1 test(s)
+// Auto-generated for page / 1 test(s)
 
 test("Test My Documents Button Functionality", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Test My Documents Button Functionality" }, { type: "parameter", description: "page=/" });

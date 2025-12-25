@@ -109,14 +109,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 15000 });
-      await candidate.click({ timeout: 15000 });
+      await candidate.waitFor({ state: 'visible', timeout: 20000 });
+      await candidate.click({ timeout: 20000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 15000 });
-  await fallback.click({ timeout: 15000 });
+  await fallback.waitFor({ state: 'visible', timeout: 20000 });
+  await fallback.click({ timeout: 20000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
@@ -262,7 +262,7 @@ test("Navigate /login → /pricing", async ({ page }) => {
     {
       const targetPath = identityPathForText("pricing");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }

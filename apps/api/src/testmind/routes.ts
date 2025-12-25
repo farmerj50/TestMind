@@ -642,13 +642,18 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const suite = await prisma.curatedSuite.findUnique({
         where: { id },
-        select: { rootRel: true, project: { select: { ownerId: true } } },
+        select: { rootRel: true, projectId: true, project: { select: { ownerId: true } } },
       });
       if (!suite || suite.project.ownerId !== userId) {
         return reply.code(404).send({ error: "Project not found" });
       }
 
-      const sourceRoot = path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
+      const projectRoot = suite.projectId
+        ? adapterProjectDir(adapterId, userId, suite.projectId)
+        : null;
+      const sourceRoot = projectRoot && fs.existsSync(projectRoot)
+        ? projectRoot
+        : path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
       if (!fs.existsSync(sourceRoot)) {
         return reply.code(404).send({ error: `No generated specs found for ${adapterId}` });
       }

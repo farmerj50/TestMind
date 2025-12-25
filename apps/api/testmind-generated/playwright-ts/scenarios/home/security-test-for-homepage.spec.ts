@@ -210,7 +210,7 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page / – 1 test(s)
+// Auto-generated for page / 1 test(s)
 
 test("Security Test for Homepage", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Security Test for Homepage" }, { type: "parameter", description: "page=/" });
