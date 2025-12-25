@@ -218,19 +218,14 @@ if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
 const RUNNER_LOGS_ROOT = REPORT_ROOT;
 const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
 const LEGACY_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
-const AVAILABLE_RUNNER_ROOTS = [RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT].filter((candidate) =>
-  fs.existsSync(candidate)
+const AVAILABLE_RUNNER_ROOTS = [RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT];
+await registerWithLog("runnerLogsStatic", () =>
+  app.register(fastifyStatic, {
+    root: RUNNER_LOGS_ROOT,
+    prefix: "/_static/runner-logs/",
+    decorateReply: false,
+  })
 );
-const STATIC_RUNNER_ROOT = AVAILABLE_RUNNER_ROOTS[0] ?? null;
-if (STATIC_RUNNER_ROOT) {
-  await registerWithLog("runnerLogsStatic", () =>
-    app.register(fastifyStatic, {
-      root: STATIC_RUNNER_ROOT,
-      prefix: "/_static/runner-logs/",
-      decorateReply: false,
-    })
-  );
-}
 
 // Serve runner artifacts (e.g., allure) directly from either runner-logs root
 app.get("/runner-logs/*", async (req, reply) => {
