@@ -270,8 +270,13 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
 
     if (req.extraGlobs && req.extraGlobs.length) {
       for (const g of req.extraGlobs) {
-        const rel = path.isAbsolute(g) ? normalizePath(path.relative(found.cwd, g)) : normalizePath(g);
-        args.push(rel);
+        if (path.isAbsolute(g)) {
+          const rel = path.relative(found.cwd, g);
+          const useAbsolute = path.isAbsolute(rel) || rel.startsWith("..");
+          args.push(useAbsolute ? normalizePath(g) : normalizePath(rel));
+        } else {
+          args.push(normalizePath(g));
+        }
       }
     }
 
