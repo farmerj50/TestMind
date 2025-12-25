@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://localhost:${PORT}`;
-const GEN_DIR = process.env.TM_GEN_DIR
-  ? path.resolve(process.env.TM_GEN_DIR)
-  : process.env.TM_LOCAL_SPECS
-    ? path.resolve(process.env.TM_LOCAL_SPECS)
-    : path.resolve(DIR, "testmind-generated", "playwright-ts");
+const GEN_DIR = process.env.TM_GENERATED_ROOT
+  ? path.resolve(process.env.TM_GENERATED_ROOT)
+  : process.env.TM_GEN_DIR
+    ? path.resolve(process.env.TM_GEN_DIR)
+    : process.env.TM_LOCAL_SPECS
+      ? path.resolve(process.env.TM_LOCAL_SPECS)
+      : path.resolve(DIR, "testmind-generated", "playwright-ts");
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');

@@ -10,6 +10,7 @@ import type { SelfHealPayload, RunPayload } from './queue.js';
 import { enqueueRun } from './queue.js';
 import { requestSpecHeal, HealPrompt } from './llm.js';
 import { CURATED_ROOT } from "../testmind/curated-store.js";
+import { GENERATED_ROOT, REPORT_ROOT } from "../lib/storageRoots.js";
 import { extractTestTitle } from './test-title.js';
 
 const TestRunStatus = {
@@ -57,6 +58,12 @@ function buildSpecCandidates(repoRoot: string, normalizedSpecPath: string, rawPa
   if (normalizedSpecPath) {
     candidates.add(path.join(repoRoot, normalizedSpecPath));
   }
+  const generatedRoot = path.resolve(GENERATED_ROOT);
+  if (normalizedSpecPath) {
+    const strippedGenerated = normalizedSpecPath.replace(/^testmind-generated[\\/]/, "");
+    candidates.add(path.join(generatedRoot, strippedGenerated));
+  }
+  candidates.add(path.join(generatedRoot, path.basename(fallback)));
   candidates.add(
     path.join(
       repoRoot,
@@ -196,7 +203,14 @@ function isInfraError(msg?: string | null) {
 }
 
 async function collectFailureContext(job: SelfHealPayload): Promise<FailureContext> {
-  const runLogDir = path.join(process.cwd(), 'runner-logs', job.runId);
+  const logRoots = [
+    REPORT_ROOT,
+    path.join(process.cwd(), "runner-logs"),
+    path.join(process.cwd(), "apps", "api", "runner-logs"),
+  ];
+  const runLogDir =
+    logRoots.find((root) => existsSync(path.join(root, job.runId))) ??
+    path.join(REPORT_ROOT, job.runId);
   const stdoutPath = path.join(runLogDir, 'stdout.txt');
   const stderrPath = path.join(runLogDir, 'stderr.txt');
 
