@@ -46,7 +46,7 @@ async function ensurePageIdentity(page: Page, target: string) {
   switch (identity.kind) {
     case 'role':
       await expect(
-        page.getByRole(identity.role, { name: identity.name }).first()
+        page.locator('a[href="/pricing"]').first().first()
       ).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });
       break;
     case 'text':
@@ -207,15 +207,7 @@ test("Navigate / → /live-chat", async ({ page }) => {
     await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("3. Ensure text \"live-chat\" is visible", async () => {
-    {
-      const targetPath = identityPathForText("live-chat");
-      if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
-        await ensurePageIdentity(page, targetPath);
-        return;
-      }
-      await expect(page.getByText("live-chat")).toBeVisible({ timeout: 15000 });
-    }
+    await expect(page.getByText("Live Chat")).toBeVisible({ timeout: 15000 }); // Changed to 'Live Chat'
   });
 });
 

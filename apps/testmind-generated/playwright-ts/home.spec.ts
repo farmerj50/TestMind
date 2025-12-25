@@ -3,17 +3,18 @@ import { test, expect } from '@playwright/test';
 // Auto-generated for page / – 2 test(s)
 
 test("Page loads: /", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Page loads: /" }, { type: "parameter", description: "page=/" });
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "" }, { type: "story", description: "Page loads: /" }, { type: "parameter", description: "page=/<" });
   await test.step("1. Navigate to https://bovada.lv/", async () => {
     await page.goto("https://bovada.lv/");
   });
   await test.step("2. Ensure text \"Bovada | Online Sportsbook, Casino, and Poker\" is visible", async () => {
+    await page.waitForSelector("text='Bovada | Online Sportsbook, Casino, and Poker'", { timeout: 10000 });
     await expect(page.getByText("Bovada | Online Sportsbook, Casino, and Poker")).toBeVisible({ timeout: 10000 });
   });
 });
 
 test("Form submits – /", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Form submits – /" }, { type: "parameter", description: "page=/" });
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "" }, { type: "story", description: "Form submits – /" }, { type: "parameter", description: "page=/<" });
   await test.step("1. Navigate to https://bovada.lv/", async () => {
     await page.goto("https://bovada.lv/");
   });
