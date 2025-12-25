@@ -23,4 +23,5 @@ export async function ensureStorageDirs() {
   await fs.mkdir(GENERATED_ROOT, { recursive: true });
   await fs.mkdir(CURATED_ROOT, { recursive: true });
   await fs.mkdir(REPORT_ROOT, { recursive: true });
+  await fs.mkdir(path.join(REPORT_ROOT, "runner-logs"), { recursive: true });
 }
