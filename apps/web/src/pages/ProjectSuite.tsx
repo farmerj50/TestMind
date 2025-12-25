@@ -1332,18 +1332,22 @@ export default function ProjectSuite() {
                   <div
                     key={key}
                     className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white shadow-sm cursor-pointer"
-                    onClick={() => {
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement | null;
+                      if (target?.closest("[data-checkbox]")) return;
                       if (c.specPath) {
                         setSuiteSelected(false);
                         setActiveSpec({ path: c.specPath });
                       }
                     }}
                   >
-                    <Checkbox
-                      checked={!!selected[key]}
-                      onCheckedChange={(v)=>toggle(key, Boolean(v))}
-                      className="mt-1"
-                    />
+                    <div data-checkbox onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={!!selected[key]}
+                        onCheckedChange={(v)=>toggle(key, Boolean(v))}
+                        className="mt-1"
+                      />
+                    </div>
                     <div className="flex-1">
                       <div className="font-medium leading-tight">{c.title}</div>
                       <div className="text-xs text-muted-foreground">line {c.line}</div>
