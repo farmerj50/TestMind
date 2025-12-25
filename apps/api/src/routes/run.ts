@@ -20,6 +20,7 @@ import { enqueueRun } from "../runner/queue.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
+import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -357,7 +358,8 @@ export default async function runRoutes(app: FastifyInstance) {
       },
     });
 
-    const outDir = path.join(process.cwd(), "runner-logs", run.id);
+    await ensureStorageDirs();
+    const outDir = path.join(REPORT_ROOT, run.id);
     await fs.mkdir(outDir, { recursive: true });
     let artifacts: Record<string, string> | undefined;
 
@@ -469,8 +471,10 @@ export default async function runRoutes(app: FastifyInstance) {
         const resolveGeneratedSpecsDir = () => {
           const cwdRoot = process.cwd();
           const envRoot = process.env.TM_GENERATED_ROOT ? path.resolve(process.env.TM_GENERATED_ROOT) : null;
+          const configuredRoot = path.resolve(GENERATED_ROOT);
           const candidates = [
             envRoot,
+            configuredRoot,
             path.join(cwdRoot, "testmind-generated"),
             path.join(cwdRoot, "apps", "web", "testmind-generated"),
             path.join(cwdRoot, "apps", "api", "testmind-generated"),
@@ -706,8 +710,11 @@ export default async function runRoutes(app: FastifyInstance) {
         const unixServerDirEsc = serverDirAbsolute
           .replace(/\\/g, "/")
           .replace(/"/g, '\\"');
-        const userGenDest = path.join(cwd, "testmind-generated", userSuffix);
-        const sharedGenDest = path.join(cwd, "testmind-generated", adapter);
+        const genRoot = process.env.TM_GENERATED_ROOT
+          ? path.resolve(process.env.TM_GENERATED_ROOT)
+          : path.join(cwd, "testmind-generated");
+        const userGenDest = path.join(genRoot, userSuffix);
+        const sharedGenDest = path.join(genRoot, adapter);
         let genDestName = adapter;
         const PORT_PLACEHOLDER = "__TM_PORT__";
         const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} }"`;
@@ -719,7 +726,10 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://localhost:\${PORT}\`;
-const GEN_DIR = ${genDir ? JSON.stringify(genDir) : "''"};
+const GEN_ROOT = process.env.TM_GENERATED_ROOT
+  ? path.resolve(process.env.TM_GENERATED_ROOT)
+  : path.resolve(DIR, 'testmind-generated');
+const GEN_DIR = ${genDir ? JSON.stringify(genDir) : "path.join(GEN_ROOT, '__GEN_DEST__')"};
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -753,7 +763,7 @@ export default defineConfig({
     actionTimeout: ACTION_TIMEOUT,
     trace: FAST ? 'off' : 'on-first-retry',
     video: FAST ? 'off' : 'retain-on-failure',
-    screenshot: FAST ? 'off' : 'only-on-failure',
+    screenshot: 'only-on-failure',
   },
   timeout: TEST_TIMEOUT,
   expect: { timeout: EXPECT_TIMEOUT },
@@ -782,7 +792,10 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://localhost:\${PORT}\`;
-const GEN_DIR = path.resolve(DIR, 'testmind-generated', '__GEN_DEST__');
+const GEN_ROOT = process.env.TM_GENERATED_ROOT
+  ? path.resolve(process.env.TM_GENERATED_ROOT)
+  : path.resolve(DIR, 'testmind-generated');
+const GEN_DIR = path.join(GEN_ROOT, '__GEN_DEST__');
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -869,6 +882,11 @@ export default defineConfig({
           const localPath = process.env.TM_LOCAL_SPECS && fsSync.existsSync(process.env.TM_LOCAL_SPECS)
             ? path.resolve(process.env.TM_LOCAL_SPECS)
             : null;
+          const generatedRoot = process.env.TM_GENERATED_ROOT
+            ? path.resolve(process.env.TM_GENERATED_ROOT)
+            : null;
+          const generatedUser = generatedRoot ? path.join(generatedRoot, userSuffix) : null;
+          const generatedShared = generatedRoot ? path.join(generatedRoot, adapter) : null;
           const repoPath = path.join(work, 'apps', 'api', 'testmind-generated', adapter);
           const repoAlt = path.join(work, 'testmind-generated', adapter);
           const repoPathUser = path.join(work, 'apps', 'api', 'testmind-generated', userSuffix);
@@ -881,6 +899,9 @@ export default defineConfig({
             // Prefer curated edits when present so saved suite changes are run.
             const curatedExists = fsSync.existsSync(curatedPath);
             if (curatedExists) return curatedPath;
+
+            if (generatedUser && fsSync.existsSync(generatedUser)) return generatedUser;
+            if (generatedShared && fsSync.existsSync(generatedShared)) return generatedShared;
 
             // Repo-first for repo mode or empty user folder
             if (preferRepo) {
@@ -1550,6 +1571,7 @@ export default defineConfig({
 
     const t = type === "stderr" ? "stderr" : "stdout";
     const candidateDirs = [
+      REPORT_ROOT,
       path.join(process.cwd(), "runner-logs"),
       path.join(process.cwd(), "apps", "api", "runner-logs"),
     ];
@@ -1575,6 +1597,7 @@ export default defineConfig({
     if (!id) return reply.code(404).send("Not found");
     const rest = parts.join("/");
     const roots = [
+      REPORT_ROOT,
       path.join(process.cwd(), "runner-logs"),
       path.join(process.cwd(), "apps", "api", "runner-logs"),
     ];
@@ -1647,8 +1670,15 @@ export default defineConfig({
     });
 
     const extras: Record<string, ParsedCase> = {};
-    const runLogsDir = path.join(process.cwd(), "apps/api/runner-logs", id);
-    const reportPath = path.join(runLogsDir, "report.json");
+    const reportRoots = [
+      REPORT_ROOT,
+      path.join(process.cwd(), "runner-logs"),
+      path.join(process.cwd(), "apps", "api", "runner-logs"),
+    ];
+    const reportRoot =
+      reportRoots.find((root) => fsSync.existsSync(path.join(root, id, "report.json"))) ??
+      reportRoots[0];
+    const reportPath = path.join(reportRoot, id, "report.json");
     try {
       const parsed = await parseResults(reportPath);
       for (const c of parsed) {
@@ -1678,19 +1708,27 @@ export default defineConfig({
   app.get("/test-runs/:id/results", resultsHandler);
   app.get("/test-runs/:id/report.json", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const file = path.join(process.cwd(), "runner-logs", id, "report.json");
-    try {
-      const json = await fs.readFile(file, "utf8");
-      reply.header("Content-Type", "application/json; charset=utf-8");
-      return reply.send(json);
-    } catch {
-      return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
+    const candidates = [
+      path.join(REPORT_ROOT, id, "report.json"),
+      path.join(process.cwd(), "runner-logs", id, "report.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+    ];
+    for (const file of candidates) {
+      try {
+        const json = await fs.readFile(file, "utf8");
+        reply.header("Content-Type", "application/json; charset=utf-8");
+        return reply.send(json);
+      } catch {
+        // try next candidate
+      }
     }
+    return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
   });
 
   app.get("/test-runs/:id/analysis", async (req, reply) => {
     const { id } = req.params as { id: string };
     const paths = [
+      path.join(REPORT_ROOT, id, "analysis.json"),
       path.join(process.cwd(), "runner-logs", id, "analysis.json"),
       path.join(process.cwd(), "apps", "api", "runner-logs", id, "analysis.json"),
     ];
@@ -1719,7 +1757,12 @@ export default defineConfig({
     if (process.env.TM_LOCAL_SPECS && fsSync.existsSync(process.env.TM_LOCAL_SPECS)) {
       tryPaths.push(path.resolve(process.env.TM_LOCAL_SPECS));
     }
+    const userSuffix = project.ownerId ? `playwright-ts-${project.ownerId}` : "playwright-ts";
     tryPaths.push(
+      path.join(GENERATED_ROOT, userSuffix),
+      path.join(GENERATED_ROOT, "playwright-ts"),
+      path.join(process.cwd(), "apps", "web", "testmind-generated", userSuffix),
+      path.join(process.cwd(), "apps", "web", "testmind-generated", "playwright-ts"),
       path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts") // dev fallback
     );
 
@@ -1758,22 +1801,44 @@ export default defineConfig({
 // --- compat alias used by the current UI ---
 app.get("/tm/runs/:id/tests", async (req, reply) => {
   const { id } = req.params as { id: string };
-  const file = path.join(process.cwd(), "runner-logs", id, "report.json");
-  try {
-    const json = await fs.readFile(file, "utf8");
-    reply.header("Content-Type", "application/json; charset=utf-8");
-    return reply.send(json);
-  } catch {
-    return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
+  const candidates = [
+    path.join(REPORT_ROOT, id, "report.json"),
+    path.join(process.cwd(), "runner-logs", id, "report.json"),
+    path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+  ];
+  for (const file of candidates) {
+    try {
+      const json = await fs.readFile(file, "utf8");
+      reply.header("Content-Type", "application/json; charset=utf-8");
+      return reply.send(json);
+    } catch {
+      // try next
+    }
   }
+  return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
 });
 
 // Optional: simple human view to quickly eyeball failures
 app.get("/test-runs/:id/view", async (req, reply) => {
   const { id } = req.params as { id: string };
-  const file = path.join(process.cwd(), "runner-logs", id, "report.json");
+  const candidates = [
+    path.join(REPORT_ROOT, id, "report.json"),
+    path.join(process.cwd(), "runner-logs", id, "report.json"),
+    path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+  ];
+  let raw: string | null = null;
+  for (const file of candidates) {
+    try {
+      raw = await fs.readFile(file, "utf8");
+      break;
+    } catch {
+      // try next
+    }
+  }
+  if (!raw) {
+    return reply.code(404).send("No report.json for this run");
+  }
   try {
-    const raw = await fs.readFile(file, "utf8");
     const data = JSON.parse(raw);
     const rows = (data.suites ?? []).flatMap((s: any) =>
       (s.specs ?? []).flatMap((sp: any) =>

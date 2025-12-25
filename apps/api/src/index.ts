@@ -23,6 +23,7 @@ import securityRoutes from "./routes/security.js";
 import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
+import { REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans.js";
@@ -40,6 +41,7 @@ const app = Fastify({
   trustProxy: true,
   pluginTimeout: 10_000,
 });
+await ensureStorageDirs();
 
 const registerWithLog = async (label: string, fn: () => unknown) => {
   console.log(`[BOOT] register ${label} start`);
@@ -213,9 +215,12 @@ if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
     })
   );
 }
-const RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
+const RUNNER_LOGS_ROOT = REPORT_ROOT;
 const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
-const AVAILABLE_RUNNER_ROOTS = [API_RUNNER_LOGS_ROOT, RUNNER_LOGS_ROOT].filter((candidate) => fs.existsSync(candidate));
+const LEGACY_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
+const AVAILABLE_RUNNER_ROOTS = [RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT].filter((candidate) =>
+  fs.existsSync(candidate)
+);
 const STATIC_RUNNER_ROOT = AVAILABLE_RUNNER_ROOTS[0] ?? null;
 if (STATIC_RUNNER_ROOT) {
   await registerWithLog("runnerLogsStatic", () =>
@@ -234,7 +239,11 @@ app.get("/runner-logs/*", async (req, reply) => {
   const id = parts.shift();
   if (!id) return reply.code(404).send("Not found");
   const rest = parts.join("/");
-  const roots = [path.join(REPO_ROOT, "runner-logs"), path.join(REPO_ROOT, "apps", "api", "runner-logs")];
+  const roots = [
+    REPORT_ROOT,
+    path.join(REPO_ROOT, "runner-logs"),
+    path.join(REPO_ROOT, "apps", "api", "runner-logs"),
+  ];
 
   for (const root of roots) {
     const base = path.resolve(root, id);

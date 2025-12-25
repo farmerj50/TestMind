@@ -109,7 +109,7 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\\]]/g, '\\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -218,15 +218,15 @@ test("Page loads: /", async ({ page }) => {
     await navigateTo(page, "/");
       await ensurePageIdentity(page, "/");
   });
-  await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
+  await test.step("2. Ensure text \"Accessible Legal Help for Everyone\" is visible", async () => {
     {
-      const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
+      const targetPath = identityPathForText("Accessible Legal Help for Everyone");
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Accessible Legal Help for Everyone")).toBeVisible({ timeout: 10000 });
     }
   });
 });
