@@ -7,14 +7,17 @@ const repoRoot = fsSync.existsSync(path.join(cwd, "pnpm-workspace.yaml"))
   ? cwd
   : path.resolve(cwd, "..", "..");
 
-export const GENERATED_ROOT =
-  process.env.TM_GENERATED_ROOT ?? path.resolve(repoRoot, "testmind-generated");
+const dataRoot = fsSync.existsSync("/data") ? "/data" : null;
 
-export const CURATED_ROOT =
-  process.env.TM_CURATED_ROOT ?? path.resolve(repoRoot, "testmind-curated");
+const defaultRoot = (envKey: string, fallbackName: string) =>
+  process.env[envKey] ??
+  (dataRoot ? path.join(dataRoot, fallbackName) : path.resolve(repoRoot, fallbackName));
 
-export const REPORT_ROOT =
-  process.env.TM_REPORT_ROOT ?? path.resolve(repoRoot, "testmind-reports");
+export const GENERATED_ROOT = defaultRoot("TM_GENERATED_ROOT", "testmind-generated");
+
+export const CURATED_ROOT = defaultRoot("TM_CURATED_ROOT", "testmind-curated");
+
+export const REPORT_ROOT = defaultRoot("TM_REPORT_ROOT", "testmind-reports");
 
 export async function ensureStorageDirs() {
   await fs.mkdir(GENERATED_ROOT, { recursive: true });
