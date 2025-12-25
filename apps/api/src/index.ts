@@ -215,7 +215,7 @@ if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
     })
   );
 }
-const RUNNER_LOGS_ROOT = REPORT_ROOT;
+const RUNNER_LOGS_ROOT = path.join(REPORT_ROOT, "runner-logs");
 const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
 const LEGACY_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
 const AVAILABLE_RUNNER_ROOTS = [RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT];
@@ -234,11 +234,7 @@ app.get("/runner-logs/*", async (req, reply) => {
   const id = parts.shift();
   if (!id) return reply.code(404).send("Not found");
   const rest = parts.join("/");
-  const roots = [
-    REPORT_ROOT,
-    path.join(REPO_ROOT, "runner-logs"),
-    path.join(REPO_ROOT, "apps", "api", "runner-logs"),
-  ];
+  const roots = [RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT];
 
   for (const root of roots) {
     const base = path.resolve(root, id);
