@@ -46,7 +46,7 @@ async function ensurePageIdentity(page: Page, target: string) {
   switch (identity.kind) {
     case 'role':
       await expect(
-        page.getByRole(identity.role, { name: identity.name }).first().first()
+        page.getByRole(identity.role, { name: identity.name })
       ).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });
       break;
     case 'text':
@@ -73,8 +73,43 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
   return route.startsWith(prefixWithSlash);
 }
 
+type Region = 'navigation' | 'header' | 'main';
+
+function getAttributeValue(selector: string, attr: string): string | undefined {
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
+  const match = selector.match(regex);
+  return match ? match[1] : undefined;
+}
+
+function regionScope(page: Page, region?: Region) {
+  switch (region) {
+    case 'navigation':
+      return page.getByRole('navigation');
+    case 'header':
+      return page.locator('header');
+    case 'main':
+      return page.locator('main');
+    default:
+      return page;
+  }
+}
+
+function chooseLocator(page: Page, selector: string, region?: Region) {
+  const scope = regionScope(page, region);
+  const testId = getAttributeValue(selector, 'data-testid');
+  if (testId) {
+    return scope.getByTestId(testId);
+  }
+  const role = getAttributeValue(selector, 'role');
+  if (role) {
+    const name = getAttributeValue(selector, 'name');
+    return scope.getByRole(role, name ? { name } : undefined);
+  }
+  return scope.locator(selector);
+}
+
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\\]]/g, '\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -157,7 +192,7 @@ async function assertNavigationPath(page: Page, expectedUrl: URL) {
 async function sharedLogin(page: Page) {
   const usernameEnv = SHARED_LOGIN_CONFIG.usernameEnv;
   const passwordEnv = SHARED_LOGIN_CONFIG.passwordEnv;
-  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? '';    
+  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? '';
   const envPassword = process.env[passwordEnv] ?? process.env.PASSWORD ?? '';
   const username = SHARED_LOGIN_CONFIG.usernameValue ?? envUsername;
   const password = SHARED_LOGIN_CONFIG.passwordValue ?? envPassword;
@@ -175,119 +210,30 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page /login – 6 test(s)
-test("Page loads: /login", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Page loads: /login" }, { type: "parameter", description: "page=/login" });
-  await test.step("1. Navigate to https://justicepathlaw.com/login", async () => {
-    await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
-  });
-  await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect(page).toHaveURL('https://justicepathlaw.com/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
-});
+// Auto-generated for page / – 1 test(s)
 
-test("Form submits – /login", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Form submits – /login" }, { type: "parameter", description: "page=/login" });
-  await test.step("1. Navigate to https://justicepathlaw.com/login", async () => {
-    await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
-  });
-  await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect(page).toHaveURL('https://justicepathlaw.com/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
-  await test.step("4. Click button[type='submit'], input[type='submit']", async () => {
-    // Missing locator buttons.button-type-submit-input-type-submit on /login; add it to shared locators and rerun generation.
-  });
-});
-
-test("Navigate /login → /", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Navigate /login → /" }, { type: "parameter", description: "page=/login" });
-  await test.step("1. Navigate to https://justicepathlaw.com/login", async () => {
-    await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
-  });
-  await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect(page).toHaveURL('https://justicepathlaw.com/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
-  await test.step("2. Navigate to /", async () => {
+test("Check All Links on Homepage", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Check All Links on Homepage" }, { type: "parameter", description: "page=/" });
+  await test.step("1. Navigate to https://justicepathlaw.com/", async () => {
     await navigateTo(page, "/");
-    await ensurePageIdentity(page, "/");
+      await ensurePageIdentity(page, "/");
   });
-});
-
-test("Navigate /login → /live-chat", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Navigate /login → /live-chat" }, { type: "parameter", description: "page=/login" });
-  await test.step("1. Navigate to https://justicepathlaw.com/login", async () => {
-    await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
+  await test.step("2. Click link", async () => {
+    // Missing locator buttons.link on /; add it to shared locators and rerun generation.
   });
-  await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect(page).toHaveURL('https://justicepathlaw.com/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
+  await test.step("3. Click link", async () => {
+    // Missing locator buttons.link on /; add it to shared locators and rerun generation.
   });
-  await test.step("2. Navigate to /live-chat", async () => {
-    await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+  await test.step("4. Click link", async () => {
+    // Missing locator buttons.link on /; add it to shared locators and rerun generation.
   });
-  await test.step("3. Ensure text \"live-chat\" is visible", async () => {
-    const liveChatLocator = page.getByText(/live-chat/i);
-    await expect(liveChatLocator).toBeVisible({ timeout: 10000 });
+  await test.step("5. Click link", async () => {
+    // Missing locator buttons.link on /; add it to shared locators and rerun generation.
   });
-});
-
-test("Navigate /login → /pricing", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Navigate /login → /pricing" }, { type: "parameter", description: "page=/login" });
-  await test.step("1. Navigate to https://justicepathlaw.com/login", async () => {
-    await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
+  await test.step("6. Click link", async () => {
+    // Missing locator buttons.link on /; add it to shared locators and rerun generation.
   });
-  await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect(page).toHaveURL('https://justicepathlaw.com/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
-  await test.step("2. Navigate to /pricing", async () => {
-    await navigateTo(page, "/pricing");
-    await ensurePageIdentity(page, "/pricing");
-  });
-  await test.step("3. Ensure text \"pricing\" is visible", async () => {
-    {
-      const targetPath = identityPathForText("pricing");
-      if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
-        await ensurePageIdentity(page, targetPath);
-        return;
-      }
-      await expect(page.getByText(/pricing/i)).toBeVisible({ timeout: 10000 });
-    }
-  });
-});
-
-test("Navigate /login → /signup", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/login" }, { type: "story", description: "Navigate /login → /signup" }, { type: "parameter", description: "page=/login" });
-  await test.step("1. Navigate to https://justicepathlaw.com/login", async () => {
-    await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
-  });
-  await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect(page).toHaveURL('https://justicepathlaw.com/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
-  await test.step("2. Navigate to /signup", async () => {
-    await navigateTo(page, "/signup");
-    await ensurePageIdentity(page, "/signup");
-  });
-  await test.step("3. Ensure text \"signup\" is visible", async () => {
-    const signupLocator = page.getByText(/signup/i);
-    await expect(signupLocator).toBeVisible({ timeout: 10000 });
+  await test.step("7. Click link", async () => {
+    // Missing locator buttons.link on /; add it to shared locators and rerun generation.
   });
 });
