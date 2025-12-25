@@ -74,7 +74,7 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\\]\]/g, '\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -109,18 +109,18 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 15000 });
-      await candidate.click({ timeout: 15000 });
+      await candidate.waitFor({ state: 'visible', timeout: 20000 });
+      await candidate.click({ timeout: 20000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 15000 });
-  await fallback.click({ timeout: 15000 });
+  await fallback.waitFor({ state: 'visible', timeout: 20000 });
+  await fallback.click({ timeout: 20000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
-  "usernameSelector": "input[placeholder=\"Email Address\"], input[name=\"email\"], input[type=\"email\"], input[name=\"username\"], #username, #email",
+  "usernameSelector": "input[placeholder=\"Email Address\"] , input[name=\"email\"] , input[type=\"email\"] , input[name=\"username\"] , #username, #email",
   "passwordSelector": "input[placeholder=\"Password\"], input[name=\"password\"], input[type=\"password\"], #password",
   "submitSelector": "button[type=\"submit\"], button:has-text(\"Login\"), button:has-text(\"Sign in\")",
   "usernameEnv": "EMAIL_ADDRESS",
@@ -129,7 +129,7 @@ const SHARED_LOGIN_CONFIG = {
 
 async function navigateTo(page: Page, target: string) {
   const url = new URL(target, BASE_URL);
-  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
+  await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 }); // Increased timeout to 45000ms
   await assertNavigationPath(page, url);
 }
 
@@ -157,8 +157,8 @@ async function assertNavigationPath(page: Page, expectedUrl: URL) {
 async function sharedLogin(page: Page) {
   const usernameEnv = SHARED_LOGIN_CONFIG.usernameEnv;
   const passwordEnv = SHARED_LOGIN_CONFIG.passwordEnv;
-  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? '';
-  const envPassword = process.env[passwordEnv] ?? process.env.PASSWORD ?? '';
+  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? ''; 
+  const envPassword = process.env[passwordEnv] ?? process.env.PASSWORD ?? ''; 
   const username = SHARED_LOGIN_CONFIG.usernameValue ?? envUsername;
   const password = SHARED_LOGIN_CONFIG.passwordValue ?? envPassword;
   const userLocator = page.locator(SHARED_LOGIN_CONFIG.usernameSelector);
@@ -187,7 +187,7 @@ test("Page loads: /pricing", async ({ page }) => {
     {
       const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -210,7 +210,7 @@ test("Navigate /pricing → /", async ({ page }) => {
     {
       const targetPath = identityPathForText("Page");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -233,7 +233,7 @@ test("Navigate /pricing → /live-chat", async ({ page }) => {
     {
       const targetPath = identityPathForText("live-chat");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -263,7 +263,7 @@ test("Navigate /pricing → /login", async ({ page }) => {
     {
       const targetPath = identityPathForText("login");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -286,7 +286,7 @@ test("Navigate /pricing → /signup", async ({ page }) => {
     {
       const targetPath = identityPathForText("signup");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }

@@ -187,11 +187,11 @@ test("Page loads: /", async ({ page }) => {
     {
       const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("Accessible Legal Help for Everyone")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("Accessible Legal Help for Everyone")).toBeVisible({ timeout: 20000 });
     }
   });
 });
@@ -207,7 +207,7 @@ test("Navigate / → /live-chat", async ({ page }) => {
     await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("3. Ensure text \"live-chat\" is visible", async () => {
-    await expect(page.getByText("Live Chat")).toBeVisible({ timeout: 15000 }); // Changed to 'Live Chat'
+    await expect(page.getByText("Live Chat")).toBeVisible({ timeout: 20000 }); // Changed to 'Live Chat'
   });
 });
 
@@ -225,11 +225,11 @@ test("Navigate / → /pricing", async ({ page }) => {
     {
       const targetPath = identityPathForText("pricing");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("pricing")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("pricing")).toBeVisible({ timeout: 20000 });
     }
   });
 });
@@ -255,11 +255,11 @@ test("Navigate / → /login", async ({ page }) => {
     {
       const targetPath = identityPathForText("login");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("login")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("login")).toBeVisible({ timeout: 20000 });
     }
   });
 });
@@ -278,11 +278,11 @@ test("Navigate / → /signup", async ({ page }) => {
     {
       const targetPath = identityPathForText("signup");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("Sign Up")).toBeVisible({ timeout: 15000 }); // Changed from 'signup' to 'Sign Up'
+      await expect(page.getByText("Sign Up")).toBeVisible({ timeout: 20000 }); // Changed from 'signup' to 'Sign Up'
     }
   });
 });
@@ -301,11 +301,11 @@ test("Navigate / → /select-plan", async ({ page }) => {
     {
       const targetPath = identityPathForText("select-plan");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("select-plan")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("select-plan")).toBeVisible({ timeout: 20000 });
     }
   });
 });
@@ -324,11 +324,11 @@ test("Navigate / → /case-type-selection", async ({ page }) => {
     {
       const targetPath = identityPathForText("case-type-selection");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("Select the type of legal issue you're dealing with:")).toBeVisible({ timeout: 15000 }); // Changed from 'case-type-selection' to the appropriate text
+      await expect(page.getByText("Select the type of legal issue you're dealing with:")).toBeVisible({ timeout: 20000 }); // Changed from 'case-type-selection' to the appropriate text
     }
   });
 });

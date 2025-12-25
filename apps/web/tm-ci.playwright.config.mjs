@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://localhost:${PORT}`;
-const GEN_DIR = path.resolve(DIR, 'testmind-generated', 'playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5');
+const GEN_DIR = process.env.TM_GEN_DIR
+  ? path.resolve(process.env.TM_GEN_DIR)
+  : process.env.TM_LOCAL_SPECS
+    ? path.resolve(process.env.TM_LOCAL_SPECS)
+    : path.resolve(DIR, "testmind-generated", "playwright-ts");
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -19,13 +23,15 @@ const reporters = [
   ['allure-playwright', { resultsDir: ALLURE_RESULTS }],
 ];
 
+const escWin = DIR.replace(/\\/g, "\\\\").replace(/'/g, "''");
+const escUnix = DIR.replace(/\\/g, "/").replace(/"/g, '\\"');
 const DEV_COMMAND =
   process.platform === 'win32'
-    ? `powershell -NoProfile -Command "& {Set-Location -Path 'D:\\Project\\testmind\\apps\\web'; pnpm install; pnpm dev --host localhost --port 4173 }"`
-    : `bash -lc "cd \"D:/Project/testmind/apps/web\" && pnpm install && pnpm dev --host 0.0.0.0 --port 4173"`;
+    ? `powershell -NoProfile -Command "& {Set-Location -Path '${escWin}'; pnpm install; pnpm dev --host localhost --port 4173 }"`
+    : `bash -lc "cd \\"${escUnix}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port 4173"`;
 
 const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "30000");
-const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "15000");
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "20000");
 const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "10000");
 const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "60000");
 const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))

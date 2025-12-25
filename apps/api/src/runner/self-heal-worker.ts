@@ -354,7 +354,7 @@ export const selfHealWorker = new Worker(
           // add gentle waitUntil/timeout if not present
           navPatchedSpec = navPatchedSpec.replace(
             /page\.goto\(\s*["'][^"']+["']\s*\)/,
-            `page.goto(${JSON.stringify(fixed)}, { waitUntil: "domcontentloaded", timeout: 15000 })`
+            `page.goto(${JSON.stringify(fixed)}, { waitUntil: "domcontentloaded", timeout: 20000 })`
           );
           didNavPatch = true;
         }
@@ -368,12 +368,12 @@ export const selfHealWorker = new Worker(
       // Rule: bump nav timeout/waitUntil on navigation timeouts
       if (containsNavTimeout(context.message)) {
         const gotoWithOpts = /page\.goto\(\s*([^,]+)\s*,\s*{[^}]*timeout\s*:\s*(\d+)/m;
-        const gotoSimple = /page\.goto\(\s*([^)]+)\)/m;
+          const gotoSimple = /page\.goto\(\s*([A-Za-z0-9_.$]+)\s*\)/m;
         let patched = context.specContent;
         let updated = false;
 
         const replaceWith = (urlLiteral: string) =>
-          `page.goto(${urlLiteral.trim()}, { waitUntil: "domcontentloaded", timeout: 15000 })`;
+          `page.goto(${urlLiteral.trim()}, { waitUntil: "domcontentloaded", timeout: 20000 })`;
 
         const mOpts = context.specContent.match(gotoWithOpts);
         if (mOpts) {

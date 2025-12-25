@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useParams, Link, useNavigate } from "react-router-dom";
 
-import { useApi } from "../lib/api";
+import { apiUrl, useApi } from "../lib/api";
 
 import StatusBadge from "../components/StatusBadge";
 
@@ -401,86 +401,72 @@ export default function RunPage() {
 
 
 
-  // load + (light) poll until finished
-
+  // load + live updates via SSE (fallback to polling on error)
   useEffect(() => {
-
     if (!runId) return;
 
-
-
     let cancelled = false;
-
+    let source: EventSource | null = null;
     let interval: number | undefined;
 
-
-
     const load = async () => {
-
       try {
-
         const { run: r } = await apiFetch<{ run: Run }>(`/runner/test-runs/${runId}`);
-
         if (!cancelled) {
-
           setRun(r);
-
           setErr(null);
-
         }
-
       } catch (e: any) {
-
         if (!cancelled) setErr(friendlyError(e?.message ?? (e as any)?.error ?? null));
-
       } finally {
-
         if (!cancelled) setLoading(false);
-
       }
-
     };
 
-
+    const startFallbackPolling = () => {
+      if (interval) return;
+      interval = window.setInterval(load, 2000) as unknown as number;
+    };
 
     load();
 
-
-
-    const shouldPoll =
-
-      !run ||
-
-      run.status === "queued" ||
-
-      run.status === "running" ||
-
-      healingInProgress ||
-
-      rerunsInProgress ||
-
-      (hasHealingAttempts && rerunsCompleted.length === 0);
-
-
-
-    if (shouldPoll) {
-
-      interval = window.setInterval(load, 2000) as unknown as number;
-
+    try {
+      const url = apiUrl(`/runner/test-runs/${runId}/events`);
+      source = new EventSource(url, { withCredentials: true });
+      source.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const payload = JSON.parse(event.data ?? "{}");
+          if (payload?.run) {
+            setRun(payload.run);
+            setErr(null);
+          } else if (payload?.error) {
+            setErr(friendlyError(payload.error));
+          }
+        } catch {
+          setErr("Received malformed update payload.");
+        } finally {
+          setLoading(false);
+        }
+      };
+      source.onerror = () => {
+        if (cancelled) return;
+        setErr((prev) => prev ?? "Live updates disconnected; falling back to polling.");
+        startFallbackPolling();
+        if (source && source.readyState === EventSource.CLOSED) {
+          source.close();
+        }
+      };
+    } catch {
+      startFallbackPolling();
     }
 
-
-
     return () => {
-
       cancelled = true;
-
+      if (source) source.close();
       if (interval) window.clearInterval(interval);
-
     };
-
-
-  }, [runId, run, healingInProgress, rerunsInProgress, hasHealingAttempts, rerunsCompleted.length]);
+  }, [runId, apiFetch, friendlyError]);
 
 
 

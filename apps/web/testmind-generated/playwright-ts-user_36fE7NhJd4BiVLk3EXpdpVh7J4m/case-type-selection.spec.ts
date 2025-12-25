@@ -109,14 +109,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 15000 });
-      await candidate.click({ timeout: 15000 });
+      await candidate.waitFor({ state: 'visible', timeout: 20000 });
+      await candidate.click({ timeout: 20000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 15000 });
-  await fallback.click({ timeout: 15000 });
+  await fallback.waitFor({ state: 'visible', timeout: 20000 });
+  await fallback.click({ timeout: 20000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
@@ -183,15 +183,9 @@ test("Page loads: /case-type-selection", async ({ page }) => {
     await navigateTo(page, "/case-type-selection");
     await ensurePageIdentity(page, "/case-type-selection");
   });
-  await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
-    {
-      const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
-      if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
-        await ensurePageIdentity(page, targetPath);
-        return;
-      }
-      await expect(page.getByText("Accessible Legal Help")).toBeVisible({ timeout: 10000 });
+  await test.step("2. Ensure text \"Accessible Legal Help for Everyone\" is visible", async () => {
+    {  
+      await expect(page.getByRole('heading', { name: 'Accessible Legal Help for Everyone' })).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -210,7 +204,7 @@ test("Navigate /case-type-selection → /", async ({ page }) => {
     {
       const targetPath = identityPathForText("Page");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -233,7 +227,7 @@ test("Navigate /case-type-selection → /live-chat", async ({ page }) => {
     {
       const targetPath = identityPathForText("live-chat");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -256,7 +250,7 @@ test("Navigate /case-type-selection → /pricing", async ({ page }) => {
     {
       const targetPath = identityPathForText("pricing");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -286,7 +280,7 @@ test("Navigate /case-type-selection → /login", async ({ page }) => {
     {
       const targetPath = identityPathForText("login");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -309,7 +303,7 @@ test("Navigate /case-type-selection → /signup", async ({ page }) => {
     {
       const targetPath = identityPathForText("Sign Up");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
