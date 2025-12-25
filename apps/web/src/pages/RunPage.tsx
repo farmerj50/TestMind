@@ -190,7 +190,7 @@ export default function RunPage() {
 
     const path = opts.index ? `${clean.replace(/\/$/, "")}/index.html` : clean;
 
-    return `/_static/${path}`;
+    return apiUrl(`/_static/${path}`);
 
   };
 
