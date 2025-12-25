@@ -10,6 +10,7 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { execa } from "execa";
+import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
 
 type IdParams = { id: string };
 
@@ -25,11 +26,6 @@ function requireUser(req: any, reply: any) {
 // Resolve monorepo root (API runs from apps/api)
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 const RUNNER_PATH = path.join(REPO_ROOT, "apps", "api", "src", "runner", "bot.ts");
-const RUNS_DIR = path.join(REPO_ROOT, "apps", "api", "runs");
-const GENERATED_ROOT =
-  process.env.TM_GENERATED_ROOT
-    ? path.resolve(process.env.TM_GENERATED_ROOT)
-    : path.join(REPO_ROOT, "testmind-generated");
 
 async function writeJson(file: string, data: any) {
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -48,7 +44,8 @@ async function browsersAlreadyInstalled() {
 }
 
 async function startGeneratedRun(runId: string, projectId: string, userId: string, caseId?: string) {
-  const runDir = path.join(RUNS_DIR, runId);
+  await ensureStorageDirs();
+  const runDir = path.join(REPORT_ROOT, runId);
   const workspaceRoot = path.join(os.tmpdir(), "tm-runner");
   const workspaceDir = path.join(workspaceRoot, runId);
       const projectRecord = await prisma.project.findUnique({
@@ -148,7 +145,7 @@ ${pre}${stepLines}
           env,
           stdio: "inherit",
         });
-        const generatedFolder = path.join(REPO_ROOT, "testmind-generated");
+        const generatedFolder = path.join(GENERATED_ROOT, adapterId);
         const userGeneratedDir = path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
         await fs.rm(userGeneratedDir, { recursive: true, force: true }).catch(() => {});
         await fs.mkdir(userGeneratedDir, { recursive: true });
@@ -427,7 +424,7 @@ export async function testRoutes(app: FastifyInstance) {
     });
     if (!run) return reply.code(404).send({ error: "Run not found" });
 
-    const missingLocatorsPath = path.join(RUNS_DIR, runId, "missing-locators.json");
+    const missingLocatorsPath = path.join(REPORT_ROOT, runId, "missing-locators.json");
     let missingLocators: any[] = [];
     try {
       const raw = await fs.readFile(missingLocatorsPath, "utf8");

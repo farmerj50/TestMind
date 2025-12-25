@@ -6,8 +6,9 @@ import path from "node:path";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { ensureCuratedProjectEntry } from "../testmind/curated-store.js";
+import { GENERATED_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
 
-const RECORD_ROOT = path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts", "recordings");
+const RECORD_ROOT = path.join(GENERATED_ROOT, "playwright-ts", "recordings");
 const HELPER_PING = process.env.RECORDER_HELPER || "http://localhost:43117";
 let lastCallback: any = null;
 
@@ -71,7 +72,7 @@ export default async function recorderRoutes(app: FastifyInstance) {
           specs.push({
             projectId: pid,
             name: file,
-            path: path.join("apps", "api", "testmind-generated", "playwright-ts", "recordings", pid, file),
+            path: path.join("testmind-generated", "playwright-ts", "recordings", pid, file),
             pathRelative: rel,
           });
         }
@@ -81,6 +82,7 @@ export default async function recorderRoutes(app: FastifyInstance) {
   });
 
   app.post("/recorder/specs", async (req, reply) => {
+    await ensureStorageDirs();
     const parsed = SaveBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
@@ -104,7 +106,13 @@ export default async function recorderRoutes(app: FastifyInstance) {
     const absPath = path.join(projectDir, `${fileSlug}.spec.${ext}`);
     await fs.writeFile(absPath, content, "utf8");
 
-    const relPath = path.join("apps", "api", "testmind-generated", "playwright-ts", "recordings", projectId, `${fileSlug}.spec.${ext}`);
+    const relPath = path.join(
+      "testmind-generated",
+      "playwright-ts",
+      "recordings",
+      projectId,
+      `${fileSlug}.spec.${ext}`
+    );
 
     // Also copy into a curated suite for visibility in Suites (auto-creates recordings-{projectId})
     try {
@@ -150,8 +158,6 @@ export default async function recorderRoutes(app: FastifyInstance) {
   const ext = languageToExt(language);
   const target = languageToTarget(language);
   const relPath = path.join(
-    "apps",
-    "api",
     "testmind-generated",
     "playwright-ts",
     "recordings",

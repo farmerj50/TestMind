@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://localhost:${PORT}`;
+const GEN_ROOT = process.env.TM_GENERATED_ROOT
+  ? path.resolve(process.env.TM_GENERATED_ROOT)
+  : path.resolve(DIR, 'testmind-generated');
 const GEN_DIR = "D:\\Project\\testmind\\apps\\web\\testmind-generated\\playwright-ts-user_36fE7NhJd4BiVLk3EXpdpVh7J4m\\cmj1wj6sd00067knso9xj1473";
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
@@ -38,7 +41,7 @@ export default defineConfig({
     actionTimeout: ACTION_TIMEOUT,
     trace: FAST ? 'off' : 'on-first-retry',
     video: FAST ? 'off' : 'retain-on-failure',
-    screenshot: FAST ? 'off' : 'only-on-failure',
+    screenshot: 'only-on-failure',
   },
   timeout: TEST_TIMEOUT,
   expect: { timeout: EXPECT_TIMEOUT },
