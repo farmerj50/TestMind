@@ -471,7 +471,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
   const locatorStore = sharedSteps.locatorStore;
   const uniqTitle = makeUniqTitleFactory();
   const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath, locatorStore)).join("\n\n");
-  const banner = `// Auto-generated for page ${pagePath} – ${tests?.length ?? 0} test(s)`;
+  const banner = `// Auto-generated for page ${pagePath} ${tests?.length ?? 0} test(s)`;
     const helperLines = [
     "import { Page, test, expect } from '@playwright/test';",
     "",

@@ -3,10 +3,12 @@ import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
+import { parseResults } from "../runner/result-parsers.js";
 import { z } from "zod";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import { execa } from "execa";
 
 type IdParams = { id: string };
@@ -226,6 +228,16 @@ export default defineConfig({
         if (manualDir) {
           projects.push(`{ name: 'manual', testDir: '${esc(manualDir)}' }`);
         }
+        const generatedDirCandidates = [
+          path.join(REPO_ROOT, "apps", "web", "testmind-generated", `${adapterId}-${userId}`),
+          path.join(GENERATED_ROOT, `${adapterId}-${userId}`),
+        ];
+        const generatedDir = generatedDirCandidates.find((p) => {
+          try { return fsSync.existsSync(p); } catch { return false; }
+        }) ?? null;
+        if (generatedDir) {
+          projects.push(`{ name: 'generated', testDir: '${esc(generatedDir)}' }`);
+        }
 
         const configContent = `
 import { defineConfig } from '@playwright/test';
@@ -234,7 +246,11 @@ export default defineConfig({
   projects: [
     ${projects.join(",\n    ")}
   ],
-  reporter: 'html',
+  reporter: [
+    ['list'],
+    ['json', { outputFile: '${esc(path.join(runDir, "report.json"))}' }],
+    ['html', { open: 'never' }],
+  ],
   use: { baseURL: process.env.TEST_BASE_URL || 'http://localhost:5173' },
 });
 `;
@@ -261,17 +277,53 @@ export default defineConfig({
         throw e;
       }
 
+      // 6b) parse JSON report and persist results for UI
+      const reportPath = path.join(runDir, "report.json");
+      const cases = await parseResults(reportPath).catch(() => []);
+      if (cases.length) {
+        const repoRootPosix = REPO_ROOT.replace(/\\/g, "/");
+        const runDirPosix = runDir.replace(/\\/g, "/");
+        await prisma.$transaction(async (db) => {
+          for (const c of cases) {
+            let file = (c.file || "unknown").replace(/\\/g, "/");
+            if (file.startsWith(repoRootPosix)) file = file.slice(repoRootPosix.length + 1);
+            if (file.startsWith(runDirPosix)) file = file.slice(runDirPosix.length + 1);
+            file = file.replace(/^\/+/, "");
+            const key = `${file}#${c.fullName}`.slice(0, 255);
+
+            const testCase = await db.testCase.upsert({
+              where: { projectId_key: { projectId, key } },
+              update: { title: c.fullName },
+              create: { projectId, key, title: c.fullName },
+            });
+
+            await db.testResult.create({
+              data: {
+                run: { connect: { id: runId } },
+                testCase: { connect: { id: testCase.id } },
+                status: c.status,
+                durationMs: c.durationMs ?? null,
+                message: c.message ?? null,
+              },
+            });
+          }
+        });
+      }
+
       // 7) update DB with locations the UI can use
       await prisma.testRun.update({
         where: { id: runId },
         data: {
           status: "succeeded",
           finishedAt: new Date(),
-          summary: "Generation complete. See HTML report.",
+          summary: cases.length
+            ? `Run complete. Parsed ${cases.length} tests.`
+            : "Run complete, but no tests were parsed (check config/spec output).",
           reportPath: "playwright-report/index.html", // relative to repo root
           artifactsJson: JSON.stringify({
             generatedDirs: manualDir ? [path.relative(REPO_ROOT, manualDir)] : [],
             reportDir: "playwright-report",
+            jsonReport: path.relative(REPO_ROOT, reportPath),
           }),
         },
       });

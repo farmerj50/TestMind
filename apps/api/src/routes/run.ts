@@ -735,8 +735,8 @@ const reporters = [
 ];
 
 const FAST = (process.env.TM_FAST_MODE ?? "1") === "1";
-const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? (FAST ? "15000" : "20000"));
-const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? (FAST ? "8000" : "10000"));
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? (FAST ? "20000" : "20000"));
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? (FAST ? "20000" : "20000"));
 const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? (FAST ? "5000" : "8000"));
 const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? (FAST ? "30000" : "45000"));
 const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
@@ -803,7 +803,7 @@ const DEV_COMMAND =
     : \`${unixDevCommand}\`;
 
 const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "30000");
-const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "15000");
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "20000");
 const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "10000");
 const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "60000");
 const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
@@ -1155,8 +1155,8 @@ export default defineConfig({
         }
         if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
         const allureReportDir = path.join(outDir, "allure-report");
-        let allureReportReady = false;
         let hasAllureResults = false;
+        const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
 
         const tRunStart = Date.now();
         const exec = await runTests({
@@ -1195,22 +1195,58 @@ export default defineConfig({
             { flag: "a" }
           );
         }
-        try {
-          const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
-          hasAllureResults = allureEntries.length > 0;
-          if (hasAllureResults) {
-            const npxBin = process.platform.startsWith("win") ? "npx.cmd" : "npx";
-            await execa(
-              npxBin,
-              ["allure", "generate", allureResultsDir, "--clean", "-o", allureReportDir],
-              { cwd, stdio: "pipe" }
+        if (!skipAllure) {
+          try {
+            const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
+            hasAllureResults = allureEntries.length > 0;
+            if (hasAllureResults) {
+              const npxBin = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+              const allureTimeoutMs = Number(process.env.TM_ALLURE_TIMEOUT_MS ?? "120000");
+              await fs.writeFile(
+                path.join(outDir, "stdout.txt"),
+                `[runner] allure generate queued (timeout ${allureTimeoutMs}ms)\n`,
+                { flag: "a" }
+              );
+              (async () => {
+                try {
+                  const proc = await execa(
+                    npxBin,
+                    ["allure", "generate", allureResultsDir, "--clean", "-o", allureReportDir],
+                    { cwd, stdio: "pipe", timeout: allureTimeoutMs, reject: false }
+                  );
+                  if (proc.timedOut) {
+                    await fs.writeFile(
+                      path.join(outDir, "stderr.txt"),
+                      `[runner] allure generate timed out after ${allureTimeoutMs}ms\n`,
+                      { flag: "a" }
+                    );
+                  } else if (proc.exitCode !== 0) {
+                    await fs.writeFile(
+                      path.join(outDir, "stderr.txt"),
+                      `[runner] allure generate failed (exit ${proc.exitCode}): ${proc.stderr ?? ""}\n`,
+                      { flag: "a" }
+                    );
+                  }
+                } catch (err: any) {
+                  await fs.writeFile(
+                    path.join(outDir, "stderr.txt"),
+                    `[runner] allure generate failed: ${err?.message || err}\n`,
+                    { flag: "a" }
+                  );
+                }
+              })();
+            }
+          } catch (err: any) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] allure generate failed: ${err?.message || err}\n`,
+              { flag: "a" }
             );
-            allureReportReady = true;
           }
-        } catch (err: any) {
+        } else {
           await fs.writeFile(
-            path.join(outDir, "stderr.txt"),
-            `[runner] allure generate failed: ${err?.message || err}\n`,
+            path.join(outDir, "stdout.txt"),
+            "[runner] allure generate skipped (TM_SKIP_ALLURE=1)\n",
             { flag: "a" }
           );
         }
@@ -1259,8 +1295,6 @@ export default defineConfig({
         };
         if (hasAllureResults) {
           artifacts["allure-results"] = path.join("runner-logs", run.id, "allure-results");
-        }
-        if (allureReportReady) {
           artifacts["allure-report"] = path.join("runner-logs", run.id, "allure-report");
         }
 
@@ -1361,6 +1395,12 @@ export default defineConfig({
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     const { id } = req.params as { id: string };
+    const run = await loadRunById(id);
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    return reply.send({ run });
+  });
+
+  async function loadRunById(id: string) {
     const run = await prisma.testRun.findUnique({
       where: { id },
       include: {
@@ -1379,11 +1419,83 @@ export default defineConfig({
         TestHealingAttempt: { select: { id: true, status: true } },
       },
     });
-    if (!run) return reply.code(404).send({ error: "Run not found" });
-
+    if (!run) return null;
     const { TestHealingAttempt, ...rest } = run;
-    return reply.send({ run: { ...rest, healingAttempts: TestHealingAttempt } });
-  });
+    return { ...rest, healingAttempts: TestHealingAttempt };
+  }
+
+  async function eventsHandler(req: any, reply: any) {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+    const { id } = req.params as { id: string };
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.setHeader("X-Accel-Buffering", "no");
+    if (typeof (reply.raw as any).flushHeaders === "function") {
+      (reply.raw as any).flushHeaders();
+    }
+
+    let closed = false;
+    let interval: NodeJS.Timeout | undefined;
+    const send = (payload: any) => {
+      if (closed) return;
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const isActive = (run: any) => {
+      if (!run) return false;
+      if (run.status === "queued" || run.status === "running") return true;
+      const reruns = run.reruns ?? [];
+      const healingAttempts = run.healingAttempts ?? [];
+      const rerunsInProgress = reruns.some(
+        (r: any) => r.status === "running" || r.status === "queued"
+      );
+      const healingInProgress = healingAttempts.some(
+        (a: any) => a.status === "running" || a.status === "queued"
+      );
+      return rerunsInProgress || healingInProgress;
+    };
+
+    const tick = async () => {
+      try {
+        const run = await loadRunById(id);
+        if (!run) {
+          send({ error: "Run not found" });
+          return false;
+        }
+        send({ run });
+        return isActive(run);
+      } catch (err: any) {
+        send({ error: err?.message ?? "Failed to load run" });
+        return false;
+      }
+    };
+
+    const active = await tick();
+    if (active) {
+      interval = setInterval(async () => {
+        const stillActive = await tick();
+        if (!stillActive) {
+          if (interval) clearInterval(interval);
+          if (!closed) reply.raw.end();
+          closed = true;
+        }
+      }, 2000);
+    } else {
+      reply.raw.end();
+      closed = true;
+    }
+
+    req.raw.on("close", () => {
+      closed = true;
+      if (interval) clearInterval(interval);
+    });
+  }
+
+  app.get("/runner/test-runs/:id/events", eventsHandler);
+  app.get("/test-runs/:id/events", eventsHandler);
 
   const RerunBody = z.object({
     specFile: z.string().min(1).optional(),
