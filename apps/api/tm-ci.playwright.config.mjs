@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
 const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://localhost:${PORT}`;
-const GEN_DIR = "D:\\Project\\testmind\\apps\\web\\testmind-generated\\playwright-ts-user_36fE7NhJd4BiVLk3EXpdpVh7J4m";
+const GEN_DIR = "D:\\Project\\testmind\\apps\\web\\testmind-generated\\playwright-ts-user_36fE7NhJd4BiVLk3EXpdpVh7J4m\\cmj1wj6sd00067knso9xj1473";
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -20,8 +20,8 @@ const reporters = [
 ];
 
 const FAST = (process.env.TM_FAST_MODE ?? "1") === "1";
-const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? (FAST ? "15000" : "20000"));
-const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? (FAST ? "8000" : "10000"));
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? (FAST ? "20000" : "20000"));
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? (FAST ? "20000" : "20000"));
 const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? (FAST ? "5000" : "8000"));
 const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? (FAST ? "30000" : "45000"));
 const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))

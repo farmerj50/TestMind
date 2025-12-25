@@ -210,7 +210,7 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page / – 1 test(s)
+// Auto-generated for page / 1 test(s)
 
 test("Test Start a Case Button Functionality", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/" }, { type: "story", description: "Test Start a Case Button Functionality" }, { type: "parameter", description: "page=/" });
