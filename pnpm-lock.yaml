@@ -23,6 +23,15 @@ importers:
       '@prisma/client':
         specifier: ^6.18.0
         version: 6.19.1(prisma@6.19.1(typescript@5.9.3))(typescript@5.9.3)
+      allure-commandline:
+        specifier: ^2.34.1
+        version: 2.36.0
+      allure-js-commons:
+        specifier: ^3.4.3
+        version: 3.4.3(allure-playwright@3.4.3(@playwright/test@1.57.0))
+      allure-playwright:
+        specifier: ^3.4.3
+        version: 3.4.3(@playwright/test@1.57.0)
       bullmq:
         specifier: ^5.55.0
         version: 5.55.0
@@ -42,15 +51,6 @@ importers:
       '@types/node':
         specifier: ^24.9.1
         version: 24.10.4
-      allure-commandline:
-        specifier: ^2.34.1
-        version: 2.36.0
-      allure-js-commons:
-        specifier: ^3.4.3
-        version: 3.4.3(allure-playwright@3.4.3(@playwright/test@1.57.0))
-      allure-playwright:
-        specifier: ^3.4.3
-        version: 3.4.3(@playwright/test@1.57.0)
       prisma:
         specifier: ^6.18.0
         version: 6.19.1(typescript@5.9.3)
