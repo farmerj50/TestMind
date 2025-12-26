@@ -36,6 +36,18 @@ function mapStatus(s: string): ResultStatus {
 const stripAnsi = (value?: string | null) =>
   typeof value === 'string' ? value.replace(/\u001b\[[0-9;]*m/g, '') : value ?? null;
 
+const filterRunnerError = (value?: string | null) => {
+  if (!value) return null;
+  const cleaned = stripAnsi(value)
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .filter((line) => !/^npm notice\b/i.test(line))
+    .filter((line) => !/New major version of npm available!/i.test(line))
+    .join("\n")
+    .trim();
+  return cleaned || null;
+};
+
 const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? process.env.BASE_URL ?? "http://localhost:4173";
 
 export const worker = new Worker(
@@ -186,7 +198,7 @@ export const worker = new Worker(
           status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
           finishedAt: new Date(),
           summary: JSON.stringify({ framework, parsedCount, passed, failed, skipped }),
-          error: ok ? null : (stripAnsi(exec.stderr) || 'Test command failed'),
+          error: ok ? null : (filterRunnerError(exec.stderr) || 'Test command failed'),
         },
       });
 

@@ -283,6 +283,18 @@ function mapStatus(s: string): ResultStatus {
 const stripAnsi = (value?: string | null) =>
   typeof value === "string" ? value.replace(/\u001b\[[0-9;]*m/g, "") : value ?? null;
 
+const filterRunnerError = (value?: string | null) => {
+  if (!value) return null;
+  const cleaned = stripAnsi(value)
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .filter((line) => !/^npm notice\b/i.test(line))
+    .filter((line) => !/New major version of npm available!/i.test(line))
+    .join("\n")
+    .trim();
+  return cleaned || null;
+};
+
 export default async function runRoutes(app: FastifyInstance) {
   // POST /runner/run
   app.post("/run", async (req, reply) => {
@@ -1315,7 +1327,7 @@ export default defineConfig({
               failed,
               skipped,
             }),
-            error: ok ? null : stripAnsi(exec.stderr ?? "Test command failed"),
+            error: ok ? null : (filterRunnerError(exec.stderr) ?? "Test command failed"),
             artifactsJson: artifacts ?? undefined,
           },
         });
