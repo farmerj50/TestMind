@@ -571,6 +571,7 @@ const startWorkersOnce = () => {
   start(import("./runner/worker.js"), "test-runs");
   start(import("./runner/self-heal-worker.js"), "self-heal");
   start(import("./runner/security-worker.js"), "security-scan");
+  start(import("./runner/allure-worker.js"), "allure-generate");
 };
 
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch

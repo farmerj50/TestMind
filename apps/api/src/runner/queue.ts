@@ -43,6 +43,7 @@ export type SecurityScanPayload = {
 export const runQueue = new Queue('test-runs', { connection: redis });
 export const healingQueue = new Queue('self-heal', { connection: redis });
 export const securityQueue = new Queue('security-scan', { connection: redis });
+export const allureQueue = new Queue('allure-generate', { connection: redis });
 
 // helper the route will call:
 export async function enqueueRun(runId: string, payload: RunPayload) {
@@ -69,5 +70,24 @@ export async function enqueueSecurityScan(payload: SecurityScanPayload) {
   return securityQueue.add('scan', payload, {
     removeOnComplete: true,
     removeOnFail: false,
+  });
+}
+
+export type AllureGeneratePayload = {
+  runId: string;
+  cwd: string;
+  allureResultsDir: string;
+  allureReportDir: string;
+  timeoutMs: number;
+  stdoutPath: string;
+  stderrPath: string;
+};
+
+export async function enqueueAllureGenerate(payload: AllureGeneratePayload) {
+  return allureQueue.add('generate', payload, {
+    removeOnComplete: true,
+    removeOnFail: false,
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 15_000 },
   });
 }
