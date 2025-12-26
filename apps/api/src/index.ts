@@ -1,5 +1,7 @@
 // apps/api/src/index.ts
 import "dotenv/config";
+
+console.log("[BOOT] INDEX_TS_RUNNING", new Date().toISOString());
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { clerkPlugin, getAuth } from "@clerk/fastify";
