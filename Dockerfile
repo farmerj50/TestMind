@@ -28,6 +28,9 @@ COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /workspace/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /workspace/package.json ./package.json
 
+ARG CACHEBUST=1
+RUN echo "cachebust=$CACHEBUST"
+
 COPY apps/api ./apps/api
 COPY packages/runner ./packages/runner
 
