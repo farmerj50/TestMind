@@ -16,7 +16,7 @@ import { execa } from "execa";
 
 import { parseResults, ParsedCase } from "../runner/result-parsers.js";
 import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
-import { enqueueRun } from "../runner/queue.js";
+import { enqueueAllureGenerate, enqueueRun } from "../runner/queue.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
@@ -1221,41 +1221,21 @@ export default defineConfig({
             const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
             hasAllureResults = allureEntries.length > 0;
             if (hasAllureResults) {
-              const npxBin = process.platform.startsWith("win") ? "npx.cmd" : "npx";
               const allureTimeoutMs = Number(process.env.TM_ALLURE_TIMEOUT_MS ?? "120000");
               await fs.writeFile(
                 path.join(outDir, "stdout.txt"),
                 `[runner] allure generate queued (timeout ${allureTimeoutMs}ms)\n`,
                 { flag: "a" }
               );
-              (async () => {
-                try {
-                  const proc = await execa(
-                    npxBin,
-                    ["allure", "generate", allureResultsDir, "--clean", "-o", allureReportDir],
-                    { cwd, stdio: "pipe", timeout: allureTimeoutMs, reject: false }
-                  );
-                  if (proc.timedOut) {
-                    await fs.writeFile(
-                      path.join(outDir, "stderr.txt"),
-                      `[runner] allure generate timed out after ${allureTimeoutMs}ms\n`,
-                      { flag: "a" }
-                    );
-                  } else if (proc.exitCode !== 0) {
-                    await fs.writeFile(
-                      path.join(outDir, "stderr.txt"),
-                      `[runner] allure generate failed (exit ${proc.exitCode}): ${proc.stderr ?? ""}\n`,
-                      { flag: "a" }
-                    );
-                  }
-                } catch (err: any) {
-                  await fs.writeFile(
-                    path.join(outDir, "stderr.txt"),
-                    `[runner] allure generate failed: ${err?.message || err}\n`,
-                    { flag: "a" }
-                  );
-                }
-              })();
+              await enqueueAllureGenerate({
+                runId: run.id,
+                cwd,
+                allureResultsDir,
+                allureReportDir,
+                timeoutMs: allureTimeoutMs,
+                stdoutPath: path.join(outDir, "stdout.txt"),
+                stderrPath: path.join(outDir, "stderr.txt"),
+              });
             }
           } catch (err: any) {
             await fs.writeFile(
