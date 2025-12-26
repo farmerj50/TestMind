@@ -174,6 +174,7 @@ async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: stri
 
 // Default base URL the runner will hand to Playwright (can be overridden by req or env)
 const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? "http://localhost:4173";
+const RUNNER_LOGS_ROOT = path.join(REPORT_ROOT, "runner-logs");
 
 async function findAvailablePort(preferred: number): Promise<number> {
   return new Promise((resolve) => {
@@ -359,7 +360,7 @@ export default async function runRoutes(app: FastifyInstance) {
     });
 
     await ensureStorageDirs();
-    const outDir = path.join(REPORT_ROOT, run.id);
+    const outDir = path.join(RUNNER_LOGS_ROOT, run.id);
     await fs.mkdir(outDir, { recursive: true });
     let artifacts: Record<string, string> | undefined;
 
@@ -1551,7 +1552,7 @@ export default defineConfig({
 
     const t = type === "stderr" ? "stderr" : "stdout";
     const candidateDirs = [
-      REPORT_ROOT,
+      RUNNER_LOGS_ROOT,
       path.join(process.cwd(), "runner-logs"),
       path.join(process.cwd(), "apps", "api", "runner-logs"),
     ];
@@ -1577,7 +1578,7 @@ export default defineConfig({
     if (!id) return reply.code(404).send("Not found");
     const rest = parts.join("/");
     const roots = [
-      REPORT_ROOT,
+      RUNNER_LOGS_ROOT,
       path.join(process.cwd(), "runner-logs"),
       path.join(process.cwd(), "apps", "api", "runner-logs"),
     ];
@@ -1651,7 +1652,7 @@ export default defineConfig({
 
     const extras: Record<string, ParsedCase> = {};
     const reportRoots = [
-      REPORT_ROOT,
+      RUNNER_LOGS_ROOT,
       path.join(process.cwd(), "runner-logs"),
       path.join(process.cwd(), "apps", "api", "runner-logs"),
     ];
@@ -1689,7 +1690,7 @@ export default defineConfig({
   app.get("/test-runs/:id/report.json", async (req, reply) => {
     const { id } = req.params as { id: string };
     const candidates = [
-      path.join(REPORT_ROOT, id, "report.json"),
+      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
       path.join(process.cwd(), "runner-logs", id, "report.json"),
       path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
     ];
@@ -1708,7 +1709,7 @@ export default defineConfig({
   app.get("/test-runs/:id/analysis", async (req, reply) => {
     const { id } = req.params as { id: string };
     const paths = [
-      path.join(REPORT_ROOT, id, "analysis.json"),
+      path.join(RUNNER_LOGS_ROOT, id, "analysis.json"),
       path.join(process.cwd(), "runner-logs", id, "analysis.json"),
       path.join(process.cwd(), "apps", "api", "runner-logs", id, "analysis.json"),
     ];
@@ -1781,10 +1782,10 @@ export default defineConfig({
 // --- compat alias used by the current UI ---
 app.get("/tm/runs/:id/tests", async (req, reply) => {
   const { id } = req.params as { id: string };
-  const candidates = [
-    path.join(REPORT_ROOT, id, "report.json"),
-    path.join(process.cwd(), "runner-logs", id, "report.json"),
-    path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+    const candidates = [
+      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
+      path.join(process.cwd(), "runner-logs", id, "report.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
   ];
   for (const file of candidates) {
     try {
@@ -1801,10 +1802,10 @@ app.get("/tm/runs/:id/tests", async (req, reply) => {
 // Optional: simple human view to quickly eyeball failures
 app.get("/test-runs/:id/view", async (req, reply) => {
   const { id } = req.params as { id: string };
-  const candidates = [
-    path.join(REPORT_ROOT, id, "report.json"),
-    path.join(process.cwd(), "runner-logs", id, "report.json"),
-    path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+    const candidates = [
+      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
+      path.join(process.cwd(), "runner-logs", id, "report.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
   ];
   let raw: string | null = null;
   for (const file of candidates) {
