@@ -71,6 +71,9 @@ WORKDIR /app
 # Install Playwright Chromium + OS deps into the final image
 RUN pnpm --filter api exec playwright install --with-deps chromium
 
+ARG CACHEBUST=1
+RUN echo "runner-cachebust=$CACHEBUST"
+
 # Copy built output only
 COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
 
