@@ -28,10 +28,12 @@ type SharedLoginConfigSpec = {
   passwordEnv?: string;
   usernameValue?: string;
   passwordValue?: string;
+  postLoginPath?: string;
 };
 
 type SharedStepsConfig = {
   login?: SharedLoginConfigSpec;
+  baseUrl?: string;
 };
 
 type CombinedSharedSteps = SharedStepsConfig & {
@@ -342,23 +344,12 @@ function emitStep(step: Step, index: number, pagePath: string, locatorStore: Loc
   return `  await test.step(${JSON.stringify(title)}, async () => {\n${action}\n  });`;
 }
 
-function isHomeTextStep(step: Step): boolean {
-  if (step.kind !== 'expect-text') return false;
-  const text = (step.text ?? '').toLowerCase().trim();
-  if (!text) return false;
-  return (
-    text === 'page' ||
-    text.includes('justicepath') ||
-    text.includes('accessible legal help')
-  );
-}
-
-function makePostLoginCheck(): string {
-  return `  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
+function makePostLoginCheck(postLoginPath?: string): string {
+  const target = postLoginPath?.trim();
+  if (!target) return "";
+  return `  await test.step('Ensure post-login page loads', async () => {
+    await expect(page).toHaveURL(pathRegex(${JSON.stringify(target)}), { timeout: 15000 });
+    await ensurePageIdentity(page, ${JSON.stringify(target)});
   });`;
 }
 
@@ -386,7 +377,13 @@ function emitAnnotations(pagePath: string, caseName: string): string {
     .join(", ")});\n`;
 }
 
-function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: string, locatorStore: LocatorStore): string {
+function emitTest(
+  tc: TestCase,
+  uniqTitle: (s: string) => string,
+  pagePath: string,
+  locatorStore: LocatorStore,
+  postLoginPath?: string
+): string {
   const title = uniqTitle(tc.name);
   const hasGoto = tc.steps.some((s) => s.kind === "goto");
   const navTarget = toRelativeTarget(tc.group?.url || pagePath);
@@ -407,14 +404,11 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
     );
 
   const loginCall = needsLogin ? "  await sharedLogin(page);" : "";
-  const postLoginCheck = makePostLoginCheck();
+  const postLoginCheck = makePostLoginCheck(postLoginPath);
   const stepStrings: string[] = [];
   let loginInserted = false;
   let postLoginStepAdded = false;
   tc.steps.forEach((step, idx) => {
-    if (needsLogin && loginInserted && isHomeTextStep(step)) {
-      return;
-    }
     if (needsLogin && isLoginFieldStep(step)) {
       return;
     }
@@ -429,7 +423,7 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
     if (needsLogin && !loginInserted && step.kind === "goto") {
       stepStrings.push(loginCall);
       loginInserted = true;
-      if (!postLoginStepAdded) {
+      if (postLoginCheck && !postLoginStepAdded) {
         stepStrings.push(postLoginCheck);
         postLoginStepAdded = true;
       }
@@ -438,7 +432,7 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
   if (needsLogin && !loginInserted && loginCall) {
     stepStrings.push(loginCall);
     loginInserted = true;
-    if (!postLoginStepAdded) {
+    if (postLoginCheck && !postLoginStepAdded) {
       stepStrings.push(postLoginCheck);
       postLoginStepAdded = true;
     }
@@ -448,7 +442,7 @@ function emitTest(tc: TestCase, uniqTitle: (s: string) => string, pagePath: stri
   if (needsLogin && !loginInserted && loginCall) {
     body += `${loginCall}\n`;
     loginInserted = true;
-    if (!postLoginStepAdded) {
+    if (postLoginCheck && !postLoginStepAdded) {
       body += `${postLoginCheck}\n`;
       postLoginStepAdded = true;
     }
@@ -470,29 +464,35 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
   const loginConfig = resolveLoginConfig(sharedSteps);
   const locatorStore = sharedSteps.locatorStore;
   const uniqTitle = makeUniqTitleFactory();
-  const cases = (tests ?? []).map((tc) => emitTest(tc, uniqTitle, pagePath, locatorStore)).join("\n\n");
+  const postLoginPath = sharedSteps.login?.postLoginPath?.trim();
+  const baseUrl = sharedSteps.baseUrl?.trim();
+  const baseUrlLiteral = baseUrl
+    ? JSON.stringify(baseUrl)
+    : "process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173'";
+  const cases = (tests ?? []).map((tc) =>
+    emitTest(tc, uniqTitle, pagePath, locatorStore, postLoginPath)
+  ).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} ${tests?.length ?? 0} test(s)`;
+  const pageIdentities = Object.entries(locatorStore.pages ?? {}).reduce<Record<string, any>>(
+    (acc, [key, page]) => {
+      if (page?.identity && typeof page.identity === "object") {
+        acc[key] = page.identity;
+      }
+      return acc;
+    },
+    {}
+  );
     const helperLines = [
     "import { Page, test, expect } from '@playwright/test';",
     "",
-    "const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';",
+    `const BASE_URL = ${baseUrlLiteral};`,
     "",
     "type IdentityDescriptor =",
     "  | { kind: 'role'; role: string; name: string }",
     "  | { kind: 'text'; text: string }",
     "  | { kind: 'locator'; selector: string };",
     "",
-    "const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {",
-    "  '/': { kind: 'role', role: 'heading', name: 'Accessible Legal Help for Everyone' },",
-    "  '/login': { kind: 'role', role: 'heading', name: 'Login' },",
-    "  '/signup': { kind: 'role', role: 'heading', name: 'Sign Up' },",
-    "  '/case-type-selection': { kind: 'text', text: \"Select the type of legal issue you\'re dealing with:\" },",
-    "  '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },",
-    "};",
-    "",
-    "const PAGE_TEXT_ALIASES: Record<string, string> = {",
-    "  'justicepath - accessible legal help': '/',",
-    "};",
+    `const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = ${JSON.stringify(pageIdentities, null, 2)};`,
     "",
     "const IDENTITY_CHECK_TIMEOUT = 10000;",
     "",
@@ -600,9 +600,6 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "  if (!text) return undefined;",
     "  const normalized = text.trim().toLowerCase();",
     "  if (!normalized) return undefined;",
-    "  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\\s+/g, ' ').trim();",
-    "  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];",
-    "  if (aliasPath) return aliasPath;",
     "  for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {",
     "    if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {",
     "      return path;",
@@ -714,3 +711,7 @@ export const playwrightTSAdapter = {
     return { pages: Array.from(grouped.keys()), count: (plan as any).cases?.length ?? 0 };
   },
 };
+
+
+
+

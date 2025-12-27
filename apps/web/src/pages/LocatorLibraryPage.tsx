@@ -16,6 +16,7 @@ type LocatorPage = {
 type SharedSteps = {
   pages?: Record<string, LocatorPage>;
   locators?: Record<string, Record<string, string>>;
+  locatorMeta?: { updatedAt?: string; updatedBy?: string };
 };
 
 type Project = { id: string; name: string };
@@ -138,6 +139,9 @@ export default function LocatorLibraryPage() {
   }, [pages, search]);
 
   const pageCount = Object.keys(filteredPages).length;
+  const locatorUpdatedAt = sharedSteps?.locatorMeta?.updatedAt
+    ? new Date(sharedSteps.locatorMeta.updatedAt).toLocaleString()
+    : null;
 
   const handleProjectChange = (id: string) => {
     setProjectId(id);
@@ -230,6 +234,9 @@ export default function LocatorLibraryPage() {
           <p className="mt-1 text-sm text-slate-600">
             Review and update shared locators saved from test runs. Use search to find a selector quickly.
           </p>
+          {locatorUpdatedAt && (
+            <p className="mt-1 text-xs text-slate-500">Last updated: {locatorUpdatedAt}</p>
+          )}
         </header>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -308,6 +315,7 @@ export default function LocatorLibraryPage() {
                             {entries.map(([name, selector]) => {
                               const key = locatorKey(pagePath, bucket, name);
                               const value = getDraftValue(pagePath, bucket, name, selector);
+                              const isDirty = value.trim() !== selector.trim();
                               return (
                                 <div key={key} className="grid gap-2 md:grid-cols-[220px_1fr_auto]">
                                   <div className="text-sm font-medium text-slate-700">{name}</div>
@@ -317,13 +325,17 @@ export default function LocatorLibraryPage() {
                                       setDraftValue(pagePath, bucket, name, event.target.value)
                                     }
                                   />
-                                  <Button
-                                    className="w-full md:w-auto"
-                                    onClick={() => handleSave(pagePath, bucket, name, value)}
-                                    disabled={saving[key]}
-                                  >
-                                    {saving[key] ? "Saving..." : "Save"}
-                                  </Button>
+                                  {isDirty ? (
+                                    <Button
+                                      className="w-full md:w-auto"
+                                      onClick={() => handleSave(pagePath, bucket, name, value)}
+                                      disabled={saving[key]}
+                                    >
+                                      {saving[key] ? "Saving..." : "Save"}
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-slate-500">Saved</span>
+                                  )}
                                 </div>
                               );
                             })}

@@ -552,7 +552,16 @@ app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
     page[bucket] = bucketMap;
     pages[normalizedPath] = page;
 
-    const nextSharedSteps = { ...sharedSteps, pages };
+    const now = new Date().toISOString();
+    const nextSharedSteps = {
+      ...sharedSteps,
+      pages,
+      locatorMeta: {
+        ...(sharedSteps.locatorMeta ?? {}),
+        updatedAt: now,
+        updatedBy: userId,
+      },
+    };
 
     const updated = await prisma.project.update({
       where: { id },
