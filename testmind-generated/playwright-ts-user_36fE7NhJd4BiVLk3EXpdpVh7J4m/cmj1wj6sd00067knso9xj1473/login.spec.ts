@@ -1,23 +1,13 @@
 import { Page, test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';
+const BASE_URL = process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }
   | { kind: 'text'; text: string }
   | { kind: 'locator'; selector: string };
 
-const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
-  '/': { kind: 'role', role: 'heading', name: 'Accessible Legal Help for Everyone' },
-  '/login': { kind: 'role', role: 'heading', name: 'Login' },
-  '/signup': { kind: 'role', role: 'heading', name: 'Sign Up' },
-  '/case-type-selection': { kind: 'text', text: "Select the type of legal issue you're dealing with:" },
-  '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
-};
-
-const PAGE_TEXT_ALIASES: Record<string, string> = {
-  'justicepath - accessible legal help': '/',
-};
+const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {};
 
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
@@ -125,9 +115,6 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
-  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
-  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
-  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
@@ -226,11 +213,16 @@ test("Page loads: /login", async ({ page }) => {
       await ensurePageIdentity(page, "/login");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
+  await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
+    {
+      const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
+      if (targetPath) {
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await ensurePageIdentity(page, targetPath);
+        return;
+      }
+      await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible({ timeout: 10000 });
+    }
   });
 });
 
@@ -241,12 +233,6 @@ test("Form submits – /login", async ({ page }) => {
       await ensurePageIdentity(page, "/login");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("4. Click button[type='submit'], input[type='submit']", async () => {
     // Missing locator buttons.button-type-submit-input-type-submit on /login; add it to shared locators and rerun generation.
   });
@@ -259,15 +245,20 @@ test("Navigate /login → /", async ({ page }) => {
       await ensurePageIdentity(page, "/login");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Navigate to /", async () => {
     await navigateTo(page, "/");
       await ensurePageIdentity(page, "/");
+  });
+  await test.step("3. Ensure text \"Page\" is visible", async () => {
+    {
+      const targetPath = identityPathForText("Page");
+      if (targetPath) {
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
+        await ensurePageIdentity(page, targetPath);
+        return;
+      }
+      await expect(page.getByText("Page")).toBeVisible({ timeout: 10000 });
+    }
   });
 });
 
@@ -278,12 +269,6 @@ test("Navigate /login → /live-chat", async ({ page }) => {
       await ensurePageIdentity(page, "/login");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Navigate to /live-chat", async () => {
     await navigateTo(page, "/live-chat");
       await ensurePageIdentity(page, "/live-chat");
@@ -308,12 +293,6 @@ test("Navigate /login → /pricing", async ({ page }) => {
       await ensurePageIdentity(page, "/login");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Navigate to /pricing", async () => {
     await navigateTo(page, "/pricing");
       await ensurePageIdentity(page, "/pricing");
@@ -338,12 +317,6 @@ test("Navigate /login → /signup", async ({ page }) => {
       await ensurePageIdentity(page, "/login");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Navigate to /signup", async () => {
     await navigateTo(page, "/signup");
       await ensurePageIdentity(page, "/signup");

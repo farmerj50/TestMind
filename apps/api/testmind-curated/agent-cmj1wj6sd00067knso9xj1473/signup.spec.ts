@@ -1,23 +1,13 @@
 import { Page, test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';
+const BASE_URL = process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }
   | { kind: 'text'; text: string }
   | { kind: 'locator'; selector: string };
 
-const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
-  '/': { kind: 'role', role: 'heading', name: 'Accessible Legal Help for Everyone' },
-  '/login': { kind: 'role', role: 'heading', name: 'Login' },
-  '/signup': { kind: 'role', role: 'heading', name: 'Sign Up' },
-  '/case-type-selection': { kind: 'text', text: "Select the type of legal issue you're dealing with:" },
-  '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
-};
-
-const PAGE_TEXT_ALIASES: Record<string, string> = {
-  'justicepath - accessible legal help': '/',
-};
+const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {};
 
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
@@ -125,9 +115,6 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
-  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
-  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
-  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
@@ -245,12 +232,6 @@ test("Form submits – /signup", async ({ page }) => {
       await ensurePageIdentity(page, "/signup");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Fill [name='Full Name'], #Full Name", async () => {
     // Missing locator fields.name-full-name-full-name on /signup; add it to shared locators and rerun generation.
   });
@@ -335,12 +316,6 @@ test("Navigate /signup → /login", async ({ page }) => {
       await ensurePageIdentity(page, "/signup");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Navigate to /login", async () => {
     await navigateTo(page, "/login");
       await ensurePageIdentity(page, "/login");

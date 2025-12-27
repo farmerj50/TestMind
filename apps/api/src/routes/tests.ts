@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
 import { parseResults } from "../runner/result-parsers.js";
+import { normalizeSharedSteps, resolveLocator } from "../testmind/runtime/locator-store.js";
 import { z } from "zod";
 import path from "node:path";
 import os from "node:os";
@@ -250,6 +251,11 @@ export default defineConfig({
     ['html', { open: 'never' }],
   ],
   use: { baseURL: process.env.TEST_BASE_URL || 'http://localhost:5173' },
+  workers: process.env.PW_WORKERS
+    ? (process.env.PW_WORKERS.endsWith('%')
+        ? process.env.PW_WORKERS
+        : parseInt(process.env.PW_WORKERS, 10))
+    : '50%',
 });
 `;
       await fs.writeFile(ciConfigPath, configContent, "utf8");
@@ -415,7 +421,7 @@ export async function testRoutes(app: FastifyInstance) {
     const { projectId, runId } = req.params;
     const project = await prisma.project.findFirst({
       where: { id: projectId, ownerId: userId },
-      select: { id: true },
+      select: { id: true, sharedSteps: true },
     });
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
@@ -446,7 +452,13 @@ export async function testRoutes(app: FastifyInstance) {
       }
     }
 
-    reply.send({ missingLocators });
+    const locatorStore = normalizeSharedSteps(project.sharedSteps ?? {});
+    const filtered = missingLocators.filter((item) => {
+      const result = resolveLocator(locatorStore, item.pagePath, item.bucket, item.name);
+      return !result.selector;
+    });
+
+    reply.send({ missingLocators: filtered });
   });
 
   //
@@ -861,3 +873,4 @@ export async function testRoutes(app: FastifyInstance) {
     }
   );
 }
+
