@@ -197,23 +197,37 @@ export default function RecorderPage() {
       setErr(null);
       setLaunchStatus(null);
       setLaunching(true);
+      const isLocalHelper =
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
       const pid = computedProjectId || (await ensureProjectId());
-      const res = await fetch("http://localhost:43117/record", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: pid || undefined,
-          baseUrl: computedBaseUrl,
-          name: name.trim(),
-          language,
-          headed,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data?.error || "Failed to launch recorder");
+      if (isLocalHelper) {
+        const res = await fetch("http://localhost:43117/record", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: pid || undefined,
+            baseUrl: computedBaseUrl,
+            name: name.trim(),
+            language,
+            headed,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data?.error || "Failed to launch recorder");
+        }
+        setLaunchStatus(
+          `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
+        );
+      } else {
+        const res = await apiFetch<{ started?: boolean }>("/recorder/helper/start", { method: "POST" });
+        if (!res?.started) {
+          throw new Error("Failed to start recorder helper");
+        }
+        setHelperDetected("online");
+        setLaunchStatus("Recorder helper started on the server. Use Get recorder command to run locally.");
       }
-      setLaunchStatus(`Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`);
     } catch (e: any) {
       setErr(e?.message ?? "Failed to launch recorder. Make sure recorder-helper is running locally.");
     } finally {

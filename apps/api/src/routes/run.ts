@@ -15,6 +15,7 @@ import { runTests } from "../runner/node-test-exec.js";
 import { execa } from "execa";
 
 import { parseResults, ParsedCase } from "../runner/result-parsers.js";
+import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
 import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
 import { enqueueAllureGenerate, enqueueRun } from "../runner/queue.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
@@ -294,6 +295,119 @@ const filterRunnerError = (value?: string | null) => {
     .trim();
   return cleaned || null;
 };
+
+type MissingLocatorItem = {
+  pagePath: string;
+  bucket: LocatorBucket;
+  name: string;
+  stepText: string;
+  suggestions: string[];
+};
+
+function semanticKeyFromString(value?: string): string {
+  if (!value) return "default";
+  const cleaned = value
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "default";
+}
+
+function generateSelectorSuggestions(name: string): string[] {
+  const normalized = name.replace(/[^a-z0-9]/gi, "");
+  const candidates: string[] = [];
+  if (normalized) {
+    candidates.push(`input[name="${normalized}"]`);
+    candidates.push(`input[placeholder*="${normalized}"]`);
+    candidates.push(`[data-testid*="${normalized}"]`);
+  }
+  if (name && name.length > 1) {
+    candidates.push(`text=${name}`);
+  }
+  candidates.push("input");
+  candidates.push("button");
+  return Array.from(new Set(candidates));
+}
+
+function cleanLocatorArg(value: string): string {
+  let raw = value.trim();
+  if (raw.startsWith("/") && raw.lastIndexOf("/") > 0) {
+    const lastSlash = raw.lastIndexOf("/");
+    raw = raw.slice(1, lastSlash);
+  }
+  if (
+    (raw.startsWith("'") && raw.endsWith("'")) ||
+    (raw.startsWith('"') && raw.endsWith('"'))
+  ) {
+    raw = raw.slice(1, -1);
+  }
+  return raw.trim();
+}
+
+function extractLocatorExpression(message?: string | null, steps?: string[]): string | null {
+  const raw = `${message ?? ""}\n${(steps ?? []).join("\n")}`;
+  const locatorLine = raw.match(/Locator:\s*(.+)$/im);
+  if (locatorLine?.[1]) return locatorLine[1].trim();
+  const waitLine = (steps ?? []).find((line) => /waiting for /i.test(line));
+  if (waitLine) {
+    const match = waitLine.match(/waiting for\s+(.+)$/i);
+    if (match?.[1]) return match[1].trim();
+  }
+  const exprMatch = raw.match(/(getByText\([^)]+\)|getByRole\([^)]+\)|getByLabel\([^)]+\)|getByPlaceholder\([^)]+\)|getByTestId\([^)]+\)|locator\([^)]+\))/i);
+  return exprMatch?.[1]?.trim() ?? null;
+}
+
+function extractLocatorName(expr: string): string {
+  const textMatch = expr.match(/getByText\((.+)\)/i);
+  if (textMatch?.[1]) return cleanLocatorArg(textMatch[1]);
+  const roleMatch = expr.match(/getByRole\((.+)\)/i);
+  if (roleMatch?.[1]) return cleanLocatorArg(roleMatch[1]);
+  const labelMatch = expr.match(/getByLabel\((.+)\)/i);
+  if (labelMatch?.[1]) return cleanLocatorArg(labelMatch[1]);
+  const placeholderMatch = expr.match(/getByPlaceholder\((.+)\)/i);
+  if (placeholderMatch?.[1]) return cleanLocatorArg(placeholderMatch[1]);
+  const testIdMatch = expr.match(/getByTestId\((.+)\)/i);
+  if (testIdMatch?.[1]) return cleanLocatorArg(testIdMatch[1]);
+  return expr;
+}
+
+function pagePathFromTitle(title?: string | null): string {
+  if (!title) return "/";
+  const direct = title.match(/(?:Page loads:|Navigate)\s+([^ ]+)/i);
+  if (direct?.[1]) return direct[1].trim();
+  const pathMatch = title.match(/(\/[a-z0-9/_-]+)(?:\b|$)/i);
+  return pathMatch?.[1]?.trim() || "/";
+}
+
+function isMissingLocatorFailure(message?: string | null, steps?: string[]): boolean {
+  const raw = `${message ?? ""}\n${(steps ?? []).join("\n")}`;
+  if (!raw.trim()) return false;
+  if (!/toBeVisible/i.test(raw) && !/element\(s\) not found/i.test(raw) && !/waiting for /i.test(raw)) {
+    return false;
+  }
+  return /getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator\(/i.test(raw);
+}
+
+async function appendMissingLocators(
+  filePath: string,
+  items: MissingLocatorItem[]
+): Promise<void> {
+  if (!items.length) return;
+  let payload: { items: MissingLocatorItem[] } = { items: [] };
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.items)) payload.items = parsed.items;
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") {
+      console.error("[missing-locators] failed to read", { filePath, error: err });
+    }
+  }
+  payload.items.push(...items);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
+}
 
 export default async function runRoutes(app: FastifyInstance) {
   // POST /runner/run
@@ -1275,6 +1389,26 @@ export default defineConfig({
         const hasReport = await fs.stat(resultsPath).then(() => true).catch(() => false);
         if (hasReport) {
           const cases = await parseResults(resultsPath);
+          const missingLocators: MissingLocatorItem[] = [];
+          for (const c of cases) {
+            if (c.status !== "failed" && c.status !== "error") continue;
+            if (!isMissingLocatorFailure(c.message ?? null, c.steps)) continue;
+            const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
+            if (!locatorExpr) continue;
+            const locatorName = extractLocatorName(locatorExpr);
+            const name = semanticKeyFromString(locatorName);
+            missingLocators.push({
+              pagePath: pagePathFromTitle(c.fullName),
+              bucket: "locators",
+              name,
+              stepText: c.fullName,
+              suggestions: generateSelectorSuggestions(locatorName || name),
+            });
+          }
+          await appendMissingLocators(
+            path.join(outDir, "missing-locators.json"),
+            missingLocators
+          );
 
           await prisma.$transaction(async (db) => {
             for (const c of cases) {

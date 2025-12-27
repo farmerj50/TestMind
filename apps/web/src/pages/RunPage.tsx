@@ -1,4 +1,4 @@
-﻿// apps/web/src/pages/RunPage.tsx
+// apps/web/src/pages/RunPage.tsx
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -266,7 +266,7 @@ export default function RunPage() {
 
     if (run.status === "succeeded") return "Original run passed; self-heal was not required.";
 
-    if (healingInProgress) return "Tests failed. Self-heal is runningâ€¦";
+    if (healingInProgress) return "Tests failed. Self-heal is running…";
 
     if (rerunsInProgress) return "Self-heal reruns are still running.";
 
@@ -295,7 +295,7 @@ export default function RunPage() {
     } catch {
       /* ignore */
     }
-    return msg.length > 400 ? `${msg.slice(0, 400)}â€¦` : msg;
+    return msg.length > 400 ? `${msg.slice(0, 400)}…` : msg;
   }, []);
 
 
@@ -641,7 +641,7 @@ export default function RunPage() {
         </div>
       )}
 
-      {loading && !run && <div>Loading…</div>}
+      {loading && !run && <div>Loading�</div>}
 
 
 
@@ -679,9 +679,9 @@ export default function RunPage() {
 
               <div className="grid gap-1 text-sm text-slate-700 md:grid-cols-2">
 
-                <div>Framework: {parsedSummary.framework ?? "â€”"}</div>
+                <div>Framework: {parsedSummary.framework ?? "—"}</div>
 
-                <div>Base URL: {parsedSummary.baseUrl ?? "â€”"}</div>
+                <div>Base URL: {parsedSummary.baseUrl ?? "—"}</div>
 
                 <div>Parsed: {parsedSummary.parsedCount ?? 0}</div>
 
@@ -695,7 +695,7 @@ export default function RunPage() {
 
             ) : (
 
-              <div>Summary: {run.summary || "â€”"}</div>
+              <div>Summary: {run.summary || "—"}</div>
 
             )}
 
@@ -703,9 +703,9 @@ export default function RunPage() {
 
               <div className="text-xs text-slate-500">
 
-                Options: reporter {params.reporter ?? "json"} ï¿½ {params.headful ? "headed" : "headless"}
+                Options: reporter {params.reporter ?? "json"} � {params.headful ? "headed" : "headless"}
 
-                {params.specFile ? ` ï¿½ file ${params.specFile}` : ""}{params.grep ? ` ï¿½ grep "${params.grep}"` : ""}
+                {params.specFile ? ` � file ${params.specFile}` : ""}{params.grep ? ` � grep "${params.grep}"` : ""}
 
               </div>
 
@@ -816,7 +816,7 @@ export default function RunPage() {
                           <div className="font-medium">Rerun #{idx + 1}</div>
                           <div className="text-xs text-slate-500">
                             Started: {fmt(child.startedAt ?? child.createdAt)}
-                            {child.finishedAt ? ` â€¢ Finished: ${fmt(child.finishedAt)}` : ""}
+                            {child.finishedAt ? ` • Finished: ${fmt(child.finishedAt)}` : ""}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -908,11 +908,18 @@ export default function RunPage() {
 
                 <div className="font-medium text-slate-800">Missing locators</div>
 
-                {missingLoading && (
-
-                  <span className="text-xs text-slate-500">Refreshing locators…</span>
-
-                )}
+                <div className="flex items-center gap-2">
+                  {missingLoading && (
+                    <span className="text-xs text-slate-500">Refreshing locators.</span>
+                  )}
+                  {run && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/locators?projectId=${run.project.id}`}>
+                        Open locator library
+                      </Link>
+                    </Button>
+                  )}
+                </div>
 
               </div>
 
@@ -964,7 +971,7 @@ export default function RunPage() {
 
                             <div className="text-xs text-slate-500">
 
-                              {item.pagePath} · {item.name}
+                              {item.pagePath} � {item.name}
 
                             </div>
 
@@ -1054,7 +1061,7 @@ export default function RunPage() {
 
                           >
 
-                            {state?.loading ? "Saving…" : state?.success ? "Saved" : "Save locator"}
+                            {state?.loading ? "Saving�" : state?.success ? "Saved" : "Save locator"}
 
                           </Button>
 
@@ -1140,7 +1147,7 @@ export default function RunPage() {
 
                 >
 
-                  {triggeringRerun ? "Starting rerunâ€¦" : "Rerun this suite"}
+                  {triggeringRerun ? "Starting rerun…" : "Rerun this suite"}
 
                 </Button>
 
@@ -1194,7 +1201,7 @@ export default function RunPage() {
 
                 >
 
-                  {creatingIssue ? "Creatingâ€¦" : "Create GitHub issue"}
+                  {creatingIssue ? "Creating…" : "Create GitHub issue"}
 
                 </Button>
 
@@ -1233,6 +1240,7 @@ export default function RunPage() {
   );
 
 }
+
 
 
 

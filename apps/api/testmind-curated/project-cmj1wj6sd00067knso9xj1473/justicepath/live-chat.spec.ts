@@ -15,6 +15,10 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
 };
 
+const PAGE_TEXT_ALIASES: Record<string, string> = {
+  'justicepath - accessible legal help': '/',
+};
+
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
 function normalizeIdentityPath(target: string): string {
@@ -73,8 +77,43 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
   return route.startsWith(prefixWithSlash);
 }
 
+type Region = 'navigation' | 'header' | 'main';
+
+function getAttributeValue(selector: string, attr: string): string | undefined {
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
+  const match = selector.match(regex);
+  return match ? match[1] : undefined;
+}
+
+function regionScope(page: Page, region?: Region) {
+  switch (region) {
+    case 'navigation':
+      return page.getByRole('navigation');
+    case 'header':
+      return page.locator('header');
+    case 'main':
+      return page.locator('main');
+    default:
+      return page;
+  }
+}
+
+function chooseLocator(page: Page, selector: string, region?: Region) {
+  const scope = regionScope(page, region);
+  const testId = getAttributeValue(selector, 'data-testid');
+  if (testId) {
+    return scope.getByTestId(testId);
+  }
+  const role = getAttributeValue(selector, 'role');
+  if (role) {
+    const name = getAttributeValue(selector, 'name');
+    return scope.getByRole(role, name ? { name } : undefined);
+  }
+  return scope.locator(selector);
+}
+
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\]/g, '\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -86,6 +125,9 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
+  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
+  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
+  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
@@ -109,14 +151,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 20000 });
-      await candidate.click({ timeout: 20000 });
+      await candidate.waitFor({ state: 'visible', timeout: 15000 });
+      await candidate.click({ timeout: 15000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 20000 });
-  await fallback.click({ timeout: 20000 });
+  await fallback.waitFor({ state: 'visible', timeout: 15000 });
+  await fallback.click({ timeout: 15000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
@@ -175,23 +217,23 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page /live-chat – 6 test(s)
+// Auto-generated for page /live-chat 6 test(s)
 
 test("Page loads: /live-chat", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/live-chat" }, { type: "story", description: "Page loads: /live-chat" }, { type: "parameter", description: "page=/live-chat" });
   await test.step("1. Navigate to https://justicepathlaw.com/live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
     {
       const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible({ timeout: 20000 });
+      await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -200,7 +242,7 @@ test("Form submits – /live-chat", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/live-chat" }, { type: "story", description: "Form submits – /live-chat" }, { type: "parameter", description: "page=/live-chat" });
   await test.step("1. Navigate to https://justicepathlaw.com/live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("2. Fill [name='Jurisdiction (e.g., Atlanta, GA)'], #Jurisdiction (e.g., Atlanta, GA)", async () => {
     // Missing locator fields.name-jurisdiction-e-g-atlanta-ga-jurisdiction-e-g-atlanta-ga on /live-chat; add it to shared locators and rerun generation.
@@ -212,7 +254,7 @@ test("Form submits – /live-chat", async ({ page }) => {
     {
       const targetPath = identityPathForText("success");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -225,17 +267,17 @@ test("Navigate /live-chat → /", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/live-chat" }, { type: "story", description: "Navigate /live-chat → /" }, { type: "parameter", description: "page=/live-chat" });
   await test.step("1. Navigate to https://justicepathlaw.com/live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("2. Navigate to /", async () => {
     await navigateTo(page, "/");
-    await ensurePageIdentity(page, "/");
+      await ensurePageIdentity(page, "/");
   });
   await test.step("3. Ensure text \"Page\" is visible", async () => {
     {
       const targetPath = identityPathForText("Page");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -248,17 +290,17 @@ test("Navigate /live-chat → /pricing", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/live-chat" }, { type: "story", description: "Navigate /live-chat → /pricing" }, { type: "parameter", description: "page=/live-chat" });
   await test.step("1. Navigate to https://justicepathlaw.com/live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("2. Navigate to /pricing", async () => {
     await navigateTo(page, "/pricing");
-    await ensurePageIdentity(page, "/pricing");
+      await ensurePageIdentity(page, "/pricing");
   });
   await test.step("3. Ensure text \"pricing\" is visible", async () => {
     {
       const targetPath = identityPathForText("pricing");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -271,7 +313,7 @@ test("Navigate /live-chat → /login", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/live-chat" }, { type: "story", description: "Navigate /live-chat → /login" }, { type: "parameter", description: "page=/live-chat" });
   await test.step("1. Navigate to https://justicepathlaw.com/live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await sharedLogin(page);
   await test.step('Ensure case-type-selection page loads after login', async () => {
@@ -282,13 +324,13 @@ test("Navigate /live-chat → /login", async ({ page }) => {
   });
   await test.step("2. Navigate to /login", async () => {
     await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
+      await ensurePageIdentity(page, "/login");
   });
   await test.step("3. Ensure text \"login\" is visible", async () => {
     {
       const targetPath = identityPathForText("login");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -301,17 +343,17 @@ test("Navigate /live-chat → /signup", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/live-chat" }, { type: "story", description: "Navigate /live-chat → /signup" }, { type: "parameter", description: "page=/live-chat" });
   await test.step("1. Navigate to https://justicepathlaw.com/live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("2. Navigate to /signup", async () => {
     await navigateTo(page, "/signup");
-    await ensurePageIdentity(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await test.step("3. Ensure text \"signup\" is visible", async () => {
     {
       const targetPath = identityPathForText("signup");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }

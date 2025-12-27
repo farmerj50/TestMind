@@ -15,6 +15,10 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
 };
 
+const PAGE_TEXT_ALIASES: Record<string, string> = {
+  'justicepath - accessible legal help': '/',
+};
+
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
 function normalizeIdentityPath(target: string): string {
@@ -73,8 +77,43 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
   return route.startsWith(prefixWithSlash);
 }
 
+type Region = 'navigation' | 'header' | 'main';
+
+function getAttributeValue(selector: string, attr: string): string | undefined {
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
+  const match = selector.match(regex);
+  return match ? match[1] : undefined;
+}
+
+function regionScope(page: Page, region?: Region) {
+  switch (region) {
+    case 'navigation':
+      return page.getByRole('navigation');
+    case 'header':
+      return page.locator('header');
+    case 'main':
+      return page.locator('main');
+    default:
+      return page;
+  }
+}
+
+function chooseLocator(page: Page, selector: string, region?: Region) {
+  const scope = regionScope(page, region);
+  const testId = getAttributeValue(selector, 'data-testid');
+  if (testId) {
+    return scope.getByTestId(testId);
+  }
+  const role = getAttributeValue(selector, 'role');
+  if (role) {
+    const name = getAttributeValue(selector, 'name');
+    return scope.getByRole(role, name ? { name } : undefined);
+  }
+  return scope.locator(selector);
+}
+
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\]/g, '\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -86,6 +125,9 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
+  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
+  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
+  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
@@ -109,18 +151,18 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 20000 });
-      await candidate.click({ timeout: 20000 });
+      await candidate.waitFor({ state: 'visible', timeout: 15000 });
+      await candidate.click({ timeout: 15000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 20000 });
-  await fallback.click({ timeout: 20000 });
+  await fallback.waitFor({ state: 'visible', timeout: 15000 });
+  await fallback.click({ timeout: 15000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
-  "usernameSelector": "input[placeholder=\"Email Address\"] , input[name=\"email\"] , input[type=\"email\"] , input[name=\"username\"] , #username, #email",
+  "usernameSelector": "input[placeholder=\"Email Address\"], input[name=\"email\"], input[type=\"email\"], input[name=\"username\"], #username, #email",
   "passwordSelector": "input[placeholder=\"Password\"], input[name=\"password\"], input[type=\"password\"], #password",
   "submitSelector": "button[type=\"submit\"], button:has-text(\"Login\"), button:has-text(\"Sign in\")",
   "usernameEnv": "EMAIL_ADDRESS",
@@ -129,7 +171,7 @@ const SHARED_LOGIN_CONFIG = {
 
 async function navigateTo(page: Page, target: string) {
   const url = new URL(target, BASE_URL);
-  await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 }); // Increased timeout to 45000ms
+  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
   await assertNavigationPath(page, url);
 }
 
@@ -157,8 +199,8 @@ async function assertNavigationPath(page: Page, expectedUrl: URL) {
 async function sharedLogin(page: Page) {
   const usernameEnv = SHARED_LOGIN_CONFIG.usernameEnv;
   const passwordEnv = SHARED_LOGIN_CONFIG.passwordEnv;
-  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? ''; 
-  const envPassword = process.env[passwordEnv] ?? process.env.PASSWORD ?? ''; 
+  const envUsername = process.env[usernameEnv] ?? process.env.EMAIL ?? '';
+  const envPassword = process.env[passwordEnv] ?? process.env.PASSWORD ?? '';
   const username = SHARED_LOGIN_CONFIG.usernameValue ?? envUsername;
   const password = SHARED_LOGIN_CONFIG.passwordValue ?? envPassword;
   const userLocator = page.locator(SHARED_LOGIN_CONFIG.usernameSelector);
@@ -175,7 +217,7 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page /pricing – 5 test(s)
+// Auto-generated for page /pricing 5 test(s)
 
 test("Page loads: /pricing", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/pricing" }, { type: "story", description: "Page loads: /pricing" }, { type: "parameter", description: "page=/pricing" });
@@ -187,7 +229,7 @@ test("Page loads: /pricing", async ({ page }) => {
     {
       const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -210,7 +252,7 @@ test("Navigate /pricing → /", async ({ page }) => {
     {
       const targetPath = identityPathForText("Page");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -233,7 +275,7 @@ test("Navigate /pricing → /live-chat", async ({ page }) => {
     {
       const targetPath = identityPathForText("live-chat");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -263,7 +305,7 @@ test("Navigate /pricing → /login", async ({ page }) => {
     {
       const targetPath = identityPathForText("login");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -286,7 +328,7 @@ test("Navigate /pricing → /signup", async ({ page }) => {
     {
       const targetPath = identityPathForText("signup");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }

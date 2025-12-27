@@ -368,7 +368,6 @@ function Pricing() {
               "3 projects",
               "Basic scans",
               "No self-heal",
-              "No Slack reports",
             ]}
             cta="Start Solo"
             to="/signup?plan=starter"
@@ -386,7 +385,6 @@ function Pricing() {
               "Security scans",
               "Slack / email alerts",
               "Self-heal suggestions",
-              "Test insights dashboard",
             ]}
             cta="Start Pro"
             to="/signup?plan=pro"
@@ -405,9 +403,8 @@ function Pricing() {
               "Priority support",
               "AI-heal patches",
               "Multi-user access",
-              "Multi-tenant",
             ]}
-            cta="Contact sales"
+            cta="Start Team"
             to="/signup?plan=team"
           />
 

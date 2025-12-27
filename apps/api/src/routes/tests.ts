@@ -26,6 +26,7 @@ function requireUser(req: any, reply: any) {
 // Resolve monorepo root (API runs from apps/api)
 const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
 const RUNNER_PATH = path.join(REPO_ROOT, "apps", "api", "src", "runner", "bot.ts");
+const RUNNER_LOGS_ROOT = path.join(REPORT_ROOT, "runner-logs");
 
 async function writeJson(file: string, data: any) {
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -424,18 +425,24 @@ export async function testRoutes(app: FastifyInstance) {
     });
     if (!run) return reply.code(404).send({ error: "Run not found" });
 
-    const missingLocatorsPath = path.join(REPORT_ROOT, runId, "missing-locators.json");
+    const missingLocatorsCandidates = [
+      path.join(RUNNER_LOGS_ROOT, runId, "missing-locators.json"),
+      path.join(REPORT_ROOT, runId, "missing-locators.json"),
+    ];
     let missingLocators: any[] = [];
-    try {
-      const raw = await fs.readFile(missingLocatorsPath, "utf8");
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.items)) {
-        missingLocators = parsed.items;
-      }
-    } catch (error: any) {
-      if (error?.code && error.code !== "ENOENT") {
-        console.error("[missing-locators] failed to read", { runId, projectId, error });
-        return reply.code(500).send({ error: "Failed to read missing locators" });
+    for (const missingLocatorsPath of missingLocatorsCandidates) {
+      try {
+        const raw = await fs.readFile(missingLocatorsPath, "utf8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.items)) {
+          missingLocators = parsed.items;
+          break;
+        }
+      } catch (error: any) {
+        if (error?.code && error.code !== "ENOENT") {
+          console.error("[missing-locators] failed to read", { runId, projectId, error });
+          return reply.code(500).send({ error: "Failed to read missing locators" });
+        }
       }
     }
 
