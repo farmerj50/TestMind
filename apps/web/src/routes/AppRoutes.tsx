@@ -25,6 +25,7 @@ import QaAgentPage from "../pages/QaAgentPage";
 import SecurityScanPage from "../pages/SecurityScanPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import LocatorLibraryPage from "../pages/LocatorLibraryPage";
+import SuiteRedirectPage from "../pages/SuiteRedirectPage";
 
 function NotFound() {
   return (
@@ -191,6 +192,14 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProjectSuite />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/suite"
+        element={
+          <ProtectedRoute>
+            <SuiteRedirectPage />
           </ProtectedRoute>
         }
       />

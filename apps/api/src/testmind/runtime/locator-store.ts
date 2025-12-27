@@ -60,10 +60,44 @@ function normalizeMap(value: unknown): Record<string, string> | undefined {
   const normalized: Record<string, string> = {};
   for (const [key, val] of Object.entries(map)) {
     if (typeof val === "string" && val.trim()) {
-      normalized[key] = val.trim();
+      const cleaned = normalizeSelectorValue(val);
+      if (cleaned) normalized[key] = cleaned;
     }
   }
   return Object.keys(normalized).length ? normalized : undefined;
+}
+
+export function normalizeSelectorValue(value: string): string | null {
+  let cleaned = value.trim();
+  if (!cleaned) return null;
+  cleaned = cleaned.replace(/\s+to be visible$/i, "").trim();
+
+  const locatorMatch = cleaned.match(/locator\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (locatorMatch?.[1]) return locatorMatch[1].trim();
+
+  const textMatch = cleaned.match(/getByText\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (textMatch?.[1]) return `text=${textMatch[1].trim()}`;
+
+  const labelMatch = cleaned.match(/getByLabel\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (labelMatch?.[1]) return `text=${labelMatch[1].trim()}`;
+
+  const roleMatch = cleaned.match(/getByRole\(\s*['"`]([^'"`]+)['"`]\s*,\s*\{\s*name:\s*['"`]([^'"`]+)['"`]\s*\}\s*\)/i);
+  if (roleMatch?.[1] && roleMatch?.[2]) {
+    return `role=${roleMatch[1].trim()}[name="${roleMatch[2].trim()}"]`;
+  }
+
+  const inputNameMatch = cleaned.match(/input\[name=(?:"([^"]+)"|'([^']+)')\]/i);
+  const inputName = inputNameMatch?.[1] ?? inputNameMatch?.[2];
+  if (inputName && /\s/.test(inputName)) {
+    return `text=${inputName.trim()}`;
+  }
+
+  if (/^text=locator\(/i.test(cleaned)) {
+    const inner = cleaned.match(/text=locator\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+    if (inner?.[1]) return inner[1].trim();
+  }
+
+  return cleaned;
 }
 
 function normalizePathKey(path: string): string {

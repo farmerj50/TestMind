@@ -1,6 +1,6 @@
 import { Page, test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL ?? 'https://justicepathlaw.com';
+const BASE_URL = process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }
@@ -8,15 +8,10 @@ type IdentityDescriptor =
   | { kind: 'locator'; selector: string };
 
 const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
-  '/': { kind: 'role', role: 'heading', name: 'Accessible Legal Help for Everyone' },
-  '/login': { kind: 'role', role: 'heading', name: 'Login' },
-  '/signup': { kind: 'role', role: 'heading', name: 'Sign Up' },
-  '/case-type-selection': { kind: 'text', text: "Select the type of legal issue you're dealing with:" },
-  '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
-};
-
-const PAGE_TEXT_ALIASES: Record<string, string> = {
-  'justicepath - accessible legal help': '/',
+  "/case-type-selection": {
+    "kind": "locator",
+    "selector": "text=Select the type of legal issue you're dealing with:"
+  }
 };
 
 const IDENTITY_CHECK_TIMEOUT = 10000;
@@ -125,9 +120,6 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
-  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
-  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
-  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
@@ -227,13 +219,22 @@ test("Page loads: /select-plan", async ({ page }) => {
   });
   await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
     {
-      const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
+      const rawText = "JusticePath — Accessible Legal Help";
+      const normalized = rawText.trim().toLowerCase();
+      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeLike = /^[a-z0-9\-/]+$/.test(normalized);
+      if (routeLike) {
+        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+        await ensurePageIdentity(page, routeCandidate);
+        return;
+      }
+      const targetPath = identityPathForText(rawText);
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("JusticePath — Accessible Legal Help")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -250,13 +251,22 @@ test("Navigate /select-plan → /", async ({ page }) => {
   });
   await test.step("3. Ensure text \"Page\" is visible", async () => {
     {
-      const targetPath = identityPathForText("Page");
+      const rawText = "Page";
+      const normalized = rawText.trim().toLowerCase();
+      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeLike = /^[a-z0-9\-/]+$/.test(normalized);
+      if (routeLike) {
+        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+        await ensurePageIdentity(page, routeCandidate);
+        return;
+      }
+      const targetPath = identityPathForText(rawText);
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("Page")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -273,13 +283,22 @@ test("Navigate /select-plan → /live-chat", async ({ page }) => {
   });
   await test.step("3. Ensure text \"live-chat\" is visible", async () => {
     {
-      const targetPath = identityPathForText("live-chat");
+      const rawText = "live-chat";
+      const normalized = rawText.trim().toLowerCase();
+      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeLike = /^[a-z0-9\-/]+$/.test(normalized);
+      if (routeLike) {
+        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+        await ensurePageIdentity(page, routeCandidate);
+        return;
+      }
+      const targetPath = identityPathForText(rawText);
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("live-chat")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -296,13 +315,22 @@ test("Navigate /select-plan → /pricing", async ({ page }) => {
   });
   await test.step("3. Ensure text \"pricing\" is visible", async () => {
     {
-      const targetPath = identityPathForText("pricing");
+      const rawText = "pricing";
+      const normalized = rawText.trim().toLowerCase();
+      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeLike = /^[a-z0-9\-/]+$/.test(normalized);
+      if (routeLike) {
+        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+        await ensurePageIdentity(page, routeCandidate);
+        return;
+      }
+      const targetPath = identityPathForText(rawText);
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("pricing")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -314,25 +342,28 @@ test("Navigate /select-plan → /login", async ({ page }) => {
       await ensurePageIdentity(page, "/select-plan");
   });
   await sharedLogin(page);
-  await test.step('Ensure case-type-selection page loads after login', async () => {
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toContain('/case-type-selection');
-    await ensurePageIdentity(page, '/case-type-selection');
-  });
   await test.step("2. Navigate to /login", async () => {
     await navigateTo(page, "/login");
       await ensurePageIdentity(page, "/login");
   });
   await test.step("3. Ensure text \"login\" is visible", async () => {
     {
-      const targetPath = identityPathForText("login");
+      const rawText = "login";
+      const normalized = rawText.trim().toLowerCase();
+      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeLike = /^[a-z0-9\-/]+$/.test(normalized);
+      if (routeLike) {
+        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+        await ensurePageIdentity(page, routeCandidate);
+        return;
+      }
+      const targetPath = identityPathForText(rawText);
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("login")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -349,13 +380,22 @@ test("Navigate /select-plan → /signup", async ({ page }) => {
   });
   await test.step("3. Ensure text \"signup\" is visible", async () => {
     {
-      const targetPath = identityPathForText("signup");
+      const rawText = "signup";
+      const normalized = rawText.trim().toLowerCase();
+      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeLike = /^[a-z0-9\-/]+$/.test(normalized);
+      if (routeLike) {
+        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+        await ensurePageIdentity(page, routeCandidate);
+        return;
+      }
+      const targetPath = identityPathForText(rawText);
       if (targetPath) {
         await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText("signup")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });

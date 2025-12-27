@@ -1,6 +1,6 @@
 import { Page, test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
+const BASE_URL = process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }

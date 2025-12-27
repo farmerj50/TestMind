@@ -66,7 +66,7 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
       });
 
       // 2) GH-like env + payload (same as CI)
-      const baseURL = process.env.TEST_BASE_URL ?? "http://localhost:5173";
+      const baseURL = process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? "http://localhost:5173";
       const prNumber = 1; // you can pass this from the client if you want
       const command = "plan+gen"; // also can be a client param
 
@@ -250,12 +250,14 @@ export default defineConfig({
     ['json', { outputFile: '${esc(path.join(runDir, "report.json"))}' }],
     ['html', { open: 'never' }],
   ],
-  use: { baseURL: process.env.TEST_BASE_URL || 'http://localhost:5173' },
-  workers: process.env.PW_WORKERS
-    ? (process.env.PW_WORKERS.endsWith('%')
-        ? process.env.PW_WORKERS
-        : parseInt(process.env.PW_WORKERS, 10))
-    : '50%',
+  use: { baseURL: process.env.TM_BASE_URL || process.env.TEST_BASE_URL || 'http://localhost:5173' },
+  workers: (() => {
+    const raw = process.env.PW_WORKERS;
+    if (!raw) return '50%';
+    if (raw.endsWith('%')) return raw;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : '50%';
+  })(),
 });
 `;
       await fs.writeFile(ciConfigPath, configContent, "utf8");

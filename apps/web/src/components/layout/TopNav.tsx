@@ -31,7 +31,7 @@ export default function TopNav() {
             <NavA to="/contact">Contact</NavA>
             <SignedIn>
               <NavA to="/dashboard">Dashboard</NavA>
-              <NavA to="/suite/playwright-ts">Suites</NavA>
+              <NavA to="/suite">Suites</NavA>
             </SignedIn>
           </nav>
         </div>
