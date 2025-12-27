@@ -67,7 +67,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
-    apiFetch<{ plan: string }>("/billing/me")
+    apiFetch<{ plan: string | null }>("/billing/me")
       .then((d) => setPlan(d.plan))
       .catch(() => { });
   }, []);

@@ -1,0 +1,43 @@
+[self-heal] attempt cmjo7vhsr000q7kukohfwrpg0 failed: Error: Spec file not found for unknown
+    at Worker.Worker.connection (D:\Project\testmind\apps\api\src\runner\self-heal-worker.ts:308:15)
+    at async <anonymous> (D:\Project\testmind\node_modules\.pnpm\bullmq@5.55.0\node_modules\bullmq\src\classes\worker.ts:877:26)
+    at async Worker.retryIfFailed (D:\Project\testmind\node_modules\.pnpm\bul[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+3:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}

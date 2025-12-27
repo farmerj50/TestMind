@@ -8,25 +8,30 @@ const envInt = (k: string, d: number) => {
 
 export type PlanLimits = {
   maxProjects: number;
-  dailyRuns: number; // max test runs in a rolling 24h window
+  monthlyRuns: number; // max test runs per month
   maxCases: number;  // total test cases per account (soft cap)
 };
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     maxProjects: envInt("FREE_MAX_PROJECTS", 1),
-    dailyRuns: envInt("FREE_DAILY_RUNS", 20),
+    monthlyRuns: envInt("FREE_MONTHLY_RUNS", 50),
     maxCases: envInt("FREE_MAX_CASES", 500),
   },
-  pro: {
-    maxProjects: envInt("PRO_MAX_PROJECTS", 50),
-    dailyRuns: envInt("PRO_DAILY_RUNS", 5000),
-    maxCases: envInt("PRO_MAX_CASES", 250000),
+  starter: {
+    maxProjects: envInt("STARTER_MAX_PROJECTS", 3),
+    monthlyRuns: envInt("STARTER_MONTHLY_RUNS", 300),
+    maxCases: envInt("STARTER_MAX_CASES", 3000),
   },
-  enterprise: {
-    maxProjects: envInt("ENT_MAX_PROJECTS", 1000),
-    dailyRuns: envInt("ENT_DAILY_RUNS", 100000),
-    maxCases: envInt("ENT_MAX_CASES", 1000000),
+  pro: {
+    maxProjects: envInt("PRO_MAX_PROJECTS", 10),
+    monthlyRuns: envInt("PRO_MONTHLY_RUNS", 2000),
+    maxCases: envInt("PRO_MAX_CASES", 20000),
+  },
+  team: {
+    maxProjects: envInt("TEAM_MAX_PROJECTS", Number.MAX_SAFE_INTEGER),
+    monthlyRuns: envInt("TEAM_MONTHLY_RUNS", 10000),
+    maxCases: envInt("TEAM_MAX_CASES", 100000),
   },
 };
 
