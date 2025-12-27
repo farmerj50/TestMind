@@ -30,6 +30,8 @@ import { REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans.js";
 import type { PlanTier } from "./config/plans.js";
+import { PAID_PLANS, STRIPE_PRICE_IDS, type PaidPlan } from "./config/stripe.js";
+import { requireStripe } from "./lib/stripe.js";
 import testmindRoutes from './testmind/routes.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
 
@@ -389,6 +391,26 @@ const UpdateProjectSchema = z.object({
 });
 type UpdateProjectBody = z.infer<typeof UpdateProjectSchema>;
 
+const SharedLocatorSchema = z.object({
+  pagePath: z.string().min(1),
+  bucket: z.enum(["fields", "buttons", "links", "locators"]),
+  name: z.string().min(1),
+  selector: z.string().min(1),
+  projectId: z.string().optional(),
+});
+type SharedLocatorBody = z.infer<typeof SharedLocatorSchema>;
+
+const normalizeLocatorPath = (pathValue: string) => {
+  try {
+    const url = new URL(pathValue, "http://localhost");
+    const pathname = url.pathname || "/";
+    const search = url.search || "";
+    return `${pathname}${search}` || "/";
+  } catch {
+    return pathValue.startsWith("/") ? pathValue : `/${pathValue}`;
+  }
+};
+
 // small guard you can reuse
 function requireUser(req: any, reply: any) {
   const { userId } = getAuth(req);
@@ -489,6 +511,73 @@ app.patch<{ Params: { id: string }; Body: UpdateProjectBody }>(
   }
 );
 
+app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
+  "/projects/:id/shared-locators",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const parsed = SharedLocatorSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const { id } = req.params;
+    const project = await prisma.project.findFirst({
+      where: { id, ownerId: userId },
+      select: { id: true, sharedSteps: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const { pagePath, bucket, name, selector } = parsed.data;
+    const normalizedPath = normalizeLocatorPath(pagePath);
+    const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+
+    let pages: Record<string, any> = {};
+    if (sharedSteps.pages && typeof sharedSteps.pages === "object") {
+      pages = { ...sharedSteps.pages };
+    } else if (sharedSteps.locators && typeof sharedSteps.locators === "object") {
+      pages = Object.entries(sharedSteps.locators as Record<string, any>).reduce(
+        (acc, [key, locators]) => {
+          acc[key] = { locators: { ...(locators as Record<string, string>) } };
+          return acc;
+        },
+        {} as Record<string, any>
+      );
+    }
+
+    const page = { ...(pages[normalizedPath] ?? {}) };
+    const bucketMap = { ...(page[bucket] ?? {}) };
+    bucketMap[name] = selector;
+    page[bucket] = bucketMap;
+    pages[normalizedPath] = page;
+
+    const nextSharedSteps = { ...sharedSteps, pages };
+
+    const updated = await prisma.project.update({
+      where: { id },
+      data: { sharedSteps: nextSharedSteps },
+      select: { sharedSteps: true },
+    });
+
+    return reply.send({ sharedSteps: updated.sharedSteps });
+  }
+);
+
+app.get<{ Params: { id: string } }>("/projects/:id/shared-locators", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const project = await prisma.project.findFirst({
+    where: { id, ownerId: userId },
+    select: { id: true, sharedSteps: true },
+  });
+  if (!project) return reply.code(404).send({ error: "Project not found" });
+
+  return reply.send({ sharedSteps: project.sharedSteps ?? {} });
+});
+
 // ---------- Delete ----------
 app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
   const userId = requireUser(req, reply);
@@ -577,9 +666,9 @@ const startWorkersOnce = () => {
 };
 
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch
-const startRecorderHelper = () => {
+const startRecorderHelper = (force = false) => {
   if (recorderState.__tmRecorderHelperStarted) return;
-  if (!validatedEnv.START_RECORDER_HELPER) {
+  if (!validatedEnv.START_RECORDER_HELPER && !force) {
     app.log.info("[recorder] START_RECORDER_HELPER=false; skipping auto-start");
     return;
   }
@@ -617,7 +706,7 @@ app.get("/recorder/helper/status", async () => ({
 }));
 
 app.post("/recorder/helper/start", async () => {
-  startRecorderHelper();
+  startRecorderHelper(true);
   return { started: !!recorderState.__tmRecorderHelperStarted };
 });
 
@@ -648,15 +737,16 @@ app.get("/billing/me", async (req, reply) => {
   const userId = requireUser(req, reply);
   if (!userId) return;
 
-  // rely on DB default for plan; narrow shape for TS
+  // ensure user exists; allow plan to be unset until selection
   const user = (await prisma.user.upsert({
     where: { id: userId },
     update: {},
     create: { id: userId },
     select: { id: true, plan: true, createdAt: true },
-  })) as { id: string; plan: PlanTier; createdAt: Date };
+  })) as { id: string; plan: PlanTier | null; createdAt: Date };
 
-  return { plan: user.plan, limits: getLimitsForPlan(user.plan) };
+  const plan = user.plan ?? null;
+  return { plan, limits: plan ? getLimitsForPlan(plan) : null };
 });
 
 // Dev-only helper to switch plans
@@ -668,7 +758,7 @@ app.patch("/billing/me", async (req, reply) => {
     return reply.code(403).send({ error: "Plan switching disabled" });
   }
 
-  const allowed = ["free", "pro", "enterprise"] as const;
+  const allowed = ["free", "starter", "pro", "team"] as const;
   type Body = { plan?: (typeof allowed)[number] };
 
   const { plan } = (req.body ?? {}) as Body;
@@ -676,9 +766,103 @@ app.patch("/billing/me", async (req, reply) => {
     return reply.code(400).send({ error: "Invalid plan" });
   }
 
-  const updated = await prisma.user.update({
+  const updated = await prisma.user.upsert({
     where: { id: userId },
-    data: { plan },
+    update: { plan },
+    create: { id: userId, plan },
+    select: { plan: true },
+  });
+
+  return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
+});
+
+app.post("/billing/select", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const allowed = ["free"] as const;
+  type Body = { plan?: (typeof allowed)[number] };
+  const { plan } = (req.body ?? {}) as Body;
+  if (!plan || !allowed.includes(plan)) {
+    return reply.code(400).send({ error: "Invalid plan selection" });
+  }
+
+  const updated = await prisma.user.upsert({
+    where: { id: userId },
+    update: { plan },
+    create: { id: userId, plan },
+    select: { plan: true },
+  });
+
+  return { plan: updated.plan, limits: getLimitsForPlan(updated.plan) };
+});
+
+app.post("/billing/checkout", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const allowed = PAID_PLANS;
+  type Body = { plan?: PaidPlan };
+  const { plan } = (req.body ?? {}) as Body;
+  if (!plan || !allowed.includes(plan)) {
+    return reply.code(400).send({ error: "Invalid plan selection" });
+  }
+
+  await prisma.user.upsert({
+    where: { id: userId },
+    update: {},
+    create: { id: userId },
+    select: { id: true },
+  });
+
+  const stripe = requireStripe();
+  const baseUrl = (validatedEnv.WEB_URL ?? "http://localhost:5173").replace(/\/$/, "");
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: STRIPE_PRICE_IDS[plan], quantity: 1 }],
+    client_reference_id: userId,
+    metadata: { userId, plan },
+    success_url: `${baseUrl}/pricing?checkout=success&plan=${plan}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseUrl}/pricing?checkout=cancel&plan=${plan}`,
+  });
+
+  if (!session.url) {
+    return reply.code(500).send({ error: "Stripe session missing URL" });
+  }
+
+  return { url: session.url };
+});
+
+app.post("/billing/confirm", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const body = (req.body ?? {}) as { sessionId?: string };
+  const sessionId = body.sessionId?.trim();
+  if (!sessionId) {
+    return reply.code(400).send({ error: "Missing sessionId" });
+  }
+
+  const stripe = requireStripe();
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  if (session.client_reference_id !== userId) {
+    return reply.code(403).send({ error: "Session does not belong to user" });
+  }
+
+  const plan = (session.metadata?.plan ?? null) as PaidPlan | null;
+  if (!plan || !PAID_PLANS.includes(plan)) {
+    return reply.code(400).send({ error: "Invalid plan in session" });
+  }
+
+  if (session.status !== "complete") {
+    return reply.code(400).send({ error: "Checkout not complete" });
+  }
+
+  const updated = await prisma.user.upsert({
+    where: { id: userId },
+    update: { plan },
+    create: { id: userId, plan },
     select: { plan: true },
   });
 

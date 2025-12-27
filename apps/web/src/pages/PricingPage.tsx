@@ -1,20 +1,24 @@
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Check } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
+import { useApi } from "../lib/api";
 
 export default function PricingPage() {
   const tiers: Array<{
+    key: "free" | "starter" | "pro" | "team";
     name: string;
     price: string;
     blurb: string;
     features: string[];
     cta: string;
-    to?: string;
     tag?: string;
     highlighted?: boolean;
   }> = [
     {
+      key: "free",
       name: "Free",
       price: "$0",
       blurb: "For solo devs testing the waters",
@@ -26,9 +30,9 @@ export default function PricingPage() {
         "No security scanning",
       ],
       cta: "Start free",
-      to: "/signup?plan=free",
     },
     {
+      key: "starter",
       name: "Starter / Solo",
       price: "$39",
       blurb: "For individual testers or devs",
@@ -37,12 +41,11 @@ export default function PricingPage() {
         "3 projects",
         "Basic scans",
         "No self-heal",
-        "No Slack reports",
       ],
       cta: "Start Solo",
-      to: "/signup?plan=starter",
     },
     {
+      key: "pro",
       name: "Pro",
       price: "$99",
       blurb: "For small teams",
@@ -55,12 +58,11 @@ export default function PricingPage() {
         "Security scans",
         "Slack / email alerts",
         "Self-heal suggestions",
-        "Test insights dashboard",
       ],
       cta: "Start Pro",
-      to: "/signup?plan=pro",
     },
     {
+      key: "team",
       name: "Team",
       price: "$249",
       blurb: "For engineering teams with CI pipelines",
@@ -72,12 +74,100 @@ export default function PricingPage() {
         "Priority support",
         "AI-heal patches",
         "Multi-user access",
-        "Multi-tenant",
       ],
-      cta: "Contact sales",
-      to: "/signup?plan=team",
+      cta: "Start Team",
     },
   ];
+
+  const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { apiFetch } = useApi();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [busyPlan, setBusyPlan] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
+  const planOrder = useMemo(
+    () => ({ free: 0, starter: 1, pro: 2, team: 3 }),
+    []
+  );
+  const currentPlanKey = plan ?? null;
+  const currentPlanRank =
+    currentPlanKey && currentPlanKey in planOrder
+      ? planOrder[currentPlanKey as keyof typeof planOrder]
+      : -1;
+
+  const checkoutStatus = useMemo(() => params.get("checkout"), [params]);
+  const checkoutSessionId = useMemo(() => params.get("session_id"), [params]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    apiFetch<{ plan: string | null }>("/billing/me")
+      .then((data) => setPlan(data.plan))
+      .catch(() => {});
+  }, [isSignedIn, apiFetch]);
+
+  useEffect(() => {
+    if (!isSignedIn || !checkoutStatus) return;
+
+    if (checkoutStatus === "cancel") {
+      setError("Checkout canceled. Pick a plan to continue.");
+      return;
+    }
+
+    if (checkoutStatus === "success" && checkoutSessionId) {
+      setBusyPlan("confirm");
+      apiFetch("/billing/confirm", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: checkoutSessionId }),
+      })
+        .then(async () => {
+          await signOut();
+          navigate("/signin", { replace: true });
+        })
+        .catch((err: any) => {
+          setError(err?.message || "Failed to confirm checkout.");
+        })
+        .finally(() => setBusyPlan(null));
+    }
+  }, [apiFetch, checkoutSessionId, checkoutStatus, isSignedIn, navigate, signOut]);
+
+  async function handleSelectPlan(planKey: "free" | "starter" | "pro" | "team") {
+    setError(null);
+
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      navigate(`/signup?plan=${planKey}`);
+      return;
+    }
+    if (currentPlanKey === planKey) return;
+    if (currentPlanRank >= 0 && planOrder[planKey] <= currentPlanRank) {
+      setError("Plan downgrades are not supported yet. Contact support if you need help.");
+      return;
+    }
+
+    try {
+      setBusyPlan(planKey);
+      if (planKey === "free") {
+        await apiFetch("/billing/select", {
+          method: "POST",
+          body: JSON.stringify({ plan: "free" }),
+        });
+        await signOut();
+        navigate("/signin", { replace: true });
+        return;
+      }
+
+      const data = await apiFetch<{ url: string }>("/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({ plan: planKey }),
+      });
+      window.location.assign(data.url);
+    } catch (err: any) {
+      setError(err?.message || "Failed to start checkout.");
+    } finally {
+      setBusyPlan(null);
+    }
+  }
 
   return (
     <div className="min-h-screen px-6 py-12 lg:px-12">
@@ -89,11 +179,17 @@ export default function PricingPage() {
           </p>
         </div>
 
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {tiers.map((tier) => (
             <Card
               key={tier.name}
-              className={`relative border ${tier.highlighted ? "shadow-md bg-white" : "shadow-sm bg-white"} border-slate-200`}
+              className={`relative border ${tier.highlighted ? "shadow-md bg-white" : "shadow-sm bg-white"} border-slate-200 flex flex-col`}
             >
               {tier.tag && (
                 <span className="absolute right-3 top-3 rounded-full bg-slate-900 px-2 py-1 text-xs font-semibold text-white">
@@ -108,7 +204,7 @@ export default function PricingPage() {
                 </div>
                 <p className="text-sm text-slate-800">{tier.blurb}</p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex flex-1 flex-col">
                 <ul className="space-y-2 text-sm text-slate-900">
                   {tier.features.map((f) => (
                     <li key={f} className="flex items-center gap-2">
@@ -116,19 +212,20 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                {tier.to ? (
+                <div className="mt-auto pt-6">
                   <Button
-                    asChild
-                    className="mt-6 w-full"
-                    variant={tier.highlighted ? "default" : "outline"}
+                    className="w-full"
+                    variant="default"
+                    onClick={() => handleSelectPlan(tier.key)}
+                    disabled={
+                      busyPlan !== null ||
+                      (plan && plan === tier.key) ||
+                      (currentPlanRank >= 0 && planOrder[tier.key] <= currentPlanRank)
+                    }
                   >
-                    <Link to={tier.to}>{tier.cta}</Link>
+                    {plan && plan === tier.key ? "Current plan" : tier.cta}
                   </Button>
-                ) : (
-                  <Button className="mt-6 w-full" variant={tier.highlighted ? "default" : "outline"}>
-                    {tier.cta}
-                  </Button>
-                )}
+                </div>
               </CardContent>
             </Card>
           ))}

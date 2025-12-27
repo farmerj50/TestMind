@@ -13,6 +13,11 @@ const EnvSchema = z.object({
   CLERK_PUBLISHABLE_KEY: z.string().trim().min(1, "CLERK_PUBLISHABLE_KEY is required"),
   CLERK_SECRET_KEY: z.string().trim().min(1, "CLERK_SECRET_KEY is required"),
 
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PRICE_STARTER: z.string().optional(),
+  STRIPE_PRICE_PRO: z.string().optional(),
+  STRIPE_PRICE_TEAM: z.string().optional(),
+
   CORS_ORIGINS: z.string().optional(),
   ALLOW_PLAN_PATCH: z.string().optional(),
   START_WORKERS: z.string().optional(),

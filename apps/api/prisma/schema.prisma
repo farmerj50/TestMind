@@ -30,8 +30,9 @@ enum TestCaseType {
 
 enum PlanTier {
   free
+  starter
   pro
-  enterprise
+  team
 }
 
 enum TestResultStatus {
@@ -101,7 +102,7 @@ enum SecuritySeverity {
 
 model User {
   id               String            @id
-  plan             PlanTier          @default(free)
+  plan             PlanTier?
   projects         Project[]
   createdAt        DateTime          @default(now())
   AgentSession     AgentSession[]

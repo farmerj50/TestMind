@@ -15,6 +15,10 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
 };
 
+const PAGE_TEXT_ALIASES: Record<string, string> = {
+  'justicepath - accessible legal help': '/',
+};
+
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
 function normalizeIdentityPath(target: string): string {
@@ -73,6 +77,41 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
   return route.startsWith(prefixWithSlash);
 }
 
+type Region = 'navigation' | 'header' | 'main';
+
+function getAttributeValue(selector: string, attr: string): string | undefined {
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
+  const match = selector.match(regex);
+  return match ? match[1] : undefined;
+}
+
+function regionScope(page: Page, region?: Region) {
+  switch (region) {
+    case 'navigation':
+      return page.getByRole('navigation');
+    case 'header':
+      return page.locator('header');
+    case 'main':
+      return page.locator('main');
+    default:
+      return page;
+  }
+}
+
+function chooseLocator(page: Page, selector: string, region?: Region) {
+  const scope = regionScope(page, region);
+  const testId = getAttributeValue(selector, 'data-testid');
+  if (testId) {
+    return scope.getByTestId(testId);
+  }
+  const role = getAttributeValue(selector, 'role');
+  if (role) {
+    const name = getAttributeValue(selector, 'name');
+    return scope.getByRole(role, name ? { name } : undefined);
+  }
+  return scope.locator(selector);
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -86,6 +125,9 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
+  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
+  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
+  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
@@ -109,14 +151,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 20000 });
-      await candidate.click({ timeout: 20000 });
+      await candidate.waitFor({ state: 'visible', timeout: 15000 });
+      await candidate.click({ timeout: 15000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 20000 });
-  await fallback.click({ timeout: 20000 });
+  await fallback.waitFor({ state: 'visible', timeout: 15000 });
+  await fallback.click({ timeout: 15000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
@@ -175,7 +217,7 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page /select-plan – 6 test(s)
+// Auto-generated for page /select-plan 6 test(s)
 
 test("Page loads: /select-plan", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/select-plan" }, { type: "story", description: "Page loads: /select-plan" }, { type: "parameter", description: "page=/select-plan" });
@@ -187,7 +229,7 @@ test("Page loads: /select-plan", async ({ page }) => {
     {
       const targetPath = identityPathForText("JusticePath — Accessible Legal Help");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -210,7 +252,7 @@ test("Navigate /select-plan → /", async ({ page }) => {
     {
       const targetPath = identityPathForText("Page");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -233,7 +275,7 @@ test("Navigate /select-plan → /live-chat", async ({ page }) => {
     {
       const targetPath = identityPathForText("live-chat");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -256,7 +298,7 @@ test("Navigate /select-plan → /pricing", async ({ page }) => {
     {
       const targetPath = identityPathForText("pricing");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -286,7 +328,7 @@ test("Navigate /select-plan → /login", async ({ page }) => {
     {
       const targetPath = identityPathForText("login");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
@@ -309,7 +351,7 @@ test("Navigate /select-plan → /signup", async ({ page }) => {
     {
       const targetPath = identityPathForText("signup");
       if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 20000 });
+        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
         await ensurePageIdentity(page, targetPath);
         return;
       }
