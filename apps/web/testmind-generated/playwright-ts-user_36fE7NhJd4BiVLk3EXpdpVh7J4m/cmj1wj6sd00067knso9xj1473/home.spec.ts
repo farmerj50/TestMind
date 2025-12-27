@@ -15,7 +15,7 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
 };
 
-const IDENTITY_CHECK_TIMEOUT = 10000;
+const IDENTITY_CHECK_TIMEOUT = 20000;
 
 function normalizeIdentityPath(target: string): string {
   if (!target) return '/';

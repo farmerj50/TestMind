@@ -36,6 +36,7 @@
     "ioredis": "^5.8.2",
     "openai": "^4.47.2",
     "playwright-core": "^1.57.0",
+    "stripe": "^16.12.0",
     "undici": "^7.16.0",
     "zod": "^3.25.76"
   },

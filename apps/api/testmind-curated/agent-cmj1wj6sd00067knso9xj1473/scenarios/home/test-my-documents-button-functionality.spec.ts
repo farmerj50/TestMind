@@ -15,6 +15,10 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   '/pricing': { kind: 'role', role: 'heading', name: 'Choose Your Plan' },
 };
 
+const PAGE_TEXT_ALIASES: Record<string, string> = {
+  'justicepath - accessible legal help': '/',
+};
+
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
 function normalizeIdentityPath(target: string): string {
@@ -121,6 +125,9 @@ function identityPathForText(text?: string): string | undefined {
   if (!text) return undefined;
   const normalized = text.trim().toLowerCase();
   if (!normalized) return undefined;
+  const aliasKey = normalized.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
+  const aliasPath = PAGE_TEXT_ALIASES[aliasKey];
+  if (aliasPath) return aliasPath;
   for (const [path, identity] of Object.entries(PAGE_IDENTITIES)) {
     if (identity.kind === 'role' && identity.name?.toLowerCase() === normalized) {
       return path;
