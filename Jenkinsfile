@@ -43,7 +43,7 @@ pipeline {
         withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
           sh '''
             echo "$DOCKER_PASSWORD" | docker login $DOCKER_REGISTRY -u "$DOCKER_USERNAME" --password-stdin
-            docker build -f apps/api/Dockerfile -t "$IMAGE_TAG" .
+            docker build -f Dockerfile -t "$IMAGE_TAG" .
             docker push "$IMAGE_TAG"
           '''
         }

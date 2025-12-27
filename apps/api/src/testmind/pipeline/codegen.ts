@@ -84,6 +84,19 @@ function groupByPageCompat(cases: any[]) {
   return map;
 }
 
+function stripCodeFences(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("```")) return content;
+  const lines = trimmed.split(/\r?\n/);
+  const firstFence = lines[0].startsWith("```") ? 0 : -1;
+  const lastFence =
+    lines.length > 1 && lines[lines.length - 1].startsWith("```")
+      ? lines.length - 1
+      : -1;
+  if (firstFence === -1 || lastFence === -1 || lastFence <= firstFence) return content;
+  return lines.slice(firstFence + 1, lastFence).join("\n");
+}
+
 /** ✅ Named export used by synthesize.ts and service.ts */
 /** ✅ Named export used by synthesize.ts and service.ts */
 export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapterId = "playwright-ts") {
@@ -147,6 +160,12 @@ export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapter
 
   // Default: Playwright TS
   const grouped = groupByPageCompat(norm);
+  if (process.env.TM_LOG_GROUP_KEYS === "1") {
+    const summary = Array.from(grouped.entries())
+      .map(([page, tcs]) => `${page} (${tcs.length})`)
+      .join(", ");
+    console.log("[tm-pipeline-codegen] group keys:", summary || "(none)");
+  }
 
   let logged = false;
   for (const [page, tcs] of grouped) {
@@ -155,7 +174,8 @@ export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapter
       : page.replace(/\//g, "_").replace(/^_/, "");
     const filePath = path.join(outDir, `${base}.spec.ts`);
     const content = emitSpecFile(page, tcs as any);
-    await fs.writeFile(filePath, content, "utf8");
+    const cleaned = stripCodeFences(content);
+    await fs.writeFile(filePath, cleaned, "utf8");
     if (!logged) { console.log("[tm-pipeline-codegen] wrote:", filePath); logged = true; }
   }
 
