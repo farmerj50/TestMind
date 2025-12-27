@@ -58,19 +58,34 @@ type MissingLocatorItem = {
   suggestions: string[];
 };
 
-function generateSelectorSuggestions(name: string): string[] {
-  const normalized = name.replace(/[^a-z0-9]/gi, '');
+function generateSelectorSuggestions(rawName: string): string[] {
   const candidates: string[] = [];
-  if (normalized) {
-    candidates.push(`input[name="${normalized}"]`);
-    candidates.push(`input[placeholder*="${normalized}"]`);
-    candidates.push(`[data-testid*="${normalized}"]`);
+  const push = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    candidates.push(trimmed);
+  };
+
+  const safeText = rawName?.trim();
+  const looksLikeSelector = /[#.[\]=:]/.test(safeText || "");
+  if (looksLikeSelector) {
+    push(safeText);
   }
-  if (name && name.length > 1) {
-    candidates.push(`text=${name}`);
+
+  if (safeText && safeText.length <= 80) {
+    push(`text=${safeText.replace(/"/g, '\\"')}`);
   }
-  candidates.push('input');
-  candidates.push('button');
+
+  const normalized = rawName.replace(/[^a-z0-9]/gi, "");
+  if (normalized && normalized.length <= 32) {
+    push(`input[name="${normalized}"]`);
+    push(`input[placeholder*="${normalized}"]`);
+    push(`[data-testid*="${normalized}"]`);
+  }
+
+  push("input");
+  push("button");
   return Array.from(new Set(candidates));
 }
 
@@ -105,6 +120,8 @@ function extractLocatorExpression(message?: string | null, steps?: string[]): st
 }
 
 function extractLocatorName(expr: string): string {
+  const locatorMatch = expr.match(/locator\((.+)\)/i);
+  if (locatorMatch?.[1]) return cleanLocatorArg(locatorMatch[1]);
   const textMatch = expr.match(/getByText\((.+)\)/i);
   if (textMatch?.[1]) return cleanLocatorArg(textMatch[1]);
   const roleMatch = expr.match(/getByRole\((.+)\)/i);

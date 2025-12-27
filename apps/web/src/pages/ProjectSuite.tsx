@@ -371,6 +371,13 @@ export default function ProjectSuite() {
     [specProjects]
   );
 
+  useEffect(() => {
+    if (!specProjects.length) return;
+    if (!specProjects.some((proj) => proj.id === pid)) return;
+    if (typeof window === "undefined") return;
+    localStorage.setItem("tm:lastSuiteId", pid);
+  }, [pid, specProjects]);
+
   async function handleCreateSuite() {
     const proposed = window.prompt("New suite name?");
     if (!proposed) return;
@@ -506,7 +513,17 @@ export default function ProjectSuite() {
         const text = await res.text().catch(() => "Failed to sync suite");
         throw new Error(text);
       }
-      await res.json().catch(() => null);
+      const data = await res.json().catch(() => null);
+      if (data?.project?.id && data?.project?.name) {
+        setSpecProjects((prev) => {
+          const filtered = prev.filter((p) => p.id !== data.project.id);
+          return [...filtered, data.project];
+        });
+      }
+      if (data?.suiteId && data.suiteId !== activeSuite.id) {
+        navigate(`/suite/${data.suiteId}`);
+        return;
+      }
       setSpecReloadKey((k) => k + 1);
       setSpecProjectErr(null);
     } catch (err) {
@@ -665,7 +682,16 @@ export default function ProjectSuite() {
         }
         return r.json();
       })
-      .then((rows: SpecFile[]) => setSpecs(rows))
+      .then((rows: SpecFile[]) => {
+        const seen = new Set<string>();
+        const deduped = rows.filter((row) => {
+          const key = row.path.replace(/\\/g, "/");
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setSpecs(deduped);
+      })
       .catch((err) => {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load specs");

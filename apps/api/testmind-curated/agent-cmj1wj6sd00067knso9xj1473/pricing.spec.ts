@@ -1,13 +1,18 @@
 import { Page, test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
+const BASE_URL = process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }
   | { kind: 'text'; text: string }
   | { kind: 'locator'; selector: string };
 
-const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {};
+const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
+  "/case-type-selection": {
+    "kind": "locator",
+    "selector": "input[name=\"Select the type of legal issue you're dealing with:\"]"
+  }
+};
 
 const IDENTITY_CHECK_TIMEOUT = 10000;
 
