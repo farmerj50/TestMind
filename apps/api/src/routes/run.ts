@@ -19,6 +19,7 @@ import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
 import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
 import { enqueueAllureGenerate, enqueueRun } from "../runner/queue.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
+import { generateAndWrite } from "../testmind/service.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
@@ -304,6 +305,31 @@ type MissingLocatorItem = {
   suggestions: string[];
 };
 
+function extractNavTargetFromTitle(title?: string | null): string | null {
+  if (!title) return null;
+  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
+  const target = match?.[1]?.trim() ?? "";
+  if (!target || !target.startsWith("/")) return null;
+  return target;
+}
+
+function navKeyFromPath(path: string): string {
+  if (path === "/") return "nav.home";
+  const cleaned = path.replace(/^\//, "");
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return kebab ? `nav.${kebab}` : "nav.home";
+}
+
+function navSuggestions(path: string): string[] {
+  const target = path || "/";
+  return Array.from(
+    new Set([`a[href="${target}"]`, `a[href^="${target}"]`])
+  );
+}
+
 function semanticKeyFromString(value?: string): string {
   if (!value) return "default";
   const cleaned = value
@@ -314,19 +340,34 @@ function semanticKeyFromString(value?: string): string {
   return cleaned || "default";
 }
 
-function generateSelectorSuggestions(name: string): string[] {
-  const normalized = name.replace(/[^a-z0-9]/gi, "");
+function generateSelectorSuggestions(rawName: string): string[] {
   const candidates: string[] = [];
-  if (normalized) {
-    candidates.push(`input[name="${normalized}"]`);
-    candidates.push(`input[placeholder*="${normalized}"]`);
-    candidates.push(`[data-testid*="${normalized}"]`);
+  const push = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    candidates.push(trimmed);
+  };
+
+  const safeText = rawName?.trim();
+  const looksLikeSelector = /[#.[\]=:]/.test(safeText || "");
+  if (looksLikeSelector) {
+    push(safeText);
   }
-  if (name && name.length > 1) {
-    candidates.push(`text=${name}`);
+
+  if (safeText && safeText.length <= 80) {
+    push(`text=${safeText.replace(/"/g, '\\"')}`);
   }
-  candidates.push("input");
-  candidates.push("button");
+
+  const normalized = rawName.replace(/[^a-z0-9]/gi, "");
+  if (normalized && normalized.length <= 32) {
+    push(`input[name="${normalized}"]`);
+    push(`input[placeholder*="${normalized}"]`);
+    push(`[data-testid*="${normalized}"]`);
+  }
+
+  push("input");
+  push("button");
   return Array.from(new Set(candidates));
 }
 
@@ -359,6 +400,8 @@ function extractLocatorExpression(message?: string | null, steps?: string[]): st
 }
 
 function extractLocatorName(expr: string): string {
+  const locatorMatch = expr.match(/locator\((.+)\)/i);
+  if (locatorMatch?.[1]) return cleanLocatorArg(locatorMatch[1]);
   const textMatch = expr.match(/getByText\((.+)\)/i);
   if (textMatch?.[1]) return cleanLocatorArg(textMatch[1]);
   const roleMatch = expr.match(/getByRole\((.+)\)/i);
@@ -380,10 +423,20 @@ function pagePathFromTitle(title?: string | null): string {
   return pathMatch?.[1]?.trim() || "/";
 }
 
+function isPageLoadTitle(title?: string | null): boolean {
+  if (!title) return false;
+  return /Page loads:/i.test(title);
+}
+
 function isMissingLocatorFailure(message?: string | null, steps?: string[]): boolean {
   const raw = `${message ?? ""}\n${(steps ?? []).join("\n")}`;
   if (!raw.trim()) return false;
-  if (!/toBeVisible/i.test(raw) && !/element\(s\) not found/i.test(raw) && !/waiting for /i.test(raw)) {
+  if (
+    !/toBeVisible/i.test(raw) &&
+    !/element\(s\) not found/i.test(raw) &&
+    !/waiting for /i.test(raw) &&
+    !/locator\.waitFor/i.test(raw)
+  ) {
     return false;
   }
   return /getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator\(/i.test(raw);
@@ -452,6 +505,68 @@ export default async function runRoutes(app: FastifyInstance) {
         `Project ${pid} was not found. Create the project and configure its repoUrl before running.`,
         404
       );
+    }
+    const locatorMeta = (project.sharedSteps as any)?.locatorMeta;
+    const locatorUpdatedAt =
+      locatorMeta?.updatedAt && typeof locatorMeta.updatedAt === "string"
+        ? locatorMeta.updatedAt
+        : null;
+    const lastGeneratedAt =
+      typeof (project.sharedSteps as any)?.lastGeneratedAt === "string"
+        ? (project.sharedSteps as any).lastGeneratedAt
+        : null;
+    const shouldRegenerate =
+      !!locatorUpdatedAt && (!lastGeneratedAt || locatorUpdatedAt > lastGeneratedAt);
+
+    if (shouldRegenerate) {
+      try {
+        const adapterId = "playwright-ts";
+        const repoRoot = process.env.TM_LOCAL_REPO_ROOT
+          ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
+          : path.resolve(process.cwd(), "..", "..");
+        const baseUrlFromProject = (project.sharedSteps as any)?.baseUrl;
+        if (typeof baseUrlFromProject === "string" && baseUrlFromProject.trim()) {
+          const outRoot = path.join(GENERATED_ROOT, `${adapterId}-${project.ownerId}`, project.id);
+          await generateAndWrite({
+            repoPath: repoRoot,
+            outRoot,
+            baseUrl: baseUrlFromProject.trim(),
+            adapterId,
+            options: { sharedSteps: project.sharedSteps as any },
+          });
+          const webOutRoot = path.join(
+            repoRoot,
+            "apps",
+            "web",
+            "testmind-generated",
+            `${adapterId}-${project.ownerId}`,
+            project.id
+          );
+          await fs.rm(webOutRoot, { recursive: true, force: true }).catch(() => {});
+          await fs.mkdir(path.dirname(webOutRoot), { recursive: true });
+          await fs.cp(outRoot, webOutRoot, { recursive: true });
+          await prisma.project.update({
+            where: { id: project.id },
+            data: {
+              sharedSteps: {
+                ...(project.sharedSteps as any),
+                lastGeneratedAt: new Date().toISOString(),
+              },
+            },
+          });
+          await fs.writeFile(
+            path.join(RUNNER_LOGS_ROOT, "regen.log"),
+            `[runner] regenerated specs for ${project.id} at ${new Date().toISOString()}\n`,
+            { flag: "a" }
+          );
+        }
+      } catch (err) {
+        await fs.writeFile(
+          path.join(RUNNER_LOGS_ROOT, "regen.log"),
+          `[runner] regenerate failed for ${project.id}: ${err instanceof Error ? err.message : String(err)}\n`,
+          { flag: "a" }
+        );
+      }
     }
     // Ensure attached agent scenarios are materialized as specs in TM_LOCAL_SPECS before running
     try {
@@ -1194,6 +1309,7 @@ export default defineConfig({
           let stripped = posix;
           const needles = [
             `apps/web/testmind-generated/${genDestName}/`,
+            `apps/api/testmind-generated/${genDestName}/`,
             `apps/testmind-generated/${genDestName}/`,
             `testmind-generated/${genDestName}/`,
           ];
@@ -1217,7 +1333,14 @@ export default defineConfig({
 
         for (const selectedFile of requestedFiles) {
           if (!selectedFile) continue;
-          const resolved = resolveSelectedPath(selectedFile);
+          let resolved = resolveSelectedPath(selectedFile);
+          if (!resolved) {
+            const basename = path.basename(selectedFile);
+            if (basename) {
+              const foundInGen = await findByName(genDest, basename);
+              if (foundInGen) resolved = foundInGen;
+            }
+          }
           if (!resolved) {
             await fs.writeFile(
               path.join(outDir, "stdout.txt"),
@@ -1392,7 +1515,33 @@ export default defineConfig({
           const missingLocators: MissingLocatorItem[] = [];
           for (const c of cases) {
             if (c.status !== "failed" && c.status !== "error") continue;
+            if (/toHaveURL/i.test(c.message ?? "")) {
+              const navTarget = extractNavTargetFromTitle(c.fullName);
+              if (navTarget) {
+                missingLocators.push({
+                  pagePath: "__global_nav__",
+                  bucket: "locators",
+                  name: navKeyFromPath(navTarget),
+                  stepText: c.fullName ?? `Navigate to ${navTarget}`,
+                  suggestions: navSuggestions(navTarget),
+                });
+              }
+            }
             if (!isMissingLocatorFailure(c.message ?? null, c.steps)) continue;
+            if (isPageLoadTitle(c.fullName)) {
+              const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
+              if (locatorExpr) {
+                const locatorName = extractLocatorName(locatorExpr);
+                missingLocators.push({
+                  pagePath: pagePathFromTitle(c.fullName),
+                  bucket: "locators",
+                  name: "pageIdentity",
+                  stepText: c.fullName ?? "Page loads",
+                  suggestions: generateSelectorSuggestions(locatorName || "pageIdentity"),
+                });
+                continue;
+              }
+            }
             const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
             if (!locatorExpr) continue;
             const locatorName = extractLocatorName(locatorExpr);

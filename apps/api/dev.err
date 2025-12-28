@@ -23,7 +23,476 @@
   address: '::',
   port: 8787
 }
-3:21) {
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.se[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:8[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.se[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:8[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.se[self-heal] attempt cmjobldtq000n7k90gobf8pdn failed: Error: self-heal timeout after 120000ms
+    at Timeout._onTimeout (D:\Project\testmind\apps\api\src\runner\self-heal-worker.ts:290:31)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)
+[se[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] ([BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] ([self-heal] attempt cmjocvggv000q7ki86rnp9ari failed: Error: Spec file not found for unknown
+    at Worker.Worker.connection (D:\Project\testmind\apps\api\src\runner\self-heal-worker.ts:308:15)
+    at async <anonymous> (D:\Project\testmind\node_modules\.pnpm\bullmq@5.55[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] ([BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] ([BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] ([BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node[self-heal] attempt cmjojiqkl000b7ko8pa8t3cyp failed: Error: Spec file not found for unknown
+    at Worker.Worker.connection (D:\Project\testmind\apps\api\src\runner\self-heal-worker.ts:308:15)
+    at async <anonymous> (D:\Project\testmind\node_modules\.pnpm\bullmq@5.55.0\node_modules\bullmq\src\classes\worker.ts:877:26)
+    at async Worker.retryIfFailed (D:\Project\testmind\node_modules\.pnpm\bullmq@5.55.0\node_modules\bullmq\src\classes\worker.ts:1244:16)
+[self-heal] job 2802 failed: Error: Spec file not found for unknown
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[self-heal] attempt cmjomjjdt000k7ke468kvs7gl failed: Error: self-heal timeout after 120000ms
+    at Timeout._onTimeout (D:\Project\testmind\apps\api\src\runner\self-heal-worker.ts:290:31)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)
+[self-heal] job 2812 failed: Error: self-heal timeout after 120000ms
+    at Timeout._onTimeout (D:\Project\testmind\apps\api\src\runner\self-heal-worker.ts:290:31)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queu[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupL[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queu[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupL[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queu[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupL[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed E[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 8787
+}
+[BOOT] startServer failed Error: listen EADDRINUSE: address already in use :::8787
+    at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+    at listenInCluster (node:net:1965:12)
+    at doListen (node:net:2139:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
   code: 'EADDRINUSE',
   errno: -4091,
   syscall: 'listen',

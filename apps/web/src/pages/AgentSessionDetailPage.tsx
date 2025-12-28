@@ -578,7 +578,7 @@ const [autoRefresh, setAutoRefresh] = useState(true);
                                   </Badge>
                                   {sc.specPath && (
                                     <a
-                                      href={`/#/suite/playwright-ts?spec=${encodeURIComponent(sc.specPath)}`}
+                                      href={`/#/suite?spec=${encodeURIComponent(sc.specPath)}`}
                                       className="text-blue-600 hover:underline"
                                     >
                                       {sc.specPath}
@@ -643,7 +643,7 @@ const [autoRefresh, setAutoRefresh] = useState(true);
                                 <Badge className="border-slate-200 text-slate-800">{sc.status}</Badge>
                                 {sc.specPath && (
                                   <a
-                                    href={`/#/suite/playwright-ts?spec=${encodeURIComponent(sc.specPath)}`}
+                                    href={`/#/suite?spec=${encodeURIComponent(sc.specPath)}`}
                                     className="text-blue-600 hover:underline"
                                   >
                                     {sc.specPath}
@@ -769,7 +769,7 @@ function ScenarioDrawer({
             <Badge className="border-slate-200 text-slate-800">{scenario.status}</Badge>
             {scenario.specPath && (
               <a
-                href={`/#/suite/playwright-ts?spec=${encodeURIComponent(scenario.specPath)}`}
+                href={`/#/suite?spec=${encodeURIComponent(scenario.specPath)}`}
                 className="text-blue-600 hover:underline"
               >
                 {scenario.specPath}

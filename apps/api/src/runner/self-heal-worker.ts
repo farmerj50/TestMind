@@ -145,10 +145,29 @@ async function triggerRerun(
     return;
   }
 
+  let resolvedSpec = targetSpec;
+  if (targetSpec && !path.isAbsolute(targetSpec)) {
+    const repoRoot = localRepoRoot ? path.resolve(localRepoRoot) : guessRepoRoot();
+    const normalizedSpecPath =
+      targetSpec.replace(/\\/g, "/").replace(/^\.?\/+/, "") || targetSpec;
+    if (normalizedSpecPath.startsWith("testmind-generated/")) {
+      const preferred = path.join(repoRoot, normalizedSpecPath);
+      const generatedRoot = path.resolve(GENERATED_ROOT);
+      const strippedGenerated = normalizedSpecPath.replace(/^testmind-generated[\\/]/, "");
+      const generatedCandidate = path.join(generatedRoot, strippedGenerated);
+      resolvedSpec =
+        (await findExistingPath([preferred, generatedCandidate])) ??
+        path.join(repoRoot, normalizedSpecPath);
+    } else {
+      const candidates = buildSpecCandidates(repoRoot, normalizedSpecPath, targetSpec);
+      resolvedSpec = (await findExistingPath(candidates)) ?? path.join(repoRoot, normalizedSpecPath);
+    }
+  }
+
   const payload: RunPayload = {
     projectId,
     localRepoRoot,
-    file: targetSpec,
+    file: resolvedSpec,
   };
   if (grep) payload.grep = grep;
   if (headed !== undefined) payload.headed = headed;

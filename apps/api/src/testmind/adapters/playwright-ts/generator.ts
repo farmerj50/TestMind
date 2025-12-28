@@ -1,4 +1,4 @@
-import type { LocatorStore } from "../../runtime/locator-store.js";
+import type { LocatorStore, LocatorPage } from "../../runtime/locator-store.js";
 import type { TestPlan } from "../../core/plan.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -171,17 +171,100 @@ function semanticKeyFromString(value?: string): string {
   return cleaned || "default";
 }
 
-function generateSelectorSuggestions(name: string): string[] {
-  const normalized = name.replace(/[^a-z0-9]/g, "");
-  const candidates = [];
-  if (normalized) {
-    candidates.push(`input[name="${normalized}"]`);
-    candidates.push(`input[placeholder*="${normalized}"]`);
-    candidates.push(`[data-testid*="${normalized}"]`);
+function normalizeCandidateSelector(value?: string): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  let match = trimmed.match(/(?:page\.)?locator\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (match) return match[1];
+  match = trimmed.match(/getByText\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (match) return `text=${match[1]}`;
+  match = trimmed.match(/text\s*=\s*['"`]([^'"`]+)['"`]/i);
+  if (match) return `text=${match[1]}`;
+  if (trimmed.startsWith("//")) return trimmed;
+  if (/[#.[\]=:]/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function extractLikelySelector(value?: string): string | null {
+  if (!value) return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  const match =
+    raw.match(/(input\[[^\]]+\]|button\[[^\]]+\]|a\[[^\]]+\]|select\[[^\]]+\]|textarea\[[^\]]+\])/i) ||
+    raw.match(/(\[[^\]]+\])/i) ||
+    raw.match(/([#.][a-z0-9_-]+)/i);
+  return match ? match[1] : null;
+}
+
+function escapeQuotes(value: string): string {
+  return value.replace(/"/g, '\\"');
+}
+
+function generateSelectorSuggestions(rawName: string, selectorRaw?: string, textRaw?: string): string[] {
+  const candidates: string[] = [];
+  const push = (value?: string | null) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    candidates.push(trimmed);
+  };
+
+  push(normalizeCandidateSelector(selectorRaw));
+  push(extractLikelySelector(selectorRaw));
+  push(extractLikelySelector(rawName));
+
+  if (textRaw) {
+    const safeText = escapeQuotes(textRaw);
+    push(`text=${safeText}`);
+    if (safeText.length <= 80) {
+      push(`:has-text("${safeText}")`);
+    }
   }
-  candidates.push("input");
-  candidates.push("button");
+
+  const normalized = semanticKeyFromString(rawName);
+  if (normalized && normalized.length <= 32) {
+    push(`input[name="${normalized}"]`);
+    push(`input[placeholder*="${normalized}"]`);
+    push(`[data-testid*="${normalized}"]`);
+  }
+
+  push("input");
+  push("button");
   return Array.from(new Set(candidates));
+}
+
+function navKeysForRoute(target: string): string[] {
+  const cleaned = target.replace(/^\//, "");
+  if (!cleaned) return [];
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const camel = kebab.replace(/-([a-z0-9])/g, (_match, ch) => ch.toUpperCase());
+  const keys = new Set<string>();
+  if (kebab) keys.add(`nav.${kebab}`);
+  if (camel) keys.add(`nav.${camel}`);
+  keys.add(`nav.${cleaned.toLowerCase()}`);
+  return Array.from(keys);
+}
+
+function resolveNavLocator(store: LocatorStore, targetPath: string): { selector: string; key: string } | null {
+  const keys = navKeysForRoute(targetPath);
+  for (const key of keys) {
+    const selector = store.nav?.[key];
+    if (selector) return { selector, key };
+  }
+  const page = store.pages?.["/"];
+  if (!page) return null;
+  for (const key of keys) {
+    const selector =
+      page.locators?.[key] ??
+      page.buttons?.[key] ??
+      page.links?.[key];
+    if (selector) return { selector, key };
+  }
+  return null;
 }
 
 function extractHrefFromSelector(selector: string): string | undefined {
@@ -240,7 +323,7 @@ function resolveStepSelector(
     bucket,
     name,
     stepText: describeStep(step),
-    suggestions: generateSelectorSuggestions(name),
+    suggestions: generateSelectorSuggestions(rawName, selectorRaw, textRaw),
   };
   recordMissingLocator(missing);
   return { missing };
@@ -263,13 +346,31 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
       }
     case "expect-text":
       return `{
-  const targetPath = identityPathForText(${JSON.stringify(step.text)});
+  const rawText = ${JSON.stringify(step.text)};
+  if (/justicepath/i.test(rawText) && ${JSON.stringify(pagePath)} !== "/") {
+    await ensurePageIdentity(page, ${JSON.stringify(pagePath)});
+    return;
+  }
+  if (rawText.trim().toLowerCase() === "page") {
+    await expect(page).toHaveURL(pathRegex(${JSON.stringify(pagePath)}), { timeout: 15000 });
+    await ensurePageIdentity(page, ${JSON.stringify(pagePath)});
+    return;
+  }
+  const normalized = rawText.trim().toLowerCase();
+  const routeCandidate = normalized.startsWith("/") ? normalized : \`/\${normalized}\`;
+  const routeLike = /^[a-z0-9\\-/]+$/.test(normalized) && normalized !== "page";
+  if (routeLike) {
+    await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
+    await ensurePageIdentity(page, routeCandidate);
+    return;
+  }
+  const targetPath = identityPathForText(rawText);
   if (targetPath) {
     await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
     await ensurePageIdentity(page, targetPath);
     return;
   }
-  await expect(page.getByText(${JSON.stringify(step.text)})).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
 }`;
     case "expect-visible": {
       const resolved = resolveStepSelector(step, pagePath, locatorStore, "locators");
@@ -297,7 +398,42 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
 }`;
     }
     case "click": {
-      const resolved = resolveStepSelector(step, pagePath, locatorStore, "buttons");
+      const selectorRaw = "selector" in step ? step.selector : undefined;
+      const routeCandidate = selectorRaw ? toRelativeTarget(selectorRaw) : null;
+      const routeLike =
+        !!routeCandidate &&
+        routeCandidate !== "/" &&
+        /^[a-z0-9\-/]+$/.test(routeCandidate.slice(1));
+      if (routeLike) {
+        const nav = resolveNavLocator(locatorStore, routeCandidate);
+        if (!nav) {
+          const navKey = navKeysForRoute(routeCandidate)[0] ?? `nav.${semanticKeyFromString(routeCandidate)}`;
+          const missing: MissingLocatorItem = {
+            pagePath: "/",
+            bucket: "locators",
+            name: navKey,
+            stepText: `Navigate to ${routeCandidate}`,
+            suggestions: generateSelectorSuggestions(navKey, selectorRaw),
+          };
+          recordMissingLocator(missing);
+          return formatMissingLocatorAction(step, missing);
+        }
+        const locatorExpr = buildLocatorExpression(nav.selector, "click").expr;
+        return `{
+  const locator = ${locatorExpr}.first();
+  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  await locator.click({ timeout: 10000 });
+  await expect(page).toHaveURL(pathRegex(${JSON.stringify(routeCandidate)}), { timeout: 15000 });
+  await ensurePageIdentity(page, ${JSON.stringify(routeCandidate)});
+}`;
+      }
+      let resolved = resolveStepSelector(step, pagePath, locatorStore, "buttons");
+      if (!resolved.selector) {
+        resolved = resolveStepSelector(step, pagePath, locatorStore, "links");
+      }
+      if (!resolved.selector) {
+        resolved = resolveStepSelector(step, pagePath, locatorStore, "locators");
+      }
       if (!resolved.selector) {
         return formatMissingLocatorAction(step, resolved.missing);
       }
@@ -468,15 +604,51 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
   const baseUrl = sharedSteps.baseUrl?.trim();
   const baseUrlLiteral = baseUrl
     ? JSON.stringify(baseUrl)
-    : "process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173'";
+    : "process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173'";
   const cases = (tests ?? []).map((tc) =>
     emitTest(tc, uniqTitle, pagePath, locatorStore, postLoginPath)
   ).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} ${tests?.length ?? 0} test(s)`;
+  const isPlaceholderIdentityText = (text?: string) =>
+    typeof text === "string" && text.trim().toLowerCase() === "page";
+  const normalizeIdentitySelector = (selector: string): string => {
+    const match = selector.match(/input\[name=(?:"([^"]+)"|'([^']+)')\]/i);
+    const nameValue = match?.[1] ?? match?.[2];
+    if (nameValue && /\s/.test(nameValue)) {
+      return `text=${nameValue}`;
+    }
+    return selector;
+  };
+  const resolveIdentityFallback = (page: LocatorPage | undefined) => {
+    const selector =
+      page?.locators?.pageIdentity ||
+      page?.locators?.page ||
+      page?.locators?.identity ||
+      page?.locators?.root;
+    if (!selector) return null;
+    return { kind: "locator", selector: normalizeIdentitySelector(selector) } as const;
+  };
   const pageIdentities = Object.entries(locatorStore.pages ?? {}).reduce<Record<string, any>>(
     (acc, [key, page]) => {
-      if (page?.identity && typeof page.identity === "object") {
-        acc[key] = page.identity;
+      const fallback = resolveIdentityFallback(page);
+      if (fallback) {
+        acc[key] = fallback;
+        return acc;
+      }
+      const identity = page?.identity;
+      if (identity && typeof identity === "object") {
+        if (identity.kind === "role" && identity.role && identity.name) {
+          acc[key] = { kind: "role", role: identity.role, name: identity.name };
+          return acc;
+        }
+        if (identity.kind === "text" && identity.text && !isPlaceholderIdentityText(identity.text)) {
+          acc[key] = { kind: "text", text: identity.text };
+          return acc;
+        }
+        if (identity.kind === "locator" && identity.selector) {
+          acc[key] = { kind: "locator", selector: normalizeIdentitySelector(identity.selector) };
+          return acc;
+        }
       }
       return acc;
     },
@@ -528,9 +700,15 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "        page.getByRole(identity.role, { name: identity.name })",
     "      ).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
     "      break;",
-    "    case 'text':",
-    "      await expect(page.getByText(identity.text)).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "    case 'text': {",
+    "      const loc = page.getByText(identity.text);",
+    "      if (await loc.count()) {",
+    "        await expect(loc.first()).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      } else {",
+    "        await expect(page).toHaveTitle(new RegExp(escapeRegex(identity.text)), { timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      }",
     "      break;",
+    "    }",
     "    case 'locator': {",
     "      const locator = page.locator(identity.selector);",
     "      await locator.waitFor({ state: 'visible', timeout: IDENTITY_CHECK_TIMEOUT });",
@@ -593,7 +771,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "",
     "function pathRegex(target: string): RegExp {",
     "  const escaped = escapeRegex(target);",
-    "  return new RegExp(`^${escaped}(?:$|[?#/])`);",
+    "  return new RegExp(`^(?:https?:\\\\/\\\\/[^/]+)?${escaped}(?:$|[?#/])`);",
     "}",
     "",
     "function identityPathForText(text?: string): string | undefined {",

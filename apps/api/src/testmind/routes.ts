@@ -31,7 +31,7 @@ type GenerateCommon = {
 
 type GenerateBody = GenerateCommon;
 type GenerateQuery = GenerateCommon;
-type RunQuery = { baseUrl?: string; adapterId?: string };
+type RunQuery = { baseUrl?: string; adapterId?: string; projectId?: string };
 
 // Treat the monorepo root as two levels up from apps/api by default.
 const REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT
@@ -84,8 +84,8 @@ async function listSpecProjectsForUser(userId: string) {
       legacyDir: path.join(GENERATED_ROOT, a),
     }))
     .map((item) => {
+      const { dir, legacyDir } = item;
       try {
-        const { dir, legacyDir } = item;
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }
@@ -100,15 +100,12 @@ async function listSpecProjectsForUser(userId: string) {
             console.warn("[TM] failed to copy legacy specs", { legacyDir, dir, err });
           }
         }
-        const st = fs.statSync(dir);
-        if (!st.isDirectory()) return null;
-        const { dir: _dir, legacyDir: _legacyDir, ...rest } = item;
-        return rest;
-      } catch {
-        return null;
+      } catch (err) {
+        console.warn("[TM] failed to prepare generated suite", { dir, err });
       }
-    })
-    .filter(Boolean) as Array<{ id: string; name: string; type: "generated" }>;
+      const { dir: _dir, legacyDir: _legacyDir, ...rest } = item;
+      return rest;
+    }) as Array<{ id: string; name: string; type: "generated" }>;
 
   const curated: Array<{ id: string; name: string; type: "curated"; projectId: string }> = [];
   try {
@@ -281,6 +278,53 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
   const adapterProjectDir = (adapterId: string, userId: string, projectId?: string) =>
     projectId ? path.join(adapterDir(adapterId, userId), projectId) : adapterDir(adapterId, userId);
+  const webGeneratedRoot = path.join(REPO_ROOT, "apps", "web", "testmind-generated");
+
+  async function mirrorGeneratedToWeb(
+    repoPath: string,
+    adapterId: string,
+    userId: string,
+    projectId: string | undefined,
+    outRoot: string
+  ) {
+    const webRoot = path.resolve(repoPath, "apps", "web", "testmind-generated");
+    const dest = projectId
+      ? path.join(webRoot, `${adapterId}-${userId}`, projectId)
+      : path.join(webRoot, `${adapterId}-${userId}`);
+    const outResolved = path.resolve(outRoot);
+    const destResolved = path.resolve(dest);
+    if (outResolved.startsWith(webRoot)) return;
+    await fs.promises.rm(destResolved, { recursive: true, force: true }).catch(() => {});
+    await fs.promises.mkdir(path.dirname(destResolved), { recursive: true });
+    await fs.promises.cp(outResolved, destResolved, { recursive: true });
+  }
+
+  function resolveGeneratedSource(
+    adapterId: string,
+    userId: string,
+    projectId: string | undefined
+  ) {
+    const userFolder = `${adapterId}-${userId}`;
+    const roots = [
+      GENERATED_ROOT,
+      webGeneratedRoot,
+      path.join(REPO_ROOT, "apps", "api", "testmind-generated"),
+      path.join(REPO_ROOT, "testmind-generated"),
+    ];
+    for (const root of roots) {
+      const direct = projectId ? path.join(root, userFolder, projectId) : null;
+      if (direct && fs.existsSync(direct)) return direct;
+      const parent = path.join(root, userFolder);
+      if (fs.existsSync(parent)) {
+        if (projectId) {
+          const nested = path.join(parent, projectId);
+          if (fs.existsSync(nested)) return nested;
+        }
+        return parent;
+      }
+    }
+    return null;
+  }
 
   // ----------------------------------------------------------------------------
   // GET /tm/generate  (shows form if no baseUrl; runs generation if baseUrl given)
@@ -322,6 +366,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      let sharedSteps: Record<string, any> | undefined;
+      if (projectId) {
+        const project = await prisma.project.findFirst({
+          where: { id: projectId, ownerId: userId },
+          select: { sharedSteps: true },
+        });
+        sharedSteps = (project?.sharedSteps ?? undefined) as Record<string, any> | undefined;
+      }
 
       const outRoot = adapterProjectDir(adapterId, userId, projectId);
       try {
@@ -336,8 +388,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         outRoot,
         baseUrl,
         adapterId,
-        options: { include, exclude, maxRoutes, authEmail, authPassword },
+        options: { include, exclude, maxRoutes, authEmail, authPassword, sharedSteps },
       });
+      try {
+        await mirrorGeneratedToWeb(repoPath, adapterId, userId, projectId, outRoot);
+      } catch (err) {
+        app.log.warn({ err }, "[TM] failed to mirror generated specs to apps/web");
+      }
 
       const ms = Date.now() - t0;
       app.log.info({ ms, outRoot }, '[TM] GET /generate OK');
@@ -384,6 +441,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      let sharedSteps: Record<string, any> | undefined;
+      if (projectId) {
+        const project = await prisma.project.findFirst({
+          where: { id: projectId, ownerId: userId },
+          select: { sharedSteps: true },
+        });
+        sharedSteps = (project?.sharedSteps ?? undefined) as Record<string, any> | undefined;
+      }
 
       const outRoot = adapterProjectDir(adapterId, userId, projectId);
       try {
@@ -398,8 +463,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         outRoot,
         baseUrl,
         adapterId,
-        options: { include, exclude, maxRoutes, authEmail, authPassword },
+        options: { include, exclude, maxRoutes, authEmail, authPassword, sharedSteps },
       });
+      try {
+        await mirrorGeneratedToWeb(repoPath, adapterId, userId, projectId, outRoot);
+      } catch (err) {
+        app.log.warn({ err }, "[TM] failed to mirror generated specs to apps/web");
+      }
 
       const ms = Date.now() - t0;
       app.log.info({ ms, outRoot }, '[TM] POST /generate OK');
@@ -415,7 +485,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ----------------------------------------------------------------------------
   app.get<{ Querystring: RunQuery }>('/run/stream', async (req, reply: FastifyReply) => {
     try {
-      const { baseUrl, adapterId = 'playwright-ts' } = req.query || {};
+      const { baseUrl, adapterId = 'playwright-ts', projectId } = req.query || {};
       app.log.info({ baseUrl, adapterId }, '[TM] /run/stream params');
       if (!baseUrl) throw new Error('baseUrl is required');
       assertUrl(baseUrl);
@@ -423,7 +493,8 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-      const outRoot = adapterDir(adapterId, userId);
+      const runId = `run_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const outRoot = path.join(adapterProjectDir(adapterId, userId, projectId), runId);
       fs.mkdirSync(outRoot, { recursive: true });
 
       reply.raw.setHeader('Content-Type', 'text/event-stream');
@@ -439,7 +510,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         const exitCode = await runAdapter({
           outRoot,
           adapterId,
-          env: { TM_BASE_URL: baseUrl },
+          env: { TM_BASE_URL: baseUrl, TM_RUN_ID: runId },
           onLine: (l: string) => {
             if (IS_DEV) process.stdout.write(l);
             send(l);
@@ -642,23 +713,65 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const suite = await prisma.curatedSuite.findUnique({
         where: { id },
-        select: { rootRel: true, projectId: true, project: { select: { ownerId: true } } },
+        select: { id: true, name: true, rootRel: true, projectId: true, project: { select: { ownerId: true } } },
       });
       if (!suite || suite.project.ownerId !== userId) {
         return reply.code(404).send({ error: "Project not found" });
       }
 
-      const projectRoot = suite.projectId
-        ? adapterProjectDir(adapterId, userId, suite.projectId)
+      let targetSuite = suite;
+      let createdSuite: { id: string; name: string; rootRel: string; projectId: string } | null = null;
+      if (suite.projectId) {
+        const agentId = `agent-${suite.projectId}`;
+        if (suite.projectId && id === agentId) {
+          const existing = await prisma.curatedSuite.findFirst({
+            where: {
+              projectId: suite.projectId,
+              id: { not: agentId },
+              project: { ownerId: userId },
+            },
+            select: { id: true, name: true, rootRel: true, projectId: true },
+            orderBy: { updatedAt: "desc" },
+          });
+          if (existing) {
+            targetSuite = { ...suite, ...existing };
+          } else {
+            const project = await prisma.project.findUnique({
+              where: { id: suite.projectId },
+              select: { name: true },
+            });
+            const suiteName = `${project?.name ?? "Project"} Suite`;
+            const slug = slugify(suiteName);
+            const rootRel = `project-${suite.projectId}/${slug}`;
+            const created = await prisma.curatedSuite.create({
+              data: { projectId: suite.projectId, name: suiteName, rootRel },
+              select: { id: true, name: true, rootRel: true, projectId: true },
+            });
+            const manifest = readCuratedManifest();
+            const existingEntry = manifest.projects.find((p) => p.id === created.id);
+            if (existingEntry) {
+              existingEntry.name = created.name;
+              existingEntry.root = created.rootRel;
+            } else {
+              manifest.projects.push({ id: created.id, name: created.name, root: created.rootRel, locked: [] });
+            }
+            writeCuratedManifest(manifest);
+            createdSuite = created;
+            targetSuite = { ...suite, ...created };
+          }
+        }
+      }
+
+      const projectRoot = targetSuite.projectId
+        ? resolveGeneratedSource(adapterId, userId, targetSuite.projectId)
         : null;
-      const sourceRoot = projectRoot && fs.existsSync(projectRoot)
-        ? projectRoot
-        : path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
+      const sourceRoot =
+        projectRoot ?? resolveGeneratedSource(adapterId, userId, undefined) ?? path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
       if (!fs.existsSync(sourceRoot)) {
         return reply.code(404).send({ error: `No generated specs found for ${adapterId}` });
       }
 
-      const destRoot = path.resolve(CURATED_ROOT, suite.rootRel);
+      const destRoot = path.resolve(CURATED_ROOT, targetSuite.rootRel);
       fs.mkdirSync(destRoot, { recursive: true });
 
       if (mode === "replaceSuite") {
@@ -667,9 +780,13 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       }
 
       const existingSet = new Set<string>();
-      if (mode === "overwriteMatches") {
-        const existing = await globby(["**/*"], { cwd: destRoot, dot: false, onlyFiles: true });
-        existing.forEach((f) => existingSet.add(f.replace(/\\/g, "/")));
+      let destHasFiles = false;
+      if (mode === "overwriteMatches" || mode === "addMissing") {
+        const existing = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: destRoot, dot: false, onlyFiles: true });
+        destHasFiles = existing.length > 0;
+        if (mode === "overwriteMatches") {
+          existing.forEach((f) => existingSet.add(f.replace(/\\/g, "/")));
+        }
       }
 
       const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: sourceRoot, dot: false, onlyFiles: true });
@@ -683,11 +800,11 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         ensureWithin(destRoot, dest);
 
         const exists = fs.existsSync(dest);
-        if (mode === "overwriteMatches" && !exists && !existingSet.has(relPosix)) {
+        if (mode === "overwriteMatches" && destHasFiles && !exists && !existingSet.has(relPosix)) {
           skipped.push(relPosix);
           continue;
         }
-        if (mode === "addMissing" && exists) {
+        if (mode === "addMissing" && destHasFiles && exists) {
           skipped.push(relPosix);
           continue;
         }
@@ -697,7 +814,15 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         copied.push(relPosix);
       }
 
-      return reply.send({ ok: true, mode, copied, skipped });
+      return reply.send({
+        ok: true,
+        mode,
+        copied,
+        skipped,
+        suiteId: targetSuite.id,
+        suiteName: createdSuite?.name,
+        project: createdSuite ? { id: createdSuite.id, name: createdSuite.name, type: "curated", projectId: createdSuite.projectId } : undefined,
+      });
     } catch (err) {
       return sendError(app, reply, err);
     }

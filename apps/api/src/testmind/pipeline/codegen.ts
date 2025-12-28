@@ -74,9 +74,24 @@ function groupByPageCompat(cases: any[]) {
     if (!key) {
       const firstGoto = tc.steps?.find((s: any) => s.kind === "goto");
       if (firstGoto?.url) {
-        try { key = new URL(firstGoto.url).pathname || "/"; }
+        try {
+          const parsed = new URL(firstGoto.url);
+          const pathname = parsed.pathname || "/";
+          const search = parsed.search || "";
+          key = `${pathname}${search}` || "/";
+        }
         catch { key = "misc"; }
       } else key = "misc";
+    }
+    if (key) {
+      try {
+        const parsed = new URL(key, "http://localhost");
+        const pathname = parsed.pathname || "/";
+        const search = parsed.search || "";
+        key = `${pathname}${search}` || "/";
+      } catch {
+        if (!key.startsWith("/")) key = `/${key}`;
+      }
     }
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(tc);

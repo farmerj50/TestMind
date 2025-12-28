@@ -148,6 +148,7 @@ export default function RunPage() {
   const [analysis, setAnalysis] = useState<Analysis>(null);
 
   const [missingLocators, setMissingLocators] = useState<MissingLocatorItem[]>([]);
+  const [missingNavMappings, setMissingNavMappings] = useState<MissingLocatorItem[]>([]);
   const [missingLoading, setMissingLoading] = useState(false);
   const [missingError, setMissingError] = useState<string | null>(null);
   const [selectorValues, setSelectorValues] = useState<Record<string, string>>({});
@@ -305,7 +306,16 @@ export default function RunPage() {
     []
   );
 
-  const fetchMissingLocators = useCallback(
+  
+  const isGlobalNavItem = useCallback(
+    (item: MissingLocatorItem) =>
+      item.pagePath === "__global_nav__" &&
+      typeof item.name === "string" &&
+      item.name.startsWith("nav."),
+    []
+  );
+
+const fetchMissingLocators = useCallback(
     async ({ projectId, runId }: { projectId: string; runId: string }) => {
       setMissingLoading(true);
       setMissingError(null);
@@ -314,7 +324,9 @@ export default function RunPage() {
           missingLocators: MissingLocatorItem[];
         }>(`/projects/${projectId}/test-runs/${runId}/missing-locators`);
         const items = missingLocators ?? [];
-        setMissingLocators(items);
+        setMissingLocators(items.filter((item) => !isGlobalNavItem(item)));
+        const navItems = items.filter((item) => isGlobalNavItem(item));
+        setMissingNavMappings(navItems);
         setSelectorValues((prev) => {
           const next = { ...prev };
           items.forEach((item) => {
@@ -331,13 +343,14 @@ export default function RunPage() {
         setMissingLoading(false);
       }
     },
-    [apiFetch, locatorKey]
+    [apiFetch, locatorKey, isGlobalNavItem]
   );
 
   const lastFetchRef = useRef<{ id?: string; status?: string }>({});
   useEffect(() => {
     if (!run) {
       setMissingLocators([]);
+      setMissingNavMappings([]);
       setSelectorValues({});
       setMissingError(null);
       lastFetchRef.current = {};
@@ -903,6 +916,209 @@ export default function RunPage() {
             </section>
 
             <section>
+
+              <div className="mb-2 flex items-center justify-between gap-2">
+
+                <div className="font-medium text-slate-800">Missing nav mappings</div>
+
+                <div className="flex items-center gap-2">
+                  {missingLoading && (
+                    <span className="text-xs text-slate-500">Refreshing locators.</span>
+                  )}
+                  {run && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/locators?projectId=${run.project.id}`}>
+                        Open locator library
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+
+              </div>
+
+              {missingNavMappings.length === 0 && !missingLoading ? (
+
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+
+                  No missing nav mappings were emitted for this run.
+
+                </div>
+
+              ) : (
+
+                <ul className="space-y-3">
+
+                  {missingNavMappings.map((item) => {
+
+                    const key = locatorKey(item);
+
+                    const inputValue = selectorValues[key] ?? "";
+
+                    const state = saveStates[key];
+
+                    return (
+
+                      <li
+
+                        key={key}
+
+                        className="rounded-md border border-slate-200 bg-white/80 p-3"
+
+                      >
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+
+                          <div>
+
+                            <div className="text-sm font-semibold text-slate-800">{item.stepText}</div>
+
+                            <div className="text-xs text-slate-500">
+
+                              Global nav ? {item.name}
+
+                            </div>
+
+                          </div>
+
+                          <span className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600">
+
+                            global nav
+
+                          </span>
+
+                        </div>
+
+                        {item.suggestions.length > 0 && (
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+
+                            Suggestions:
+
+                            {item.suggestions.map((suggestion) => (
+
+                              <button
+
+                                key={suggestion}
+
+                                type="button"
+
+                                className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 transition hover:bg-slate-100"
+
+                                onClick={() =>
+
+                                  setSelectorValues((prev) => ({
+
+                                    ...prev,
+
+                                    [key]: suggestion,
+
+                                  }))
+
+                                }
+
+                              >
+
+                                {suggestion}
+
+                              </button>
+
+                            ))}
+
+                          </div>
+
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+
+                          <input
+
+                            className="flex-1 min-w-[220px] rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+
+                            placeholder="CSS selector"
+
+                            value={inputValue}
+
+                            onChange={(event) =>
+
+                              setSelectorValues((prev) => ({
+
+                                ...prev,
+
+                                [key]: event.target.value,
+
+                              }))
+
+                            }
+
+                          />
+
+                          <Button
+
+                            size="sm"
+
+                            variant="outline"
+
+                            onClick={() => handleLocatorSave(item)}
+
+                            disabled={state?.loading}
+
+                          >
+
+                            {state?.loading ? "Saving?" : state?.success ? "Saved" : "Add to Global nav"}
+
+                          </Button>
+
+                        </div>
+
+                        {state?.error && (
+
+                          <p className="mt-1 text-xs text-rose-600">{state.error}</p>
+
+                        )}
+
+                        {state?.success && (
+
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-emerald-600">
+
+                            <span>Global nav saved.</span>
+
+                            <Button
+
+                              size="sm"
+
+                              variant="outline"
+
+                              onClick={handleManualRerun}
+
+                              disabled={
+
+                                !run || healingInProgress || rerunsInProgress || triggeringRerun
+
+                              }
+
+                            >
+
+                              Rerun suite
+
+                            </Button>
+
+                          </div>
+
+                        )}
+
+                      </li>
+
+                    );
+
+                  })}
+
+                </ul>
+
+              )}
+
+            </section>
+
+<section>
 
               <div className="mb-2 flex items-center justify-between gap-2">
 
