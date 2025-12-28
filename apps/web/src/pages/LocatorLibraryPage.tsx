@@ -16,6 +16,7 @@ type LocatorPage = {
 type SharedSteps = {
   pages?: Record<string, LocatorPage>;
   locators?: Record<string, Record<string, string>>;
+  nav?: Record<string, string>;
   locatorMeta?: { updatedAt?: string; updatedBy?: string };
 };
 
@@ -28,6 +29,7 @@ type NewEntry = {
 };
 
 const buckets: LocatorBucket[] = ["fields", "buttons", "links", "locators"];
+const GLOBAL_NAV_KEY = "__global_nav__";
 
 function normalizeSharedSteps(sharedSteps: SharedSteps | null): Record<string, LocatorPage> {
   if (!sharedSteps) return {};
@@ -118,12 +120,18 @@ export default function LocatorLibraryPage() {
     () => normalizeSharedSteps(sharedSteps),
     [sharedSteps]
   );
+  const globalNav = useMemo(() => sharedSteps?.nav ?? {}, [sharedSteps]);
 
   const filteredPages = useMemo(() => {
-    if (!search.trim()) return pages;
+    const entries: Record<string, LocatorPage> = {
+      [GLOBAL_NAV_KEY]: { locators: globalNav },
+      ...pages,
+    };
+    if (!search.trim()) return entries;
     const needle = search.trim().toLowerCase();
-    return Object.entries(pages).reduce<Record<string, LocatorPage>>((acc, [pagePath, page]) => {
-      if (pagePath.toLowerCase().includes(needle)) {
+    return Object.entries(entries).reduce<Record<string, LocatorPage>>((acc, [pagePath, page]) => {
+      const label = pagePath === GLOBAL_NAV_KEY ? "Global nav" : pagePath;
+      if (label.toLowerCase().includes(needle)) {
         acc[pagePath] = page;
         return acc;
       }
@@ -136,7 +144,7 @@ export default function LocatorLibraryPage() {
       if (match) acc[pagePath] = page;
       return acc;
     }, {});
-  }, [pages, search]);
+  }, [globalNav, pages, search]);
 
   const pageCount = Object.keys(filteredPages).length;
   const locatorUpdatedAt = sharedSteps?.locatorMeta?.updatedAt
@@ -171,6 +179,10 @@ export default function LocatorLibraryPage() {
     selector: string
   ) => {
     if (!projectId) return;
+    if (pagePath === GLOBAL_NAV_KEY && !name.startsWith("nav.")) {
+      setError("Global nav locators must be prefixed with nav.");
+      return;
+    }
     const key = locatorKey(pagePath, bucket, name);
     const trimmed = selector.trim();
     if (!trimmed) {
@@ -186,6 +198,12 @@ export default function LocatorLibraryPage() {
       });
       setSharedSteps((prev) => {
         const next = { ...(prev ?? {}) } as SharedSteps;
+        if (pagePath === GLOBAL_NAV_KEY) {
+          const nav = { ...(next.nav ?? {}) };
+          nav[name] = trimmed;
+          next.nav = nav;
+          return next;
+        }
         const pagesNext = normalizeSharedSteps(next);
         const page = { ...(pagesNext[pagePath] ?? {}) } as LocatorPage;
         const map = { ...(page[bucket] ?? {}) } as Record<string, string>;
@@ -233,6 +251,10 @@ export default function LocatorLibraryPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Locator Library</h1>
           <p className="mt-1 text-sm text-slate-600">
             Review and update shared locators saved from test runs. Use search to find a selector quickly.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Global nav is shared across pages. Use nav.* keys there. Per-page groups should only include pageIdentity
+            and page-specific actions.
           </p>
           {locatorUpdatedAt && (
             <p className="mt-1 text-xs text-slate-500">Last updated: {locatorUpdatedAt}</p>
@@ -282,7 +304,13 @@ export default function LocatorLibraryPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {Object.entries(filteredPages).map(([pagePath, page]) => {
+            {Object.entries(filteredPages)
+              .sort(([a], [b]) => {
+                if (a === GLOBAL_NAV_KEY) return -1;
+                if (b === GLOBAL_NAV_KEY) return 1;
+                return a.localeCompare(b);
+              })
+              .map(([pagePath, page]) => {
               const counts = buckets.reduce(
                 (acc, bucket) => acc + Object.keys(page[bucket] ?? {}).length,
                 0
@@ -295,7 +323,14 @@ export default function LocatorLibraryPage() {
                   <summary className="cursor-pointer list-none">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <div className="text-sm font-semibold text-slate-900">{pagePath}</div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          {pagePath === GLOBAL_NAV_KEY ? "Global nav" : pagePath}
+                        </div>
+                        {pagePath === GLOBAL_NAV_KEY && (
+                          <div className="text-xs text-slate-500">
+                            Use nav.* keys (e.g. nav.pricing) for navigation links.
+                          </div>
+                        )}
                         <div className="text-xs text-slate-500">{counts} locators</div>
                       </div>
                       <div className="text-xs text-slate-500">Click to expand</div>
@@ -357,6 +392,7 @@ export default function LocatorLibraryPage() {
                               bucket: event.target.value as LocatorBucket,
                             })
                           }
+                          disabled={pagePath === GLOBAL_NAV_KEY}
                         >
                           {buckets.map((bucket) => (
                             <option key={bucket} value={bucket}>

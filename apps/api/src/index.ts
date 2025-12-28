@@ -436,6 +436,8 @@ const UpdateProjectSchema = z.object({
 });
 type UpdateProjectBody = z.infer<typeof UpdateProjectSchema>;
 
+const GLOBAL_NAV_KEY = "__global_nav__";
+
 const SharedLocatorSchema = z.object({
   pagePath: z.string().min(1),
   bucket: z.enum(["fields", "buttons", "links", "locators"]),
@@ -575,8 +577,39 @@ app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
     const { pagePath, bucket, name, selector } = parsed.data;
-    const normalizedPath = normalizeLocatorPath(pagePath);
+    const isGlobalNav = pagePath === GLOBAL_NAV_KEY;
+    const normalizedPath = isGlobalNav ? GLOBAL_NAV_KEY : normalizeLocatorPath(pagePath);
     const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+
+    if (isGlobalNav) {
+      const nav = { ...(sharedSteps.nav ?? {}) };
+      nav[name] = selector;
+      const now = new Date().toISOString();
+      const nextSharedSteps = {
+        ...sharedSteps,
+        nav,
+        locatorMeta: {
+          ...(sharedSteps.locatorMeta ?? {}),
+          updatedAt: now,
+          updatedBy: userId,
+        },
+      };
+
+      const updated = await prisma.project.update({
+        where: { id },
+        data: { sharedSteps: nextSharedSteps },
+        select: { sharedSteps: true },
+      });
+
+      scheduleSpecRegeneration({
+        projectId: id,
+        userId,
+        baseUrl: (sharedSteps as any)?.baseUrl,
+        sharedSteps: nextSharedSteps,
+      });
+
+      return reply.send({ sharedSteps: updated.sharedSteps });
+    }
 
     let pages: Record<string, any> = {};
     if (sharedSteps.pages && typeof sharedSteps.pages === "object") {

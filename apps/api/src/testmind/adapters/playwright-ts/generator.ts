@@ -234,6 +234,39 @@ function generateSelectorSuggestions(rawName: string, selectorRaw?: string, text
   return Array.from(new Set(candidates));
 }
 
+function navKeysForRoute(target: string): string[] {
+  const cleaned = target.replace(/^\//, "");
+  if (!cleaned) return [];
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const camel = kebab.replace(/-([a-z0-9])/g, (_match, ch) => ch.toUpperCase());
+  const keys = new Set<string>();
+  if (kebab) keys.add(`nav.${kebab}`);
+  if (camel) keys.add(`nav.${camel}`);
+  keys.add(`nav.${cleaned.toLowerCase()}`);
+  return Array.from(keys);
+}
+
+function resolveNavLocator(store: LocatorStore, targetPath: string): { selector: string; key: string } | null {
+  const keys = navKeysForRoute(targetPath);
+  for (const key of keys) {
+    const selector = store.nav?.[key];
+    if (selector) return { selector, key };
+  }
+  const page = store.pages?.["/"];
+  if (!page) return null;
+  for (const key of keys) {
+    const selector =
+      page.locators?.[key] ??
+      page.buttons?.[key] ??
+      page.links?.[key];
+    if (selector) return { selector, key };
+  }
+  return null;
+}
+
 function extractHrefFromSelector(selector: string): string | undefined {
   const match = selector.match(/href\s*=\s*['"]([^'"]+)['"]/i);
   return match ? match[1] : undefined;
@@ -318,6 +351,11 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
     await ensurePageIdentity(page, ${JSON.stringify(pagePath)});
     return;
   }
+  if (rawText.trim().toLowerCase() === "page") {
+    await expect(page).toHaveURL(pathRegex(${JSON.stringify(pagePath)}), { timeout: 15000 });
+    await ensurePageIdentity(page, ${JSON.stringify(pagePath)});
+    return;
+  }
   const normalized = rawText.trim().toLowerCase();
   const routeCandidate = normalized.startsWith("/") ? normalized : \`/\${normalized}\`;
   const routeLike = /^[a-z0-9\\-/]+$/.test(normalized) && normalized !== "page";
@@ -360,7 +398,42 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
 }`;
     }
     case "click": {
-      const resolved = resolveStepSelector(step, pagePath, locatorStore, "buttons");
+      const selectorRaw = "selector" in step ? step.selector : undefined;
+      const routeCandidate = selectorRaw ? toRelativeTarget(selectorRaw) : null;
+      const routeLike =
+        !!routeCandidate &&
+        routeCandidate !== "/" &&
+        /^[a-z0-9\-/]+$/.test(routeCandidate.slice(1));
+      if (routeLike) {
+        const nav = resolveNavLocator(locatorStore, routeCandidate);
+        if (!nav) {
+          const navKey = navKeysForRoute(routeCandidate)[0] ?? `nav.${semanticKeyFromString(routeCandidate)}`;
+          const missing: MissingLocatorItem = {
+            pagePath: "/",
+            bucket: "locators",
+            name: navKey,
+            stepText: `Navigate to ${routeCandidate}`,
+            suggestions: generateSelectorSuggestions(navKey, selectorRaw),
+          };
+          recordMissingLocator(missing);
+          return formatMissingLocatorAction(step, missing);
+        }
+        const locatorExpr = buildLocatorExpression(nav.selector, "click").expr;
+        return `{
+  const locator = ${locatorExpr}.first();
+  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  await locator.click({ timeout: 10000 });
+  await expect(page).toHaveURL(pathRegex(${JSON.stringify(routeCandidate)}), { timeout: 15000 });
+  await ensurePageIdentity(page, ${JSON.stringify(routeCandidate)});
+}`;
+      }
+      let resolved = resolveStepSelector(step, pagePath, locatorStore, "buttons");
+      if (!resolved.selector) {
+        resolved = resolveStepSelector(step, pagePath, locatorStore, "links");
+      }
+      if (!resolved.selector) {
+        resolved = resolveStepSelector(step, pagePath, locatorStore, "locators");
+      }
       if (!resolved.selector) {
         return formatMissingLocatorAction(step, resolved.missing);
       }
@@ -548,6 +621,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
   };
   const resolveIdentityFallback = (page: LocatorPage | undefined) => {
     const selector =
+      page?.locators?.pageIdentity ||
       page?.locators?.page ||
       page?.locators?.identity ||
       page?.locators?.root;
@@ -626,9 +700,15 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "        page.getByRole(identity.role, { name: identity.name })",
     "      ).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
     "      break;",
-    "    case 'text':",
-    "      await expect(page.getByText(identity.text)).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "    case 'text': {",
+    "      const loc = page.getByText(identity.text);",
+    "      if (await loc.count()) {",
+    "        await expect(loc.first()).toBeVisible({ timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      } else {",
+    "        await expect(page).toHaveTitle(new RegExp(escapeRegex(identity.text)), { timeout: IDENTITY_CHECK_TIMEOUT });",
+    "      }",
     "      break;",
+    "    }",
     "    case 'locator': {",
     "      const locator = page.locator(identity.selector);",
     "      await locator.waitFor({ state: 'visible', timeout: IDENTITY_CHECK_TIMEOUT });",
@@ -691,7 +771,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "",
     "function pathRegex(target: string): RegExp {",
     "  const escaped = escapeRegex(target);",
-    "  return new RegExp(`^${escaped}(?:$|[?#/])`);",
+    "  return new RegExp(`^(?:https?:\\\\/\\\\/[^/]+)?${escaped}(?:$|[?#/])`);",
     "}",
     "",
     "function identityPathForText(text?: string): string | undefined {",
