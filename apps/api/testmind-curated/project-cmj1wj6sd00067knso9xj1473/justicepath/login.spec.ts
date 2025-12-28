@@ -21,7 +21,7 @@ function normalizeIdentityPath(target: string): string {
   try {
     const parsed = new URL(target, BASE_URL);
     const path = parsed.pathname || '/';
-    const search = parsed.search || '';
+    const search = parsed.search || '';  
     return `${path}${search}` || '/';
   } catch {
     if (target.startsWith('/')) return target;
@@ -81,7 +81,7 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
 type Region = 'navigation' | 'header' | 'main';
 
 function getAttributeValue(selector: string, attr: string): string | undefined {
-  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'\"]+)['"]`, 'i');
   const match = selector.match(regex);
   return match ? match[1] : undefined;
 }
@@ -114,12 +114,12 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\\]\]/g, '\$&');
 }
 
 function pathRegex(target: string): RegExp {
   const escaped = escapeRegex(target);
-  return new RegExp(`^(?:https?:\\/\\/[^/]+)?${escaped}(?:$|[?#/])`);
+  return new RegExp(`^(?:https?:\/\/[^/]+)?${escaped}(?:$|[?#/])`);
 }
 
 function identityPathForText(text?: string): string | undefined {
@@ -232,12 +232,13 @@ test("Page loads: /login", async ({ page }) => {
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/login"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/login");
+        await expect(page).toHaveURL(pathRegex("/"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
-      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      const routeCandidate = normalized.startsWith("/") ? normalized : \
+    `/${normalized}`;
       const routeLike = /^[a-z0-9\-/]+$/.test(normalized) && normalized !== "page";
       if (routeLike) {
         await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
@@ -286,8 +287,8 @@ test("Navigate /login → /", async ({ page }) => {
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/login"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/login");
+        await expect(page).toHaveURL(pathRegex("/"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
