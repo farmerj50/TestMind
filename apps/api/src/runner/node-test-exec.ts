@@ -320,6 +320,18 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     
     const stdout = proc.stdout ?? "";
     let stderr = proc.stderr ?? "";
+    if (/No tests found/i.test(stderr)) {
+      const debugLines = [
+        "[TESTMIND DEBUG]",
+        `resolvedCwd=${found.cwd}`,
+        `workdir=${req.workdir}`,
+        `jsonOutPath=${req.jsonOutPath}`,
+        `extraGlobs=${JSON.stringify(req.extraGlobs ?? [])}`,
+        `baseUrl=${req.baseUrl ?? ""}`,
+        `args=${JSON.stringify(args)}`,
+      ];
+      stderr += `\n${debugLines.join("\n")}`;
+    }
     if (missingBrowserError(stderr)) {
       stderr +=
         "\nPlaywright browser binary missing. Run `npx playwright install --with-deps` on the machine to fetch a headless shell.";

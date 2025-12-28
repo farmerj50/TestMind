@@ -1135,7 +1135,11 @@ export default defineConfig({
           const repoAltUser = path.join(work, 'testmind-generated', userSuffix);
           const webPath  = path.join(work, 'apps', 'web', 'testmind-generated', adapter); // common dev location
           const webPathUser = path.join(work, 'apps', 'web', 'testmind-generated', userSuffix);
-          const curatedPath = path.join(CURATED_ROOT, project.id);
+          const curatedSuitePath =
+            suiteId && fsSync.existsSync(path.join(CURATED_ROOT, suiteId))
+              ? path.join(CURATED_ROOT, suiteId)
+              : null;
+          const curatedPath = curatedSuitePath ?? path.join(CURATED_ROOT, project.id);
 
           function pickSource(): string | null {
             // Prefer curated edits when present so saved suite changes are run.
@@ -1351,7 +1355,10 @@ export default defineConfig({
           }
           const normalizedFile = path.relative(genDest, resolved).replace(/\\/g, "/");
           let abs = resolved;
-          const curatedSuiteDir = path.join(CURATED_ROOT, agentSuiteId(project.id));
+          const curatedSuiteDir =
+            suiteId && fsSync.existsSync(path.join(CURATED_ROOT, suiteId))
+              ? path.join(CURATED_ROOT, suiteId)
+              : path.join(CURATED_ROOT, agentSuiteId(project.id));
           const curatedCandidate = path.join(curatedSuiteDir, normalizedFile);
           try {
             const exists = await fs.stat(abs).then(() => true).catch(() => false);
