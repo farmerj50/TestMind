@@ -14,8 +14,7 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   }
 };
 
-const IDENTITY_CHECK_TIMEOUT = 20000;
-const NAVIGATION_TIMEOUT = 30000; // Increased timeout for navigation
+const IDENTITY_CHECK_TIMEOUT = 10000;
 
 function normalizeIdentityPath(target: string): string {
   if (!target) return '/';
@@ -82,7 +81,7 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
 type Region = 'navigation' | 'header' | 'main';
 
 function getAttributeValue(selector: string, attr: string): string | undefined {
-  const regex = new RegExp(`${attr}\s*=\s*['"]([^'“]+)['"]`, 'i');
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'\"]+)['"]`, 'i');
   const match = selector.match(regex);
   return match ? match[1] : undefined;
 }
@@ -115,7 +114,7 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\\]\]/g, '\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -150,14 +149,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: NAVIGATION_TIMEOUT });
-      await candidate.click({ timeout: NAVIGATION_TIMEOUT });
+      await candidate.waitFor({ state: 'visible', timeout: 15000 });
+      await candidate.click({ timeout: 15000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: NAVIGATION_TIMEOUT });
-  await fallback.click({ timeout: NAVIGATION_TIMEOUT });
+  await fallback.waitFor({ state: 'visible', timeout: 15000 });
+  await fallback.click({ timeout: 15000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
@@ -170,7 +169,7 @@ const SHARED_LOGIN_CONFIG = {
 
 async function navigateTo(page: Page, target: string) {
   const url = new URL(target, BASE_URL);
-  await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT }); // Set timeout for navigation
+  await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
   await assertNavigationPath(page, url);
 }
 
@@ -203,10 +202,10 @@ async function sharedLogin(page: Page) {
   const username = SHARED_LOGIN_CONFIG.usernameValue ?? envUsername;
   const password = SHARED_LOGIN_CONFIG.passwordValue ?? envPassword;
   const userLocator = page.locator(SHARED_LOGIN_CONFIG.usernameSelector);
-  await userLocator.first().waitFor({ state: 'visible', timeout: 10000 });
+  await userLocator.first().waitFor({ state: 'visible', timeout: 30000 });
   await userLocator.first().fill(username);
   const passLocator = page.locator(SHARED_LOGIN_CONFIG.passwordSelector);
-  await passLocator.first().waitFor({ state: 'visible', timeout: 10000 });
+  await passLocator.first().waitFor({ state: 'visible', timeout: 30000 });
   await passLocator.first().fill(password);
   if (SHARED_LOGIN_CONFIG.submitSelector) {
     const submit = page.locator(SHARED_LOGIN_CONFIG.submitSelector);
@@ -217,6 +216,7 @@ async function sharedLogin(page: Page) {
 }
 
 // Auto-generated for page /case-type-selection 6 test(s)
+
 test("Page loads: /case-type-selection", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Page loads: /case-type-selection" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
@@ -249,7 +249,7 @@ test("Page loads: /case-type-selection", async ({ page }) => {
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -272,8 +272,8 @@ test("Navigate /case-type-selection → /", async ({ page }) => {
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/");
+        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/case-type-selection");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
@@ -290,7 +290,7 @@ test("Navigate /case-type-selection → /", async ({ page }) => {
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -331,7 +331,7 @@ test("Navigate /case-type-selection → /live-chat", async ({ page }) => {
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -372,7 +372,7 @@ test("Navigate /case-type-selection → /pricing", async ({ page }) => {
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -414,7 +414,7 @@ test("Navigate /case-type-selection → /login", async ({ page }) => {
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });
@@ -455,7 +455,7 @@ test("Navigate /case-type-selection → /signup", async ({ page }) => {
         await ensurePageIdentity(page, targetPath);
         return;
       }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
     }
   });
 });

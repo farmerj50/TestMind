@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
 import { globby } from "globby";
+import archiver from "archiver";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
 
@@ -587,6 +588,49 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     } catch (err) {
       return sendError(app, reply as any, err, 500);
     }
+  });
+
+  // ----------------------------------------------------------------------------
+  // GET /tm/generated/download (zip bundle of generated specs)
+  // ----------------------------------------------------------------------------
+  app.get("/generated/download", async (req, reply) => {
+    try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      const { adapterId = "playwright-ts", projectId } = (req.query as any) || {};
+      const root = resolveGeneratedSource(adapterId, userId, projectId);
+      if (!root || !fs.existsSync(root)) {
+        return reply.code(404).send({ error: "Generated bundle not found" });
+      }
+
+      const safeProject = projectId ? `-${projectId}` : "";
+      const filename = `generated-${adapterId}${safeProject}.zip`;
+      reply.header("Content-Type", "application/zip");
+      reply.header("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.on("error", (err) => {
+        app.log.error(err, "[TM] download archive failed");
+        reply.raw.destroy(err as Error);
+      });
+      archive.directory(root, false);
+      archive.pipe(reply.raw);
+      await archive.finalize();
+    } catch (err) {
+      return sendError(app, reply as any, err, 500);
+    }
+  });
+
+  // Legacy shortcut used by the UI
+  app.get("/download", async (req, reply) => {
+    return app.inject({
+      method: "GET",
+      url: `/tm/generated/download${req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}`,
+      headers: req.headers as any,
+    }).then((res) => {
+      reply.raw.writeHead(res.statusCode, res.headers as any);
+      reply.raw.end(res.rawPayload);
+    });
   });
   // ---------------------------------------------------------------------------
   // NEW: Suite endpoints

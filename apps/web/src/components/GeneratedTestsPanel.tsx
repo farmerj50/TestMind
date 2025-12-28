@@ -63,7 +63,12 @@ export default function GeneratedTestsPanel() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
-          <a href="/tm/download">
+          <a
+            href={`/tm/generated/download?${new URLSearchParams({
+              adapterId,
+              ...(projectId ? { projectId } : {}),
+            }).toString()}`}
+          >
             <Button variant="secondary" size="sm">Download bundle</Button>
           </a>
         </div>

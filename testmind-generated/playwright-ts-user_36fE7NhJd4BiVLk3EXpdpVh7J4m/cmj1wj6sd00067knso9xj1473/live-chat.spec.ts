@@ -81,7 +81,7 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
 type Region = 'navigation' | 'header' | 'main';
 
 function getAttributeValue(selector: string, attr: string): string | undefined {
-  const regex = new RegExp(`${attr}\s*=\s*['"]([^'\"]+)['"]`, 'i');
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
   const match = selector.match(regex);
   return match ? match[1] : undefined;
 }
@@ -114,12 +114,12 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]+]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function pathRegex(target: string): RegExp {
   const escaped = escapeRegex(target);
-  return new RegExp(`^(?:https?:\/\/[^/]+)?${escaped}(?:$|[?#/])`);
+  return new RegExp(`^(?:https?:\\/\\/[^/]+)?${escaped}(?:$|[?#/])`);
 }
 
 function identityPathForText(text?: string): string | undefined {
