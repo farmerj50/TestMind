@@ -127,6 +127,7 @@ async function triggerRerun(
   if (sharedSteps !== undefined) params.sharedSteps = sharedSteps;
   if (localRepoRoot) params.localRepoRoot = localRepoRoot;
   if (targetSpec) params.targetSpec = targetSpec;
+  if (grep) params.requestedGrep = grep;
   const rerun = await prisma.testRun.create({
     data: {
       projectId,
@@ -142,6 +143,14 @@ async function triggerRerun(
     console.log(
       `[self-heal] heal-only mode: skipping rerun queue for ${targetSpec ?? "full suite"} (run ${rerun.id})`
     );
+    await prisma.testRun.update({
+      where: { id: rerun.id },
+      data: {
+        status: TestRunStatus.succeeded,
+        finishedAt: new Date(),
+        summary: "Self-heal patch applied; rerun skipped",
+      },
+    });
     return;
   }
 
@@ -163,13 +172,24 @@ async function triggerRerun(
       resolvedSpec = (await findExistingPath(candidates)) ?? path.join(repoRoot, normalizedSpecPath);
     }
   }
+  if (resolvedSpec) {
+    const repoRoot = localRepoRoot ? path.resolve(localRepoRoot) : guessRepoRoot();
+    const resolvedPosix = toPosix(path.resolve(resolvedSpec));
+    const repoRootPosix = toPosix(path.resolve(repoRoot));
+    const generatedRootPosix = toPosix(path.resolve(GENERATED_ROOT));
+    if (resolvedPosix.startsWith(`${generatedRootPosix}/`)) {
+      const rel = resolvedPosix.slice(generatedRootPosix.length + 1);
+      resolvedSpec = `testmind-generated/${rel}`;
+    } else if (resolvedPosix.startsWith(`${repoRootPosix}/`)) {
+      resolvedSpec = resolvedPosix.slice(repoRootPosix.length + 1);
+    }
+  }
 
   const payload: RunPayload = {
     projectId,
     localRepoRoot,
     file: resolvedSpec,
   };
-  if (grep) payload.grep = grep;
   if (headed !== undefined) payload.headed = headed;
 
   try {
@@ -183,6 +203,14 @@ async function triggerRerun(
       headed ?? "(default)"
     );
   } catch (err) {
+    await prisma.testRun.update({
+      where: { id: rerun.id },
+      data: {
+        status: TestRunStatus.failed,
+        finishedAt: new Date(),
+        error: String(err),
+      },
+    });
     console.error(`[self-heal] failed to enqueue rerun ${rerun.id}:`, err);
     throw err;
   }
@@ -233,16 +261,20 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   const stdoutPath = path.join(runLogDir, 'stdout.txt');
   const stderrPath = path.join(runLogDir, 'stderr.txt');
 
-  const [stdout, stderr, result] = await Promise.all([
+  const [stdout, stderr, result, fallbackCase] = await Promise.all([
     fs.readFile(stdoutPath, 'utf8').catch(() => ''),
     fs.readFile(stderrPath, 'utf8').catch(() => ''),
     prisma.testResult.findUnique({
       where: { id: job.testResultId },
       select: { message: true, testCase: { select: { key: true, title: true } } },
     }),
+    prisma.testCase.findUnique({
+      where: { id: job.testCaseId },
+      select: { key: true, title: true },
+    }),
   ]);
 
-  const key = result?.testCase?.key ?? job.testCaseId ?? 'unknown-spec';
+  const key = result?.testCase?.key ?? fallbackCase?.key ?? 'unknown-spec';
   const runSpecPathRaw = key.split("#")[0] || key;
   const runSpecPath = runSpecPathRaw.replace(/\\/g, "/");
   const normalizedSpecPath = runSpecPath.replace(/^\.?\/+/, "").replace(/^\/+/, "") || "unknown-spec";
@@ -275,7 +307,7 @@ async function collectFailureContext(job: SelfHealPayload): Promise<FailureConte
   const repoSpecContent = await fs.readFile(repoAbsolutePath, "utf8").catch(() => undefined);
   const runSpecContent = await fs.readFile(runSpecPathRaw, "utf8").catch(() => undefined);
   const specContent = repoSpecContent ?? runSpecContent;
-  const rawTitle = result?.testCase?.title ?? job.testTitle ?? null;
+  const rawTitle = result?.testCase?.title ?? fallbackCase?.title ?? job.testTitle ?? null;
   const testTitle = extractTestTitle(rawTitle);
 
   return {

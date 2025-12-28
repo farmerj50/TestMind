@@ -611,6 +611,7 @@ const fetchMissingLocators = useCallback(
   async function handleManualRerun() {
 
     if (!run || triggeringRerun) return;
+    const rerunTargetId = run.rerunOfId ?? run.id;
 
     try {
 
@@ -618,7 +619,7 @@ const fetchMissingLocators = useCallback(
 
       const res = await apiFetch<{ runId: string }>(
 
-        `/runner/test-runs/${run.id}/rerun`,
+        `/runner/test-runs/${rerunTargetId}/rerun`,
 
         { method: "POST" }
 
