@@ -17,6 +17,7 @@ export type LocatorPage = {
 export type LocatorStore = {
   version?: number;
   pages?: Record<string, LocatorPage>;
+  nav?: Record<string, string>;
 };
 
 export function normalizeSharedSteps(raw: unknown): LocatorStore {
@@ -25,6 +26,7 @@ export function normalizeSharedSteps(raw: unknown): LocatorStore {
   if (obj.pages && typeof obj.pages === "object") {
     return {
       version: typeof obj.version === "number" ? obj.version : undefined,
+      nav: normalizeMap(obj.nav),
       pages: Object.entries(obj.pages).reduce<Record<string, LocatorPage>>((acc, [pageKey, pageValue]) => {
         acc[pageKey] = normalizePage(pageValue);
         return acc;
@@ -33,6 +35,7 @@ export function normalizeSharedSteps(raw: unknown): LocatorStore {
   }
   if (obj.locators && typeof obj.locators === "object") {
     return {
+      nav: normalizeMap(obj.nav),
       pages: Object.entries(obj.locators).reduce((acc, [pageKey, locators]) => {
         acc[pageKey] = { locators: normalizeMap(locators) };
         return acc;
@@ -60,10 +63,38 @@ function normalizeMap(value: unknown): Record<string, string> | undefined {
   const normalized: Record<string, string> = {};
   for (const [key, val] of Object.entries(map)) {
     if (typeof val === "string" && val.trim()) {
-      normalized[key] = val.trim();
+      const cleaned = normalizeSelectorValue(val);
+      if (cleaned) normalized[key] = cleaned;
     }
   }
   return Object.keys(normalized).length ? normalized : undefined;
+}
+
+export function normalizeSelectorValue(value: string): string | null {
+  let cleaned = value.trim();
+  if (!cleaned) return null;
+  cleaned = cleaned.replace(/\s+to be visible$/i, "").trim();
+
+  const locatorMatch = cleaned.match(/locator\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (locatorMatch?.[1]) return locatorMatch[1].trim();
+
+  const textMatch = cleaned.match(/getByText\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (textMatch?.[1]) return `text=${textMatch[1].trim()}`;
+
+  const labelMatch = cleaned.match(/getByLabel\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+  if (labelMatch?.[1]) return `text=${labelMatch[1].trim()}`;
+
+  const roleMatch = cleaned.match(/getByRole\(\s*['"`]([^'"`]+)['"`]\s*,\s*\{\s*name:\s*['"`]([^'"`]+)['"`]\s*\}\s*\)/i);
+  if (roleMatch?.[1] && roleMatch?.[2]) {
+    return `role=${roleMatch[1].trim()}[name="${roleMatch[2].trim()}"]`;
+  }
+
+  if (/^text=locator\(/i.test(cleaned)) {
+    const inner = cleaned.match(/text=locator\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
+    if (inner?.[1]) return inner[1].trim();
+  }
+
+  return cleaned;
 }
 
 function normalizePathKey(path: string): string {
@@ -105,6 +136,11 @@ export function resolveLocator(
   bucket: LocatorBucket,
   name: string
 ): { selector?: string; pageKey?: string } {
+  if (pagePath === "__global_nav__") {
+    const selector = store.nav?.[name];
+    if (selector) return { selector, pageKey: "__global_nav__" };
+    return { pageKey: "__global_nav__" };
+  }
   const pageKey = bestPageKey(store, pagePath);
   if (!pageKey) return {};
   const page = store.pages?.[pageKey];
@@ -116,5 +152,6 @@ export function resolveLocator(
       : bucket === "links"
       ? page?.links?.[name]
       : page?.locators?.[name];
-  return { selector: target, pageKey };
+  if (target) return { selector: target, pageKey };
+  return { pageKey };
 }

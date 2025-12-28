@@ -25,7 +25,8 @@ import securityRoutes from "./routes/security.js";
 import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
-import { REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
+import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
+import { generateAndWrite } from "./testmind/service.js";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans.js";
@@ -51,6 +52,50 @@ const registerWithLog = async (label: string, fn: () => unknown) => {
   console.log(`[BOOT] register ${label} start`);
   await toVoidPromise(fn());
   console.log(`[BOOT] register ${label} done`);
+};
+
+const resolveRepoRoot = () =>
+  process.env.TM_LOCAL_REPO_ROOT
+    ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
+    : path.resolve(process.cwd(), "..", "..");
+
+const scheduleSpecRegeneration = (params: {
+  projectId: string;
+  userId: string;
+  baseUrl?: string;
+  sharedSteps: Record<string, any>;
+}) => {
+  const { projectId, userId, baseUrl, sharedSteps } = params;
+  const trimmedBaseUrl = typeof baseUrl === "string" ? baseUrl.trim() : "";
+  if (!trimmedBaseUrl) return;
+  setImmediate(async () => {
+    try {
+      const adapterId = "playwright-ts";
+      const repoRoot = resolveRepoRoot();
+      const outRoot = path.join(GENERATED_ROOT, `${adapterId}-${userId}`, projectId);
+      await generateAndWrite({
+        repoPath: repoRoot,
+        outRoot,
+        baseUrl: trimmedBaseUrl,
+        adapterId,
+        options: { sharedSteps },
+      });
+      const webOutRoot = path.join(
+        repoRoot,
+        "apps",
+        "web",
+        "testmind-generated",
+        `${adapterId}-${userId}`,
+        projectId
+      );
+      await fs.promises.rm(webOutRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.promises.mkdir(path.dirname(webOutRoot), { recursive: true });
+      await fs.promises.cp(outRoot, webOutRoot, { recursive: true });
+      console.log(`[locators] regenerated specs for project ${projectId}`);
+    } catch (err) {
+      console.warn("[locators] regenerate specs failed", err);
+    }
+  });
 };
 
 app.addHook("onRequest", async (req) => {
@@ -391,6 +436,8 @@ const UpdateProjectSchema = z.object({
 });
 type UpdateProjectBody = z.infer<typeof UpdateProjectSchema>;
 
+const GLOBAL_NAV_KEY = "__global_nav__";
+
 const SharedLocatorSchema = z.object({
   pagePath: z.string().min(1),
   bucket: z.enum(["fields", "buttons", "links", "locators"]),
@@ -530,8 +577,39 @@ app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
     const { pagePath, bucket, name, selector } = parsed.data;
-    const normalizedPath = normalizeLocatorPath(pagePath);
+    const isGlobalNav = pagePath === GLOBAL_NAV_KEY;
+    const normalizedPath = isGlobalNav ? GLOBAL_NAV_KEY : normalizeLocatorPath(pagePath);
     const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+
+    if (isGlobalNav) {
+      const nav = { ...(sharedSteps.nav ?? {}) };
+      nav[name] = selector;
+      const now = new Date().toISOString();
+      const nextSharedSteps = {
+        ...sharedSteps,
+        nav,
+        locatorMeta: {
+          ...(sharedSteps.locatorMeta ?? {}),
+          updatedAt: now,
+          updatedBy: userId,
+        },
+      };
+
+      const updated = await prisma.project.update({
+        where: { id },
+        data: { sharedSteps: nextSharedSteps },
+        select: { sharedSteps: true },
+      });
+
+      scheduleSpecRegeneration({
+        projectId: id,
+        userId,
+        baseUrl: (sharedSteps as any)?.baseUrl,
+        sharedSteps: nextSharedSteps,
+      });
+
+      return reply.send({ sharedSteps: updated.sharedSteps });
+    }
 
     let pages: Record<string, any> = {};
     if (sharedSteps.pages && typeof sharedSteps.pages === "object") {
@@ -567,6 +645,13 @@ app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
       where: { id },
       data: { sharedSteps: nextSharedSteps },
       select: { sharedSteps: true },
+    });
+
+    scheduleSpecRegeneration({
+      projectId: id,
+      userId,
+      baseUrl: (sharedSteps as any)?.baseUrl,
+      sharedSteps: nextSharedSteps,
     });
 
     return reply.send({ sharedSteps: updated.sharedSteps });

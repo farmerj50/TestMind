@@ -46,7 +46,7 @@ export default function SideNav() {
         <Item to="/documents" icon={BookOpen} label="Documents" />
         <Item to="/locators" icon={Crosshair} label="Locator library" />
         <Item to="/reports" icon={BarChart3} label="Reports" />
-        <Item to="/suite/playwright-ts" icon={FolderTree} label="Suites" />
+        <Item to="/suite" icon={FolderTree} label="Suites" />
         <Item to="/pricing" icon={BadgeDollarSign} label="Pricing" />
         <Item to="/contact" icon={Mail} label="Contact" />
       </div>

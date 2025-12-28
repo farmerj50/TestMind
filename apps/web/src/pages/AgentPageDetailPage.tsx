@@ -230,7 +230,7 @@ export default function AgentPageDetailPage() {
                           <Badge className="border-slate-200 text-slate-800">{sc.status}</Badge>
                           {sc.specPath && (
                             <a
-                              href={`/#/suite/playwright-ts?spec=${encodeURIComponent(sc.specPath)}`}
+                              href={`/#/suite?spec=${encodeURIComponent(sc.specPath)}`}
                               className="text-blue-600 hover:underline"
                             >
                               {sc.specPath}
