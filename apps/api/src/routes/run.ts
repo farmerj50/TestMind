@@ -305,6 +305,31 @@ type MissingLocatorItem = {
   suggestions: string[];
 };
 
+function extractNavTargetFromTitle(title?: string | null): string | null {
+  if (!title) return null;
+  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
+  const target = match?.[1]?.trim() ?? "";
+  if (!target || !target.startsWith("/")) return null;
+  return target;
+}
+
+function navKeyFromPath(path: string): string {
+  if (path === "/") return "nav.home";
+  const cleaned = path.replace(/^\//, "");
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return kebab ? `nav.${kebab}` : "nav.home";
+}
+
+function navSuggestions(path: string): string[] {
+  const target = path || "/";
+  return Array.from(
+    new Set([`a[href="${target}"]`, `a[href^="${target}"]`])
+  );
+}
+
 function semanticKeyFromString(value?: string): string {
   if (!value) return "default";
   const cleaned = value
@@ -398,10 +423,20 @@ function pagePathFromTitle(title?: string | null): string {
   return pathMatch?.[1]?.trim() || "/";
 }
 
+function isPageLoadTitle(title?: string | null): boolean {
+  if (!title) return false;
+  return /Page loads:/i.test(title);
+}
+
 function isMissingLocatorFailure(message?: string | null, steps?: string[]): boolean {
   const raw = `${message ?? ""}\n${(steps ?? []).join("\n")}`;
   if (!raw.trim()) return false;
-  if (!/toBeVisible/i.test(raw) && !/element\(s\) not found/i.test(raw) && !/waiting for /i.test(raw)) {
+  if (
+    !/toBeVisible/i.test(raw) &&
+    !/element\(s\) not found/i.test(raw) &&
+    !/waiting for /i.test(raw) &&
+    !/locator\.waitFor/i.test(raw)
+  ) {
     return false;
   }
   return /getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator\(/i.test(raw);
@@ -1480,7 +1515,33 @@ export default defineConfig({
           const missingLocators: MissingLocatorItem[] = [];
           for (const c of cases) {
             if (c.status !== "failed" && c.status !== "error") continue;
+            if (/toHaveURL/i.test(c.message ?? "")) {
+              const navTarget = extractNavTargetFromTitle(c.fullName);
+              if (navTarget) {
+                missingLocators.push({
+                  pagePath: "__global_nav__",
+                  bucket: "locators",
+                  name: navKeyFromPath(navTarget),
+                  stepText: c.fullName ?? `Navigate to ${navTarget}`,
+                  suggestions: navSuggestions(navTarget),
+                });
+              }
+            }
             if (!isMissingLocatorFailure(c.message ?? null, c.steps)) continue;
+            if (isPageLoadTitle(c.fullName)) {
+              const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
+              if (locatorExpr) {
+                const locatorName = extractLocatorName(locatorExpr);
+                missingLocators.push({
+                  pagePath: pagePathFromTitle(c.fullName),
+                  bucket: "locators",
+                  name: "pageIdentity",
+                  stepText: c.fullName ?? "Page loads",
+                  suggestions: generateSelectorSuggestions(locatorName || "pageIdentity"),
+                });
+                continue;
+              }
+            }
             const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
             if (!locatorExpr) continue;
             const locatorName = extractLocatorName(locatorExpr);

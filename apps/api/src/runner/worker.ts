@@ -1,6 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { makeWorkdir, rmrf } from './workdir.js';
@@ -57,6 +58,31 @@ type MissingLocatorItem = {
   stepText: string;
   suggestions: string[];
 };
+
+function extractNavTargetFromTitle(title?: string | null): string | null {
+  if (!title) return null;
+  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
+  const target = match?.[1]?.trim() ?? "";
+  if (!target || !target.startsWith("/")) return null;
+  return target;
+}
+
+function navKeyFromPath(path: string): string {
+  if (path === "/") return "nav.home";
+  const cleaned = path.replace(/^\//, "");
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return kebab ? `nav.${kebab}` : "nav.home";
+}
+
+function navSuggestions(path: string): string[] {
+  const target = path || "/";
+  return Array.from(
+    new Set([`a[href="${target}"]`, `a[href^="${target}"]`])
+  );
+}
 
 function generateSelectorSuggestions(rawName: string): string[] {
   const candidates: string[] = [];
@@ -143,13 +169,19 @@ function pagePathFromTitle(title?: string | null): string {
   return pathMatch?.[1]?.trim() || '/';
 }
 
+function isPageLoadTitle(title?: string | null): boolean {
+  if (!title) return false;
+  return /Page loads:/i.test(title);
+}
+
 function isMissingLocatorFailure(message?: string | null, steps?: string[]): boolean {
   const raw = `${message ?? ''}\n${(steps ?? []).join('\n')}`;
   if (!raw.trim()) return false;
   if (
     !/toBeVisible/i.test(raw) &&
     !/element\(s\) not found/i.test(raw) &&
-    !/waiting for /i.test(raw)
+    !/waiting for /i.test(raw) &&
+    !/locator\.waitFor/i.test(raw)
   ) {
     return false;
   }
@@ -244,9 +276,29 @@ export const worker = new Worker(
         specPath = specPath.slice("apps/web/".length);
       }
       if (specPath) {
-        const abs = path.isAbsolute(specPath) ? specPath : path.join(webDir, specPath);
+        const isAbs = path.isAbsolute(specPath);
+        const isWebGenerated = /[\\/]+apps[\\/]+web[\\/]+testmind-generated[\\/]+/i.test(specPath);
+        let abs = isAbs ? specPath : path.join(webDir, specPath);
+        if (isAbs && isWebGenerated) {
+          const relativeFromWeb = path.relative(webDir, specPath);
+          const repoCandidate = path.join(work, relativeFromWeb);
+          if (fsSync.existsSync(repoCandidate)) {
+            abs = repoCandidate;
+          }
+        }
+        if (!isAbs && !fsSync.existsSync(abs)) {
+          const repoCandidate = path.join(work, specPath);
+          if (fsSync.existsSync(repoCandidate)) {
+            abs = repoCandidate;
+          }
+        }
         const rel = path.relative(webDir, abs).replace(/\\/g, "/");
-        extraGlobs.push(rel);
+        // If the spec sits outside apps/web, pass absolute path so Playwright can find it.
+        if (rel.startsWith("..")) {
+          extraGlobs.push(abs.replace(/\\/g, "/"));
+        } else {
+          extraGlobs.push(rel);
+        }
       }
       const loggedFile = specPath ?? normalizedFileTarget ?? fileTarget ?? "";
 
@@ -282,7 +334,33 @@ export const worker = new Worker(
 
         for (const c of cases) {
           if (c.status !== 'failed' && c.status !== 'error') continue;
+          if (/toHaveURL/i.test(c.message ?? "")) {
+            const navTarget = extractNavTargetFromTitle(c.fullName ?? null);
+            if (navTarget) {
+              missingLocators.push({
+                pagePath: "__global_nav__",
+                bucket: "locators",
+                name: navKeyFromPath(navTarget),
+                stepText: c.fullName ?? `Navigate to ${navTarget}`,
+                suggestions: navSuggestions(navTarget),
+              });
+            }
+          }
           if (!isMissingLocatorFailure(c.message ?? null, c.steps ?? [])) continue;
+          if (isPageLoadTitle(c.fullName ?? null)) {
+            const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
+            if (locatorExpr) {
+              const locatorName = extractLocatorName(locatorExpr);
+              missingLocators.push({
+                pagePath: pagePathFromTitle(c.fullName ?? null),
+                bucket: 'locators',
+                name: 'pageIdentity',
+                stepText: c.fullName ?? 'Page loads',
+                suggestions: generateSelectorSuggestions(locatorName || 'pageIdentity'),
+              });
+              continue;
+            }
+          }
           const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
           if (!locatorExpr) continue;
           const name = extractLocatorName(locatorExpr);

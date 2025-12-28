@@ -31,7 +31,7 @@ type GenerateCommon = {
 
 type GenerateBody = GenerateCommon;
 type GenerateQuery = GenerateCommon;
-type RunQuery = { baseUrl?: string; adapterId?: string };
+type RunQuery = { baseUrl?: string; adapterId?: string; projectId?: string };
 
 // Treat the monorepo root as two levels up from apps/api by default.
 const REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT
@@ -485,7 +485,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ----------------------------------------------------------------------------
   app.get<{ Querystring: RunQuery }>('/run/stream', async (req, reply: FastifyReply) => {
     try {
-      const { baseUrl, adapterId = 'playwright-ts' } = req.query || {};
+      const { baseUrl, adapterId = 'playwright-ts', projectId } = req.query || {};
       app.log.info({ baseUrl, adapterId }, '[TM] /run/stream params');
       if (!baseUrl) throw new Error('baseUrl is required');
       assertUrl(baseUrl);
@@ -493,7 +493,8 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-      const outRoot = adapterDir(adapterId, userId);
+      const runId = `run_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const outRoot = path.join(adapterProjectDir(adapterId, userId, projectId), runId);
       fs.mkdirSync(outRoot, { recursive: true });
 
       reply.raw.setHeader('Content-Type', 'text/event-stream');
@@ -509,7 +510,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         const exitCode = await runAdapter({
           outRoot,
           adapterId,
-          env: { TM_BASE_URL: baseUrl },
+          env: { TM_BASE_URL: baseUrl, TM_RUN_ID: runId },
           onLine: (l: string) => {
             if (IS_DEV) process.stdout.write(l);
             send(l);

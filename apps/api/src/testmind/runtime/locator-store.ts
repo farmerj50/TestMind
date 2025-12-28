@@ -17,6 +17,7 @@ export type LocatorPage = {
 export type LocatorStore = {
   version?: number;
   pages?: Record<string, LocatorPage>;
+  nav?: Record<string, string>;
 };
 
 export function normalizeSharedSteps(raw: unknown): LocatorStore {
@@ -25,6 +26,7 @@ export function normalizeSharedSteps(raw: unknown): LocatorStore {
   if (obj.pages && typeof obj.pages === "object") {
     return {
       version: typeof obj.version === "number" ? obj.version : undefined,
+      nav: normalizeMap(obj.nav),
       pages: Object.entries(obj.pages).reduce<Record<string, LocatorPage>>((acc, [pageKey, pageValue]) => {
         acc[pageKey] = normalizePage(pageValue);
         return acc;
@@ -33,6 +35,7 @@ export function normalizeSharedSteps(raw: unknown): LocatorStore {
   }
   if (obj.locators && typeof obj.locators === "object") {
     return {
+      nav: normalizeMap(obj.nav),
       pages: Object.entries(obj.locators).reduce((acc, [pageKey, locators]) => {
         acc[pageKey] = { locators: normalizeMap(locators) };
         return acc;
@@ -86,12 +89,6 @@ export function normalizeSelectorValue(value: string): string | null {
     return `role=${roleMatch[1].trim()}[name="${roleMatch[2].trim()}"]`;
   }
 
-  const inputNameMatch = cleaned.match(/input\[name=(?:"([^"]+)"|'([^']+)')\]/i);
-  const inputName = inputNameMatch?.[1] ?? inputNameMatch?.[2];
-  if (inputName && /\s/.test(inputName)) {
-    return `text=${inputName.trim()}`;
-  }
-
   if (/^text=locator\(/i.test(cleaned)) {
     const inner = cleaned.match(/text=locator\(\s*['"`]([^'"`]+)['"`]\s*\)/i);
     if (inner?.[1]) return inner[1].trim();
@@ -139,6 +136,11 @@ export function resolveLocator(
   bucket: LocatorBucket,
   name: string
 ): { selector?: string; pageKey?: string } {
+  if (pagePath === "__global_nav__") {
+    const selector = store.nav?.[name];
+    if (selector) return { selector, pageKey: "__global_nav__" };
+    return { pageKey: "__global_nav__" };
+  }
   const pageKey = bestPageKey(store, pagePath);
   if (!pageKey) return {};
   const page = store.pages?.[pageKey];
@@ -150,5 +152,6 @@ export function resolveLocator(
       : bucket === "links"
       ? page?.links?.[name]
       : page?.locators?.[name];
-  return { selector: target, pageKey };
+  if (target) return { selector: target, pageKey };
+  return { pageKey };
 }
