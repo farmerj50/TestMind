@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -54,6 +54,7 @@ type IntegrationSummary = {
   provider: string;
   name?: string | null;
   enabled: boolean;
+  config?: Record<string, any> | null;
 };
 
 type ProviderMeta = {
@@ -97,12 +98,26 @@ export default function IntegrationsPage() {
   const [tmLoading, setTmLoading] = useState(false);
   const [tmErr, setTmErr] = useState<string | null>(null);
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
+  const [notifyErr, setNotifyErr] = useState<string | null>(null);
+  const [notifyBusy, setNotifyBusy] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<ProjectSecret[]>([]);
   const [secretsLoading, setSecretsLoading] = useState(false);
   const [secretsErr, setSecretsErr] = useState<string | null>(null);
   const [secretForm, setSecretForm] = useState({ name: "", key: "", value: "" });
   const [secretSaving, setSecretSaving] = useState(false);
   const [secretDeleting, setSecretDeleting] = useState<string | null>(null);
+  const [slackForm, setSlackForm] = useState({
+    webhookUrl: "",
+    notifyOn: "failures",
+    enabled: true,
+  });
+  const [emailForm, setEmailForm] = useState({
+    recipients: "",
+    notifyOn: "failures",
+    enabled: true,
+  });
+  const slackTouched = useRef(false);
+  const emailTouched = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -171,6 +186,37 @@ export default function IntegrationsPage() {
     loadTmIntegrations(projectId);
     loadSecrets(projectId);
   }, [projectId, loadTmIntegrations, loadSecrets]);
+
+  const slackIntegration = useMemo(
+    () => tmIntegrations.find((i) => i.provider === "slack-webhook") ?? null,
+    [tmIntegrations]
+  );
+  const emailIntegration = useMemo(
+    () => tmIntegrations.find((i) => i.provider === "email-smtp") ?? null,
+    [tmIntegrations]
+  );
+
+  useEffect(() => {
+    if (slackIntegration && !slackTouched.current) {
+      const notifyOn = String(slackIntegration.config?.notifyOn || "failures");
+      setSlackForm((prev) => ({ ...prev, notifyOn, enabled: slackIntegration.enabled }));
+    }
+  }, [slackIntegration]);
+
+  useEffect(() => {
+    if (emailIntegration && !emailTouched.current) {
+      const notifyOn = String(emailIntegration.config?.notifyOn || "failures");
+      const recipients = Array.isArray(emailIntegration.config?.recipients)
+        ? (emailIntegration.config?.recipients as string[]).join(", ")
+        : "";
+      setEmailForm((prev) => ({
+        ...prev,
+        notifyOn,
+        enabled: emailIntegration.enabled,
+        recipients,
+      }));
+    }
+  }, [emailIntegration]);
 
   async function loadIntegrations() {
     const data = await apiFetch<{ integrations: JiraIntegration[] }>("/integrations/jira");
@@ -255,6 +301,79 @@ export default function IntegrationsPage() {
       setTmErr(err?.message ?? "Failed to disconnect integration");
     } finally {
       setProviderBusy(null);
+    }
+  }
+
+  async function saveSlackNotification(e: React.FormEvent) {
+    e.preventDefault();
+    if (!projectId) {
+      setNotifyErr("Select a project first.");
+      return;
+    }
+    const webhookUrl = slackForm.webhookUrl.trim();
+    if (!webhookUrl && !slackIntegration) {
+      setNotifyErr("Slack webhook URL is required.");
+      return;
+    }
+    setNotifyBusy("slack-webhook");
+    setNotifyErr(null);
+    try {
+      await apiFetch("/integrations", {
+        method: "POST",
+        body: JSON.stringify({
+          id: slackIntegration?.id,
+          projectId,
+          provider: "slack-webhook",
+          name: "Slack webhook",
+          enabled: slackForm.enabled,
+          config: { notifyOn: slackForm.notifyOn },
+          secrets: webhookUrl ? { webhookUrl } : undefined,
+        }),
+      });
+      slackTouched.current = false;
+      setSlackForm((prev) => ({ ...prev, webhookUrl: "" }));
+      await loadTmIntegrations(projectId);
+    } catch (err: any) {
+      setNotifyErr(err?.message ?? "Failed to save Slack integration");
+    } finally {
+      setNotifyBusy(null);
+    }
+  }
+
+  async function saveEmailNotification(e: React.FormEvent) {
+    e.preventDefault();
+    if (!projectId) {
+      setNotifyErr("Select a project first.");
+      return;
+    }
+    const recipients = emailForm.recipients
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (!recipients.length) {
+      setNotifyErr("Add at least one email recipient.");
+      return;
+    }
+    setNotifyBusy("email-smtp");
+    setNotifyErr(null);
+    try {
+      await apiFetch("/integrations", {
+        method: "POST",
+        body: JSON.stringify({
+          id: emailIntegration?.id,
+          projectId,
+          provider: "email-smtp",
+          name: "Email (SMTP)",
+          enabled: emailForm.enabled,
+          config: { notifyOn: emailForm.notifyOn, recipients },
+        }),
+      });
+      emailTouched.current = false;
+      await loadTmIntegrations(projectId);
+    } catch (err: any) {
+      setNotifyErr(err?.message ?? "Failed to save email integration");
+    } finally {
+      setNotifyBusy(null);
     }
   }
 
@@ -445,6 +564,181 @@ export default function IntegrationsPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+          <CardDescription>
+            Send Slack and email alerts when test runs finish. Recipients are scoped per project.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-slate-600">
+              Choose a project to configure run notifications.
+            </p>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="w-60">
+                <SelectValue placeholder="Choose project" />
+              </SelectTrigger>
+              <SelectContent>
+                {sortedProjects.map((proj) => (
+                  <SelectItem key={proj.id} value={proj.id}>
+                    {proj.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {notifyErr && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {notifyErr}
+            </div>
+          )}
+          {!projectId ? (
+            <p className="text-sm text-slate-500">Select a project to enable notifications.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <form
+                className="rounded-xl border border-slate-200 bg-[var(--tm-input-bg)] p-4 shadow-sm space-y-3"
+                onSubmit={saveSlackNotification}
+              >
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">Slack webhook</h3>
+                  <p className="text-sm text-slate-600">
+                    Send run summaries to a Slack channel using an incoming webhook.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-slate-700">Webhook URL</label>
+                  <Input
+                    type="password"
+                    placeholder="https://hooks.slack.com/services/..."
+                    value={slackForm.webhookUrl}
+                    onChange={(e) => {
+                      slackTouched.current = true;
+                      setSlackForm((prev) => ({ ...prev, webhookUrl: e.target.value }));
+                    }}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-slate-700">Notify on</label>
+                  <Select
+                    value={slackForm.notifyOn}
+                    onValueChange={(val) => {
+                      slackTouched.current = true;
+                      setSlackForm((prev) => ({ ...prev, notifyOn: val }));
+                    }}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="failures">Failures only</SelectItem>
+                      <SelectItem value="all">All runs</SelectItem>
+                      <SelectItem value="success">Success only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={slackForm.enabled}
+                    onChange={(e) => {
+                      slackTouched.current = true;
+                      setSlackForm((prev) => ({ ...prev, enabled: e.target.checked }));
+                    }}
+                  />
+                  Enabled
+                </label>
+                <Button
+                  type="submit"
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  disabled={notifyBusy === "slack-webhook"}
+                >
+                  {notifyBusy === "slack-webhook" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    "Save Slack settings"
+                  )}
+                </Button>
+              </form>
+
+              <form
+                className="rounded-xl border border-slate-200 bg-[var(--tm-input-bg)] p-4 shadow-sm space-y-3"
+                onSubmit={saveEmailNotification}
+              >
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">Email (SMTP)</h3>
+                  <p className="text-sm text-slate-600">
+                    Send run summaries to a comma-separated list of recipients.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-slate-700">Recipients</label>
+                  <Input
+                    placeholder="qa@company.com, eng@company.com"
+                    value={emailForm.recipients}
+                    onChange={(e) => {
+                      emailTouched.current = true;
+                      setEmailForm((prev) => ({ ...prev, recipients: e.target.value }));
+                    }}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-slate-700">Notify on</label>
+                  <Select
+                    value={emailForm.notifyOn}
+                    onValueChange={(val) => {
+                      emailTouched.current = true;
+                      setEmailForm((prev) => ({ ...prev, notifyOn: val }));
+                    }}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="failures">Failures only</SelectItem>
+                      <SelectItem value="all">All runs</SelectItem>
+                      <SelectItem value="success">Success only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={emailForm.enabled}
+                    onChange={(e) => {
+                      emailTouched.current = true;
+                      setEmailForm((prev) => ({ ...prev, enabled: e.target.checked }));
+                    }}
+                  />
+                  Enabled
+                </label>
+                <div className="text-xs text-slate-500">
+                  Requires SMTP env vars: <code className="rounded bg-slate-100 px-1">SMTP_HOST</code>{" "}
+                  and <code className="rounded bg-slate-100 px-1">SMTP_FROM</code>.
+                </div>
+                <Button
+                  type="submit"
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  disabled={notifyBusy === "email-smtp"}
+                >
+                  {notifyBusy === "email-smtp" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    "Save email settings"
+                  )}
+                </Button>
+              </form>
             </div>
           )}
         </CardContent>
