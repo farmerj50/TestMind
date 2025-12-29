@@ -114,7 +114,7 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\]/g, '\$&');
+  return value.replace(/[.*+?^${}()|[\\\]]/g, '\$&');
 }
 
 function pathRegex(target: string): RegExp {

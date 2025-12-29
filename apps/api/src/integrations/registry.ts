@@ -1,6 +1,8 @@
 import type { FastifyRequest } from "fastify";
 import type { Prisma as PrismaTypes, Integration, Project } from "@prisma/client";
 import githubIssuesProvider from "./providers/github.js";
+import slackProvider from "./providers/slack.js";
+import emailProvider from "./providers/email.js";
 
 export type IntegrationWithProject = Integration & { project?: Project };
 
@@ -26,6 +28,8 @@ export interface IntegrationProvider {
 
 export const integrationProviders: Record<string, IntegrationProvider> = {
   "github-issues": githubIssuesProvider,
+  "slack-webhook": slackProvider,
+  "email-smtp": emailProvider,
 };
 
 export function assertProvider(key: string): IntegrationProvider {
