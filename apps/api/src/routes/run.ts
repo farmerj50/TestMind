@@ -23,6 +23,7 @@ import { generateAndWrite } from "../testmind/service.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
+import { sendRunNotifications } from "../notifications/runNotifications.js";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -1621,6 +1622,9 @@ export default defineConfig({
             artifactsJson: artifacts ?? undefined,
           },
         });
+        sendRunNotifications(run.id).catch((err) => {
+          console.error(`[notifications] run ${run.id} failed`, err);
+        });
         if (!ok && failed > 0) {
           scheduleSelfHealingForRun(run.id).catch((err) => {
             console.error(`[runner] failed to schedule self heal for run ${run.id}`, err);
@@ -1635,6 +1639,9 @@ export default defineConfig({
             error: stripAnsi(err?.message ?? String(err)),
             artifactsJson: artifacts ?? undefined,
           },
+        });
+        sendRunNotifications(run.id).catch((notifyErr) => {
+          console.error(`[notifications] run ${run.id} failed`, notifyErr);
         });
       } finally {
         if (!usingLocalRepo) {

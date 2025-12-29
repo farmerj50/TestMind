@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { execa } from "execa";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
+import { sendRunNotifications } from "../notifications/runNotifications.js";
 
 type IdParams = { id: string };
 
@@ -333,6 +334,9 @@ export default defineConfig({
           }),
         },
       });
+      sendRunNotifications(runId).catch((err) => {
+        console.error(`[notifications] run ${runId} failed`, err);
+      });
     } catch (e) {
       console.error("[startGeneratedRun] failed", { runId, projectId, error: e });
       await prisma.testRun.update({
@@ -342,6 +346,9 @@ export default defineConfig({
           finishedAt: new Date(),
           error: String(e),
         },
+      });
+      sendRunNotifications(runId).catch((err) => {
+        console.error(`[notifications] run ${runId} failed`, err);
       });
     }
   })();

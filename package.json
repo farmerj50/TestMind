@@ -22,6 +22,7 @@
     "bullmq": "^5.55.0",
     "execa": "^9.6.0",
     "ioredis": "^5.8.2",
+    "nodemailer": "^6.9.16",
     "openai": "^6.6.0",
     "playwright": "^1.57.0"
   },
