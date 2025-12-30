@@ -37,13 +37,10 @@ COPY packages/runner ./packages/runner
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
 
-# ✅ Build-time Prisma generate
-RUN pnpm --filter api exec prisma generate
-
 # ✅ Build API
 RUN pnpm --filter api build
 
-# ✅ Install Playwright browsers only (no OS deps here to avoid apt flakiness)
+# ✅ Install Playwright browsers only (no OS deps here)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN pnpm --filter api exec playwright install chromium
 
@@ -68,7 +65,6 @@ RUN set -eux; \
     ca-certificates \
     curl \
     wget \
-    # Playwright Chromium runtime deps
     libnss3 \
     libatk-bridge2.0-0 \
     libgtk-3-0 \
@@ -104,12 +100,14 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
 
-# Install production deps only
+# Install production deps only (now includes prisma because you moved it to dependencies)
 RUN pnpm install --frozen-lockfile --prod
 
-# ✅ Copy Prisma generated runtime pieces
-COPY --from=builder /workspace/node_modules/@prisma /app/node_modules/@prisma
+# Prisma schema needed for generate
 COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
+
+# ✅ Generate Prisma client in runtime (matches runtime pnpm layout)
+RUN pnpm --filter api exec prisma generate
 
 # ✅ Copy Playwright browsers from builder
 COPY --from=builder /ms-playwright /ms-playwright
