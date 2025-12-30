@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
+import { encryptSecret } from "../lib/crypto.js";
 
 const IntegrationBody = z.object({
   projectId: z.string().min(1),
@@ -99,7 +100,7 @@ export default async function jiraRoutes(app: FastifyInstance) {
       update: {
         siteUrl: parsed.data.siteUrl,
         email: parsed.data.email,
-        apiToken: parsed.data.apiToken,
+        apiToken: encryptSecret(parsed.data.apiToken),
         projectKey: parsed.data.projectKey,
       },
       create: {
@@ -107,7 +108,7 @@ export default async function jiraRoutes(app: FastifyInstance) {
         projectId: parsed.data.projectId,
         siteUrl: parsed.data.siteUrl,
         email: parsed.data.email,
-        apiToken: parsed.data.apiToken,
+        apiToken: encryptSecret(parsed.data.apiToken),
         projectKey: parsed.data.projectKey,
       },
     });
