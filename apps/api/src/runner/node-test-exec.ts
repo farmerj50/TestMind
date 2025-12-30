@@ -91,6 +91,7 @@ export type RunExecRequest = {
   sourceRoot?: string;
   headed?: boolean;
   runTimeout?: number;
+  abortSignal?: AbortSignal;
 };
 
 export type RunExecResult = {
@@ -307,6 +308,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
         env,
         reject: false,
         timeout: timeoutMs,
+        cancelSignal: req.abortSignal,
         stdio: "pipe",
       });
 
@@ -404,6 +406,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       env: { ...process.env, ...req.extraEnv },
       reject: false,
       timeout: runTimeout,
+      cancelSignal: req.abortSignal,
       stdio: "pipe",
     });
     return {
@@ -434,6 +437,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       env: { ...process.env, ...req.extraEnv },
       reject: false,
       timeout: runTimeout,
+      cancelSignal: req.abortSignal,
       stdio: "pipe",
     });
     return {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApi } from "../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -125,18 +125,21 @@ export default function ReportsPage() {
   const [showExit, setShowExit] = useState(true);
   const [showTimeline, setShowTimeline] = useState(true);
   const [showFeed, setShowFeed] = useState(true);
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+
+  const refreshRuns = useCallback(async () => {
+    try {
+      const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+      const res = await apiFetch<Run[]>(`/runner/test-runs${qs}`);
+      setRuns(res || []);
+    } catch {
+      setRuns([]);
+    }
+  }, [apiFetch, projectId]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-        const res = await apiFetch<Run[]>(`/runner/test-runs${qs}`);
-        setRuns(res || []);
-      } catch {
-        setRuns([]);
-      }
-    })();
-  }, [apiFetch, projectId]);
+    refreshRuns();
+  }, [refreshRuns]);
 
   useEffect(() => {
     (async () => {
@@ -148,6 +151,21 @@ export default function ReportsPage() {
       }
     })();
   }, [apiFetch]);
+
+  const stopRun = useCallback(
+    async (runId: string) => {
+      setStoppingRunId(runId);
+      try {
+        await apiFetch(`/runner/test-runs/${runId}/stop`, { method: "POST" });
+        await refreshRuns();
+      } catch {
+        // keep silent; status will refresh via next poll
+      } finally {
+        setStoppingRunId((prev) => (prev === runId ? null : prev));
+      }
+    },
+    [apiFetch, refreshRuns]
+  );
 
   const filteredRuns = useMemo(() => {
     if (range === "all") return runs;
@@ -581,6 +599,17 @@ export default function ReportsPage() {
                       >
                         Allure report
                       </a>
+                    )}
+                    {(r.status === "running" || r.status === "queued") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => stopRun(r.id)}
+                        disabled={stoppingRunId === r.id}
+                      >
+                        {stoppingRunId === r.id ? "Stopping..." : "Stop run"}
+                      </Button>
                     )}
                   </div>
                 </div>
