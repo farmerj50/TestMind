@@ -43,9 +43,9 @@ RUN pnpm --filter api exec prisma generate
 # ✅ Build API
 RUN pnpm --filter api build
 
-# ✅ Install Playwright browsers in builder (dev deps available here)
+# ✅ Install Playwright browsers only (no OS deps here to avoid apt flakiness)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pnpm --filter api exec playwright install --with-deps chromium
+RUN pnpm --filter api exec playwright install chromium
 
 
 # -------------------------
@@ -57,9 +57,43 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# ✅ Install runtime OS deps (including Playwright/Chromium deps) with retries
+RUN set -eux; \
+  for i in 1 2 3; do \
+    apt-get update && break || sleep 5; \
+  done; \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     git \
     openjdk-17-jre-headless \
+    ca-certificates \
+    curl \
+    wget \
+    # Playwright Chromium runtime deps
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libatspi2.0-0 \
+    libxshmfence1 \
+    libxkbcommon0 \
+    libcups2 \
+    libdrm2 \
+    libxfixes3 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libxext6 \
+    libx11-6 \
+    libxcb1 \
+    libxkbfile1 \
+    libxrender1 \
+    libxi6 \
+    libxtst6 \
+    fonts-liberation \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
