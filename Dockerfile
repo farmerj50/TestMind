@@ -28,7 +28,7 @@ COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /workspace/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /workspace/package.json ./package.json
 
-ARG CACHEBUST=1
+ARG CACHEBUST=173
 RUN echo "cachebust=$CACHEBUST"
 
 COPY apps/api ./apps/api
@@ -37,15 +37,19 @@ COPY packages/runner ./packages/runner
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
 
-# ✅ Build-time Prisma generate (Prisma CLI exists here because dev deps are installed)
+# ✅ Build-time Prisma generate
 RUN pnpm --filter api exec prisma generate
 
 # ✅ Build API
 RUN pnpm --filter api build
 
+# ✅ Install Playwright browsers in builder (dev deps available here)
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN pnpm --filter api exec playwright install --with-deps chromium
+
 
 # -------------------------
-# runner: prod install (real deps) + playwright browsers
+# runner: prod deps + runtime only
 # -------------------------
 FROM node:20-bullseye-slim AS runner
 WORKDIR /app
@@ -60,7 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
-# Copy manifests (include web manifest so pnpm workspace doesn't lstat fail)
+# Copy manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
@@ -69,17 +73,14 @@ COPY packages/runner/package.json ./packages/runner/package.json
 # Install production deps only
 RUN pnpm install --frozen-lockfile --prod
 
-# ✅ Copy generated Prisma client artifacts from builder
-# This avoids needing Prisma CLI in the runtime image.
-COPY --from=builder /workspace/node_modules/.prisma /app/node_modules/.prisma
+# ✅ Copy Prisma generated runtime pieces
+COPY --from=builder /workspace/node_modules/@prisma /app/node_modules/@prisma
 COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
 
+# ✅ Copy Playwright browsers from builder
+COPY --from=builder /ms-playwright /ms-playwright
 
-# Install Playwright Chromium + OS deps into the final image
-# NOTE: this requires Playwright to be present in prod deps of the filtered package.
-RUN pnpm --filter api exec playwright install --with-deps chromium
-
-ARG CACHEBUST=1
+ARG CACHEBUST=173
 RUN echo "runner-cachebust=$CACHEBUST"
 
 # Copy built output only
