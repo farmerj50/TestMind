@@ -249,9 +249,31 @@ export const worker = new Worker(
 
     const outDir = path.join(REPORT_ROOT, 'runner-logs', runId);
     await fs.mkdir(outDir, { recursive: true });
+    const cancelKey = `cancel:run:${runId}`;
+    const abortController = new AbortController();
+    const cancelTimer = setInterval(() => {
+      redis
+        .get(cancelKey)
+        .then((value) => {
+          if (value === "1") abortController.abort();
+        })
+        .catch(() => {});
+    }, 2000);
 
     const work = await makeWorkdir();
     try {
+      const canceledEarly = await redis.get(cancelKey).catch(() => null);
+      if (canceledEarly === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
       // GitHub token if connected
       const gitAcct = await prisma.gitAccount.findFirst({
         where: { userId: project.ownerId, provider: 'github' },
@@ -304,7 +326,9 @@ export const worker = new Worker(
 
       const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
-      const exec = await runTests({
+      let exec;
+      try {
+        exec = await runTests({
         workdir: webDir,
         jsonOutPath: resultsPath,
         headed: payload?.headed,
@@ -312,7 +336,33 @@ export const worker = new Worker(
         extraGlobs,
         baseUrl: jobBaseUrl,
         runTimeout: timeoutMs,
-      });
+        abortSignal: abortController.signal,
+        });
+      } catch (err: any) {
+        if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+          await prisma.testRun.update({
+            where: { id: runId },
+            data: {
+              status: TestRunStatus.failed,
+              finishedAt: new Date(),
+              error: "Canceled by user",
+            },
+          });
+          return;
+        }
+        throw err;
+      }
+      if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
 
       // write logs
       await fs.writeFile(
@@ -403,6 +453,18 @@ export const worker = new Worker(
         });
       }
 
+      if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
+
       const ok = failed === 0 && exec.ok;
       if (!ok) {
         await analyzeFailure({
@@ -432,6 +494,17 @@ export const worker = new Worker(
         });
       }
     } catch (err: any) {
+      if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
       await prisma.testRun.update({
         where: { id: runId },
         data: {
@@ -450,6 +523,8 @@ export const worker = new Worker(
           process.env.TM_LOCAL_REPO_ROOT = prevLocalRepoRoot;
         }
       }
+      clearInterval(cancelTimer);
+      await redis.del(cancelKey).catch(() => {});
     }
   },
   { connection: redis }
