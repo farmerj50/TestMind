@@ -51,6 +51,7 @@ export async function enqueueRun(runId: string, payload: RunPayload) {
     'execute',
     { runId, payload },
     {
+      jobId: runId,
       removeOnComplete: true,
       removeOnFail: false,
       attempts: 3,
