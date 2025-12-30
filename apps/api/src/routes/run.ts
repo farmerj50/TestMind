@@ -7,6 +7,7 @@ import path from "path";
 import net from "net";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { redis } from "../runner/redis.js";
 
 // runner pieces
 import { makeWorkdir, rmrf } from "../runner/workdir.js";
@@ -464,8 +465,31 @@ async function appendMissingLocators(
 }
 
 export default async function runRoutes(app: FastifyInstance) {
+  async function requireRunOwner(req: any, reply: any, runId: string) {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      reply.code(401).send({ error: "Unauthorized" });
+      return null;
+    }
+    const run = await prisma.testRun.findUnique({
+      where: { id: runId },
+      select: {
+        id: true,
+        projectId: true,
+        project: { select: { ownerId: true } },
+      },
+    });
+    if (!run || run.project.ownerId !== userId) {
+      reply.code(404).send({ error: "Run not found" });
+      return null;
+    }
+    return { runId: run.id, projectId: run.projectId, userId };
+  }
+
   // POST /runner/run
   app.post("/run", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
     const parsed = RunBody.safeParse(req.body);
     if (!parsed.success) {
       return sendError(
@@ -506,6 +530,30 @@ export default async function runRoutes(app: FastifyInstance) {
         `Project ${pid} was not found. Create the project and configure its repoUrl before running.`,
         404
       );
+    }
+    if (project.ownerId !== userId) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+
+    const rateLimit = Number(process.env.TM_RUN_RATE_LIMIT ?? "5");
+    const rateWindowSec = Number(process.env.TM_RUN_RATE_WINDOW_SEC ?? "60");
+    if (Number.isFinite(rateLimit) && rateLimit > 0 && Number.isFinite(rateWindowSec) && rateWindowSec > 0) {
+      const key = `rate:runner:${userId}`;
+      const count = await redis.incr(key);
+      if (count === 1) {
+        await redis.expire(key, rateWindowSec);
+      }
+      if (count > rateLimit) {
+        return reply.code(429).send({ error: "Rate limit exceeded" });
+      }
+    }
+
+    const active = await prisma.testRun.findFirst({
+      where: { projectId: project.id, status: { in: [TestRunStatus.queued, TestRunStatus.running] } },
+      select: { id: true },
+    });
+    if (active) {
+      return reply.code(409).send({ error: "Another run is already active for this project" });
     }
     const locatorMeta = (project.sharedSteps as any)?.locatorMeta;
     const locatorUpdatedAt =
@@ -1702,10 +1750,9 @@ export default defineConfig({
 
   // GET /runner/test-runs/:id
   app.get("/test-runs/:id", async (req, reply) => {
-    const { userId } = getAuth(req);
-    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-
     const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     const run = await loadRunById(id);
     if (!run) return reply.code(404).send({ error: "Run not found" });
     return reply.send({ run });
@@ -1736,10 +1783,9 @@ export default defineConfig({
   }
 
   async function eventsHandler(req: any, reply: any) {
-    const { userId } = getAuth(req);
-    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-
     const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
     reply.raw.setHeader("Connection", "keep-alive");
@@ -1814,6 +1860,8 @@ export default defineConfig({
   });
 
   app.post("/test-runs/:id/rerun", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
     const { id } = req.params as { id: string };
     const run = await prisma.testRun.findUnique({
       where: { id },
@@ -1854,6 +1902,8 @@ export default defineConfig({
 
   // GET /runner/test-runs/:id/logs?type=stdout|stderr
   app.get("/test-runs/:id/logs", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
     const { id } = req.params as { id: string };
     const { type } = (req.query ?? {}) as { type?: "stdout" | "stderr" };
     const run = await prisma.testRun.findUnique({ where: { id } });
@@ -1885,6 +1935,8 @@ export default defineConfig({
     const parts = (splat || "").split("/").filter(Boolean);
     const id = parts.shift();
     if (!id) return reply.code(404).send("Not found");
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     const rest = parts.join("/");
     const roots = [
       RUNNER_LOGS_ROOT,
@@ -1938,6 +1990,8 @@ export default defineConfig({
   // shared results handler so both paths work
   const resultsHandler = async (req: any, reply: any) => {
     const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
 
     const exists = await prisma.testRun.findUnique({
       where: { id },
@@ -1998,6 +2052,8 @@ export default defineConfig({
   app.get("/test-runs/:id/results", resultsHandler);
   app.get("/test-runs/:id/report.json", async (req, reply) => {
     const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     const candidates = [
       path.join(RUNNER_LOGS_ROOT, id, "report.json"),
       path.join(process.cwd(), "runner-logs", id, "report.json"),
@@ -2017,6 +2073,8 @@ export default defineConfig({
 
   app.get("/test-runs/:id/analysis", async (req, reply) => {
     const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     const paths = [
       path.join(RUNNER_LOGS_ROOT, id, "analysis.json"),
       path.join(process.cwd(), "runner-logs", id, "analysis.json"),
@@ -2091,6 +2149,8 @@ export default defineConfig({
 // --- compat alias used by the current UI ---
 app.get("/tm/runs/:id/tests", async (req, reply) => {
   const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     const candidates = [
       path.join(RUNNER_LOGS_ROOT, id, "report.json"),
       path.join(process.cwd(), "runner-logs", id, "report.json"),
@@ -2111,6 +2171,8 @@ app.get("/tm/runs/:id/tests", async (req, reply) => {
 // Optional: simple human view to quickly eyeball failures
 app.get("/test-runs/:id/view", async (req, reply) => {
   const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
     const candidates = [
       path.join(RUNNER_LOGS_ROOT, id, "report.json"),
       path.join(process.cwd(), "runner-logs", id, "report.json"),

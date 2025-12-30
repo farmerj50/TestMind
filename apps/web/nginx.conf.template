@@ -9,6 +9,11 @@ server {
     try_files $uri $uri/ /index.html;
   }
 
+  # Always revalidate HTML so clients pick up new builds.
+  location = /index.html {
+    add_header Cache-Control "no-store";
+  }
+
   # Optional: cache static assets
   location ~* \.(?:js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {
     try_files $uri =404;

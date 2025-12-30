@@ -4,6 +4,8 @@ import path from "path";
 export const CURATED_ROOT = process.env.TM_CURATED_ROOT
   ? path.resolve(process.env.TM_CURATED_ROOT)
   : path.resolve(process.cwd(), "testmind-curated");
+const LEGACY_CURATED_ROOT = path.resolve(process.cwd(), "testmind-curated");
+const MIGRATION_MARKER = ".migrated-from-legacy";
 
 const CURATED_MANIFEST = path.join(CURATED_ROOT, "projects.json");
 
@@ -19,6 +21,7 @@ export type CuratedManifest = {
 };
 
 function ensureManifestFile(): CuratedManifest {
+  maybeMigrateLegacyCuratedRoot();
   if (!fs.existsSync(CURATED_ROOT)) {
     fs.mkdirSync(CURATED_ROOT, { recursive: true });
   }
@@ -37,6 +40,39 @@ function ensureManifestFile(): CuratedManifest {
     // ignore; fallthrough to default
   }
   return { projects: [] };
+}
+
+function maybeMigrateLegacyCuratedRoot() {
+  if (!process.env.TM_CURATED_ROOT) return;
+  if (path.resolve(CURATED_ROOT) === LEGACY_CURATED_ROOT) return;
+  if (!fs.existsSync(LEGACY_CURATED_ROOT)) return;
+
+  if (!fs.existsSync(CURATED_ROOT)) {
+    fs.mkdirSync(CURATED_ROOT, { recursive: true });
+  }
+
+  const markerPath = path.join(CURATED_ROOT, MIGRATION_MARKER);
+  if (fs.existsSync(markerPath)) return;
+
+  const entries = fs.readdirSync(CURATED_ROOT);
+  const meaningful = entries.filter(
+    (name) => name !== "projects.json" && name !== MIGRATION_MARKER
+  );
+  if (meaningful.length > 0) return;
+
+  try {
+    fs.cpSync(LEGACY_CURATED_ROOT, CURATED_ROOT, { recursive: true });
+    fs.writeFileSync(
+      markerPath,
+      `migrated from ${LEGACY_CURATED_ROOT} at ${new Date().toISOString()}\n`,
+      "utf8"
+    );
+    console.warn(
+      `[curated] migrated suites from ${LEGACY_CURATED_ROOT} to ${CURATED_ROOT}`
+    );
+  } catch (err) {
+    console.warn("[curated] legacy migration failed", err);
+  }
 }
 
 function normalizeManifest(manifest: CuratedManifest): CuratedManifest {

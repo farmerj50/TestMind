@@ -404,14 +404,16 @@ if (allowDebugRoutes) {
       databaseUrl: (validatedEnv.DATABASE_URL || "").replace(/:\/\/.*@/, "://***@").split("?")[0],
     };
   });
-}
-app.get("/debug/db-tables", async () => {
-  const tables = await prisma.$queryRaw<
-    { tablename: string }[]
-  >`SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;`;
+  app.get("/debug/db-tables", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+    const tables = await prisma.$queryRaw<
+      { tablename: string }[]
+    >`SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;`;
 
-  return { count: tables.length, tables };
-});
+    return { count: tables.length, tables };
+  });
+}
 
 
 app.get("/health", async () => ({ ok: true }));
