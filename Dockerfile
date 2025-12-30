@@ -37,6 +37,9 @@ COPY packages/runner ./packages/runner
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
 
+# ✅ Generate Prisma client in builder (keeps build consistent)
+RUN pnpm --filter api exec prisma generate
+
 # ✅ Build API
 RUN pnpm --filter api build
 
@@ -100,8 +103,8 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
 
-# Install production deps only (now includes prisma because you moved it to dependencies)
-RUN pnpm install --frozen-lockfile --prod
+# ✅ Install prod deps for the api workspace (THIS fixes @prisma/client resolution)
+RUN pnpm --filter api... install --frozen-lockfile --prod
 
 # Prisma schema needed for generate
 COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
