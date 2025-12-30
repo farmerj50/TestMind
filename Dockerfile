@@ -71,7 +71,9 @@ RUN pnpm install --frozen-lockfile --prod
 
 # ✅ Copy generated Prisma client artifacts from builder
 # This avoids needing Prisma CLI in the runtime image.
-COPY --from=builder /workspace/apps/api/node_modules/.prisma /app/apps/api/node_modules/.prisma
+COPY --from=builder /workspace/node_modules/.prisma /app/node_modules/.prisma
+COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
+
 
 # Install Playwright Chromium + OS deps into the final image
 # NOTE: this requires Playwright to be present in prod deps of the filtered package.
