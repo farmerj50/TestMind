@@ -18,7 +18,7 @@ import { execa } from "execa";
 import { parseResults, ParsedCase } from "../runner/result-parsers.js";
 import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
 import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
-import { enqueueAllureGenerate, enqueueRun } from "../runner/queue.js";
+import { enqueueAllureGenerate, enqueueRun, runQueue } from "../runner/queue.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
 import { generateAndWrite } from "../testmind/service.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
@@ -179,6 +179,48 @@ async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: stri
 // Default base URL the runner will hand to Playwright (can be overridden by req or env)
 const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? "http://localhost:4173";
 const RUNNER_LOGS_ROOT = path.join(REPORT_ROOT, "runner-logs");
+const runAbortControllers = new Map<string, AbortController>();
+const cancelKeyForRun = (runId: string) => `cancel:run:${runId}`;
+const STALE_RUN_MINUTES = Number(process.env.TM_RUN_STALE_MINUTES ?? "60");
+
+async function isCancelRequested(runId: string) {
+  try {
+    return (await redis.get(cancelKeyForRun(runId))) === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function markRunCanceled(runId: string, error = "Canceled by user") {
+  await prisma.testRun.update({
+    where: { id: runId },
+    data: {
+      status: TestRunStatus.failed,
+      finishedAt: new Date(),
+      error,
+    },
+  });
+}
+
+async function clearStaleRuns(projectId: string) {
+  if (!Number.isFinite(STALE_RUN_MINUTES) || STALE_RUN_MINUTES <= 0) return;
+  const cutoff = new Date(Date.now() - STALE_RUN_MINUTES * 60 * 1000);
+  await prisma.testRun.updateMany({
+    where: {
+      projectId,
+      status: { in: [TestRunStatus.queued, TestRunStatus.running] },
+      OR: [
+        { startedAt: { lt: cutoff } },
+        { startedAt: null, createdAt: { lt: cutoff } },
+      ],
+    },
+    data: {
+      status: TestRunStatus.failed,
+      finishedAt: new Date(),
+      error: `Timed out after ${STALE_RUN_MINUTES} minutes`,
+    },
+  });
+}
 
 async function findAvailablePort(preferred: number): Promise<number> {
   return new Promise((resolve) => {
@@ -548,6 +590,7 @@ export default async function runRoutes(app: FastifyInstance) {
       }
     }
 
+    await clearStaleRuns(project.id);
     const active = await prisma.testRun.findFirst({
       where: { projectId: project.id, status: { in: [TestRunStatus.queued, TestRunStatus.running] } },
       select: { id: true },
@@ -648,6 +691,10 @@ export default async function runRoutes(app: FastifyInstance) {
         paramsJson: runParams,
       },
     });
+    const cancelKey = cancelKeyForRun(run.id);
+    await redis.del(cancelKey).catch(() => {});
+    const abortController = new AbortController();
+    runAbortControllers.set(run.id, abortController);
 
     await ensureStorageDirs();
     const outDir = path.join(RUNNER_LOGS_ROOT, run.id);
@@ -711,6 +758,10 @@ export default async function runRoutes(app: FastifyInstance) {
         work = await makeWorkdir(); // where we clone the repo
       }
       try {
+        if (await isCancelRequested(run.id)) {
+          await markRunCanceled(run.id);
+          return;
+        }
         // Safety: if work accidentally points at apps/ or apps/api, lift to repo root
         const workStat = work.replace(/\\/g, "/");
         if (workStat.endsWith("/apps/api")) {
@@ -1486,18 +1537,32 @@ export default defineConfig({
         const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
 
         const tRunStart = Date.now();
-        const exec = await runTests({
-          workdir: cwd,
-          jsonOutPath: resultsPath,
-          baseUrl: effectiveBaseUrl,
-          configPath: ciConfigPath,
-          // extraGlobs is no longer used by the runner; selection is via grep
-          extraGlobs,
-          extraEnv,
-          grep: normalizedGrep,
-          sourceRoot: work,
-          headed: headful,
-        });
+        let exec;
+        try {
+          exec = await runTests({
+            workdir: cwd,
+            jsonOutPath: resultsPath,
+            baseUrl: effectiveBaseUrl,
+            configPath: ciConfigPath,
+            // extraGlobs is no longer used by the runner; selection is via grep
+            extraGlobs,
+            extraEnv,
+            grep: normalizedGrep,
+            sourceRoot: work,
+            headed: headful,
+            abortSignal: abortController.signal,
+          });
+        } catch (err: any) {
+          if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+            await markRunCanceled(run.id);
+            return;
+          }
+          throw err;
+        }
+        if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+          await markRunCanceled(run.id);
+          return;
+        }
 
 
         const selectedFilesForLog = requestedFiles.filter(Boolean);
@@ -1651,6 +1716,11 @@ export default defineConfig({
           artifacts["allure-report"] = path.join("runner-logs", run.id, "allure-report");
         }
 
+        if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+          await markRunCanceled(run.id);
+          return;
+        }
+
         // 5) Mark run finished
         const ok = failed === 0 && ((exec.exitCode ?? 1) === 0);
         await prisma.testRun.update({
@@ -1679,6 +1749,10 @@ export default defineConfig({
           });
         }
       } catch (err: any) {
+        if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+          await markRunCanceled(run.id);
+          return;
+        }
         await prisma.testRun.update({
           where: { id: run.id },
           data: {
@@ -1695,6 +1769,8 @@ export default defineConfig({
         if (!usingLocalRepo) {
           await rmrf(work).catch(() => { });
         }
+        runAbortControllers.delete(run.id);
+        await redis.del(cancelKey).catch(() => {});
       }
     })().catch((err) => {
       // last safety net
@@ -1756,6 +1832,38 @@ export default defineConfig({
     const run = await loadRunById(id);
     if (!run) return reply.code(404).send({ error: "Run not found" });
     return reply.send({ run });
+  });
+
+  // POST /runner/test-runs/:id/stop
+  app.post("/test-runs/:id/stop", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        project: { select: { ownerId: true } },
+      },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    if (run.status !== TestRunStatus.running && run.status !== TestRunStatus.queued) {
+      return reply.code(409).send({ error: "Run is not active" });
+    }
+
+    await redis.set(cancelKeyForRun(id), "1", "EX", 60 * 60).catch(() => {});
+    const controller = runAbortControllers.get(id);
+    if (controller) controller.abort();
+    try {
+      const job = await runQueue.getJob(id);
+      if (job) await job.remove();
+    } catch {
+      // ignore queue cancellation errors
+    }
+
+    await markRunCanceled(id);
+    return reply.send({ ok: true });
   });
 
   async function loadRunById(id: string) {

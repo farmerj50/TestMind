@@ -14,7 +14,7 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   }
 };
 
-const IDENTITY_CHECK_TIMEOUT = 10000;
+const IDENTITY_CHECK_TIMEOUT = 5000;
 
 function normalizeIdentityPath(target: string): string {
   if (!target) return '/';
@@ -81,7 +81,7 @@ function matchesIdentityPrefix(route: string, prefix: string): boolean {
 type Region = 'navigation' | 'header' | 'main';
 
 function getAttributeValue(selector: string, attr: string): string | undefined {
-  const regex = new RegExp(`${attr}\s*=\s*['"]([^'\"]+)['"]`, 'i');
+  const regex = new RegExp(`${attr}\s*=\s*['"]([^'"]+)['"]`, 'i');
   const match = selector.match(regex);
   return match ? match[1] : undefined;
 }
@@ -114,7 +114,7 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\\]]/g, '\$&');
+  return value.replace(/[.*+?^${}()|[\\]]/g, '\$&');
 }
 
 function pathRegex(target: string): RegExp {
@@ -139,7 +139,7 @@ function identityPathForText(text?: string): string | undefined {
 
 async function clickNavLink(page: Page, target: string): Promise<void> {
   const normalizedPath = normalizeIdentityPath(target);
-  const targetSelector = `a[href="${normalizedPath}"]`;
+  const targetSelector = `a[href="${normalizedPath}"]`;  
   const scopes = [
     page.getByRole('navigation'),
     page.locator('header'),
@@ -149,14 +149,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 15000 });
-      await candidate.click({ timeout: 15000 });
+      await candidate.waitFor({ state: 'visible', timeout: 5000 });
+      await candidate.click({ timeout: 5000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 15000 });
-  await fallback.click({ timeout: 15000 });
+  await fallback.waitFor({ state: 'visible', timeout: 5000 });
+  await fallback.click({ timeout: 5000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
