@@ -37,15 +37,19 @@ COPY packages/runner ./packages/runner
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
 
+# ✅ Build-time Prisma generate (Prisma CLI exists here because dev deps are installed)
 RUN pnpm --filter api exec prisma generate
+
+# ✅ Build API
 RUN pnpm --filter api build
 
 
 # -------------------------
-# runner: prod install (real deps) + prisma generate + playwright browsers
+# runner: prod install (real deps) + playwright browsers
 # -------------------------
 FROM node:20-bullseye-slim AS runner
 WORKDIR /app
+
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
@@ -62,16 +66,15 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
 
-# Install prod deps in the runner (no pnpm symlink breakage)
+# Install production deps only
 RUN pnpm install --frozen-lockfile --prod
 
-# Prisma generate needs schema present
-COPY apps/api/prisma ./apps/api/prisma
-WORKDIR /app/apps/api
-RUN pnpm exec prisma generate
-WORKDIR /app
+# ✅ Copy generated Prisma client artifacts from builder
+# This avoids needing Prisma CLI in the runtime image.
+COPY --from=builder /workspace/apps/api/node_modules/.prisma /app/apps/api/node_modules/.prisma
 
 # Install Playwright Chromium + OS deps into the final image
+# NOTE: this requires Playwright to be present in prod deps of the filtered package.
 RUN pnpm --filter api exec playwright install --with-deps chromium
 
 ARG CACHEBUST=1
