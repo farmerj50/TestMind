@@ -120,14 +120,21 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
       setConnected(false);
       setRepos([]);
       // Try to fetch a signed GitHub auth URL (uses Clerk auth); if that fails, fallback to direct redirect.
-    try {
-      const href = `${apiHref("/auth/github/start")}?returnTo=/dashboard`;
-      window.location.href = href;
-      return;
-    } catch (inner: any) {
-      const msg = inner?.message || "Starting GitHub connect failed";
-      toast.error(msg);
-    }
+      try {
+        const res = await apiFetch<{ url: string }>(
+          `/auth/github/start-url?returnTo=/dashboard`
+        );
+        if (res?.url) {
+          window.location.href = res.url;
+          return;
+        }
+        throw new Error("Missing GitHub auth URL");
+      } catch (inner: any) {
+        const msg = inner?.message || "Starting GitHub connect failed";
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
     } catch (e: any) {
       const msg = e?.message || "Failed to start GitHub connect";
       setError(msg);
