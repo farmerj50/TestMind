@@ -908,16 +908,41 @@ const startRecorderHelper = (force = false) => {
 
   app.addHook("onReady", async () => startRecorderHelper());
 
-  // Recorder helper status/start endpoints for UI "recheck" buttons
-app.get("/recorder/helper/status", async () => ({
-  started: !!recorderState.__tmRecorderHelperStarted,
-  configured: !!validatedEnv.START_RECORDER_HELPER,
-  helperPath: path.join(REPO_ROOT, "recorder-helper.js"),
-}));
+// Recorder helper status/start endpoints for UI "recheck" buttons
+app.get("/recorder/helper/status", async () => {
+  const helperUrl = process.env.RECORDER_HELPER || null;
+  if (helperUrl) {
+    try {
+      const res = await fetch(`${helperUrl.replace(/\/$/, "")}/status`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      return { started: true, configured: true, mode: "remote", helperUrl };
+    } catch {
+      return { started: false, configured: true, mode: "remote", helperUrl };
+    }
+  }
+
+  return {
+    started: !!recorderState.__tmRecorderHelperStarted,
+    configured: !!validatedEnv.START_RECORDER_HELPER,
+    mode: "local",
+    helperUrl: null,
+    helperPath: path.join(REPO_ROOT, "recorder-helper.js"),
+  };
+});
 
 app.post("/recorder/helper/start", async () => {
+  const helperUrl = process.env.RECORDER_HELPER || null;
+  if (helperUrl) {
+    try {
+      const res = await fetch(`${helperUrl.replace(/\/$/, "")}/status`);
+      return { started: res.ok, configured: true, mode: "remote", helperUrl };
+    } catch {
+      return { started: false, configured: true, mode: "remote", helperUrl };
+    }
+  }
+
   startRecorderHelper(true);
-  return { started: !!recorderState.__tmRecorderHelperStarted };
+  return { started: !!recorderState.__tmRecorderHelperStarted, mode: "local", helperUrl: null };
 });
 
 if (allowDebugRoutes) {
