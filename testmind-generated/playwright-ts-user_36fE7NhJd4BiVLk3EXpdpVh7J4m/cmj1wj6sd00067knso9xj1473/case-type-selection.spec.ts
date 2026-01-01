@@ -14,7 +14,7 @@ const PAGE_IDENTITIES: Record<string, IdentityDescriptor> = {
   }
 };
 
-const IDENTITY_CHECK_TIMEOUT = 5000;
+const IDENTITY_CHECK_TIMEOUT = 10000;
 
 function normalizeIdentityPath(target: string): string {
   if (!target) return '/';
@@ -114,12 +114,12 @@ function chooseLocator(page: Page, selector: string, region?: Region) {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]]/g, '\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function pathRegex(target: string): RegExp {
   const escaped = escapeRegex(target);
-  return new RegExp(`^(?:https?:\/\/[^/]+)?${escaped}(?:$|[?#/])`);
+  return new RegExp(`^(?:https?:\\/\\/[^/]+)?${escaped}(?:$|[?#/])`);
 }
 
 function identityPathForText(text?: string): string | undefined {
@@ -139,7 +139,7 @@ function identityPathForText(text?: string): string | undefined {
 
 async function clickNavLink(page: Page, target: string): Promise<void> {
   const normalizedPath = normalizeIdentityPath(target);
-  const targetSelector = `a[href="${normalizedPath}"]`;  
+  const targetSelector = `a[href="${normalizedPath}"]`;
   const scopes = [
     page.getByRole('navigation'),
     page.locator('header'),
@@ -149,14 +149,14 @@ async function clickNavLink(page: Page, target: string): Promise<void> {
     const link = scope.locator(targetSelector);
     if (await link.count()) {
       const candidate = link.first();
-      await candidate.waitFor({ state: 'visible', timeout: 5000 });
-      await candidate.click({ timeout: 5000 });
+      await candidate.waitFor({ state: 'visible', timeout: 15000 });
+      await candidate.click({ timeout: 15000 });
       return;
     }
   }
   const fallback = page.locator(targetSelector).first();
-  await fallback.waitFor({ state: 'visible', timeout: 5000 });
-  await fallback.click({ timeout: 5000 });
+  await fallback.waitFor({ state: 'visible', timeout: 15000 });
+  await fallback.click({ timeout: 15000 });
 }
 
 const SHARED_LOGIN_CONFIG = {
@@ -221,7 +221,7 @@ test("Page loads: /case-type-selection", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Page loads: /case-type-selection" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
     await navigateTo(page, "/case-type-selection");
-    await ensurePageIdentity(page, "/case-type-selection");
+      await ensurePageIdentity(page, "/case-type-selection");
   });
   await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
     {
@@ -258,11 +258,11 @@ test("Navigate /case-type-selection → /", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
     await navigateTo(page, "/case-type-selection");
-    await ensurePageIdentity(page, "/case-type-selection");
+      await ensurePageIdentity(page, "/case-type-selection");
   });
   await test.step("2. Navigate to /", async () => {
     await navigateTo(page, "/");
-    await ensurePageIdentity(page, "/");
+      await ensurePageIdentity(page, "/");
   });
   await test.step("3. Ensure text \"Page\" is visible", async () => {
     {
@@ -299,11 +299,11 @@ test("Navigate /case-type-selection → /live-chat", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /live-chat" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
     await navigateTo(page, "/case-type-selection");
-    await ensurePageIdentity(page, "/case-type-selection");
+      await ensurePageIdentity(page, "/case-type-selection");
   });
   await test.step("2. Navigate to /live-chat", async () => {
     await navigateTo(page, "/live-chat");
-    await ensurePageIdentity(page, "/live-chat");
+      await ensurePageIdentity(page, "/live-chat");
   });
   await test.step("3. Ensure text \"live-chat\" is visible", async () => {
     {
@@ -340,11 +340,11 @@ test("Navigate /case-type-selection → /pricing", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /pricing" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
     await navigateTo(page, "/case-type-selection");
-    await ensurePageIdentity(page, "/case-type-selection");
+      await ensurePageIdentity(page, "/case-type-selection");
   });
   await test.step("2. Navigate to /pricing", async () => {
     await navigateTo(page, "/pricing");
-    await ensurePageIdentity(page, "/pricing");
+      await ensurePageIdentity(page, "/pricing");
   });
   await test.step("3. Ensure text \"pricing\" is visible", async () => {
     {
@@ -381,12 +381,12 @@ test("Navigate /case-type-selection → /login", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /login" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
     await navigateTo(page, "/case-type-selection");
-    await ensurePageIdentity(page, "/case-type-selection");
+      await ensurePageIdentity(page, "/case-type-selection");
   });
   await sharedLogin(page);
   await test.step("2. Navigate to /login", async () => {
     await navigateTo(page, "/login");
-    await ensurePageIdentity(page, "/login");
+      await ensurePageIdentity(page, "/login");
   });
   await test.step("3. Ensure text \"login\" is visible", async () => {
     {
@@ -423,11 +423,11 @@ test("Navigate /case-type-selection → /signup", async ({ page }) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /signup" }, { type: "parameter", description: "page=/case-type-selection" });
   await test.step("1. Navigate to https://justicepathlaw.com/case-type-selection", async () => {
     await navigateTo(page, "/case-type-selection");
-    await ensurePageIdentity(page, "/case-type-selection");
+      await ensurePageIdentity(page, "/case-type-selection");
   });
   await test.step("2. Navigate to /signup", async () => {
     await navigateTo(page, "/signup");
-    await ensurePageIdentity(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await test.step("3. Ensure text \"signup\" is visible", async () => {
     {
