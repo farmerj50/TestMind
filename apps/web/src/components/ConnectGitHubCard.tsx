@@ -92,8 +92,8 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
 
       localStorage.setItem(STORAGE_KEY, currentId);
       prevUserId.current = currentId;
-      // Do not auto-refresh; require explicit connect or ?github=connected
-      setLoading(false);
+      // Auto-refresh on user load so connected accounts populate the dropdown.
+      await refresh();
     })();
   }, [user?.id]);
 

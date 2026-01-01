@@ -87,10 +87,14 @@ const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(200, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     });
     return res.end();
+  }
+
+  if (req.method === "GET" && req.url === "/status") {
+    return send(res, 200, { ok: true, helper: "recorder-helper" });
   }
 
   if (req.method !== "POST" || req.url !== "/record") {
