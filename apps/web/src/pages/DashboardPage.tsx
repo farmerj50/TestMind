@@ -76,15 +76,6 @@ export default function DashboardPage() {
     const params = new URLSearchParams(location.search);
     if (params.get("github") === "connected") {
       setGithubSuccess("GitHub connected successfully");
-      params.delete("github");
-      const search = params.toString();
-      navigate(
-        {
-          pathname: location.pathname,
-          search: search ? `?${search}` : "",
-        },
-        { replace: true }
-      );
     }
   }, [location.pathname, location.search, navigate]);
 
