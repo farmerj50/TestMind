@@ -449,6 +449,19 @@ const SharedLocatorSchema = z.object({
 });
 type SharedLocatorBody = z.infer<typeof SharedLocatorSchema>;
 
+const LocatorSaveSchema = z.object({
+  projectId: z.string().min(1),
+  pagePath: z.string().optional(),
+  urlPattern: z.string().optional(),
+  bucket: z.enum(["fields", "buttons", "links", "locators"]).optional(),
+  elementName: z.string().optional(),
+  name: z.string().optional(),
+  primary: z.string().min(1),
+  fallbacks: z.array(z.string().min(1)).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+type LocatorSaveBody = z.infer<typeof LocatorSaveSchema>;
+
 const normalizeLocatorPath = (pathValue: string) => {
   try {
     const url = new URL(pathValue, "http://localhost");
@@ -659,6 +672,107 @@ app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
     return reply.send({ sharedSteps: updated.sharedSteps });
   }
 );
+
+app.post<{ Body: LocatorSaveBody }>("/locators", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const parsed = LocatorSaveSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: parsed.error.flatten() });
+  }
+
+  const {
+    projectId,
+    pagePath,
+    urlPattern,
+    bucket: bucketInput,
+    elementName,
+    name: nameInput,
+    primary,
+    fallbacks,
+    metadata,
+  } = parsed.data;
+
+  const name = (elementName || nameInput || "").trim();
+  if (!name) return reply.code(400).send({ error: "elementName is required" });
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, ownerId: userId },
+    select: { id: true, sharedSteps: true },
+  });
+  if (!project) return reply.code(404).send({ error: "Project not found" });
+
+  const bucket = bucketInput ?? "locators";
+  const rawPath = pagePath || urlPattern || "/";
+  const normalizedPath = normalizeLocatorPath(rawPath);
+  const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+
+  let pages: Record<string, any> = {};
+  if (sharedSteps.pages && typeof sharedSteps.pages === "object") {
+    pages = { ...sharedSteps.pages };
+  } else if (sharedSteps.locators && typeof sharedSteps.locators === "object") {
+    pages = Object.entries(sharedSteps.locators as Record<string, any>).reduce(
+      (acc, [key, locators]) => {
+        acc[key] = { locators: { ...(locators as Record<string, string>) } };
+        return acc;
+      },
+      {} as Record<string, any>
+    );
+  }
+
+  const page = { ...(pages[normalizedPath] ?? {}) };
+  const bucketMap = { ...(page[bucket] ?? {}) };
+  bucketMap[name] = primary.trim();
+  page[bucket] = bucketMap;
+  pages[normalizedPath] = page;
+
+  const cleanFallbacks = Array.from(
+    new Set((fallbacks ?? []).map((v) => v.trim()).filter(Boolean))
+  ).filter((value) => value !== primary.trim());
+
+  const locatorFallbacks: Record<string, any> = {
+    ...(sharedSteps.locatorFallbacks ?? {}),
+  };
+  const pageFallbacks = { ...(locatorFallbacks[normalizedPath] ?? {}) };
+  const bucketFallbacks = { ...(pageFallbacks[bucket] ?? {}) };
+  bucketFallbacks[name] = {
+    primary: primary.trim(),
+    fallbacks: cleanFallbacks,
+    metadata,
+    updatedBy: userId,
+    updatedAt: new Date().toISOString(),
+  };
+  pageFallbacks[bucket] = bucketFallbacks;
+  locatorFallbacks[normalizedPath] = pageFallbacks;
+
+  const now = new Date().toISOString();
+  const nextSharedSteps = {
+    ...sharedSteps,
+    pages,
+    locatorFallbacks,
+    locatorMeta: {
+      ...(sharedSteps.locatorMeta ?? {}),
+      updatedAt: now,
+      updatedBy: userId,
+    },
+  };
+
+  const updated = await prisma.project.update({
+    where: { id: projectId },
+    data: { sharedSteps: nextSharedSteps },
+    select: { sharedSteps: true },
+  });
+
+  scheduleSpecRegeneration({
+    projectId,
+    userId,
+    baseUrl: (sharedSteps as any)?.baseUrl,
+    sharedSteps: nextSharedSteps,
+  });
+
+  return reply.send({ sharedSteps: updated.sharedSteps });
+});
 
 app.get<{ Params: { id: string } }>("/projects/:id/shared-locators", async (req, reply) => {
   const userId = requireUser(req, reply);

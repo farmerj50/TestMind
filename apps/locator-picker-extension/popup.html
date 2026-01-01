@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>TestMind Picker</title>
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 360px;
+        color: #0f172a;
+        background: #f8fafc;
+      }
+      h2 {
+        margin: 0 0 6px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+      }
+      .section { margin-bottom: 12px; }
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+      label { font-size: 11px; color: #475569; display: block; margin-bottom: 4px; }
+      input, select {
+        width: 100%;
+        border: 1px solid #cbd5f5;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+        background: white;
+      }
+      button {
+        border: 1px solid #1e293b;
+        background: #0f172a;
+        color: white;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #e2e8f0;
+        color: #0f172a;
+        border-color: #cbd5f5;
+      }
+      .code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: #0f172a;
+      }
+      .pill {
+        font-size: 10px;
+        border: 1px solid #cbd5f5;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: white;
+      }
+      .status { font-size: 11px; color: #64748b; min-height: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="section">
+      <h2>Picker</h2>
+      <div class="row">
+        <button id="start">Start picker</button>
+        <button id="stop" class="secondary">Stop</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Settings</h2>
+      <div class="row">
+        <div style="flex: 1">
+          <label for="apiBase">API base URL</label>
+          <input id="apiBase" type="text" placeholder="http://localhost:8787" />
+        </div>
+      </div>
+      <div class="row">
+        <div style="flex: 1">
+          <label for="apiToken">API token (Clerk)</label>
+          <input id="apiToken" type="password" placeholder="paste token" />
+        </div>
+      </div>
+      <div class="row">
+        <div style="flex: 1">
+          <label for="projectId">Default project ID</label>
+          <input id="projectId" type="text" placeholder="project id" />
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Last selection</h2>
+      <div id="selection">No selection yet.</div>
+      <div class="status" id="saveStatus"></div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
