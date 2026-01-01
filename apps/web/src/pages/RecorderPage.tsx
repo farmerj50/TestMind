@@ -44,9 +44,12 @@ export default function RecorderPage() {
   // simple probe for helper availability
   const probeHelper = async () => {
     try {
-      const res = await apiFetch<{ started?: boolean; configured?: boolean }>(
-        "/recorder/helper/status"
-      ).catch(() => null);
+      const res = await apiFetch<{
+        started?: boolean;
+        configured?: boolean;
+        mode?: "local" | "remote";
+        helperUrl?: string | null;
+      }>("/recorder/helper/status").catch(() => null);
       if (res?.started) {
         setHelperDetected("online");
       } else {
@@ -201,8 +204,9 @@ export default function RecorderPage() {
         typeof window !== "undefined" &&
         (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
       const pid = computedProjectId || (await ensureProjectId());
+      const helperUrl = isLocalHelper ? "http://localhost:43117" : null;
       if (isLocalHelper) {
-        const res = await fetch("http://localhost:43117/record", {
+        const res = await fetch(`${helperUrl}/record`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -221,12 +225,38 @@ export default function RecorderPage() {
           `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
         );
       } else {
-        const res = await apiFetch<{ started?: boolean }>("/recorder/helper/start", { method: "POST" });
-        if (!res?.started) {
-          throw new Error("Failed to start recorder helper");
+        const cfg = await apiFetch<{ helper?: string | null }>(`/recorder/codegen-command`, {
+          method: "POST",
+          body: JSON.stringify({
+            projectId: pid,
+            baseUrl: computedBaseUrl || baseUrl.trim(),
+            name: name.trim(),
+            language,
+          }),
+        });
+        const remoteHelper = cfg?.helper?.replace(/\/$/, "");
+        if (!remoteHelper) {
+          throw new Error("Recorder helper is not configured.");
+        }
+        const res = await fetch(`${remoteHelper}/record`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: pid || undefined,
+            baseUrl: computedBaseUrl,
+            name: name.trim(),
+            language,
+            headed,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data?.error || "Failed to launch recorder helper");
         }
         setHelperDetected("online");
-        setLaunchStatus("Recorder helper started on the server. Use Get recorder command to run locally.");
+        setLaunchStatus(
+          `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
+        );
       }
     } catch (e: any) {
       setErr(e?.message ?? "Failed to launch recorder. Make sure recorder-helper is running locally.");
