@@ -17,8 +17,8 @@ const args = process.argv.slice(2).reduce((acc, cur) => {
 
 const PORT = Number(args.port || process.env.RECORDER_PORT || 43117);
 const WEB_CWD = path.join(process.cwd(), "apps", "web");
-const RECORD_ROOT = path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts", "recordings");
-const GENERATED_ROOT = path.join(process.cwd(), "testmind-generated");
+const GENERATED_ROOT = process.env.TM_GENERATED_ROOT || path.join(process.cwd(), "testmind-generated");
+const RECORD_ROOT = path.join(GENERATED_ROOT, "playwright-ts", "recordings");
 const CALLBACK = process.env.RECORDER_CALLBACK || args.callback || null;
 
 function send(res, status, data) {

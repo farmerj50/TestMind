@@ -295,9 +295,7 @@ export default function RecorderPage() {
             const data = await res.json().catch(() => ({}));
             if (data?.ok) {
               setHelperDetected("online");
-              setLaunchStatus(
-                `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
-              );
+              setLaunchStatus(`Recorder launched${headed ? " (headed)" : ""}. Finish recording to save the spec.`);
               return;
             }
           }
@@ -329,9 +327,7 @@ export default function RecorderPage() {
           throw new Error(data?.error || "Failed to launch recorder helper");
         }
         setHelperDetected("online");
-        setLaunchStatus(
-          `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
-        );
+        setLaunchStatus(`Recorder launched${headed ? " (headed)" : ""}. Finish recording to save the spec.`);
       }
     } catch (e: any) {
       setErr(e?.message ?? "Failed to launch recorder. Make sure recorder-helper is running locally.");
@@ -499,9 +495,7 @@ export default function RecorderPage() {
               <div className="text-lg font-semibold text-slate-900">Recorded specs</div>
               <p className="text-xs text-slate-500">Saved under recordings for each project.</p>
               {lastCallbackBody?.status && (
-                <p className="text-xs text-emerald-700">
-                  Helper: {lastCallbackBody.status} {lastCallbackBody.outputPath ? `-> ${lastCallbackBody.outputPath}` : ""}
-                </p>
+                <p className="text-xs text-emerald-700">Helper: {lastCallbackBody.status}</p>
               )}
             </div>
             <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
@@ -524,7 +518,6 @@ export default function RecorderPage() {
                         className="rounded-md border border-slate-200 bg-white px-3 py-2"
                       >
                         <div className="text-sm font-medium text-slate-900">{s.name}</div>
-                        <div className="text-xs text-slate-500">{s.pathRelative || s.path}</div>
                       </div>
                     ))}
                   </div>
