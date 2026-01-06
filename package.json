@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
-    "build": "pnpm --filter api build",
+    "build": "tsc -b && vite build",
+    "build:with-browsers": "playwright install --with-deps && tsc -b && vite build",
     "start": "node apps/api/dist/index.js",
     "preview": "npm --prefix apps/web run preview",
     "worker": "tsx apps/worker/src/index.ts",
