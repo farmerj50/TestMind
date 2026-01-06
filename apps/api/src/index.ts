@@ -204,6 +204,7 @@ await registerWithLog("cors", () =>
       "Content-Type",
       "Authorization",
       "X-Requested-With",
+      "X-Debug-Token",
       "X-Clerk-Auth",
       "X-Clerk-Session",
       "X-Clerk-Client",
