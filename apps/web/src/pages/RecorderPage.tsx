@@ -433,7 +433,7 @@ export default function RecorderPage() {
           </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={!(projectId.trim() || baseUrl.trim())}>Save spec</Button>
-            <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
+            <Button type="button" size="sm" variant="outline" onClick={() => load()} disabled={loading}>
               Refresh list
             </Button>
             <Button
@@ -504,7 +504,7 @@ export default function RecorderPage() {
                 </p>
               )}
             </div>
-            <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+            <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
               {loading ? "Loading..." : "Refresh"}
             </Button>
           </div>
