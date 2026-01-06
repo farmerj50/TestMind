@@ -18,6 +18,7 @@ const args = process.argv.slice(2).reduce((acc, cur) => {
 const PORT = Number(args.port || process.env.RECORDER_PORT || 43117);
 const WEB_CWD = path.join(process.cwd(), "apps", "web");
 const RECORD_ROOT = path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts", "recordings");
+const GENERATED_ROOT = path.join(process.cwd(), "testmind-generated");
 const CALLBACK = process.env.RECORDER_CALLBACK || args.callback || null;
 
 function send(res, status, data) {
@@ -50,6 +51,65 @@ function validateEnv() {
     : { cmd: "npx", args: [] };
 }
 
+function normalizePlaywrightTestTitle(raw, name) {
+  const title = (name || "").trim() || "recorded spec";
+  const testRe = /\btest(?:\.(?:only|skip))?\s*\(\s*(['"`])test\1\s*,/;
+  if (!testRe.test(raw)) return raw;
+  return raw.replace(testRe, (match, quote) => {
+    return match.replace(`${quote}test${quote}`, `${quote}${title}${quote}`);
+  });
+}
+
+function ensurePlaywrightTest(outputPath, name) {
+  if (!fs.existsSync(outputPath)) return;
+  const raw = fs.readFileSync(outputPath, "utf8");
+  if (raw.includes("@playwright/test")) {
+    const updated = normalizePlaywrightTestTitle(raw, name);
+    if (updated !== raw) {
+      fs.writeFileSync(outputPath, updated, "utf8");
+    }
+    return;
+  }
+  if (!raw.includes("chromium.launch")) return;
+
+  const isTs = outputPath.endsWith(".ts");
+  const header = isTs
+    ? "import { test, expect } from '@playwright/test';"
+    : "const { test, expect } = require('@playwright/test');";
+  const withoutRequire = raw.replace(
+    /const\s+\{\s*chromium\s*\}\s*=\s*require\(['"]playwright['"]\);\s*\r?\n?/,
+    ""
+  );
+  const withoutWrapper = withoutRequire
+    .replace(/\(\s*async\s*\(\)\s*=>\s*\{\s*\r?\n?/, "")
+    .replace(/\r?\n?\}\)\(\);\s*$/, "");
+  const withoutBrowser = withoutWrapper
+    .replace(/const\s+browser\s*=\s*await\s+chromium\.launch\([\s\S]*?\);\s*\r?\n?/, "")
+    .replace(/await\s+browser\.close\(\);\s*\r?\n?/, "");
+  const indented = withoutBrowser
+    .split(/\r?\n/)
+    .map((line) => (line ? `  ${line}` : ""))
+    .join("\n");
+  const testName = (name || "").trim() || "recorded spec";
+  const next = `${header}\n\n` +
+    `const testName = ${JSON.stringify(testName)};\n\n` +
+    `test(testName, async ({ browser }) => {\n${indented}\n});\n`;
+  fs.writeFileSync(outputPath, next, "utf8");
+}
+
+function mirrorToUserRoot(sourcePath, userId, projectId) {
+  if (!userId || !projectId) return null;
+  const destDir = path.join(GENERATED_ROOT, `playwright-ts-${userId}`, "recordings", projectId);
+  ensureDir(destDir);
+  const destPath = path.join(destDir, path.basename(sourcePath));
+  try {
+    fs.copyFileSync(sourcePath, destPath);
+    return destPath;
+  } catch (err) {
+    console.error("[recorder-helper] mirror failed", err);
+    return null;
+  }
+}
 async function postCallback(payload) {
   if (!CALLBACK) return;
   try {
@@ -109,16 +169,17 @@ const server = http.createServer((req, res) => {
       const baseUrl = (body.baseUrl || "").trim();
       const name = (body.name || "").trim();
       const projectId = (body.projectId || "PROJECT_ID").trim() || "PROJECT_ID";
+      const userId = (body.userId || "").trim() || null;
       const language = (body.language || "typescript").toLowerCase();
       const ext = language === "javascript" ? "js" : language === "python" ? "py" : language === "java" ? "java" : "ts";
-      const targetFlag =
-        language === "javascript"
-          ? "--target=javascript"
+      const targetValue =
+        language === "javascript" || language === "typescript"
+          ? "playwright-test"
           : language === "python"
-          ? "--target=python"
+          ? "python"
           : language === "java"
-          ? "--target=java"
-          : "--target=typescript";
+          ? "java"
+          : "playwright-test";
       const headed = body.headed === true;
 
       if (!baseUrl) return send(res, 400, { ok: false, error: "baseUrl is required" });
@@ -135,7 +196,8 @@ const server = http.createServer((req, res) => {
         "playwright",
         "codegen",
         baseUrl,
-        targetFlag,
+        "--target",
+        targetValue,
         "--save-storage=state.json",
         "--output",
         outputPath,
@@ -143,6 +205,27 @@ const server = http.createServer((req, res) => {
       if (headed) {
         args.push("--headed");
       }
+
+      const ensurePlaywrightTestWithRetry = () => {
+        let attempts = 0;
+        const maxAttempts = 6;
+        const delayMs = 500;
+        const tryConvert = () => {
+          attempts += 1;
+          try {
+            ensurePlaywrightTest(outputPath, name);
+            mirrorToUserRoot(outputPath, userId, projectId);
+            return;
+          } catch (err) {
+            if (attempts >= maxAttempts) {
+              console.error("[recorder-helper] post-process failed", err);
+              return;
+            }
+          }
+          setTimeout(tryConvert, delayMs);
+        };
+        tryConvert();
+      };
 
       try {
         postCallback({ status: "launching", baseUrl, projectId, outputPath, headed });
@@ -158,6 +241,7 @@ const server = http.createServer((req, res) => {
         });
 
         child.on("exit", (code, signal) => {
+          ensurePlaywrightTestWithRetry();
           postCallback({ status: "exited", code, signal, outputPath });
         });
 

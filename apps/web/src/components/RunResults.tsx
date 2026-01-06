@@ -89,6 +89,11 @@ export default function RunResults({
     <div className="space-y-3">
       {results.map((r) => {
         const path = r.case.key?.split("#")[0]?.replace(/\\/g, "/");
+        const fileName = path ? path.split("/").pop() : null;
+        const rawTitle = r.case.title || "";
+        const displayTitle = rawTitle.includes(" > ")
+          ? rawTitle.split(" > ").pop() || rawTitle
+          : rawTitle;
         const targetSuiteId =
           suiteId ||
           (projectId && projectId.startsWith("agent-") ? projectId : projectId ? `agent-${projectId}` : null);
@@ -99,8 +104,8 @@ export default function RunResults({
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="font-medium text-slate-800">{r.case.title}</div>
-                {path && <div className="text-xs text-slate-500 font-mono">{path}</div>}
+                <div className="font-medium text-slate-800">{displayTitle}</div>
+                {fileName && <div className="text-xs text-slate-500">{fileName}</div>}
               </div>
               <div className="flex items-center gap-2 text-sm">
                 {icon(r.status)}

@@ -1,14 +1,29 @@
 import { useEffect, useState } from "react";
-import { useApi } from "../lib/api";
+import { useAuth } from "@clerk/clerk-react";
+import { apiUrl, useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 type SpecMeta = { projectId: string; name: string; path: string; pathRelative?: string };
-type Project = { id: string; name: string; repoUrl?: string };
+type Project = { id: string; name: string; repoUrl?: string; ownerId?: string };
 
 export default function RecorderPage() {
   const { apiFetch } = useApi();
+  const { userId } = useAuth();
+  const helperBaseEnv = import.meta.env.VITE_RECORDER_HELPER?.trim();
+  const helperBase = (() => {
+    if (!helperBaseEnv) return null;
+    if (import.meta.env.PROD) {
+      try {
+        const host = new URL(helperBaseEnv).hostname;
+        if (host === "localhost" || host === "127.0.0.1") return null;
+      } catch {
+        return null;
+      }
+    }
+    return helperBaseEnv.replace(/\/$/, "");
+  })();
   const [specs, setSpecs] = useState<SpecMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -27,10 +42,11 @@ export default function RecorderPage() {
   const [command, setCommand] = useState<{ windows: string; unix: string } | null>(null);
   const [headed, setHeaded] = useState(false);
 
-  const load = async () => {
+  const load = async (pid?: string) => {
     setLoading(true);
     try {
-      const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+      const requestedProjectId = (pid ?? projectId).trim();
+      const qs = requestedProjectId ? `?projectId=${encodeURIComponent(requestedProjectId)}` : "";
       const res = await apiFetch<{ specs: SpecMeta[] }>(`/recorder/specs${qs}`);
       setSpecs(res.specs);
       setErr(null);
@@ -44,6 +60,17 @@ export default function RecorderPage() {
   // simple probe for helper availability
   const probeHelper = async () => {
     try {
+      if (helperBase) {
+        try {
+          const direct = await fetch(`${helperBase}/status`);
+          if (direct.ok) {
+            setHelperDetected("online");
+            return;
+          }
+        } catch {
+          // fall back to API check
+        }
+      }
       const res = await apiFetch<{
         started?: boolean;
         configured?: boolean;
@@ -98,6 +125,40 @@ export default function RecorderPage() {
     if (found?.repoUrl) {
       setBaseUrl(found.repoUrl);
     }
+    load(pid);
+  };
+
+  const resolveProjectBaseUrl = (pid: string) => {
+    const found = projects.find((p) => p.id === pid);
+    return (found?.repoUrl || "").trim();
+  };
+  const resolveProjectOwnerId = (pid: string) => {
+    const found = projects.find((p) => p.id === pid);
+    return found?.ownerId;
+  };
+
+  const ensureProjectBaseUrl = async (pid: string, url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    const existing = resolveProjectBaseUrl(pid);
+    if (existing && existing === trimmed) return;
+    await apiFetch(`/projects/${pid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ repoUrl: trimmed }),
+    });
+    setProjects((prev) =>
+      prev.map((p) => (p.id === pid ? { ...p, repoUrl: trimmed } : p))
+    );
+  };
+
+  const requireBaseUrlForProject = (pid: string, url: string) => {
+    const trimmed = url.trim();
+    const existing = resolveProjectBaseUrl(pid);
+    if (!trimmed && !existing) {
+      setErr("Base URL is required for this project.");
+      return false;
+    }
+    return true;
   };
 
   const ensureProjectId = async () => {
@@ -134,6 +195,8 @@ export default function RecorderPage() {
     try {
       setErr(null);
       const pid = projectId.trim() || (await ensureProjectId());
+      if (!requireBaseUrlForProject(pid, baseUrl)) return;
+      await ensureProjectBaseUrl(pid, baseUrl);
       const body: any = { name: name || "recorded-spec", content };
       body.projectId = pid;
       if (baseUrl.trim()) body.baseUrl = baseUrl.trim();
@@ -165,6 +228,8 @@ export default function RecorderPage() {
     try {
       setErr(null);
       const pid = computedProjectId || (await ensureProjectId());
+      if (!requireBaseUrlForProject(pid, baseUrl)) return;
+      await ensureProjectBaseUrl(pid, baseUrl);
       const res = await apiFetch<{ projectId: string; path: string; commandWindows: string; commandUnix: string }>(
         `/recorder/codegen-command`,
         {
@@ -200,31 +265,47 @@ export default function RecorderPage() {
       setErr(null);
       setLaunchStatus(null);
       setLaunching(true);
-      const isLocalHelper =
-        typeof window !== "undefined" &&
-        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
       const pid = computedProjectId || (await ensureProjectId());
-      const helperUrl = isLocalHelper ? "http://localhost:43117" : null;
-      if (isLocalHelper) {
-        const res = await fetch(`${helperUrl}/record`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: pid || undefined,
-            baseUrl: computedBaseUrl,
-            name: name.trim(),
-            language,
-            headed,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data?.error || "Failed to launch recorder");
+      if (!requireBaseUrlForProject(pid, baseUrl)) return;
+      await ensureProjectBaseUrl(pid, baseUrl);
+      const apiBase = new URL(apiUrl("/")).origin;
+      const launchPayload = {
+        projectId: pid || undefined,
+        baseUrl: computedBaseUrl,
+        name: name.trim(),
+        language,
+        headed,
+        apiBase,
+        userId: userId || resolveProjectOwnerId(pid),
+      };
+      const helperStart = await apiFetch<{
+        started?: boolean;
+        helperUrl?: string | null;
+        mode?: "local" | "remote";
+      }>("/recorder/helper/start", { method: "POST" }).catch(() => null);
+      const helperTarget = helperBase || helperStart?.helperUrl?.replace(/\/$/, "") || null;
+      if (helperTarget) {
+        try {
+          const res = await fetch(`${helperTarget}/record`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(launchPayload),
+          });
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data?.ok) {
+              setHelperDetected("online");
+              setLaunchStatus(
+                `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
+              );
+              return;
+            }
+          }
+        } catch {
+          // fall back to API helper lookup
         }
-        setLaunchStatus(
-          `Launched recorder (pid: ${data.pid}) saving to ${data.outputPath}${headed ? " (headed)" : ""}`
-        );
-      } else {
+      }
+      {
         const cfg = await apiFetch<{ helper?: string | null }>(`/recorder/codegen-command`, {
           method: "POST",
           body: JSON.stringify({
@@ -241,13 +322,7 @@ export default function RecorderPage() {
         const res = await fetch(`${remoteHelper}/record`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: pid || undefined,
-            baseUrl: computedBaseUrl,
-            name: name.trim(),
-            language,
-            headed,
-          }),
+          body: JSON.stringify(launchPayload),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) {
@@ -264,6 +339,20 @@ export default function RecorderPage() {
       setLaunching(false);
     }
   };
+
+  const specsByProject = specs.reduce<Record<string, SpecMeta[]>>((acc, spec) => {
+    acc[spec.projectId] ||= [];
+    acc[spec.projectId].push(spec);
+    return acc;
+  }, {});
+  const projectNames = projects.reduce<Record<string, string>>((acc, project) => {
+    acc[project.id] = project.name;
+    return acc;
+  }, {});
+  const selectedProjectId = projectId.trim();
+  const visibleSpecsByProject = selectedProjectId
+    ? { [selectedProjectId]: specsByProject[selectedProjectId] || [] }
+    : specsByProject;
 
   return (
     <div className="p-6 space-y-6">
@@ -422,19 +511,32 @@ export default function RecorderPage() {
           {specs.length === 0 ? (
             <div className="text-sm text-slate-500">No recorded specs found.</div>
           ) : (
-            <ul className="divide-y">
-              {specs.map((s) => (
-                <li key={`${s.projectId}:${s.name}`} className="py-2">
-                  <div className="text-sm font-medium text-slate-900">{s.name}</div>
-                  <div className="text-xs text-slate-500">
-                    Project: {s.projectId} → {s.pathRelative || s.path}
+            <div className="space-y-3">
+              {Object.entries(visibleSpecsByProject).map(([pid, items]) => (
+                <div key={pid} className="rounded-lg border bg-white/80 p-3 shadow-sm">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {projectNames[pid] ? `${projectNames[pid]} (${pid})` : pid}
                   </div>
-                </li>
+                  <div className="mt-2 space-y-2">
+                    {items.map((s) => (
+                      <div
+                        key={`${s.projectId}:${s.name}`}
+                        className="rounded-md border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <div className="text-sm font-medium text-slate-900">{s.name}</div>
+                        <div className="text-xs text-slate-500">{s.pathRelative || s.path}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </div>
     </div>
   );
 }
+
+
+

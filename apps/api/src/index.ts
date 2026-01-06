@@ -417,6 +417,12 @@ if (allowDebugRoutes) {
 
 
 app.get("/health", async () => ({ ok: true }));
+app.get("/__whoami", async () => ({
+  pid: process.pid,
+  node: process.version,
+  cwd: process.cwd(),
+  stamp: new Date().toISOString(),
+}));
 
 // ---------- Schemas ----------
 const optionalRepoUrl = z
@@ -925,7 +931,7 @@ app.get("/recorder/helper/status", async () => {
     started: !!recorderState.__tmRecorderHelperStarted,
     configured: !!validatedEnv.START_RECORDER_HELPER,
     mode: "local",
-    helperUrl: null,
+    helperUrl: recorderState.__tmRecorderHelperStarted ? "http://localhost:43117" : null,
     helperPath: path.join(REPO_ROOT, "recorder-helper.js"),
   };
 });
@@ -942,7 +948,11 @@ app.post("/recorder/helper/start", async () => {
   }
 
   startRecorderHelper(true);
-  return { started: !!recorderState.__tmRecorderHelperStarted, mode: "local", helperUrl: null };
+  return {
+    started: !!recorderState.__tmRecorderHelperStarted,
+    mode: "local",
+    helperUrl: recorderState.__tmRecorderHelperStarted ? "http://localhost:43117" : null,
+  };
 });
 
 if (allowDebugRoutes) {
