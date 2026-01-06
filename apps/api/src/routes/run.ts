@@ -884,6 +884,91 @@ export default async function runRoutes(app: FastifyInstance) {
             `[runner] generated specs dir=${genDir}\n`,
             { flag: "a" }
           );
+          const listSpecFiles = (rootDir: string, max = 200) => {
+            const out: string[] = [];
+            const walk = (dir: string, relBase: string) => {
+              if (out.length >= max) return;
+              let entries: fsSync.Dirent[];
+              try {
+                entries = fsSync.readdirSync(dir, { withFileTypes: true });
+              } catch {
+                return;
+              }
+              for (const entry of entries) {
+                if (out.length >= max) return;
+                const abs = path.join(dir, entry.name);
+                const rel = path.posix.join(relBase, entry.name);
+                if (entry.isDirectory()) {
+                  walk(abs, rel);
+                } else if (entry.isFile()) {
+                  if (/\.(spec|test)\.(ts|js|mjs|cjs)$/i.test(entry.name)) {
+                    out.push(rel);
+                  }
+                }
+              }
+            };
+            walk(rootDir, "");
+            return out;
+          };
+          const syncLegacyRecordings = async () => {
+            if (!genDir || !genDir.includes(`${adapter}-${project.ownerId}`)) return;
+            const recordingsDest = path.join(genDir, "recordings", project.id);
+            const isPlaceholderSpec = async (filePath: string) => {
+              try {
+                const text = await fs.readFile(filePath, "utf8");
+                return text.includes("paste or write your Playwright spec here");
+              } catch {
+                return false;
+              }
+            };
+            try {
+              const existing = fsSync.existsSync(recordingsDest)
+                ? await fs.readdir(recordingsDest).catch(() => [])
+                : [];
+              if (existing.length > 0) {
+                let hasRealSpec = false;
+                for (const file of existing) {
+                  const full = path.join(recordingsDest, file);
+                  if (!(file.endsWith(".spec.ts") || file.endsWith(".spec.js"))) continue;
+                  if (!(await isPlaceholderSpec(full))) {
+                    hasRealSpec = true;
+                    break;
+                  }
+                }
+                if (hasRealSpec) return;
+              }
+            } catch {
+              // ignore; attempt copy
+            }
+            const repoRoot = work;
+            const legacyRoots = [
+              path.resolve(GENERATED_ROOT),
+              path.join(repoRoot, "testmind-generated"),
+              path.join(repoRoot, "apps", "api", "testmind-generated"),
+              path.join(repoRoot, "apps", "web", "testmind-generated"),
+            ];
+            for (const root of legacyRoots) {
+              const legacy = path.join(root, adapter, "recordings", project.id);
+              if (!fsSync.existsSync(legacy)) continue;
+              await fs.mkdir(recordingsDest, { recursive: true });
+              await fs.cp(legacy, recordingsDest, { recursive: true });
+              await fs.writeFile(
+                path.join(outDir, "stdout.txt"),
+                `[runner] synced legacy recordings from ${legacy} -> ${recordingsDest}\n`,
+                { flag: "a" }
+              );
+              break;
+            }
+          };
+          await syncLegacyRecordings();
+          const specFiles = listSpecFiles(genDir);
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] spec files in genDir (${specFiles.length})\n` +
+              specFiles.map((f) => ` - ${f}`).join("\n") +
+              "\n",
+            { flag: "a" }
+          );
         }
 
         // 3) Detect + run (object signature) and force JSON output to outDir/report.json
@@ -1072,6 +1157,7 @@ const GEN_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(DIR, 'testmind-generated');
 const GEN_DIR = ${genDir ? JSON.stringify(genDir) : "path.join(GEN_ROOT, '__GEN_DEST__')"};
+console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -1124,7 +1210,7 @@ export default defineConfig({
   projects: [{
     name: 'generated',
     testDir: GEN_DIR,
-    testMatch: ['**/*.spec.ts','**/*.test.ts'],
+    testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
     timeout: 30_000,
   }],
 });`
@@ -1199,7 +1285,7 @@ export default defineConfig({
   projects: [{
     name: 'generated',
     testDir: GEN_DIR,
-    testMatch: ['**/*.spec.ts','**/*.test.ts'],
+    testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
     timeout: 30_000,
   }],
 });`;
@@ -1405,7 +1491,26 @@ export default defineConfig({
           return null;
         };
 
-        const resolveSelectedPath = (value: string) => {
+        const legacyBases = [
+          path.join(GENERATED_ROOT, adapter),
+          path.join(work, "testmind-generated", adapter),
+          path.join(work, "apps", "api", "testmind-generated", adapter),
+          path.join(work, "apps", "web", "testmind-generated", adapter),
+        ];
+
+        const ensureFromLegacy = async (relPath: string) => {
+          for (const base of legacyBases) {
+            const candidate = path.join(base, relPath);
+            if (!fsSync.existsSync(candidate)) continue;
+            const dest = path.join(genDest, relPath);
+            await fs.mkdir(path.dirname(dest), { recursive: true }).catch(() => {});
+            await fs.copyFile(candidate, dest).catch(() => {});
+            return dest;
+          }
+          return null;
+        };
+
+        const resolveSelectedPath = async (value: string) => {
           const posix = value.replace(/\\/g, "/");
           const candidates: string[] = [];
           if (path.isAbsolute(value)) candidates.push(value);
@@ -1432,12 +1537,15 @@ export default defineConfig({
           for (const candidate of candidates) {
             if (fsSync.existsSync(candidate)) return candidate;
           }
+          const legacy = await ensureFromLegacy(stripped);
+          if (legacy) return legacy;
           return null;
         };
 
+        const missingRequested: string[] = [];
         for (const selectedFile of requestedFiles) {
           if (!selectedFile) continue;
-          let resolved = resolveSelectedPath(selectedFile);
+          let resolved = await resolveSelectedPath(selectedFile);
           if (!resolved) {
             const basename = path.basename(selectedFile);
             if (basename) {
@@ -1451,6 +1559,7 @@ export default defineConfig({
               `[runner] selected file not found; skipping glob: ${selectedFile}\n`,
               { flag: "a" }
             );
+            missingRequested.push(selectedFile);
             continue;
           }
           const normalizedFile = path.relative(genDest, resolved).replace(/\\/g, "/");
@@ -1490,6 +1599,14 @@ export default defineConfig({
             // ignore copy failures
           }
           extraGlobs.push(abs.replace(/\\/g, "/"));
+        }
+        if (missingRequested.length) {
+          await fs.writeFile(
+            path.join(outDir, "stderr.txt"),
+            `[runner] requested files not found:\n${missingRequested.map((f) => ` - ${f}`).join("\n")}\n`,
+            { flag: "a" }
+          );
+          throw new Error(`Requested files not found: ${missingRequested.join(", ")}`);
         }
 
         // normalize grep: Playwright matches against "path spec.ts Test title",
@@ -2147,7 +2264,10 @@ export default defineConfig({
         status: r.status,
         durationMs: r.durationMs,
         message: r.message,
-        case: r.testCase,
+        case: {
+          ...r.testCase,
+          title: extra?.fullName ?? r.testCase.title,
+        },
         steps: extra?.steps ?? [],
         stdout: extra?.stdout ?? [],
         stderr: extra?.stderr ?? [],

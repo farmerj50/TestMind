@@ -7,7 +7,8 @@ const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://local
 const GEN_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(DIR, 'testmind-generated');
-const GEN_DIR = "D:\\Project\\testmind\\testmind-generated\\playwright-ts-user_36fE7NhJd4BiVLk3EXpdpVh7J4m\\cmj1wj6sd00067knso9xj1473";
+const GEN_DIR = "D:\\Project\\testmind\\testmind-generated\\playwright-ts-user_37QRRoz93gvOimzZjB2GZcptcYt";
+console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
   : path.resolve(DIR, 'playwright-report.json');
@@ -60,7 +61,7 @@ export default defineConfig({
   projects: [{
     name: 'generated',
     testDir: GEN_DIR,
-    testMatch: ['**/*.spec.ts','**/*.test.ts'],
+    testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
     timeout: 30_000,
   }],
 });

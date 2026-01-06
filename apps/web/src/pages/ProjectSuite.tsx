@@ -7,20 +7,34 @@ import { Checkbox } from "../components/ui/checkbox";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { Separator } from "../components/ui/seperator";
 import { ScrollArea } from "../components/ui/scroll-area";
-import { FileText, FolderTree, ChevronDown, ChevronRight, GitBranch, Search, RefreshCw, Play, Plus, Lock, Unlock } from "lucide-react";
+import { FileText, FolderTree, ChevronDown, ChevronRight, GitBranch, Search, RefreshCw, Play, Plus } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
+import { toast } from "sonner";
 import { useApi, apiUrl } from "../lib/api";
 import HowToHint from "../components/HowToHint";
+import GlobalActionsMenu from "../components/spec-tree/GlobalActionsMenu";
+import SuiteActionsMenu from "../components/spec-tree/SuiteActionsMenu";
+import SpecActionsMenu from "../components/spec-tree/SpecActionsMenu";
+import FolderActionsMenu from "../components/spec-tree/FolderActionsMenu";
+import SpecPickerModal, { NEW_FOLDER_VALUE } from "../components/spec-tree/SpecPickerModal";
+import FolderDeleteModal from "../components/spec-tree/FolderDeleteModal";
 
 type SpecFile = { path: string };
 type CaseItem = { title: string; line: number; specPath?: string };
 
-type TreeNode = { name: string; children?: TreeNode[]; file?: SpecFile; suiteId?: string };
+type TreeNode = { name: string; path?: string; children?: TreeNode[]; file?: SpecFile; suiteId?: string };
 type ProjectOption = { id: string; name: string };
 type SpecProjectOption = { id: string; name: string; type: "generated" | "curated"; locked?: string[] };
 type ReporterId = "json" | "allure";
+type SuiteFolderState = {
+  folders: string[];
+  folderIds: Record<string, string>;
+  specFolders: Record<string, string>;
+  specAliases: Record<string, string>;
+  deletedSpecs: Record<string, boolean>;
+};
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -46,10 +60,29 @@ function friendlyError(text: string, fallback: string) {
   return text?.trim() || fallback;
 }
 
-function buildTree(specs: SpecFile[]): TreeNode[] {
+function buildTree(
+  specs: SpecFile[],
+  getDisplayPath: (spec: SpecFile) => string,
+  folders: string[]
+): TreeNode[] {
   const root: Record<string, any> = {};
+  const ensureFolder = (folderPath: string) => {
+    const parts = folderPath.split("/").filter(Boolean);
+    let node = root;
+    parts.forEach((part) => {
+      node.children ||= {};
+      node.children[part] ||= { name: part, children: {} };
+      node = node.children[part];
+    });
+  };
+
+  folders.forEach((folder) => {
+    const normalized = normalizeFolderPath(folder);
+    if (normalized) ensureFolder(normalized);
+  });
+
   for (const s of specs) {
-    const parts = s.path.split("/");
+    const parts = getDisplayPath(s).split("/");
     let node = root;
     parts.forEach((part, idx) => {
       node.children ||= {};
@@ -58,12 +91,13 @@ function buildTree(specs: SpecFile[]): TreeNode[] {
       node = node.children[part];
     });
   }
-  const toArray = (n: any): TreeNode[] => {
+  const toArray = (n: any, prefix = ""): TreeNode[] => {
     if (!n.children) return [];
     const out: TreeNode[] = Object.values(n.children).map((c: any) => ({
       name: c.name,
+      path: prefix ? `${prefix}/${c.name}` : c.name,
       file: c.file,
-      children: toArray(c),
+      children: toArray(c, prefix ? `${prefix}/${c.name}` : c.name),
     }));
     return out.sort((a, b) => {
       const af = !!a.file, bf = !!b.file;
@@ -88,6 +122,7 @@ function TreeItem({
   onSelectSuite,
   activeSuiteId,
   activePath,
+  renderActions,
 }: {
   node: TreeNode;
   depth?: number;
@@ -95,6 +130,7 @@ function TreeItem({
   onSelectSuite?: (suiteId: string) => void;
   activeSuiteId?: string;
   activePath?: string | null;
+  renderActions?: (node: TreeNode, info: { isFile: boolean; isSuite: boolean; isActiveSuite: boolean; isActiveFile: boolean }) => React.ReactNode;
 }) {
   const isFile = !!node.file;
   const isSuite = !isFile && !!node.suiteId;
@@ -123,9 +159,9 @@ function TreeItem({
     <div>
       <div
         className={cn(
-          "flex items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-accent/30",
-          isActiveSuite && "bg-accent/40 font-medium",
-          isActiveFile && "bg-white/80 font-medium"
+          "group relative flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer border-l-2 border-transparent transition-colors hover:bg-white/30",
+          isActiveSuite && "bg-white/30 font-medium border-white/70",
+          isActiveFile && "bg-white/90 font-medium border-white shadow-sm"
         )}
         style={{ paddingLeft: depth * 12 }}
         onClick={handleClick}
@@ -138,23 +174,131 @@ function TreeItem({
           <ChevronRight className="h-4 w-4 opacity-70" />
         )}
         <span className="text-sm">{node.name}</span>
+        {renderActions && (
+          <div className="ml-auto flex h-7 w-7 items-center justify-center" onClick={(event) => event.stopPropagation()}>
+            <div className="opacity-0 transition-opacity group-hover:opacity-100">
+              {renderActions(node, { isFile, isSuite, isActiveSuite, isActiveFile })}
+            </div>
+          </div>
+        )}
       </div>
       {!isFile && open && node.children?.map((c) => (
         <TreeItem
-          key={node.name + "/" + c.name}
+          key={c.path || `${node.name}/${c.name}`}
           node={c}
           depth={depth + 1}
           onSelect={onSelect}
           onSelectSuite={onSelectSuite}
           activeSuiteId={activeSuiteId}
           activePath={activePath}
+          renderActions={renderActions}
         />
       ))}
     </div>
   );
 }
 
-const COPY_PLACEHOLDER = "__copy_spec__";
+const DEFAULT_FOLDER_STATE: SuiteFolderState = {
+  folders: [],
+  folderIds: {},
+  specFolders: {},
+  specAliases: {},
+  deletedSpecs: {},
+};
+
+function normalizeFolderPath(value: string) {
+  return value
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\/{2,}/g, "/");
+}
+
+function createFolderId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `folder_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeFolderStateWithChange(state: SuiteFolderState) {
+  let changed = false;
+  const folderIds = { ...(state.folderIds || {}) };
+  const normalizedFolders = state.folders
+    .map((folder) => normalizeFolderPath(folder))
+    .filter(Boolean);
+  const uniqueFolders = Array.from(new Set(normalizedFolders));
+  uniqueFolders.forEach((folder) => {
+    if (!folderIds[folder]) {
+      folderIds[folder] = createFolderId();
+      changed = true;
+    }
+  });
+  if (uniqueFolders.length !== state.folders.length) {
+    changed = true;
+  }
+  if (!changed) return { state, changed };
+  return { state: { ...state, folders: uniqueFolders, folderIds }, changed };
+}
+
+function normalizeFolderState(state: SuiteFolderState) {
+  return normalizeFolderStateWithChange(state).state;
+}
+
+function getFolderParent(path: string) {
+  const normalized = normalizeFolderPath(path);
+  if (!normalized) return "";
+  const parts = normalized.split("/");
+  if (parts.length <= 1) return "";
+  return parts.slice(0, -1).join("/");
+}
+
+function getFolderName(path: string) {
+  const normalized = normalizeFolderPath(path);
+  if (!normalized) return "";
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || normalized;
+}
+
+function replaceFolderPrefix(path: string, fromPrefix: string, toPrefix: string) {
+  if (!path) return path;
+  if (path === fromPrefix) return toPrefix;
+  const prefix = `${fromPrefix}/`;
+  if (!path.startsWith(prefix)) return path;
+  const suffix = path.slice(prefix.length);
+  return toPrefix ? `${toPrefix}/${suffix}` : suffix;
+}
+
+function folderStateKey(suiteId: string) {
+  return `tm:suite-folders:${suiteId}`;
+}
+
+function readFolderState(suiteId: string): SuiteFolderState {
+  if (typeof window === "undefined") return { ...DEFAULT_FOLDER_STATE };
+  try {
+    const raw = window.localStorage.getItem(folderStateKey(suiteId));
+    if (!raw) return { ...DEFAULT_FOLDER_STATE };
+    const parsed = JSON.parse(raw) as SuiteFolderState;
+    const { state: normalized, changed } = normalizeFolderStateWithChange({
+      folders: Array.isArray(parsed.folders) ? parsed.folders : [],
+      folderIds: parsed.folderIds || {},
+      specFolders: parsed.specFolders || {},
+      specAliases: parsed.specAliases || {},
+      deletedSpecs: parsed.deletedSpecs || {},
+    });
+    if (changed) {
+      writeFolderState(suiteId, normalized);
+    }
+    return normalized;
+  } catch {
+    return { ...DEFAULT_FOLDER_STATE };
+  }
+}
+
+function writeFolderState(suiteId: string, state: SuiteFolderState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(folderStateKey(suiteId), JSON.stringify(state));
+}
 
 export default function ProjectSuite() {
   const { projectId } = useParams(); // route: /suite/:projectId
@@ -180,12 +324,27 @@ export default function ProjectSuite() {
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [copyingSpec, setCopyingSpec] = useState(false);
   const [lockingSpec, setLockingSpec] = useState(false);
-  const [copySelectValue, setCopySelectValue] = useState(COPY_PLACEHOLDER);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<"copy" | "move">("copy");
+  const [pickerSpecPath, setPickerSpecPath] = useState<string | null>(null);
+  const [pickerSuiteId, setPickerSuiteId] = useState("");
+  const [pickerFolder, setPickerFolder] = useState("");
+  const [pickerNewFolder, setPickerNewFolder] = useState("");
+  const [pickerNewName, setPickerNewName] = useState("");
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [suiteFolderState, setSuiteFolderState] = useState<SuiteFolderState>(() => readFolderState(pid));
   const [specReloadKey, setSpecReloadKey] = useState(0);
   const [renamingSuite, setRenamingSuite] = useState(false);
   const [syncingSuite, setSyncingSuite] = useState<false | "replaceSuite" | "overwriteMatches" | "addMissing">(false);
   const [deletingSpec, setDeletingSpec] = useState(false);
   const [deletingSuite, setDeletingSuite] = useState(false);
+  const [folderDeleteTarget, setFolderDeleteTarget] = useState<{
+    suiteId: string;
+    folderPath: string;
+    folderName: string;
+    hasSubfolders: boolean;
+  } | null>(null);
+  const [deleteSubfolders, setDeleteSubfolders] = useState(false);
   const [baseUrl, setBaseUrl] = useState<string>(() => localStorage.getItem("tm:lastBaseUrl") || "");
   const [headful, setHeadful] = useState(false);
   const [reporter, setReporter] = useState<ReporterId>("json");
@@ -233,8 +392,8 @@ export default function ProjectSuite() {
   }, [location.search]);
 
   useEffect(() => {
-    setCopySelectValue(COPY_PLACEHOLDER);
-  }, [activeSpec?.path]);
+    setSuiteFolderState(readFolderState(pid));
+  }, [pid]);
 
   // If a project is provided via query (?project=...), redirect to that suite once
   useEffect(() => {
@@ -354,10 +513,70 @@ export default function ProjectSuite() {
     if (!activeSuite || !activeSpec || !isActiveCurated) return false;
     return (activeSuite.locked || []).includes(activeSpec.path);
   }, [activeSuite, activeSpec, isActiveCurated]);
-  const specTree = useMemo(() => buildTree(specs), [specs]);
+  const canCopySpec = !!activeSpec && curatedSuites.length > 0;
+  const projectNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    projects.forEach((project) => {
+      map.set(project.id, project.name);
+    });
+    return map;
+  }, [projects]);
+  const replaceProjectIds = (rawPath: string) => {
+    const normalized = rawPath.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    const replaceAt = (idx: number) => {
+      const name = projectNameById.get(parts[idx]);
+      if (name) parts[idx] = name;
+    };
+    if (parts[0] === "recordings" && parts.length > 1) {
+      replaceAt(1);
+    } else {
+      replaceAt(0);
+    }
+    return parts.join("/");
+  };
+  const getSpecDisplayPath = (spec: SpecFile, state: SuiteFolderState) => {
+    const folder = state.specFolders[spec.path];
+    const alias = state.specAliases[spec.path];
+    const displayPath = replaceProjectIds(spec.path);
+    const base = displayPath.split("/").pop() || displayPath;
+    if (!folder) {
+      if (!alias) return displayPath;
+      return displayPath.replace(base, alias.trim());
+    }
+    const normalizedFolder = normalizeFolderPath(folder);
+    const displayBase = alias?.trim() || base;
+    if (!normalizedFolder) return displayPath.replace(base, displayBase);
+    const renamed = displayPath.replace(base, displayBase);
+    return `${normalizedFolder}/${renamed}`;
+  };
+  const getSpecDisplayFolder = (spec: SpecFile, state: SuiteFolderState) => {
+    const displayPath = getSpecDisplayPath(spec, state);
+    const parts = displayPath.split("/").filter(Boolean);
+    parts.pop();
+    return parts.join("/");
+  };
+  const formatDisplayPath = (specPath?: string | null) => {
+    if (!specPath) return "";
+    const displayPath = replaceProjectIds(specPath);
+    const alias = suiteFolderState.specAliases[specPath];
+    if (!alias) return displayPath;
+    const parts = displayPath.split("/");
+    parts[parts.length - 1] = alias;
+    return parts.join("/");
+  };
+  const specTree = useMemo(
+    () =>
+      buildTree(
+        specs,
+        (spec) => getSpecDisplayPath(spec, suiteFolderState),
+        suiteFolderState.folders
+      ),
+    [specs, suiteFolderState, projectNameById]
+  );
   const suiteTree = useMemo(() => {
     const toNode = (proj: SpecProjectOption) => ({
-      name: proj.type === "curated" ? `${proj.name} (curated)` : proj.name,
+      name: proj.name,
       suiteId: proj.id,
       children: proj.id === pid ? cloneNodes(specTree) : undefined,
     });
@@ -370,6 +589,17 @@ export default function ProjectSuite() {
     () => specProjects.map((p) => ({ value: p.id, label: p.name, type: p.type })),
     [specProjects]
   );
+  const suiteLookup = useMemo(() => {
+    const map = new Map<string, SpecProjectOption>();
+    specProjects.forEach((suite) => {
+      map.set(suite.id, suite);
+    });
+    return map;
+  }, [specProjects]);
+  const curatedSuiteOptions = useMemo(
+    () => curatedSuites.map((suite) => ({ id: suite.id, name: suite.name })),
+    [curatedSuites]
+  );
 
   useEffect(() => {
     if (!specProjects.length) return;
@@ -377,6 +607,237 @@ export default function ProjectSuite() {
     if (typeof window === "undefined") return;
     localStorage.setItem("tm:lastSuiteId", pid);
   }, [pid, specProjects]);
+
+  const resolveSuite = (suiteId?: string | null) =>
+    specProjects.find((proj) => proj.id === suiteId) || activeSuite || null;
+
+  const formatSpecName = (specPath?: string | null) => {
+    if (!specPath) return "spec";
+    const normalized = specPath.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    return parts[parts.length - 1] || normalized;
+  };
+
+  const formatSuiteName = (suiteId?: string | null) => {
+    if (!suiteId) return "suite";
+    return specProjects.find((proj) => proj.id === suiteId)?.name || suiteId;
+  };
+
+  const getSuiteFolderState = (suiteId: string) =>
+    suiteId === pid ? suiteFolderState : readFolderState(suiteId);
+
+  const updateSuiteFolderState = (suiteId: string, updater: (state: SuiteFolderState) => SuiteFolderState) => {
+    const current = getSuiteFolderState(suiteId);
+    const next = normalizeFolderState(updater(current));
+    writeFolderState(suiteId, next);
+    if (suiteId === pid) {
+      setSuiteFolderState(next);
+    }
+  };
+
+  const listFolderOptions = (suiteId: string) => {
+    const state = getSuiteFolderState(suiteId);
+    const fromSpecs = Object.values(state.specFolders || {}).filter(Boolean);
+    return Array.from(new Set([...state.folders, ...fromSpecs])).sort((a, b) => a.localeCompare(b));
+  };
+
+  const addFolderToSuite = (suiteId: string, rawFolder: string) => {
+    const normalized = normalizeFolderPath(rawFolder);
+    if (!normalized) return false;
+    let added = false;
+    updateSuiteFolderState(suiteId, (state) => {
+      const exists = state.folders.some((folder) => folder === normalized);
+      if (!exists) added = true;
+      return exists ? state : { ...state, folders: [...state.folders, normalized] };
+    });
+    return added;
+  };
+
+  const setSpecFolder = (suiteId: string, specPath: string, folderPath: string) => {
+    const normalized = normalizeFolderPath(folderPath);
+    updateSuiteFolderState(suiteId, (state) => ({
+      ...state,
+      specFolders: { ...state.specFolders, [specPath]: normalized },
+    }));
+  };
+
+  const setSpecAlias = (suiteId: string, specPath: string, alias: string) => {
+    updateSuiteFolderState(suiteId, (state) => ({
+      ...state,
+      specAliases: { ...state.specAliases, [specPath]: alias },
+    }));
+  };
+
+  const markSpecDeleted = (suiteId: string, specPath: string) => {
+    updateSuiteFolderState(suiteId, (state) => ({
+      ...state,
+      deletedSpecs: { ...state.deletedSpecs, [specPath]: true },
+    }));
+  };
+
+  const openDeleteFolderModal = (suiteId: string, folderPath: string, hasSubfolders: boolean) => {
+    const normalized = normalizeFolderPath(folderPath);
+    if (!normalized) return;
+    setDeleteSubfolders(false);
+    setFolderDeleteTarget({
+      suiteId,
+      folderPath: normalized,
+      folderName: getFolderName(normalized),
+      hasSubfolders,
+    });
+  };
+
+  const deleteFolderInSuite = (suiteId: string, folderPath: string, options?: { deleteSubfolders?: boolean }) => {
+    const normalized = normalizeFolderPath(folderPath);
+    if (!normalized) return;
+    const parentPath = getFolderParent(normalized);
+    updateSuiteFolderState(suiteId, (state) => {
+      const nextSpecFolders = { ...state.specFolders };
+      if (suiteId === pid) {
+        specs.forEach((spec) => {
+          const displayFolder = getSpecDisplayFolder(spec, state);
+          if (!displayFolder) return;
+          if (displayFolder === normalized || displayFolder.startsWith(`${normalized}/`)) {
+            const nextFolder = options?.deleteSubfolders
+              ? parentPath
+              : replaceFolderPrefix(displayFolder, normalized, parentPath);
+            if (nextFolder) {
+              nextSpecFolders[spec.path] = nextFolder;
+            } else {
+              delete nextSpecFolders[spec.path];
+            }
+          }
+        });
+      }
+
+      const folderMoves = new Map<string, string>();
+      const nextFolders = state.folders
+        .map((folder) => normalizeFolderPath(folder))
+        .filter(Boolean)
+        .flatMap((folder) => {
+          if (folder === normalized) return [];
+          if (folder.startsWith(`${normalized}/`)) {
+            if (options?.deleteSubfolders) return [];
+            const nextPath = replaceFolderPrefix(folder, normalized, parentPath);
+            folderMoves.set(folder, nextPath);
+            return [nextPath];
+          }
+          return [folder];
+        });
+      const uniqueFolders = Array.from(new Set(nextFolders));
+      const nextFolderIds: Record<string, string> = {};
+      const nextFolderSet = new Set(uniqueFolders);
+      Object.entries(state.folderIds || {}).forEach(([path, id]) => {
+        const normalizedPath = normalizeFolderPath(path);
+        const nextPath = folderMoves.get(normalizedPath) || normalizedPath;
+        if (nextFolderSet.has(nextPath)) {
+          nextFolderIds[nextPath] = id;
+        }
+      });
+
+      return {
+        ...state,
+        folders: uniqueFolders,
+        folderIds: nextFolderIds,
+        specFolders: nextSpecFolders,
+      };
+    });
+  };
+
+  const renameFolderInSuite = (suiteId: string, folderPath: string, rawName: string) => {
+    const normalized = normalizeFolderPath(folderPath);
+    const proposed = normalizeFolderPath(rawName);
+    if (!normalized || !proposed) return;
+    const parentPath = getFolderParent(normalized);
+    const nextPath = parentPath ? `${parentPath}/${proposed}` : proposed;
+    if (nextPath === normalized) return;
+    updateSuiteFolderState(suiteId, (state) => {
+      const nextSpecFolders = { ...state.specFolders };
+      if (suiteId === pid) {
+        specs.forEach((spec) => {
+          const displayFolder = getSpecDisplayFolder(spec, state);
+          if (!displayFolder) return;
+          if (displayFolder === normalized || displayFolder.startsWith(`${normalized}/`)) {
+            const nextFolder = replaceFolderPrefix(displayFolder, normalized, nextPath);
+            if (nextFolder) {
+              nextSpecFolders[spec.path] = nextFolder;
+            } else {
+              delete nextSpecFolders[spec.path];
+            }
+          }
+        });
+      }
+
+      const folderMoves = new Map<string, string>();
+      const nextFolders = state.folders
+        .map((folder) => normalizeFolderPath(folder))
+        .filter(Boolean)
+        .map((folder) => {
+          if (folder === normalized || folder.startsWith(`${normalized}/`)) {
+            const nextFolder = replaceFolderPrefix(folder, normalized, nextPath);
+            folderMoves.set(folder, nextFolder);
+            return nextFolder;
+          }
+          return folder;
+        });
+      const uniqueFolders = Array.from(new Set(nextFolders));
+      const nextFolderIds: Record<string, string> = {};
+      const nextFolderSet = new Set(uniqueFolders);
+      Object.entries(state.folderIds || {}).forEach(([path, id]) => {
+        const normalizedPath = normalizeFolderPath(path);
+        const nextFolder = folderMoves.get(normalizedPath) || normalizedPath;
+        if (nextFolderSet.has(nextFolder)) {
+          nextFolderIds[nextFolder] = id;
+        }
+      });
+
+      return {
+        ...state,
+        folders: uniqueFolders,
+        folderIds: nextFolderIds,
+        specFolders: nextSpecFolders,
+      };
+    });
+  };
+
+  const handleFolderAction = (folderPath: string, actionId: string, hasSubfolders: boolean) => {
+    switch (actionId) {
+      case "rename_folder": {
+        const proposed = window.prompt("Rename folder?", getFolderName(folderPath));
+        if (!proposed) return;
+        const normalized = normalizeFolderPath(folderPath);
+        const nextName = normalizeFolderPath(proposed);
+        if (!normalized || !nextName) return;
+        const parentPath = getFolderParent(normalized);
+        const nextPath = parentPath ? `${parentPath}/${nextName}` : nextName;
+        if (nextPath === normalized) return;
+        renameFolderInSuite(pid, folderPath, proposed);
+        toast.success(`Renamed folder ${getFolderName(folderPath)}`);
+        break;
+      }
+      case "new_subfolder": {
+        const proposed = window.prompt("New folder name?");
+        if (!proposed) return;
+        const normalized = normalizeFolderPath(proposed);
+        if (!normalized) return;
+        const nextPath = normalizeFolderPath(`${folderPath}/${normalized}`);
+        if (addFolderToSuite(pid, nextPath)) {
+          toast.success(`Added folder ${nextPath}`);
+        }
+        break;
+      }
+      case "delete_folder":
+        openDeleteFolderModal(pid, folderPath, hasSubfolders);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const pickerFolderOptions = useMemo(() => {
+    if (!pickerSuiteId) return [];
+    return listFolderOptions(pickerSuiteId);
+  }, [pickerSuiteId, suiteFolderState]);
 
   async function handleCreateSuite() {
     const proposed = window.prompt("New suite name?");
@@ -407,12 +868,56 @@ export default function ProjectSuite() {
         });
         setSpecProjectErr(null);
         navigate(`/suite/${project.id}`);
+        toast.success(`Created suite ${project.name}`);
       }
     } catch (err) {
       console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to create suite");
+      const message = err instanceof Error ? err.message : "Failed to create suite";
+      setSpecProjectErr(message);
+      toast.error(message);
     } finally {
       setCreatingSuite(false);
+    }
+  }
+
+  async function copySpecToSuite(
+    specPath: string,
+    targetId: string,
+    sourceId?: string,
+    options?: { silent?: boolean; targetLabel?: string; folderLabel?: string }
+  ) {
+    setCopyingSpec(true);
+    setSpecProjectErr(null);
+    try {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${targetId}/specs`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: specPath, sourceProjectId: sourceId || pid }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "Failed to copy spec");
+        throw new Error(text);
+      }
+      if (targetId === pid) {
+        setSpecReloadKey((k) => k + 1);
+      }
+      if (!options?.silent) {
+        const specLabel = formatSpecName(specPath);
+        const suiteLabel = options?.targetLabel || formatSuiteName(targetId);
+        const folderLabel = options?.folderLabel ? ` / ${options.folderLabel}` : "";
+        toast.success(`Copied ${specLabel} -> ${suiteLabel}${folderLabel}`);
+      }
+      setSpecProjectErr(null);
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : "Failed to copy spec";
+      setSpecProjectErr(message);
+      if (!options?.silent) {
+        toast.error(message);
+      }
+      throw err;
+    } finally {
+      setCopyingSpec(false);
     }
   }
 
@@ -422,38 +927,20 @@ export default function ProjectSuite() {
       setSpecProjectErr("Create a curated suite first.");
       return;
     }
-    setCopyingSpec(true);
-    setSpecProjectErr(null);
-    try {
-      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${targetId}/specs`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: activeSpec.path, sourceProjectId: pid }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "Failed to copy spec");
-        throw new Error(text);
-      }
-      if (targetId === pid) {
-        setSpecReloadKey((k) => k + 1);
-      }
-      setSpecProjectErr(null);
-    } catch (err) {
-      console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to copy spec");
-    } finally {
-      setCopyingSpec(false);
-    }
+    await copySpecToSuite(activeSpec.path, targetId, pid);
   }
 
-  async function handleToggleLock(nextLocked: boolean) {
-    if (!activeSpec || !isActiveCurated || !activeSuite) return;
+  async function handleToggleLock(nextLocked: boolean, specPath?: string, suiteId?: string | null) {
+    const suite = resolveSuite(suiteId);
+    if (!suite || suite.type !== "curated") return;
+    const spec = specPath ? { path: specPath } : activeSpec;
+    if (!spec) return;
     setLockingSpec(true);
     try {
-      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}/specs`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: activeSpec.path, locked: nextLocked }),
+        body: JSON.stringify({ path: spec.path, locked: nextLocked }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to update lock status");
@@ -462,49 +949,302 @@ export default function ProjectSuite() {
       const data = await res.json().catch(() => null);
       const lockedList = (data?.locked as string[]) || [];
       setSpecProjects((prev) =>
-        prev.map((proj) =>
-          proj.id === activeSuite.id
-            ? { ...proj, locked: lockedList }
-            : proj
-        )
+        prev.map((proj) => (proj.id === suite.id ? { ...proj, locked: lockedList } : proj))
       );
       setSpecProjectErr(null);
+      toast.success(`${nextLocked ? "Locked" : "Unlocked"} ${formatSpecName(spec.path)}`);
     } catch (err) {
       console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to update lock");
+      const message = err instanceof Error ? err.message : "Failed to update lock";
+      setSpecProjectErr(message);
+      toast.error(message);
     } finally {
       setLockingSpec(false);
     }
   }
 
-  async function handleDeleteSpec() {
-    if (!activeSpec || !isActiveCurated || !activeSuite) return;
+  const handleGlobalAction = (actionId: string) => {
+    switch (actionId) {
+      case "new_suite":
+        void handleCreateSuite();
+        break;
+      case "copy_spec":
+        if (!activeSpec) {
+          const message = "Select a spec to copy first.";
+          setSpecProjectErr(message);
+          toast.error(message);
+          break;
+        }
+        if (!curatedSuites.length) {
+          const message = "Create a curated suite first.";
+          setSpecProjectErr(message);
+          toast.error(message);
+          break;
+        }
+        setPickerMode("copy");
+        setPickerSpecPath(activeSpec.path);
+        setPickerSuiteId(curatedSuites[0]?.id || "");
+        setPickerFolder("");
+        setPickerNewFolder("");
+        setPickerNewName("");
+        setPickerOpen(true);
+        break;
+      case "new_folder": {
+        if (!activeSuite) break;
+        const folderName = window.prompt("Folder name?");
+        if (!folderName) break;
+        const normalized = normalizeFolderPath(folderName);
+        if (!normalized) break;
+        if (addFolderToSuite(activeSuite.id, normalized)) {
+          toast.success(`Added folder ${normalized}`);
+        }
+        break;
+      }
+      case "add_regression_folder":
+        if (!activeSuite) break;
+        if (addFolderToSuite(activeSuite.id, "regression")) {
+          toast.success("Added folder regression");
+        }
+        break;
+      case "add_shared_steps_folder":
+        if (!activeSuite) break;
+        if (addFolderToSuite(activeSuite.id, "shared-steps")) {
+          toast.success("Added folder shared-steps");
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleSuiteAction = (suiteId: string, actionId: string) => {
+    switch (actionId) {
+      case "rename_suite":
+        void handleRenameSuite(suiteId);
+        break;
+      case "delete_suite":
+        void handleDeleteSuite(suiteId);
+        break;
+      case "replace_suite_from_generated":
+        void handleSyncSuite("replaceSuite", suiteId);
+        break;
+      case "overwrite_matches_only":
+        void handleSyncSuite("overwriteMatches", suiteId);
+        break;
+      case "add_missing_only":
+        void handleSyncSuite("addMissing", suiteId);
+        break;
+      case "copy_spec_into_suite":
+        if (!activeSpec) {
+          const message = "Select a spec to copy first.";
+          setSpecProjectErr(message);
+          toast.error(message);
+          break;
+        }
+        setPickerMode("copy");
+        setPickerSpecPath(activeSpec.path);
+        setPickerSuiteId(suiteId);
+        setPickerFolder("");
+        setPickerNewFolder("");
+        setPickerNewName("");
+        setPickerOpen(true);
+        break;
+      case "new_folder": {
+        const folderName = window.prompt("Folder name?");
+        if (!folderName) break;
+        const normalized = normalizeFolderPath(folderName);
+        if (!normalized) break;
+        if (addFolderToSuite(suiteId, normalized)) {
+          toast.success(`Added folder ${normalized}`);
+        }
+        break;
+      }
+      case "add_regression_folder":
+        if (addFolderToSuite(suiteId, "regression")) {
+          toast.success("Added folder regression");
+        }
+        break;
+      case "add_shared_steps_folder":
+        if (addFolderToSuite(suiteId, "shared-steps")) {
+          toast.success("Added folder shared-steps");
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleSpecAction = (specPath: string, actionId: string) => {
+    switch (actionId) {
+      case "edit_spec":
+        void handleEditSpec(specPath, pid);
+        break;
+      case "lock_spec":
+        void handleToggleLock(true, specPath, pid);
+        break;
+      case "unlock_spec":
+        void handleToggleLock(false, specPath, pid);
+        break;
+      case "copy_spec":
+        setActiveSpec({ path: specPath });
+        if (!curatedSuites.length) {
+          const message = "Create a curated suite first.";
+          setSpecProjectErr(message);
+          toast.error(message);
+          break;
+        }
+        setPickerMode("copy");
+        setPickerSpecPath(specPath);
+        setPickerSuiteId(curatedSuites[0]?.id || "");
+        setPickerFolder("");
+        setPickerNewFolder("");
+        setPickerNewName("");
+        setPickerOpen(true);
+        break;
+      case "move_spec":
+        if (!isActiveCurated) {
+          const message = "Move is only available for curated suites.";
+          setSpecProjectErr(message);
+          toast.error(message);
+          break;
+        }
+        setPickerMode("move");
+        setPickerSpecPath(specPath);
+        setPickerSuiteId(curatedSuites[0]?.id || "");
+        setPickerFolder("");
+        setPickerNewFolder("");
+        setPickerNewName("");
+        setPickerOpen(true);
+        break;
+      case "delete_spec":
+        void handleDeleteSpec(specPath, pid);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handlePickerClose = () => {
+    if (pickerBusy) return;
+    setPickerOpen(false);
+  };
+
+  const handlePickerConfirm = async () => {
+    if (!pickerSpecPath || !pickerSuiteId) return;
+    if (pickerMode === "copy" && pickerSuiteId === pid) {
+      const message = "Pick a different suite to copy into.";
+      setSpecProjectErr(message);
+      toast.error(message);
+      return;
+    }
+    setPickerBusy(true);
+    try {
+      const targetSuiteId = pickerSuiteId;
+      const folderSelection = pickerFolder === NEW_FOLDER_VALUE ? pickerNewFolder : pickerFolder;
+      const normalizedFolder = normalizeFolderPath(folderSelection);
+      if (normalizedFolder) {
+        if (addFolderToSuite(targetSuiteId, normalizedFolder)) {
+          toast.success(`Added folder ${normalizedFolder}`);
+        }
+        setSpecFolder(targetSuiteId, pickerSpecPath, normalizedFolder);
+      } else if (pickerMode === "move" && targetSuiteId === pid) {
+        setSpecFolder(targetSuiteId, pickerSpecPath, "");
+      }
+      if (pickerMode === "copy") {
+        await copySpecToSuite(pickerSpecPath, targetSuiteId, pid, { silent: true });
+        if (pickerNewName.trim()) {
+          setSpecAlias(targetSuiteId, pickerSpecPath, pickerNewName.trim());
+        }
+        const specLabel = pickerNewName.trim() || formatSpecName(pickerSpecPath);
+        const suiteLabel = formatSuiteName(targetSuiteId);
+        const folderLabel = normalizedFolder ? ` / ${normalizedFolder}` : "";
+        toast.success(`Copied ${specLabel} -> ${suiteLabel}${folderLabel}`);
+      } else {
+        if (targetSuiteId === pid) {
+          if (pickerNewName.trim()) {
+            setSpecAlias(targetSuiteId, pickerSpecPath, pickerNewName.trim());
+          }
+          const specLabel = pickerNewName.trim() || formatSpecName(pickerSpecPath);
+          const destination = normalizedFolder ? `folder ${normalizedFolder}` : "suite root";
+          toast.success(`Moved ${specLabel} to ${destination}`);
+        } else {
+          await copySpecToSuite(pickerSpecPath, targetSuiteId, pid, { silent: true });
+          if (pickerNewName.trim()) {
+            setSpecAlias(targetSuiteId, pickerSpecPath, pickerNewName.trim());
+          }
+          if (isActiveCurated) {
+            await handleDeleteSpec(pickerSpecPath, pid, { silent: true });
+          }
+          const specLabel = pickerNewName.trim() || formatSpecName(pickerSpecPath);
+          const suiteLabel = formatSuiteName(targetSuiteId);
+          const folderLabel = normalizedFolder ? ` / ${normalizedFolder}` : "";
+          toast.success(`Moved ${specLabel} -> ${suiteLabel}${folderLabel}`);
+        }
+      }
+      setPickerOpen(false);
+    } catch {
+      // errors handled in called functions
+    } finally {
+      setPickerBusy(false);
+    }
+  };
+
+  async function handleDeleteSpec(
+    specPath?: string,
+    suiteId?: string | null,
+    options?: { silent?: boolean }
+  ) {
+    const suite = resolveSuite(suiteId);
+    if (!suite) return;
+    const spec = specPath ? { path: specPath } : activeSpec;
+    if (!spec) return;
     setDeletingSpec(true);
     try {
-      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}/specs?path=${encodeURIComponent(activeSpec.path)}`), {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await apiFetchRaw(
+        apiUrl(`/tm/suite/projects/${suite.id}/specs?path=${encodeURIComponent(spec.path)}`),
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
       if (!res.ok && res.status !== 404) {
         const text = await res.text().catch(() => "Failed to delete spec");
         throw new Error(text);
       }
       setSpecReloadKey((k) => k + 1);
       setSpecProjectErr(null);
-      setActiveSpec(null);
+      if (activeSpec?.path === spec.path) {
+        setActiveSpec(null);
+      }
+      setSpecs((prev) => prev.filter((item) => item.path !== spec.path));
+      updateSuiteFolderState(suite.id, (state) => {
+        const { [spec.path]: _removedFolder, ...nextFolders } = state.specFolders;
+        const { [spec.path]: _removedAlias, ...nextAliases } = state.specAliases;
+        return { ...state, specFolders: nextFolders, specAliases: nextAliases };
+      });
+      markSpecDeleted(suite.id, spec.path);
+      if (!options?.silent) {
+        toast.success(`Deleted ${formatSpecName(spec.path)}`);
+      }
     } catch (err) {
       console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to delete spec");
+      const message = err instanceof Error ? err.message : "Failed to delete spec";
+      setSpecProjectErr(message);
+      toast.error(message);
     } finally {
       setDeletingSpec(false);
     }
   }
 
-  async function handleSyncSuite(mode: "replaceSuite" | "overwriteMatches" | "addMissing") {
-    if (!activeSuite || !isActiveCurated) return;
+  async function handleSyncSuite(
+    mode: "replaceSuite" | "overwriteMatches" | "addMissing",
+    suiteId?: string | null
+  ) {
+    const suite = resolveSuite(suiteId);
+    if (!suite || suite.type !== "curated") return;
     setSyncingSuite(mode);
     try {
-      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}/sync-from-generated`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}/sync-from-generated`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ adapterId: "playwright-ts", mode }),
@@ -520,29 +1260,39 @@ export default function ProjectSuite() {
           return [...filtered, data.project];
         });
       }
-      if (data?.suiteId && data.suiteId !== activeSuite.id) {
+      if (data?.suiteId && data.suiteId !== suite.id) {
         navigate(`/suite/${data.suiteId}`);
         return;
       }
       setSpecReloadKey((k) => k + 1);
       setSpecProjectErr(null);
+      if (mode === "replaceSuite") {
+        toast.success(`Synced ${suite.name} from generated`);
+      } else if (mode === "overwriteMatches") {
+        toast.success(`Overwrote matching specs in ${suite.name}`);
+      } else {
+        toast.success(`Added missing specs to ${suite.name}`);
+      }
     } catch (err) {
       console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to sync suite");
+      const message = err instanceof Error ? err.message : "Failed to sync suite";
+      setSpecProjectErr(message);
+      toast.error(message);
     } finally {
       setSyncingSuite(false);
     }
   }
 
-  async function handleRenameSuite() {
-    if (!isActiveCurated || !activeSuite) return;
-    const proposed = window.prompt("New suite name?", activeSuite.name);
+  async function handleRenameSuite(suiteId?: string | null) {
+    const suite = resolveSuite(suiteId);
+    if (!suite || suite.type !== "curated") return;
+    const proposed = window.prompt("New suite name?", suite.name);
     if (!proposed) return;
     const name = proposed.trim();
-    if (!name || name === activeSuite.name) return;
+    if (!name || name === suite.name) return;
     setRenamingSuite(true);
     try {
-      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}`), {
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -559,60 +1309,72 @@ export default function ProjectSuite() {
         );
       }
       setSpecProjectErr(null);
+      toast.success(`Renamed suite to ${name}`);
     } catch (err) {
       console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to rename suite");
+      const message = err instanceof Error ? err.message : "Failed to rename suite";
+      setSpecProjectErr(message);
+      toast.error(message);
     } finally {
       setRenamingSuite(false);
     }
   }
 
-  async function handleDeleteSuite() {
-    if (!isActiveCurated || !activeSuite) return;
-    const confirmDelete = window.confirm(`Delete suite "${activeSuite.name}"? This cannot be undone.`);
+  async function handleDeleteSuite(suiteId?: string | null) {
+    const suite = resolveSuite(suiteId);
+    if (!suite || suite.type !== "curated") return;
+    const confirmDelete = window.confirm(`Delete suite "${suite.name}"? This cannot be undone.`);
     if (!confirmDelete) return;
     setDeletingSuite(true);
     try {
-      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${activeSuite.id}`), { method: "DELETE" });
+      const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}`), { method: "DELETE" });
       if (!res.ok && res.status !== 204) {
         const text = await res.text().catch(() => "Failed to delete suite");
         throw new Error(text);
       }
-      setSpecProjects((prev) => prev.filter((proj) => proj.id !== activeSuite.id));
-      if (activeSuite.id === pid) {
-        const fallback = specProjects.find((proj) => proj.id !== activeSuite.id)?.id || "playwright-ts";
+      setSpecProjects((prev) => prev.filter((proj) => proj.id !== suite.id));
+      if (suite.id === pid) {
+        const fallback = specProjects.find((proj) => proj.id !== suite.id)?.id || "playwright-ts";
         navigate(`/suite/${fallback}`);
       }
       setSpecProjectErr(null);
+      toast.success(`Deleted suite ${suite.name}`);
     } catch (err) {
       console.error(err);
-      setSpecProjectErr(err instanceof Error ? err.message : "Failed to delete suite");
+      const message = err instanceof Error ? err.message : "Failed to delete suite";
+      setSpecProjectErr(message);
+      toast.error(message);
     } finally {
       setDeletingSuite(false);
     }
   }
 
-  async function handleEditSpec() {
-    if (!activeSpec) {
+  async function handleEditSpec(specPath?: string, suiteId?: string | null) {
+    const suite = resolveSuite(suiteId);
+    const spec = specPath ? { path: specPath } : activeSpec;
+    if (specPath && (!activeSpec || activeSpec.path !== specPath)) {
+      setActiveSpec({ path: specPath });
+    }
+    if (!spec) {
       setRunError("Select a spec before editing.");
       return;
     }
-    if (!isActiveCurated) {
+    if (!suite || suite.type !== "curated") {
       setSpecProjectErr("Edit is only available for curated suites. Copy this spec into a curated suite first.");
       return;
     }
-    if (activeSpec.path.startsWith("(")) {
+    if (spec.path.startsWith("(")) {
       setSpecProjectErr("Pick a specific spec (not the suite aggregate) before editing.");
       return;
     }
-    if (!activeSuite) {
+    if (!suite) {
       setSpecProjectErr("Select a suite before editing.");
       return;
     }
     setEditorLoading(true);
-    setEditorPath(activeSpec.path);
+    setEditorPath(spec.path);
     try {
-      const qs = new URLSearchParams({ projectId: activeSuite.id, path: activeSpec.path });
+      const qs = new URLSearchParams({ projectId: suite.id, path: spec.path });
       const res = await apiFetchRaw(apiUrl(`/tm/suite/spec-content?${qs.toString()}`));
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to load spec content");
@@ -684,10 +1446,12 @@ export default function ProjectSuite() {
       })
       .then((rows: SpecFile[]) => {
         const seen = new Set<string>();
+        const deletedSpecs = suiteFolderState.deletedSpecs || {};
         const deduped = rows.filter((row) => {
           const key = row.path.replace(/\\/g, "/");
           if (seen.has(key)) return false;
           seen.add(key);
+          if (deletedSpecs[key] || deletedSpecs[row.path]) return false;
           return true;
         });
         setSpecs(deduped);
@@ -696,7 +1460,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load specs");
       });
-  }, [pid, specReloadKey, specProjects, apiFetchRaw, isLoaded, isSignedIn]);
+  }, [pid, specReloadKey, specProjects, apiFetchRaw, isLoaded, isSignedIn, suiteFolderState.deletedSpecs]);
 
   // If a spec path is provided via query (?spec=...), auto-select it once specs are loaded.
   useEffect(() => {
@@ -810,6 +1574,8 @@ export default function ProjectSuite() {
     },
     [cases, suiteCases, suiteSelected, query]
   );
+  const trimmedQuery = query.trim();
+  const hasQuery = trimmedQuery.length > 0;
 
   const selectedTitles = useMemo(
     () => {
@@ -969,6 +1735,54 @@ export default function ProjectSuite() {
     }
   }
 
+  const renderTreeActions = (
+    node: TreeNode,
+    info: { isFile: boolean; isSuite: boolean; isActiveSuite: boolean; isActiveFile: boolean }
+  ) => {
+    if (info.isSuite && node.suiteId) {
+      const suite = suiteLookup.get(node.suiteId);
+      const canEditSuite = suite?.type === "curated";
+      const busyAction = node.suiteId === pid ? syncingSuite : false;
+      return (
+        <SuiteActionsMenu
+          disabled={!canEditSuite}
+          busyAction={busyAction}
+          onAction={(actionId) => handleSuiteAction(node.suiteId!, actionId)}
+        />
+      );
+    }
+
+    if (info.isFile && node.file?.path) {
+      const isLocked = !!(activeSuite?.locked || []).includes(node.file.path);
+      return (
+        <SpecActionsMenu
+          canEdit={!!isActiveCurated}
+          canDelete={!!activeSuite}
+          isLocked={isLocked}
+          busyLock={lockingSpec}
+          busyDelete={deletingSpec}
+          onAction={(actionId) => handleSpecAction(node.file!.path, actionId)}
+          onOpenChange={(open) => {
+            if (open && node.file) {
+              setActiveSpec({ path: node.file.path });
+            }
+          }}
+        />
+      );
+    }
+
+    if (!info.isFile && !info.isSuite && node.path) {
+      const hasSubfolders = !!node.children?.some((child) => !child.file);
+      return (
+        <FolderActionsMenu
+          onAction={(actionId) => handleFolderAction(node.path!, actionId, hasSubfolders)}
+        />
+      );
+    }
+
+    return null;
+  };
+
   return (
     <>
     <div className="h-full grid grid-cols-[300px_1fr]">
@@ -993,135 +1807,18 @@ export default function ProjectSuite() {
           </div>
         </div>
         <div className="px-3 pb-3 space-y-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-center"
-            onClick={handleCreateSuite}
-            disabled={creatingSuite}
-          >
-            <Plus className="h-4 w-4 mr-1" /> {creatingSuite ? "Creating..." : "New suite"}
-          </Button>
-          {curatedSuites.length > 0 && (
-            <Select
-              value={copySelectValue}
-              onValueChange={async (val) => {
-                if (!val || val === COPY_PLACEHOLDER) return;
-                if (!activeSpec || copyingSpec) return;
-                setCopySelectValue(val);
-                await handleCopySpec(val);
-                setCopySelectValue(COPY_PLACEHOLDER);
-              }}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 justify-center"
+              onClick={handleCreateSuite}
+              disabled={creatingSuite}
             >
-              <SelectTrigger className="w-full justify-center">
-                <SelectValue placeholder={copyingSpec ? "Copying..." : "Copy spec"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={COPY_PLACEHOLDER} disabled>
-                  Copy spec
-                </SelectItem>
-                {curatedSuites.map((suite) => (
-                  <SelectItem key={suite.id} value={suite.id}>
-                    {suite.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {activeSpec && isActiveCurated && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={handleEditSpec}
-                disabled={editorLoading || activeSpec?.path.startsWith("(")}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                {editorLoading ? "Opening..." : "Edit spec"}
-              </Button>
-              {isActiveCurated && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center"
-                  onClick={() => handleToggleLock(!activeSpecLocked)}
-                  disabled={lockingSpec}
-                >
-                  {activeSpecLocked ? (
-                    <>
-                      <Unlock className="h-4 w-4 mr-1" /> {lockingSpec ? "Unlocking..." : "Unlock spec"}
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="h-4 w-4 mr-1" /> {lockingSpec ? "Locking..." : "Lock spec"}
-                    </>
-                  )}
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center text-red-600 border-red-400 hover:bg-red-50"
-                onClick={handleDeleteSpec}
-                disabled={deletingSpec}
-              >
-                {deletingSpec ? "Deleting spec..." : "Delete spec"}
-              </Button>
-            </>
-          )}
-          {isActiveCurated && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={handleRenameSuite}
-                disabled={renamingSuite}
-              >
-                <GitBranch className="h-4 w-4 mr-1" />
-                {renamingSuite ? "Renaming..." : "Rename suite"}
-              </Button>
-              <div className="grid grid-cols-1 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center"
-                  onClick={() => handleSyncSuite("replaceSuite")}
-                  disabled={!!syncingSuite}
-                >
-                  {syncingSuite === "replaceSuite" ? "Replacing..." : "Replace suite (from generated)"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center"
-                  onClick={() => handleSyncSuite("overwriteMatches")}
-                  disabled={!!syncingSuite}
-                >
-                  {syncingSuite === "overwriteMatches" ? "Overwriting..." : "Overwrite matches only"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center"
-                  onClick={() => handleSyncSuite("addMissing")}
-                  disabled={!!syncingSuite}
-                >
-                  {syncingSuite === "addMissing" ? "Adding..." : "Add missing only"}
-                </Button>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center text-red-600 border-red-400 hover:bg-red-50"
-                onClick={handleDeleteSuite}
-                disabled={deletingSuite}
-              >
-                {deletingSuite ? "Deleting..." : "Delete suite"}
-              </Button>
-            </>
-          )}
+              <Plus className="h-4 w-4 mr-1" /> {creatingSuite ? "Creating..." : "New suite"}
+            </Button>
+            <GlobalActionsMenu onAction={handleGlobalAction} canCopySpec={canCopySpec} />
+          </div>
         </div>
         <Separator />
         <ScrollArea className="h-[calc(100vh-64px)] p-2 space-y-1">
@@ -1142,6 +1839,7 @@ export default function ProjectSuite() {
                   }}
                   activeSuiteId={pid}
                   activePath={activeSpec?.path || null}
+                  renderActions={renderTreeActions}
                 />
               ))}
             </div>
@@ -1163,6 +1861,7 @@ export default function ProjectSuite() {
                   }}
                   activeSuiteId={pid}
                   activePath={activeSpec?.path || null}
+                  renderActions={renderTreeActions}
                 />
               ))}
             </div>
@@ -1197,7 +1896,7 @@ export default function ProjectSuite() {
                 <SelectContent>
                   {suiteOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label} {opt.type === "generated" ? "(generated)" : "(curated)"}
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1312,11 +2011,27 @@ export default function ProjectSuite() {
         {/* body */}
         <ScrollArea className="p-4">
           {!activeSpec ? (
-            <div className="text-sm text-muted-foreground">Select a spec on the left.</div>
+            <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-muted-foreground">
+              {specs.length === 0 ? (
+                <div className="space-y-2">
+                  <div>This suite is empty.</div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled title="Coming soon">
+                      New spec
+                    </Button>
+                    <Button variant="outline" size="sm" disabled title="Select a spec first">
+                      Copy spec
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div>Select a spec on the left to view steps.</div>
+              )}
+            </div>
           ) : (
             <>
               <div className="flex items-center justify-between mb-3 px-1">
-                <div className="text-sm text-muted-foreground">{activeSpec.path}</div>
+                <div className="text-sm text-muted-foreground">{formatDisplayPath(activeSpec.path)}</div>
                 <div className="flex gap-2">
                   <Button
                     variant="default"
@@ -1382,13 +2097,73 @@ export default function ProjectSuite() {
                   </div>
                   );
                 })}
-                {filtered.length === 0 && <div className="text-sm text-muted-foreground">No matches.</div>}
+                {filtered.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-muted-foreground">
+                    {hasQuery ? (
+                      <div className="flex items-center gap-2">
+                        <span>No results for "{trimmedQuery}".</span>
+                        <Button variant="outline" size="sm" onClick={() => setQuery("")}>
+                          Clear search
+                        </Button>
+                      </div>
+                    ) : (
+                      <span>No steps match this view.</span>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}
         </ScrollArea>
       </div>
     </div>
+      <SpecPickerModal
+        open={pickerOpen}
+        mode={pickerMode}
+        specPath={pickerSpecPath}
+        suites={curatedSuiteOptions}
+        suiteId={pickerSuiteId}
+        onSuiteChange={(value) => {
+          setPickerSuiteId(value);
+          setPickerFolder("");
+          setPickerNewFolder("");
+        }}
+        folderOptions={pickerFolderOptions}
+        folderValue={pickerFolder}
+        onFolderChange={(value) => {
+          setPickerFolder(value);
+          if (value !== NEW_FOLDER_VALUE) {
+            setPickerNewFolder("");
+          }
+        }}
+        newFolderValue={pickerNewFolder}
+        onNewFolderChange={setPickerNewFolder}
+        newNameValue={pickerNewName}
+        onNewNameChange={setPickerNewName}
+        busy={pickerBusy || copyingSpec}
+        onCancel={handlePickerClose}
+        onConfirm={handlePickerConfirm}
+      />
+      <FolderDeleteModal
+        open={!!folderDeleteTarget}
+        folderName={folderDeleteTarget?.folderName || ""}
+        hasSubfolders={!!folderDeleteTarget?.hasSubfolders}
+        deleteSubfolders={deleteSubfolders}
+        onDeleteSubfoldersChange={setDeleteSubfolders}
+        onCancel={() => {
+          setFolderDeleteTarget(null);
+          setDeleteSubfolders(false);
+        }}
+        onConfirm={() => {
+          if (!folderDeleteTarget) return;
+          deleteFolderInSuite(folderDeleteTarget.suiteId, folderDeleteTarget.folderPath, {
+            deleteSubfolders,
+          });
+          setFolderDeleteTarget(null);
+          setDeleteSubfolders(false);
+          toast.success(`Deleted folder ${folderDeleteTarget.folderName}`);
+        }}
+      />
       {editorOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col">
