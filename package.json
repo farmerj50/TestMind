@@ -14,22 +14,22 @@
     "@octokit/auth-app": "^8.1.1",
     "@octokit/rest": "^22.0.0",
     "@openai/agents": "^0.1.10",
+    "@playwright/test": "1.57.0",
+    "@prisma/client": "^6.18.0",
     "allure-commandline": "^2.36.0",
     "allure-js-commons": "^3.4.3",
     "allure-playwright": "^3.4.3",
-    "@playwright/test": "1.57.0",
-    "@prisma/client": "^6.18.0",
-    "prisma": "^6.18.0",
     "bullmq": "^5.55.0",
     "execa": "^9.6.0",
     "ioredis": "^5.8.2",
     "nodemailer": "^6.9.16",
     "openai": "^6.6.0",
-    "playwright": "^1.57.0"
+    "playwright": "^1.57.0",
+    "prisma": "^6.18.0"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
-    "tsx": "^4.20.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

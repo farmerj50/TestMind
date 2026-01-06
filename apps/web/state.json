@@ -1,75 +1,43 @@
 {
   "cookies": [
     {
-      "name": "datr",
-      "value": "qQpDaQDkW3S8QRFDPoUi5Kw7",
-      "domain": ".facebook.com",
+      "name": "m",
+      "value": "31cd5492-a314-4158-a99c-fca1b44141a33820f8",
+      "domain": "m.stripe.com",
       "path": "/",
-      "expires": 1800561320.980152,
+      "expires": 1802199878.611861,
       "httpOnly": true,
       "secure": true,
       "sameSite": "None"
     },
     {
-      "name": "sb",
-      "value": "qQpDaZhPYGq5OLXY6S5nCn-e",
-      "domain": ".facebook.com",
+      "name": "__stripe_mid",
+      "value": "c4a6c327-5c95-420f-9585-0f93c6b470827f68b8",
+      "domain": ".www.justicepathlaw.com",
       "path": "/",
-      "expires": 1800561320.980448,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "None"
-    },
-    {
-      "name": "wd",
-      "value": "1280x720",
-      "domain": ".facebook.com",
-      "path": "/",
-      "expires": 1766606163,
+      "expires": 1799175878,
       "httpOnly": false,
       "secure": true,
-      "sameSite": "Lax"
+      "sameSite": "Strict"
     },
     {
-      "name": "dpr",
-      "value": "1.0000000149011612",
-      "domain": ".facebook.com",
+      "name": "__stripe_sid",
+      "value": "7d79d2aa-f752-4083-b1a3-1aafbdf15193c5d0de",
+      "domain": ".www.justicepathlaw.com",
       "path": "/",
-      "expires": 1766606198,
+      "expires": 1767641678,
       "httpOnly": false,
       "secure": true,
-      "sameSite": "None"
-    },
-    {
-      "name": "fr",
-      "value": "0YItrVfS183oimFdg..BpQwqp..AAA.0.0.BpQwrU.AWd6Cgjb3lxIDpdmTOjd1KtUkps",
-      "domain": ".facebook.com",
-      "path": "/",
-      "expires": 1773777363.591226,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "None"
+      "sameSite": "Strict"
     }
   ],
   "origins": [
     {
-      "origin": "https://www.facebook.com",
+      "origin": "https://www.justicepathlaw.com",
       "localStorage": [
         {
-          "name": "signal_flush_timestamp",
-          "value": "1766001324494"
-        },
-        {
-          "name": "Session",
-          "value": "wujdn9:1766001433204"
-        },
-        {
-          "name": "hb_timestamp",
-          "value": "1766001354213"
-        },
-        {
-          "name": "banzai:last_storage_flush",
-          "value": "1766001325224.6"
+          "name": "darkMode",
+          "value": "false"
         }
       ]
     }

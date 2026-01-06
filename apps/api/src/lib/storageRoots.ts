@@ -3,15 +3,24 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 
 const cwd = process.cwd();
-const repoRoot = fsSync.existsSync(path.join(cwd, "pnpm-workspace.yaml"))
-  ? cwd
-  : path.resolve(cwd, "..", "..");
 
-const dataRoot = fsSync.existsSync("/data") ? "/data" : null;
+const findRepoRoot = () => {
+  let current = path.resolve(cwd);
+  for (;;) {
+    const hasWorkspace = fsSync.existsSync(path.join(current, "pnpm-workspace.yaml"));
+    const hasGit = fsSync.existsSync(path.join(current, ".git"));
+    if (hasWorkspace || hasGit) return current;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return path.resolve(cwd, "..", "..");
+};
+
+const repoRoot = findRepoRoot();
 
 const defaultRoot = (envKey: string, fallbackName: string) =>
-  process.env[envKey] ??
-  (dataRoot ? path.join(dataRoot, fallbackName) : path.resolve(repoRoot, fallbackName));
+  process.env[envKey] ?? path.resolve(repoRoot, fallbackName);
 
 export const GENERATED_ROOT = defaultRoot("TM_GENERATED_ROOT", "testmind-generated");
 

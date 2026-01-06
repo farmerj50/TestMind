@@ -92,5 +92,5 @@
         - generic [ref=e86]:
           - heading "Is my data safe?" [level=4] [ref=e87]
           - paragraph [ref=e88]: Yes. We do not sell your data, and your case information is never shared with third parties.
-    - contentinfo [ref=e89]: © 2025 JusticePath, Inc. All rights reserved.
+    - contentinfo [ref=e89]: © 2026 JusticePath, Inc. All rights reserved.
 ```

@@ -116,6 +116,13 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
       if (value === "failed" || value === "unexpected") return "failed";
       return (value as any) || "error";
     };
+    const normalizeTitlePath = (parts: string[]) => {
+      const cleaned = parts.filter(Boolean);
+      if (cleaned.length > 1 && cleaned[cleaned.length - 1] === "test") {
+        cleaned.pop();
+      }
+      return cleaned;
+    };
 
     const walkSuite = (suite: any, ancestors: string[] = []) => {
       const nextAncestors = suite?.title ? [...ancestors, suite.title] : ancestors;
@@ -126,9 +133,15 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
         const status = normalizeStatus(test.outcome || last.status || (last.error ? "failed" : undefined));
         const rawMessage = stripAnsi(last.error?.message || last.error?.stack || null);
         const { message, steps } = extractCallLog(rawMessage || undefined);
+        const titlePath = normalizeTitlePath(
+          Array.isArray(test.titlePath) && test.titlePath.length
+            ? test.titlePath
+            : [test.title || "test"]
+        );
+        const titleOnly = titlePath[titlePath.length - 1] || "test";
         out.push({
           file: normalizePath(test.location?.file || suite.file),
-          fullName: test.titlePath?.join(" > ") || [...nextAncestors, test.title || "test"].join(" > "),
+          fullName: titleOnly,
           durationMs: last.duration,
           status,
           message,
@@ -145,16 +158,21 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
 
       // Current PW JSON (suite.specs[].tests[])
       for (const spec of suite.specs || []) {
-        const titleParts = spec.title ? [...nextAncestors, spec.title] : nextAncestors;
         const file = normalizePath(spec.file || suite.file);
         for (const test of spec.tests || []) {
           const last = (test.results || []).slice(-1)[0] || {};
           const status = normalizeStatus(test.outcome || test.status || last.status || (last.error ? "failed" : undefined));
           const rawMessage = stripAnsi(last.error?.message || last.error?.stack || null);
           const { message, steps } = extractCallLog(rawMessage || undefined);
+          const titlePath = normalizeTitlePath(
+            Array.isArray(test.titlePath) && test.titlePath.length
+              ? test.titlePath
+              : [spec.title || test.title || "test"].filter(Boolean)
+          );
+          const testTitle = titlePath[titlePath.length - 1] || "test";
           out.push({
             file,
-            fullName: titleParts.length ? titleParts.join(" > ") : spec.file || "test",
+            fullName: testTitle || spec.file || "test",
             durationMs: last.duration,
             status,
             message: message ?? stripAnsi(spec.errors?.[0]?.message || null),

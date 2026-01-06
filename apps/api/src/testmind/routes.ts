@@ -16,6 +16,7 @@ import {
   writeCuratedManifest,
   slugify,
   ensureWithin,
+  getCuratedProject,
 } from "./curated-store.js";
 
 type GenerateCommon = {
@@ -166,6 +167,32 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
   const userSuffix = extractUserSuffix(projectId);
   const hasUserSuffix = !!userSuffix;
   const baseId = stripUserSuffix(projectId);
+  const hasSpecFiles = (dir: string) => {
+    const hasMatch = (name: string) => /\.(spec|test)\.(ts|js|mjs|cjs)$/i.test(name);
+    const walk = (current: string) => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true });
+      } catch {
+        return false;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+        const abs = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          if (walk(abs)) return true;
+        } else if (entry.isFile() && hasMatch(entry.name)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    try {
+      return walk(dir);
+    } catch {
+      return false;
+    }
+  };
   try {
     const curatedSuite = await prisma.curatedSuite.findUnique({
       where: { id: projectId },
@@ -184,6 +211,11 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
         optionalRoot ? path.resolve(optionalRoot) : null,
         // user-scoped generated directory (required when suffix present)
         path.join(GENERATED_ROOT, projectId),
+        // legacy shared generated roots (recordings live here)
+        path.join(REPO_ROOT, "apps", "api", "testmind-generated", baseId),
+        path.join(REPO_ROOT, "apps", "web", "testmind-generated", baseId),
+        path.join(REPO_ROOT, "testmind-generated", baseId),
+        path.join(GENERATED_ROOT, baseId),
       ].filter(Boolean) as string[]
     : ([
         optionalRoot ? path.resolve(optionalRoot) : null,
@@ -198,9 +230,13 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
         path.join(REPO_ROOT, "testmind-generated", "playwright-ts"),
       ].filter(Boolean) as string[]);
 
+  let firstExisting: string | null = null;
   for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
+    if (!fs.existsSync(p)) continue;
+    if (!firstExisting) firstExisting = p;
+    if (hasSpecFiles(p)) return p;
   }
+  if (firstExisting) return firstExisting;
   // Fallback: create a home so new projects/users always have a root.
   if (hasUserSuffix) {
     const fallback = path.join(GENERATED_ROOT, projectId);
@@ -217,6 +253,104 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
   }
 }
 
+function resolveGeneratedRoots(projectId: string, optionalRoot?: string) {
+  const baseId = stripUserSuffix(projectId);
+  const roots = [
+    optionalRoot ? path.resolve(optionalRoot) : null,
+    path.join(GENERATED_ROOT, projectId),
+    path.join(GENERATED_ROOT, baseId),
+    path.join(REPO_ROOT, "apps", "api", "testmind-generated", baseId),
+    path.join(REPO_ROOT, "apps", "web", "testmind-generated", baseId),
+    path.join(REPO_ROOT, "testmind-generated", baseId),
+  ].filter(Boolean) as string[];
+  const unique = new Set<string>();
+  const existing: string[] = [];
+  for (const root of roots) {
+    const resolved = path.resolve(root);
+    if (unique.has(resolved)) continue;
+    unique.add(resolved);
+    if (fs.existsSync(resolved)) existing.push(resolved);
+  }
+  return existing;
+}
+
+function curatedRootCandidates(curatedSuite: CuratedSuiteWithOwner) {
+  const candidates: string[] = [];
+  const manifestEntry = getCuratedProject(curatedSuite.id);
+  if (manifestEntry?.root) {
+    candidates.push(path.resolve(CURATED_ROOT, manifestEntry.root));
+  }
+  candidates.push(path.resolve(CURATED_ROOT, curatedSuite.rootRel));
+  if (curatedSuite.projectId && curatedSuite.name) {
+    const slug = slugify(curatedSuite.name);
+    candidates.push(path.resolve(CURATED_ROOT, `project-${curatedSuite.projectId}`, slug));
+  }
+  if (curatedSuite.projectId) {
+    candidates.push(path.resolve(CURATED_ROOT, `project-${curatedSuite.projectId}`));
+  }
+  candidates.push(path.resolve(CURATED_ROOT, curatedSuite.id));
+  candidates.push(path.resolve(REPO_ROOT, "testmind-curated", curatedSuite.rootRel));
+  if (curatedSuite.projectId && curatedSuite.name) {
+    const slug = slugify(curatedSuite.name);
+    candidates.push(path.resolve(REPO_ROOT, "testmind-curated", `project-${curatedSuite.projectId}`, slug));
+  }
+  if (curatedSuite.projectId) {
+    candidates.push(path.resolve(REPO_ROOT, "testmind-curated", `project-${curatedSuite.projectId}`));
+  }
+  candidates.push(path.resolve(REPO_ROOT, "testmind-curated", curatedSuite.id));
+  const unique = new Set<string>();
+  return candidates.filter((candidate) => {
+    const resolved = path.resolve(candidate);
+    if (unique.has(resolved)) return false;
+    unique.add(resolved);
+    return true;
+  });
+}
+
+function resolveCuratedRoot(curatedSuite: CuratedSuiteWithOwner, ensure = false) {
+  const candidates = curatedRootCandidates(curatedSuite);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+      return candidate;
+    }
+  }
+  const fallback = candidates[0];
+  if (ensure && fallback) {
+    fs.mkdirSync(fallback, { recursive: true });
+  }
+  return fallback;
+}
+
+function findCuratedFile(curatedSuite: CuratedSuiteWithOwner, relPath: string) {
+  const candidates = curatedRootCandidates(curatedSuite);
+  for (const root of candidates) {
+    const abs = path.resolve(root, relPath);
+    if (fs.existsSync(abs)) {
+      return { root, abs };
+    }
+  }
+  return null;
+}
+
+function projectCuratedRoots(projectId: string) {
+  const candidates = [
+    path.resolve(CURATED_ROOT, `project-${projectId}`),
+    path.resolve(CURATED_ROOT, projectId),
+    path.resolve(REPO_ROOT, "testmind-curated", `project-${projectId}`),
+    path.resolve(REPO_ROOT, "testmind-curated", projectId),
+  ];
+  const unique = new Set<string>();
+  return candidates.filter((candidate) => {
+    const resolved = path.resolve(candidate);
+    if (unique.has(resolved)) return false;
+    unique.add(resolved);
+    try {
+      return fs.existsSync(resolved) && fs.statSync(resolved).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+}
 
 // Render a simple HTML form to collect baseUrl and optional knobs
 function renderGenerateForm(defaultBaseUrl = ''): string {
@@ -1007,16 +1141,36 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         where: { id: projectId },
         select: { rootRel: true, project: { select: { ownerId: true } } },
       });
-      if (!suite || suite.project.ownerId !== userId) {
+      let curatedSuite: CuratedSuiteWithOwner | null = null;
+      if (suite && suite.project.ownerId === userId) {
+        curatedSuite = {
+          id: projectId,
+          name: "",
+          rootRel: suite.rootRel,
+          projectId: "",
+          ownerId: suite.project.ownerId,
+        };
+      } else {
+        const manifestEntry = getCuratedProject(projectId);
+        if (manifestEntry?.root) {
+          curatedSuite = {
+            id: projectId,
+            name: manifestEntry.name ?? projectId,
+            rootRel: manifestEntry.root ?? projectId,
+            projectId: "",
+            ownerId: userId,
+          };
+        }
+      }
+      if (!curatedSuite) {
         return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
       }
-      const root = path.resolve(CURATED_ROOT, suite.rootRel);
-      const abs = path.resolve(root, relPath);
-      ensureWithin(root, abs);
-      if (!fs.existsSync(abs)) {
+      const found = findCuratedFile(curatedSuite, relPath);
+      if (!found) {
         return reply.code(404).send({ error: "Spec not found in curated suite" });
       }
-      const content = await fs.promises.readFile(abs, "utf8");
+      ensureWithin(found.root, found.abs);
+      const content = await fs.promises.readFile(found.abs, "utf8");
       return { content };
     } catch (err) {
       return sendError(app, reply, err);
@@ -1038,10 +1192,31 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         where: { id: projectId },
         select: { rootRel: true, project: { select: { ownerId: true } } },
       });
-      if (!suite || suite.project.ownerId !== userId) {
+      let curatedSuite: CuratedSuiteWithOwner | null = null;
+      if (suite && suite.project.ownerId === userId) {
+        curatedSuite = {
+          id: projectId,
+          name: "",
+          rootRel: suite.rootRel,
+          projectId: "",
+          ownerId: suite.project.ownerId,
+        };
+      } else {
+        const manifestEntry = getCuratedProject(projectId);
+        if (manifestEntry?.root) {
+          curatedSuite = {
+            id: projectId,
+            name: manifestEntry.name ?? projectId,
+            rootRel: manifestEntry.root ?? projectId,
+            projectId: "",
+            ownerId: userId,
+          };
+        }
+      }
+      if (!curatedSuite) {
         return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
       }
-      const root = path.resolve(CURATED_ROOT, suite.rootRel);
+      const root = resolveCuratedRoot(curatedSuite, true);
       const abs = path.resolve(root, relPath);
       ensureWithin(root, abs);
       await fs.promises.mkdir(path.dirname(abs), { recursive: true });
@@ -1098,11 +1273,63 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     if (!isAllowed) return reply.code(404).send({ error: "Suite not found" });
 
     try {
-      const specRoot = curatedSuite
-        ? path.resolve(CURATED_ROOT, curatedSuite.rootRel)
-        : await resolveProjectRoot(projectId, root);
-      const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
-      return files.map((rel: string) => ({ path: rel }));
+      if (!curatedSuite) {
+        const manifestEntry = getCuratedProject(projectId);
+        if (manifestEntry?.root) {
+          curatedSuite = {
+            id: projectId,
+            name: manifestEntry.name ?? projectId,
+            rootRel: manifestEntry.root ?? projectId,
+            projectId: "",
+            ownerId: userId,
+          };
+        }
+      }
+      if (curatedSuite) {
+        const roots = curatedRootCandidates(curatedSuite).filter((root) => {
+          try {
+            return fs.existsSync(root) && fs.statSync(root).isDirectory();
+          } catch {
+            return false;
+          }
+        });
+        const seen = new Set<string>();
+        const out: Array<{ path: string }> = [];
+        for (const specRoot of roots) {
+          const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+          for (const rel of files) {
+            const key = rel.replace(/\\/g, "/");
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ path: rel });
+          }
+        }
+        return out;
+      }
+      const roots = resolveGeneratedRoots(projectId, root);
+      const seen = new Set<string>();
+      const out: Array<{ path: string }> = [];
+      for (const specRoot of roots) {
+        const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+        for (const rel of files) {
+          const key = rel.replace(/\\/g, "/");
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ path: rel });
+        }
+      }
+      if (out.length) return out;
+      const curatedRoots = projectCuratedRoots(projectId);
+      for (const specRoot of curatedRoots) {
+        const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+        for (const rel of files) {
+          const key = rel.replace(/\\/g, "/");
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ path: rel });
+        }
+      }
+      return out;
     } catch {
       // Last resort: return empty list so UI can still render and allow new suites to be created.
       return [];
@@ -1155,13 +1382,43 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     if (!isAllowed) return reply.code(404).send({ error: "Suite not found" });
 
     try {
-      const base = curatedSuite
-        ? path.resolve(CURATED_ROOT, curatedSuite.rootRel)
-        : await resolveProjectRoot(projectId, root);
-      const abs = path.join(base, relPath);
-      if (!fs.existsSync(abs)) {
-        return [];
+      if (!curatedSuite) {
+        const manifestEntry = getCuratedProject(projectId);
+        if (manifestEntry?.root) {
+          curatedSuite = {
+            id: projectId,
+            name: manifestEntry.name ?? projectId,
+            rootRel: manifestEntry.root ?? projectId,
+            projectId: "",
+            ownerId: userId,
+          };
+        }
       }
+      let abs: string | null = null;
+      if (curatedSuite) {
+        const found = findCuratedFile(curatedSuite, relPath);
+        if (found) abs = found.abs;
+      } else {
+        const roots = resolveGeneratedRoots(projectId, root);
+        for (const base of roots) {
+          const candidate = path.join(base, relPath);
+          if (fs.existsSync(candidate)) {
+            abs = candidate;
+            break;
+          }
+        }
+      }
+      if (!abs) {
+        const roots = projectCuratedRoots(projectId);
+        for (const base of roots) {
+          const candidate = path.join(base, relPath);
+          if (fs.existsSync(candidate)) {
+            abs = candidate;
+            break;
+          }
+        }
+      }
+      if (!abs) return [];
       const src = await fs.promises.readFile(abs, "utf8");
 
     const CASE_RE = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['"`]([^'"`]+)['"`]\s*,/g;

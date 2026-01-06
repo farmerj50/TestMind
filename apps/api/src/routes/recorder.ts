@@ -9,7 +9,12 @@ import { ensureCuratedProjectEntry } from "../testmind/curated-store.js";
 import { GENERATED_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
 
 const RECORD_ROOT = path.join(GENERATED_ROOT, "playwright-ts", "recordings");
-const HELPER_PING = process.env.RECORDER_HELPER || "http://localhost:43117";
+const USER_ROOT_PREFIX = "playwright-ts-";
+const isTruthy = (value?: string | null) =>
+  ["1", "true", "yes", "on"].includes((value ?? "").toLowerCase());
+const HELPER_PING =
+  process.env.RECORDER_HELPER ||
+  (isTruthy(process.env.START_RECORDER_HELPER) ? "http://localhost:43117" : null);
 let lastCallback: any = null;
 
 const SaveBody = z.object({
@@ -47,10 +52,10 @@ function languageToExt(lang?: string) {
 }
 
 function languageToTarget(lang?: string) {
-  if (lang === "javascript") return "--target=javascript";
+  if (lang === "javascript") return "--target=playwright-test";
   if (lang === "python") return "--target=python";
   if (lang === "java") return "--target=java";
-  return "--target=typescript";
+  return "--target=playwright-test";
 }
 
 export default async function recorderRoutes(app: FastifyInstance) {
@@ -67,7 +72,7 @@ export default async function recorderRoutes(app: FastifyInstance) {
       const pid = path.basename(root);
       if (!fsSync.existsSync(root)) continue;
       for (const file of fsSync.readdirSync(root)) {
-        if (file.endsWith(".spec.ts")) {
+        if (file.endsWith(".spec.ts") || file.endsWith(".spec.js")) {
           const rel = path.join("recordings", pid, file).replace(/\\/g, "/");
           specs.push({
             projectId: pid,
@@ -92,7 +97,10 @@ export default async function recorderRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "projectId is required to save a recorded spec" });
     }
     const projectId = pidInput;
-    const projectExists = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } });
+    const projectExists = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, name: true, ownerId: true },
+    });
     if (!projectExists) {
       return reply
         .code(404)
@@ -123,6 +131,17 @@ export default async function recorderRoutes(app: FastifyInstance) {
       fsSync.mkdirSync(destDir, { recursive: true });
       const destPath = path.join(destDir, `${fileSlug}.spec.${ext}`);
       await fs.copyFile(absPath, destPath);
+      if (projectExists.ownerId) {
+        const userRoot = path.join(
+          GENERATED_ROOT,
+          `${USER_ROOT_PREFIX}${projectExists.ownerId}`,
+          "recordings",
+          projectId
+        );
+        fsSync.mkdirSync(userRoot, { recursive: true });
+        const userPath = path.join(userRoot, `${fileSlug}.spec.${ext}`);
+        await fs.copyFile(absPath, userPath);
+      }
     } catch (err) {
       // non-fatal; fallback is generated path
       app.log.warn({ err }, "[recorder] failed to copy recording into curated suite");
