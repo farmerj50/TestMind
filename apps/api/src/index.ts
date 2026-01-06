@@ -228,6 +228,8 @@ const allowDebugRoutes =
   validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 const disableRecorderRoutes = ["1", "true"].includes((process.env.TM_DISABLE_RECORDER ?? "").toLowerCase());
 const printRoutesEnabled = (process.env.TM_PRINT_ROUTES ?? "").toLowerCase() === "1";
+const debugToken = (process.env.DEBUG_TOKEN ?? "").trim();
+const debugVolumeEnabled = !!debugToken;
 
 
 await registerWithLog("clerk", () =>
@@ -254,6 +256,75 @@ if (disableRecorderRoutes) {
 } else {
   await registerWithLog("recorderRoutes", () => app.register(recorderRoutes, { prefix: "/" }));
 }
+
+const assertDebugAuth = (req: { headers: Record<string, any> }, reply: { code: (status: number) => any }) => {
+  if (!debugVolumeEnabled) {
+    reply.code(404).send({ error: "Not found" });
+    return false;
+  }
+  const token = (req.headers["x-debug-token"] as string | undefined) || "";
+  if (!token || token !== debugToken) {
+    reply.code(401).send({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+};
+
+const resolveDebugPath = (rawPath?: string) => {
+  const rel = (rawPath || "").toString().replace(/^\/+/, "");
+  const base = path.resolve(GENERATED_ROOT);
+  const abs = path.resolve(base, rel);
+  if (!abs.startsWith(base)) {
+    return { ok: false, base, abs };
+  }
+  return { ok: true, base, abs };
+};
+
+app.get("/debug/volume/ls", async (req, reply) => {
+  if (!assertDebugAuth(req, reply)) return;
+  const rawPath = (req.query as any)?.path as string | undefined;
+  const resolved = resolveDebugPath(rawPath);
+  if (!resolved.ok) {
+    return reply.code(400).send({ error: "Bad path" });
+  }
+  if (!fs.existsSync(resolved.abs)) {
+    return reply.code(404).send({ error: "Not found" });
+  }
+  const stat = fs.statSync(resolved.abs);
+  if (!stat.isDirectory()) {
+    return reply.code(400).send({ error: "Not a directory" });
+  }
+  const entries = fs.readdirSync(resolved.abs, { withFileTypes: true }).map((entry) => ({
+    name: entry.name,
+    type: entry.isDirectory() ? "dir" : "file",
+  }));
+  return reply.send({ volumeRoot: resolved.base, abs: resolved.abs, entries });
+});
+
+app.get("/debug/volume/read", async (req, reply) => {
+  if (!assertDebugAuth(req, reply)) return;
+  const rawPath = (req.query as any)?.path as string | undefined;
+  const resolved = resolveDebugPath(rawPath);
+  if (!resolved.ok) {
+    return reply.code(400).send({ error: "Bad path" });
+  }
+  if (!fs.existsSync(resolved.abs)) {
+    return reply.code(404).send({ error: "Not found" });
+  }
+  const stat = fs.statSync(resolved.abs);
+  if (!stat.isFile()) {
+    return reply.code(400).send({ error: "Not a file" });
+  }
+  const maxRaw = Number((req.query as any)?.max ?? 20000);
+  const max = Number.isFinite(maxRaw) ? Math.min(Math.max(maxRaw, 0), 200000) : 20000;
+  const data = fs.readFileSync(resolved.abs);
+  return reply.send({
+    volumeRoot: resolved.base,
+    abs: resolved.abs,
+    bytes: data.length,
+    preview: data.toString("utf8", 0, max),
+  });
+});
 const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
 if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
   await registerWithLog("playwrightStatic", () =>
