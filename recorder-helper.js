@@ -51,6 +51,12 @@ function validateEnv() {
     : { cmd: "npx", args: [] };
 }
 
+function wrapCommand(cmd, args) {
+  if (process.platform !== "linux") return { cmd, args };
+  if (process.env.DISPLAY) return { cmd, args };
+  return { cmd: "xvfb-run", args: ["-a", cmd, ...args] };
+}
+
 function normalizePlaywrightTestTitle(raw, name) {
   const title = (name || "").trim() || "recorded spec";
   const testRe = /\btest(?:\.(?:only|skip))?\s*\(\s*(['"`])test\1\s*,/;
@@ -229,7 +235,8 @@ const server = http.createServer((req, res) => {
 
       try {
         postCallback({ status: "launching", baseUrl, projectId, outputPath, headed });
-        const child = spawn(cmd, args, {
+        const wrapped = wrapCommand(cmd, args);
+        const child = spawn(wrapped.cmd, wrapped.args, {
           cwd: WEB_CWD,
           stdio: "inherit",
           shell: process.platform === "win32", // help avoid EINVAL on Windows
@@ -249,7 +256,7 @@ const server = http.createServer((req, res) => {
         return send(res, 200, {
           ok: true,
           pid: child.pid,
-          command: `${cmd} ${args.join(" ")}`,
+          command: `${wrapped.cmd} ${wrapped.args.join(" ")}`,
           cwd: WEB_CWD,
           outputPath,
         });
