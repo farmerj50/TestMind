@@ -91,16 +91,43 @@ async function listSpecProjectsForUser(userId: string) {
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }
-        // If this user directory is empty but a legacy shared folder exists, seed it by copying.
+        const isPlaceholderSpec = (filePath: string) => {
+          try {
+            const text = fs.readFileSync(filePath, "utf8");
+            return text.includes("paste or write your Playwright spec here");
+          } catch {
+            return false;
+          }
+        };
+        const copyLegacySpecs = () => {
+          if (!fs.existsSync(legacyDir)) return;
+          const walk = (srcDir: string, relBase = "") => {
+            const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+            for (const entry of entries) {
+              const srcPath = path.join(srcDir, entry.name);
+              const relPath = path.join(relBase, entry.name);
+              const destPath = path.join(dir, relPath);
+              if (entry.isDirectory()) {
+                walk(srcPath, relPath);
+              } else if (entry.isFile()) {
+                if (!/\.(spec|test)\.(t|j)sx?$/i.test(entry.name)) continue;
+                const exists = fs.existsSync(destPath);
+                if (exists && !isPlaceholderSpec(destPath)) continue;
+                fs.mkdirSync(path.dirname(destPath), { recursive: true });
+                fs.copyFileSync(srcPath, destPath);
+              }
+            }
+          };
+          walk(legacyDir);
+        };
+        // If this user directory is empty or contains only placeholders, seed from legacy.
         const hasEntries =
           fs.existsSync(dir) &&
           fs.readdirSync(dir, { withFileTypes: true }).some((d) => d.name !== ".DS_Store");
-        if (!hasEntries && fs.existsSync(legacyDir)) {
-          try {
-            fs.cpSync(legacyDir, dir, { recursive: true, force: false, errorOnExist: false });
-          } catch (err) {
-            console.warn("[TM] failed to copy legacy specs", { legacyDir, dir, err });
-          }
+        if (!hasEntries) {
+          copyLegacySpecs();
+        } else {
+          copyLegacySpecs();
         }
       } catch (err) {
         console.warn("[TM] failed to prepare generated suite", { dir, err });
