@@ -348,6 +348,41 @@ function resolveCuratedRoot(curatedSuite: CuratedSuiteWithOwner, ensure = false)
   return fallback;
 }
 
+function coercePlaywrightTestSource(
+  source: string,
+  testName: string,
+  isTs: boolean
+): { content: string; changed: boolean } {
+  const hasTest = /\btest\s*\(/.test(source);
+  if (hasTest) return { content: source, changed: false };
+  if (!/chromium\.launch/.test(source)) return { content: source, changed: false };
+
+  const header = isTs
+    ? "import { test, expect } from '@playwright/test';"
+    : "const { test, expect } = require('@playwright/test');";
+
+  const withoutRequire = source.replace(
+    /const\s+\{\s*chromium\s*\}\s*=\s*require\(['"]playwright['"]\);\s*\r?\n?/,
+    ""
+  );
+  const withoutWrapper = withoutRequire
+    .replace(/\(\s*async\s*\(\)\s*=>\s*\{\s*\r?\n?/, "")
+    .replace(/\r?\n?\}\)\(\);\s*$/, "");
+  const withoutBrowser = withoutWrapper
+    .replace(/const\s+browser\s*=\s*await\s+chromium\.launch\([\s\S]*?\);\s*\r?\n?/, "")
+    .replace(/await\s+browser\.close\(\);\s*\r?\n?/, "");
+  const indented = withoutBrowser
+    .split(/\r?\n/)
+    .map((line) => (line ? `  ${line}` : ""))
+    .join("\n");
+  const safeName = testName || "recorded spec";
+  const content =
+    `${header}\n\n` +
+    `const testName = ${JSON.stringify(safeName)};\n\n` +
+    `test(testName, async ({ browser }) => {\n${indented}\n});\n`;
+  return { content, changed: true };
+}
+
 function findCuratedFile(curatedSuite: CuratedSuiteWithOwner, relPath: string) {
   const candidates = curatedRootCandidates(curatedSuite);
   for (const root of candidates) {
@@ -1197,7 +1232,17 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         return reply.code(404).send({ error: "Spec not found in curated suite" });
       }
       ensureWithin(found.root, found.abs);
-      const content = await fs.promises.readFile(found.abs, "utf8");
+      let content = await fs.promises.readFile(found.abs, "utf8");
+      const ext = path.extname(found.abs).toLowerCase();
+      const coerced = coercePlaywrightTestSource(
+        content,
+        path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
+        ext === ".ts" || ext === ".tsx"
+      );
+      if (coerced.changed) {
+        content = coerced.content;
+        await fs.promises.writeFile(found.abs, content, "utf8");
+      }
       return { content };
     } catch (err) {
       return sendError(app, reply, err);
@@ -1446,7 +1491,17 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         }
       }
       if (!abs) return [];
-      const src = await fs.promises.readFile(abs, "utf8");
+      let src = await fs.promises.readFile(abs, "utf8");
+      const ext = path.extname(abs).toLowerCase();
+      const coerced = coercePlaywrightTestSource(
+        src,
+        path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
+        ext === ".ts" || ext === ".tsx"
+      );
+      if (coerced.changed) {
+        src = coerced.content;
+        await fs.promises.writeFile(abs, src, "utf8");
+      }
 
     const CASE_RE = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['"`]([^'"`]+)['"`]\s*,/g;
     const out: Array<{ title: string; line: number }> = [];
