@@ -45,13 +45,12 @@ RUN pnpm --filter api build
 
 # ✅ Install Playwright browsers only (no OS deps here)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pnpm --filter api exec playwright install chromium
 
 
 # -------------------------
 # runner: prod deps + runtime only
 # -------------------------
-FROM node:20-bullseye-slim AS runner
+FROM mcr.microsoft.com/playwright:v1.41.2-jammy AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -65,34 +64,6 @@ RUN set -eux; \
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     git \
     openjdk-17-jre-headless \
-    ca-certificates \
-    curl \
-    wget \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libatspi2.0-0 \
-    libxshmfence1 \
-    libxkbcommon0 \
-    libcups2 \
-    libdrm2 \
-    libxfixes3 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libxext6 \
-    libx11-6 \
-    libxcb1 \
-    libxkbfile1 \
-    libxrender1 \
-    libxi6 \
-    libxtst6 \
-    fonts-liberation \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
@@ -122,3 +93,4 @@ RUN echo "runner-cachebust=$CACHEBUST"
 COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
 
 CMD ["node", "apps/api/dist/index.js"]
+
