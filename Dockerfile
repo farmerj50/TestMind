@@ -84,8 +84,6 @@ COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
 RUN pnpm --filter api exec prisma generate
 
 # ✅ Copy Playwright browsers from builder
-COPY --from=builder /ms-playwright /ms-playwright
-
 ARG CACHEBUST=173
 RUN echo "runner-cachebust=$CACHEBUST"
 
