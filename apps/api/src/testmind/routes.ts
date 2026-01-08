@@ -1225,7 +1225,25 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         }
       }
       if (!curatedSuite) {
-        return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
+        const roots = resolveGeneratedRoots(projectId);
+        for (const root of roots) {
+          const abs = path.resolve(root, relPath);
+          if (!fs.existsSync(abs)) continue;
+          ensureWithin(root, abs);
+          let content = await fs.promises.readFile(abs, "utf8");
+          const ext = path.extname(abs).toLowerCase();
+          const coerced = coercePlaywrightTestSource(
+            content,
+            path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
+            ext === ".ts" || ext === ".tsx"
+          );
+          if (coerced.changed) {
+            content = coerced.content;
+            await fs.promises.writeFile(abs, content, "utf8");
+          }
+          return { content };
+        }
+        return reply.code(404).send({ error: "Spec not found in generated suite" });
       }
       const found = findCuratedFile(curatedSuite, relPath);
       if (!found) {
