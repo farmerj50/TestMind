@@ -10,7 +10,7 @@ type Project = { id: string; name: string; repoUrl?: string; ownerId?: string };
 
 export default function RecorderPage() {
   const { apiFetch } = useApi();
-  const { userId } = useAuth();
+  const { userId, getToken } = useAuth();
   const helperBaseEnv = import.meta.env.VITE_RECORDER_HELPER?.trim();
   const helperBase = (() => {
     if (!helperBaseEnv) return null;
@@ -265,6 +265,7 @@ export default function RecorderPage() {
       setErr(null);
       setLaunchStatus(null);
       setLaunching(true);
+      const authToken = await getToken().catch(() => null);
       const pid = computedProjectId || (await ensureProjectId());
       if (!requireBaseUrlForProject(pid, baseUrl)) return;
       await ensureProjectBaseUrl(pid, baseUrl);
@@ -277,6 +278,7 @@ export default function RecorderPage() {
         headed,
         apiBase,
         userId: userId || resolveProjectOwnerId(pid),
+        authToken,
       };
       const helperStart = await apiFetch<{
         started?: boolean;

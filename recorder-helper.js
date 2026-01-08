@@ -5,6 +5,7 @@
  * The web app will call http://localhost:<port>/record with JSON: { baseUrl, name, projectId? }.
  */
 const http = require("http");
+const https = require("https");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -55,6 +56,47 @@ function wrapCommand(cmd, args) {
   if (process.platform !== "linux") return { cmd, args };
   if (process.env.DISPLAY) return { cmd, args };
   return { cmd: "xvfb-run", args: ["-a", cmd, ...args] };
+}
+
+function postSpecToApi({ apiBase, authToken, projectId, name, language, baseUrl, outputPath }) {
+  if (!apiBase) return;
+  if (!fs.existsSync(outputPath)) return;
+  try {
+    const content = fs.readFileSync(outputPath, "utf8");
+    if (!content.trim()) return;
+    const url = new URL("/recorder/specs", apiBase);
+    const body = JSON.stringify({
+      projectId,
+      name,
+      content,
+      language,
+      baseUrl,
+    });
+    const client = url.protocol === "https:" ? https : http;
+    const req = client.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname + (url.search || ""),
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+      },
+      (res) => {
+        res.on("data", () => {});
+      }
+    );
+    req.on("error", (err) => {
+      console.error("[recorder-helper] API save failed", err);
+    });
+    req.write(body);
+    req.end();
+  } catch (err) {
+    console.error("[recorder-helper] API save failed", err);
+  }
 }
 
 function normalizePlaywrightTestTitle(raw, name) {
@@ -176,6 +218,8 @@ const server = http.createServer((req, res) => {
       const name = (body.name || "").trim();
       const projectId = (body.projectId || "PROJECT_ID").trim() || "PROJECT_ID";
       const userId = (body.userId || "").trim() || null;
+      const apiBase = (body.apiBase || "").trim() || null;
+      const authToken = (body.authToken || "").trim() || null;
       const language = (body.language || "typescript").toLowerCase();
       const ext = language === "javascript" ? "js" : language === "python" ? "py" : language === "java" ? "java" : "ts";
       const targetValue =
@@ -221,6 +265,15 @@ const server = http.createServer((req, res) => {
           try {
             ensurePlaywrightTest(outputPath, name);
             mirrorToUserRoot(outputPath, userId, projectId);
+            postSpecToApi({
+              apiBase,
+              authToken,
+              projectId,
+              name,
+              language,
+              baseUrl,
+              outputPath,
+            });
             return;
           } catch (err) {
             if (attempts >= maxAttempts) {
