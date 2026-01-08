@@ -28,7 +28,7 @@ COPY --from=deps /workspace/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /workspace/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /workspace/package.json ./package.json
 
-ARG CACHEBUST=173
+ARG CACHEBUST=174
 RUN echo "cachebust=$CACHEBUST"
 
 COPY apps/api ./apps/api
@@ -50,7 +50,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # -------------------------
 # runner: prod deps + runtime only
 # -------------------------
-FROM mcr.microsoft.com/playwright:v1.41.2-jammy AS runner
+FROM mcr.microsoft.com/playwright:v1.57.0-jammy AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -84,11 +84,12 @@ COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
 RUN pnpm --filter api exec prisma generate
 
 # ✅ Copy Playwright browsers from builder
-ARG CACHEBUST=173
+ARG CACHEBUST=174
 RUN echo "runner-cachebust=$CACHEBUST"
 
 # Copy built output only
 COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
 
 CMD ["node", "apps/api/dist/index.js"]
+
 
