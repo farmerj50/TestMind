@@ -326,6 +326,15 @@ export const worker = new Worker(
 
       const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
+      const extraEnv: Record<string, string> = {};
+      const generatedRoot = path.join(work, "testmind-generated");
+      if (fsSync.existsSync(generatedRoot)) {
+        extraEnv.TM_GENERATED_ROOT = generatedRoot;
+      }
+      if (payload?.livePreview) {
+        extraEnv.TM_LIVE_PREVIEW = "1";
+        extraEnv.TM_RUN_LOG_DIR = outDir;
+      }
       let exec;
       try {
         exec = await runTests({
@@ -337,6 +346,7 @@ export const worker = new Worker(
         baseUrl: jobBaseUrl,
         runTimeout: timeoutMs,
         abortSignal: abortController.signal,
+        extraEnv,
         });
       } catch (err: any) {
         if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {

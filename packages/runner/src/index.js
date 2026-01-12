@@ -1,11 +1,18 @@
 import { execa } from "execa";
 import fs from "fs-extra";
 import path from "path";
+import { createTelemetryWriter } from "./telemetry.js";
 
 const REPO = process.env.PROJECT_REPO;
 const REF = process.env.PROJECT_REF || "main";
 const TEST_DIR = process.env.TEST_DIR || "tests";
 const OUT_JSON = "/runner/out/results.json";
+const ARTIFACTS_DIR =
+  process.env.TM_RUN_ARTIFACTS_DIR ||
+  process.env.PW_OUTPUT_DIR ||
+  "/runner/out";
+const RUN_ID = process.env.TM_RUN_ID || process.env.RUN_ID || "local";
+const SPEC_PATH = process.env.TM_SPEC_PATH || process.env.SPEC_PATH;
 
 const log = (...a) => console.log("[runner]", ...a);
 
@@ -14,6 +21,17 @@ async function main() {
   const work = "/runner/work";
   await fs.ensureDir(work);
   await fs.ensureDir("/runner/out");
+  const telemetry = createTelemetryWriter(ARTIFACTS_DIR, "telemetry.jsonl");
+  process.on("exit", () => telemetry.close());
+  telemetry.write({
+    ts: Date.now(),
+    type: "runner_start",
+    runId: RUN_ID,
+    specPath: SPEC_PATH,
+    repo: REPO,
+    ref: REF,
+    node: process.version,
+  });
 
   log("clone", REPO, "ref:", REF);
   try {
@@ -35,7 +53,11 @@ async function main() {
   try { await execa("npx", ["playwright","install","--with-deps"], { cwd: work, stdio: "inherit" }); } catch {}
 
   log("run playwright");
-  const { stdout } = await execa("npx", ["playwright","test", TEST_DIR, "--reporter=json"], { cwd: work });
+  const { stdout, exitCode } = await execa(
+    "npx",
+    ["playwright", "test", TEST_DIR, "--reporter=json"],
+    { cwd: work }
+  );
   await fs.writeFile(OUT_JSON, stdout, "utf-8");
   log("saved", OUT_JSON);
 
@@ -45,6 +67,15 @@ async function main() {
       (sp.tests ?? []).some(t => (t.results ?? []).some(rr => rr.status !== "passed"))
     )
   );
+  telemetry.write({
+    ts: Date.now(),
+    type: "runner_end",
+    runId: RUN_ID,
+    specPath: SPEC_PATH,
+    exitCode: exitCode ?? null,
+    failed,
+  });
+  telemetry.close();
   process.exitCode = failed ? 2 : 0;
 }
 

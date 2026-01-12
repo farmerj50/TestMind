@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useApi } from "../lib/api";
 import { CheckCircle2, XCircle, CircleAlert, RotateCcw } from "lucide-react";
 import { Button } from "./ui/button";
@@ -27,10 +27,15 @@ export default function RunResults({
   suiteId?: string;
 }) {
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
   const [results, setResults] = useState<Result[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
   const [rerunLoadingId, setRerunLoadingId] = useState<string | null>(null);
+  const [analyzeLoadingId, setAnalyzeLoadingId] = useState<string | null>(null);
+
+  const escapeRegex = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   const stop = () => {
     if (pollRef.current) {
@@ -85,10 +90,37 @@ export default function RunResults({
     }
   };
 
+    const handleAnalyze = async (specPath?: string | null, title?: string | null) => {
+      try {
+        setAnalyzeLoadingId(specPath || "run");
+        const testTitle = title ?? undefined;
+        const grep = testTitle ? escapeRegex(testTitle) : undefined;
+        const res = await apiFetch<{ runId: string }>(`/runner/test-runs/${runId}/rerun`, {
+          method: "POST",
+          body: JSON.stringify({
+          specFile: specPath ?? undefined,
+          grep,
+          testTitle,
+          livePreview: true,
+        }),
+      });
+      if (res?.runId) {
+        navigate(`/test-runs/${res.runId}`);
+      } else {
+        alert("Rerun queued. Open the latest run to view analysis.");
+      }
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to trigger AI analyze rerun");
+    } finally {
+      setAnalyzeLoadingId(null);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {results.map((r) => {
         const path = r.case.key?.split("#")[0]?.replace(/\\/g, "/");
+        const hasValidPath = !!path && path !== "unknown";
         const fileName = path ? path.split("/").pop() : null;
         const rawTitle = r.case.title || "";
         const displayTitle = rawTitle.includes(" > ")
@@ -173,7 +205,7 @@ export default function RunResults({
                   Edit in suite
                 </Link>
               </Button>
-              {path && (
+              {hasValidPath && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -182,6 +214,16 @@ export default function RunResults({
                 >
                   <RotateCcw className="mr-1 h-4 w-4" />
                   {rerunLoadingId === path ? "Rerunning..." : "Rerun this spec"}
+                </Button>
+              )}
+              {(r.status === "failed" || r.status === "error") && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={analyzeLoadingId === (path || "run")}
+                  onClick={() => handleAnalyze(hasValidPath ? path : null, r.case.title)}
+                >
+                  {analyzeLoadingId === (path || "run") ? "Analyzing..." : "AI analyze"}
                 </Button>
               )}
             </div>
