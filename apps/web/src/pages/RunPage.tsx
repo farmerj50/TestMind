@@ -31,6 +31,7 @@ import RunResults from "../components/RunResults";
 
 
 import RunLogs from "../components/RunLogs";
+import { useTelemetryStream, type TelemetryEvent } from "../hooks/useTelemetryStream";
 
 
 
@@ -141,6 +142,7 @@ type Run = {
     grep?: string | null;
 
     suiteId?: string | null;
+    livePreview?: boolean;
 
 
 
@@ -313,6 +315,14 @@ export default function RunPage() {
   >({});
 
   const [stopping, setStopping] = useState(false);
+  const [telemetryEvents, setTelemetryEvents] = useState<TelemetryEvent[]>([]);
+  const [telemetryFilter, setTelemetryFilter] = useState<"all" | "errors">("errors");
+  const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
+  const livePreviewTouchedRef = useRef(false);
+  const [liveFrameUrl, setLiveFrameUrl] = useState<string | null>(null);
+  const livePollRef = useRef<number | null>(null);
+  const livePollStopRef = useRef<number | null>(null);
+  const liveStreamRef = useRef<EventSource | null>(null);
 const parsedSummary = useMemo(() => {
 
 
@@ -342,6 +352,117 @@ const parsedSummary = useMemo(() => {
 
 
   }, [run?.summary]);
+
+  const startLivePolling = useCallback(
+    (durationMs = 10000, intervalMs = 1000) => {
+      if (!runId) return;
+      const base = apiUrl(`/runner-logs/${runId}/live/latest.png`);
+      const tick = () => {
+        setLiveFrameUrl(`${base}?t=${Date.now()}`);
+      };
+
+      if (livePollRef.current !== null) {
+        window.clearInterval(livePollRef.current);
+      }
+      if (livePollStopRef.current !== null) {
+        window.clearTimeout(livePollStopRef.current);
+      }
+
+      tick();
+      livePollRef.current = window.setInterval(tick, intervalMs);
+      livePollStopRef.current = window.setTimeout(() => {
+        if (livePollRef.current !== null) {
+          window.clearInterval(livePollRef.current);
+          livePollRef.current = null;
+        }
+      }, durationMs);
+    },
+    [runId]
+  );
+
+  const handleTelemetryEvent = useCallback(
+    (event: TelemetryEvent) => {
+      setTelemetryEvents((prev) => {
+        const next = [...prev, event];
+        return next.length > 800 ? next.slice(-800) : next;
+      });
+      if (
+        event.type === "healer_start" ||
+        event.type === "healer_retry_start" ||
+        event.type === "telemetry_hooked"
+      ) {
+        startLivePolling();
+      }
+    },
+    [startLivePolling]
+  );
+
+  const visibleTelemetry = useMemo(() => {
+    if (telemetryFilter === "all") return telemetryEvents;
+    return telemetryEvents.filter((event) => {
+      if (event.type === "pageerror" || event.type === "requestfailed") return true;
+      if (event.type === "console") {
+        return event.level === "error" || event.level === "warning";
+      }
+      return false;
+    });
+  }, [telemetryEvents, telemetryFilter]);
+
+  useTelemetryStream(runId ?? null, handleTelemetryEvent);
+
+  useEffect(() => {
+    return () => {
+      if (liveStreamRef.current) {
+        liveStreamRef.current.close();
+        liveStreamRef.current = null;
+      }
+      if (livePollRef.current !== null) {
+        window.clearInterval(livePollRef.current);
+      }
+      if (livePollStopRef.current !== null) {
+        window.clearTimeout(livePollStopRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!runId || !livePreviewEnabled) {
+      if (liveStreamRef.current) {
+        liveStreamRef.current.close();
+        liveStreamRef.current = null;
+      }
+      return;
+    }
+
+    const es = new EventSource(apiUrl(`/test-runs/${runId}/live`), {
+      withCredentials: true,
+    } as any);
+    liveStreamRef.current = es;
+
+    es.addEventListener("artifact", (evt: MessageEvent) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        if (payload?.path) {
+          setLiveFrameUrl(apiUrl(payload.path));
+        }
+      } catch {
+        // ignore malformed events
+      }
+    });
+
+    return () => {
+      es.close();
+      liveStreamRef.current = null;
+    };
+  }, [runId, livePreviewEnabled]);
+
+  useEffect(() => {
+    if (livePreviewTouchedRef.current) return;
+    if (run?.paramsJson && (run.paramsJson as any).livePreview) {
+      setLivePreviewEnabled(true);
+    }
+  }, [run?.paramsJson]);
+
 
 
 
@@ -835,7 +956,7 @@ const fetchMissingLocators = useCallback(
 
     let cancelled = false;
 
-    let source: EventSource | null = null;
+    let source: { close?: () => void } | null = null as { close?: () => void } | null;
 
     let interval: number | undefined;
 
@@ -883,73 +1004,13 @@ const fetchMissingLocators = useCallback(
 
 
 
-    try {
-
-      const url = apiUrl(`/runner/test-runs/${runId}/events`);
-
-      source = new EventSource(url, { withCredentials: true });
-
-      source.onmessage = (event) => {
-
-        if (cancelled) return;
-
-        try {
-
-          const payload = JSON.parse(event.data ?? "{}");
-
-          if (payload?.run) {
-
-            setRun(payload.run);
-
-            setErr(null);
-
-          } else if (payload?.error) {
-
-            setErr(friendlyError(payload.error));
-
-          }
-
-        } catch {
-
-          setErr("Received malformed update payload.");
-
-        } finally {
-
-          setLoading(false);
-
-        }
-
-      };
-
-      source.onerror = () => {
-
-        if (cancelled) return;
-
-        setErr((prev) => prev ?? "Live updates disconnected; falling back to polling.");
-
-        startFallbackPolling();
-
-        if (source && source.readyState === EventSource.CLOSED) {
-
-          source.close();
-
-        }
-
-      };
-
-    } catch {
-
-      startFallbackPolling();
-
-    }
-
-
+    startFallbackPolling();
 
     return () => {
 
       cancelled = true;
 
-      if (source) source.close();
+      if (source && typeof source.close === "function") source.close();
 
       if (interval) window.clearInterval(interval);
 
@@ -995,7 +1056,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-        const res = await apiFetch<{ analysis: Analysis }>(`/test-runs/${runId}/analysis`);
+        const res = await apiFetch<{ analysis: Analysis }>(`/runner/test-runs/${runId}/analysis`);
 
 
 
@@ -1239,7 +1300,10 @@ const fetchMissingLocators = useCallback(
 
 
 
-        { method: "POST" }
+        {
+          method: "POST",
+          body: JSON.stringify({ livePreview: livePreviewEnabled, runAll: true }),
+        }
 
 
 
@@ -1330,7 +1394,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-      {loading && !run && <div>Loading…</div>}
+      {loading && !run && <div>Loadingï¿½</div>}
 
 
 
@@ -2407,7 +2471,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                              {item.pagePath} · {item.name}
+                              {item.pagePath} ï¿½ {item.name}
 
 
 
@@ -2587,7 +2651,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                            {state?.loading ? "Saving…" : state?.success ? "Saved" : "Save locator"}
+                            {state?.loading ? "Savingï¿½" : state?.success ? "Saved" : "Save locator"}
 
 
 
@@ -2695,89 +2759,157 @@ const fetchMissingLocators = useCallback(
 
 
 
-            <section>
-
-
-
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-
-
-
-            <div className="font-medium text-slate-800">Results</div>
-
-
-
-            <Button
-
-
-
-              size="sm"
-
-
-
-              variant="outline"
-
-
-
-              disabled={!run || rerunsInProgress || healingInProgress || triggeringRerun}
-
-
-
-              onClick={handleManualRerun}
-
-
-
-              title={
-
-
-
-                !run
-
-
-
-                  ? "Run not loaded yet"
-
-
-
-                  : healingInProgress || rerunsInProgress
-
-
-
-                      ? "Self-heal is still running"
-
-
-
-                      : "Trigger a new run for this suite"
-
-
-
-                  }
-
-
-
-                >
-
-
-
-                  {triggeringRerun ? "Starting rerunâ€¦" : "Rerun this suite"}
-
-
-
-                </Button>
-
-
-
+                        <section>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium text-slate-800">Results</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!run || rerunsInProgress || healingInProgress || triggeringRerun}
+                    onClick={handleManualRerun}
+                    title={
+                      !run
+                        ? "Run not loaded yet"
+                        : healingInProgress || rerunsInProgress
+                            ? "Self-heal is still running"
+                            : "Trigger a new run for this suite"
+                    }
+                  >
+                    {triggeringRerun ? "Starting rerun..." : "Rerun this suite"}
+                  </Button>
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <input
+                      id="live-preview-toggle"
+                      type="checkbox"
+                      checked={livePreviewEnabled}
+                      onChange={(e) => {
+                        livePreviewTouchedRef.current = true;
+                        setLivePreviewEnabled(e.target.checked);
+                      }}
+                    />
+                    <label htmlFor="live-preview-toggle">Live preview</label>
+                  </div>
+                </div>
               </div>
-
-
-
               <RunResults runId={run.id} active={!done} projectId={run.project.id} suiteId={suiteIdFromRun} />
-
-
-
             </section>
 
+            <section>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium text-slate-800">Live telemetry</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      telemetryFilter === "errors"
+                        ? "bg-slate-200 text-slate-900"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                    onClick={() => setTelemetryFilter("errors")}
+                  >
+                    Errors
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      telemetryFilter === "all"
+                        ? "bg-slate-200 text-slate-900"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                    onClick={() => setTelemetryFilter("all")}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600"
+                    onClick={() => setTelemetryEvents([])}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="mb-3 text-xs text-slate-500">
+                Live preview opens in a floating window during AI runs.
+              </div>
+              <div className="max-h-[360px] overflow-auto rounded-md border border-slate-200 bg-white p-3">
+                {visibleTelemetry.length === 0 ? (
+                  <div className="text-xs text-slate-500">Waiting for telemetry...</div>
+                ) : (
+                  <div className="space-y-2">
+                    {visibleTelemetry.map((event, i) => (
+                      <div key={`${event.ts ?? "na"}-${i}`} className="text-xs font-mono text-slate-800">
+                        <span className="mr-2 text-slate-400">
+                          {event.ts ? new Date(event.ts).toLocaleTimeString() : ""}
+                        </span>
+                        <span className="mr-2 text-slate-500">{event.type}</span>
+                        {event.type === "console" && (
+                          <span
+                            className={
+                              event.level === "error"
+                                ? "text-rose-600"
+                                : event.level === "warning"
+                                ? "text-amber-600"
+                                : ""
+                            }
+                          >
+                            [{event.level}] {event.text}
+                          </span>
+                        )}
+                        {event.type === "pageerror" && (
+                          <span className="text-rose-600">{event.message}</span>
+                        )}
+                        {event.type === "requestfailed" && (
+                          <span className="text-rose-600">
+                            {event.method} {event.url} ({event.failure || "failed"})
+                          </span>
+                        )}
+                        {event.type === "runner_start" && (
+                          <span className="text-emerald-600">runner start</span>
+                        )}
+                        {event.type === "runner_end" && (
+                          <span className="text-emerald-600">runner end</span>
+                        )}
+                        {event.type === "telemetry_hooked" && (
+                          <span className="text-emerald-600">telemetry hooked</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
 
+            {livePreviewEnabled && (run?.paramsJson as any)?.livePreview && (
+              <div className="fixed bottom-6 right-6 z-50 w-[520px] max-w-[90vw]">
+                <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                    <div className="text-sm font-semibold text-slate-800">Live preview</div>
+                    <button
+                      type="button"
+                      className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                      onClick={() => setLivePreviewEnabled(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="aspect-square bg-slate-50">
+                    {liveFrameUrl ? (
+                      <img
+                        src={liveFrameUrl}
+                        alt="Live preview"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                        Waiting for live preview...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <section>
 
@@ -2787,7 +2919,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-              <RunLogs runId={run.id} />
+              <RunLogs runId={run.id} refreshKey={run.status ?? "unknown"} />
 
 
 

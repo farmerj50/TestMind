@@ -13,6 +13,12 @@ const QUEUE_NAME = process.env.TM_QUEUE || 'test-runs';
 const GENERATED_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(process.cwd(), 'testmind-generated');
+const REPORT_ROOT = process.env.TM_REPORT_ROOT
+  ? path.resolve(process.env.TM_REPORT_ROOT)
+  : path.resolve(process.cwd(), 'testmind-reports');
+const RUNNER_LOGS_BASE = process.env.TM_RUNNER_LOGS_BASE
+  ? path.resolve(process.env.TM_RUNNER_LOGS_BASE)
+  : path.join(REPORT_ROOT, 'runner-logs');
 console.log(`[worker] boot: queues=${QUEUE_NAME},agent-sessions redis=${REDIS_URL}`);
 const qe = new QueueEvents(QUEUE_NAME, { connection: { url: REDIS_URL } });
 qe.on('failed', ({ jobId, failedReason }) => console.error('[worker] failed', jobId, failedReason));
@@ -39,9 +45,11 @@ const testRunWorker = new Worker(QUEUE_NAME, async job => {
   const htmlReport = path.join(outDir, 'html-report');
   const resultsDir = path.join(outDir, 'test-results');
   const jsonReport = path.join(outDir, 'report.json');
+  const artifactsDir = path.join(RUNNER_LOGS_BASE, runId);
 
   await fs.mkdir(htmlReport, { recursive: true });
   await fs.mkdir(resultsDir, { recursive: true });
+  await fs.mkdir(artifactsDir, { recursive: true });
 
   try {
     // Ensure browsers are installed (non-fatal)
@@ -70,6 +78,11 @@ const testRunWorker = new Worker(QUEUE_NAME, async job => {
         ...process.env,
         BASE_URL: baseUrl || 'http://localhost:5173',
         PLAYWRIGHT_HTML_REPORT: cleanPath(htmlReport),
+        TM_RUN_ID: runId,
+        TM_SPEC_PATH: outDir,
+        TM_RUN_ARTIFACTS_DIR: cleanPath(artifactsDir),
+        TM_HEAL_MODE: process.env.TM_HEAL_MODE || '0',
+        TM_ATTEMPT: process.env.TM_ATTEMPT || '1',
       },
       stdio: 'inherit',
       reject: false,

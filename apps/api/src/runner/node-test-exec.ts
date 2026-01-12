@@ -103,6 +103,76 @@ export type RunExecResult = {
   framework: "playwright" | "vitest" | "jest" | "none";
 };
 
+function sanitizeForSpawnArg(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  let s = String(value);
+  s = s.replace(/^\uFEFF/, "");
+  s = s.replace(/[\u200B-\u200F\u2060\uFEFF]/g, "");
+  s = s.replace(/[\u0000-\u001F\u007F]/g, "");
+  s = s.replace(/[\uD800-\uDFFF]/g, "");
+  s = s.trim();
+  return s.length ? s : undefined;
+}
+
+function findLatestPng(rootDir: string): string | null {
+  const stack: string[] = [rootDir];
+  let latestPath: string | null = null;
+  let latestMtime = 0;
+  while (stack.length) {
+    const dir = stack.pop() as string;
+    let entries: fsSync.Dirent[];
+    try {
+      entries = fsSync.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".png")) continue;
+      try {
+        const stat = fsSync.statSync(full);
+        if (stat.mtimeMs > latestMtime) {
+          latestMtime = stat.mtimeMs;
+          latestPath = full;
+        }
+      } catch {
+        // ignore unreadable files
+      }
+    }
+  }
+  return latestPath;
+}
+
+function startLivePreview(foundCwd: string, runLogDir: string, outputDir?: string) {
+  const liveDir = path.join(runLogDir, "live");
+  const latestTarget = path.join(liveDir, "latest.png");
+  const resultsDir = outputDir
+    ? path.resolve(outputDir)
+    : path.join(foundCwd, "test-results");
+  let lastCopied = "";
+  const tick = () => {
+    const latest = findLatestPng(resultsDir);
+    if (!latest || latest === lastCopied) return;
+    try {
+      fsSync.mkdirSync(liveDir, { recursive: true });
+      fsSync.copyFileSync(latest, latestTarget);
+      lastCopied = latest;
+    } catch {
+      // ignore copy failures
+    }
+  };
+  tick();
+  const interval = setInterval(tick, 1000);
+  return () => {
+    tick();
+    clearInterval(interval);
+  };
+}
+
 export async function detectFramework(workdir: string): Promise<"playwright" | "vitest" | "jest" | "none"> {
   // If multi-framework is disabled, force Playwright.
   if (!multiFrameworkEnabled) {
@@ -266,18 +336,18 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     }
 
     if (req.grep) {
-      args.push("--grep", req.grep);
+      const safeGrep = sanitizeForSpawnArg(req.grep);
+      if (safeGrep) args.push("--grep", safeGrep);
     }
 
     if (req.extraGlobs && req.extraGlobs.length) {
       for (const g of req.extraGlobs) {
-        if (path.isAbsolute(g)) {
-          const rel = path.relative(found.cwd, g);
-          const useAbsolute = path.isAbsolute(rel) || rel.startsWith("..");
-          args.push(useAbsolute ? normalizePath(g) : normalizePath(rel));
-        } else {
-          args.push(normalizePath(g));
-        }
+        // Playwright treats positional args as regex filters for test files.
+        // Absolute paths or parent traversal often lead to "No tests found".
+        if (path.isAbsolute(g)) continue;
+        const n = normalizePath(g);
+        if (n.startsWith("..")) continue;
+        args.push(n);
       }
     }
 
@@ -302,8 +372,33 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       }
     };
 
+    const finalArgs = args.filter((arg) => typeof arg === "string" && arg.length > 0);
+
+    const debugSpawn = process.env.TM_DEBUG_SPAWN !== "0";
+    const debugLines: string[] = [];
+    if (debugSpawn) {
+      const grepIdx = finalArgs.indexOf("--grep");
+      const g = grepIdx >= 0 ? finalArgs[grepIdx + 1] : "";
+      debugLines.push(`[spawn-debug] cwd=${found.cwd}`);
+      debugLines.push(`[spawn-debug] args=${JSON.stringify([npx, ...finalArgs])}`);
+      debugLines.push(`[spawn-debug] grep=${JSON.stringify(g)}`);
+      debugLines.push(
+        `[spawn-debug] grepCodepoints=${Array.from(g)
+          .map((ch) => ch.codePointAt(0)?.toString(16))
+          .join(" ")}`
+      );
+      const globHints = (req.extraGlobs ?? []).map((g) => {
+        const abs = path.isAbsolute(g) ? g : path.join(found.cwd, g);
+        return { glob: g, exists: fsSync.existsSync(abs) };
+      });
+      if (globHints.length) {
+        debugLines.push(`[spawn-debug] extraGlobs=${JSON.stringify(globHints)}`);
+      }
+      for (const line of debugLines) console.log(line);
+    }
+
     const runPlaywright = () =>
-      execa(npx, args, {
+      execa(npx, finalArgs, {
         cwd: found.cwd,
         env,
         reject: false,
@@ -312,7 +407,15 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
         stdio: "pipe",
       });
 
+    const enableLivePreview =
+      req.extraEnv?.TM_LIVE_PREVIEW === "1" && !!req.extraEnv?.TM_RUN_LOG_DIR;
+    const outputDir = req.extraEnv?.PW_OUTPUT_DIR;
+    const stopLivePreview = enableLivePreview
+      ? startLivePreview(found.cwd, req.extraEnv?.TM_RUN_LOG_DIR as string, outputDir)
+      : null;
+
     let proc = await runPlaywright();
+    if (stopLivePreview) stopLivePreview();
     if (!req.extraEnv?.TM_SKIP_PLAYWRIGHT_INSTALL && missingBrowserError(proc.stderr)) {
       await installBrowsers();
       proc = await runPlaywright();
@@ -320,7 +423,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
 
     // Force reporters so JSON + allure artifacts are emitted
     
-    const stdout = proc.stdout ?? "";
+    const stdout = (debugLines.length ? `${debugLines.join("\n")}\n` : "") + (proc.stdout ?? "");
     let stderr = proc.stderr ?? "";
     if (/No tests found/i.test(stderr)) {
       const debugLines = [
