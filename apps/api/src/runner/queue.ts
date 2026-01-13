@@ -5,6 +5,8 @@ import { redis } from './redis.js';
 // What the worker expects to receive:
 export type RunPayload = {
   projectId: string;
+  mode?: "regular" | "ai";
+  genDir?: string;
   browser?: 'chromium' | 'firefox' | 'webkit' | 'all';
   tags?: { include?: string[]; exclude?: string[] };
   retries?: number;

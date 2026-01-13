@@ -48,6 +48,13 @@ function buildLooseGrep(titles: string[]) {
   return `(?:^|\\s)${body}(?:$|\\s)`;
 }
 
+function buildExactGrep(titles: string[]) {
+  if (!titles.length) return "";
+  const escaped = titles.map(escapeRegex);
+  const body = escaped.length === 1 ? escaped[0] : `(?:${escaped.join("|")})`;
+  return `^${body}$`;
+}
+
 function friendlyError(text: string, fallback: string) {
   try {
     const parsed = JSON.parse(text);
@@ -1645,6 +1652,8 @@ export default function ProjectSuite() {
 
     setRunning(true);
     setRunError(null);
+    const mode = activeSuite?.type === "generated" ? "ai" : "regular";
+    const buildGrep = buildLooseGrep;
     try {
       if (suiteSelected) {
         const files = Array.from(
@@ -1654,7 +1663,7 @@ export default function ProjectSuite() {
               .filter((p): p is string => !!p)
           )
         );
-        const grep = buildLooseGrep(selectedCases.map((c) => c.title));
+        const grep = buildGrep(selectedCases.map((c) => c.title));
         const res = await apiFetch<{ id: string }>("/runner/run", {
           method: "POST",
           body: JSON.stringify({
@@ -1662,6 +1671,7 @@ export default function ProjectSuite() {
             suiteId: pid,
             files,
             grep,
+            mode,
             baseUrl: baseUrl.trim(),
             headful,
             reporter,
@@ -1673,7 +1683,7 @@ export default function ProjectSuite() {
           setRunError("Select a spec before running.");
           return;
         }
-        const grep = buildLooseGrep(selectedTitles);
+        const grep = buildGrep(selectedTitles);
         const res = await apiFetch<{ id: string }>("/runner/run", {
           method: "POST",
           body: JSON.stringify({
@@ -1681,6 +1691,7 @@ export default function ProjectSuite() {
             suiteId: pid,
             file: activeSpec.path,
             grep,
+            mode,
             baseUrl: baseUrl.trim(),
             headful,
             reporter,
@@ -1713,6 +1724,7 @@ export default function ProjectSuite() {
     localStorage.setItem("tm:lastBaseUrl", baseUrl.trim());
     setRunningSuite(true);
     setRunError(null);
+    const mode = activeSuite?.type === "generated" ? "ai" : "regular";
     try {
       const files = specs.map((s) => s.path);
       const res = await apiFetch<{ id: string }>("/runner/run", {
@@ -1721,6 +1733,7 @@ export default function ProjectSuite() {
           projectId: runProjectId,
           suiteId: pid,
           files,
+          mode,
           baseUrl: baseUrl.trim(),
           headful,
           reporter,

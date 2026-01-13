@@ -1,10 +1,31 @@
 import OpenAI from "openai";
+import { config as loadEnv } from "dotenv";
+import fsSync from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const MODEL = process.env.HEALING_LLM_MODEL || "gpt-4o-mini";
 
 let client: OpenAI | null = null;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function loadBackendEnv() {
+  if (process.env.OPENAI_API_KEY) return;
+  const candidates = [
+    path.resolve(__dirname, "..", "..", ".env"),
+    path.resolve(__dirname, "..", "..", "..", ".env"),
+  ];
+  for (const candidate of candidates) {
+    if (!fsSync.existsSync(candidate)) continue;
+    loadEnv({ path: candidate });
+    if (process.env.OPENAI_API_KEY) return;
+  }
+}
+
 function getClient() {
+  loadBackendEnv();
   if (client) return client;
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is required to run self-healing.");
