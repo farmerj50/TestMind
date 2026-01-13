@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
 import fsSync from 'fs';
+import { execa } from 'execa';
 import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { makeWorkdir, rmrf } from './workdir.js';
@@ -36,6 +37,43 @@ function mapStatus(s: string): ResultStatus {
   return TestResultStatus.error;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeTitle(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/[\u2192\u21D2]/g, "->")
+    .replace(/\u203A/g, ">")
+    .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractListTitles(stdout?: string | null): string[] {
+  if (!stdout) return [];
+  const titles: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const cleaned = line
+      .replace(/\u001b\[[0-9;]*m/g, "")
+      .trim();
+    if (!cleaned) continue;
+    if (/^Listing tests\b/i.test(cleaned)) continue;
+    if (/^\d+\s+tests?\b/i.test(cleaned)) continue;
+    let title = "";
+    const idx = cleaned.lastIndexOf("\u203A");
+    if (idx !== -1) {
+      title = cleaned.slice(idx + 1).trim();
+    } else {
+      title = cleaned.replace(/^.*?\d+:\d+(?::\d+)?\s+/, "").trim();
+    }
+    if (!title) continue;
+    titles.push(title);
+  }
+  return Array.from(new Set(titles));
+}
+
 const stripAnsi = (value?: string | null) =>
   typeof value === 'string' ? value.replace(/\u001b\[[0-9;]*m/g, '') : value ?? null;
 
@@ -61,7 +99,7 @@ type MissingLocatorItem = {
 
 function extractNavTargetFromTitle(title?: string | null): string | null {
   if (!title) return null;
-  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
+  const match = title.match(/Navigate\s+[^→'"-]+(?:→|->)\s+([^\s]+)/i);
   const target = match?.[1]?.trim() ?? "";
   if (!target || !target.startsWith("/")) return null;
   return target;
@@ -222,8 +260,8 @@ export const worker = new Worker(
         paramsJson: true,
       },
     });
-    if (!run || !run.project?.repoUrl) {
-      throw new Error('Run or project/repoUrl not found');
+    if (!run) {
+      throw new Error('Run not found');
     }
 
     await prisma.testRun.update({
@@ -236,11 +274,42 @@ export const worker = new Worker(
 
     const project = run.project;
     const runParams = (run.paramsJson as Record<string, any> | undefined) ?? undefined;
+    const mode = payload?.mode ?? runParams?.mode ?? "regular";
+    let aiMode = mode === "ai";
+    const isLikelyGitRepo = (url?: string | null) => {
+      if (!url) return false;
+      const trimmed = url.trim();
+      if (!trimmed) return false;
+      return (
+        trimmed.endsWith(".git") ||
+        trimmed.startsWith("git@") ||
+        /github\.com|gitlab\.com|bitbucket\.org/.test(trimmed)
+      );
+    };
     const targetSpec =
       payload?.file ?? runParams?.targetSpec ?? runParams?.file ?? undefined;
     const fileTarget = targetSpec;
     const localRepoRoot =
       payload?.localRepoRoot ?? runParams?.localRepoRoot ?? undefined;
+    const nonGitRepo = !isLikelyGitRepo(project?.repoUrl);
+    const hasAiInputs = Boolean(
+      payload?.genDir ||
+        payload?.file ||
+        runParams?.file ||
+        runParams?.targetSpec ||
+        payload?.localRepoRoot ||
+        runParams?.localRepoRoot
+    );
+    if (!aiMode && nonGitRepo && hasAiInputs) {
+      aiMode = true;
+      console.log("[worker] inferred ai mode from non-git repoUrl + file/genDir payload");
+    }
+    if (!aiMode && !project?.repoUrl) {
+      throw new Error('Project repoUrl not found');
+    }
+    if (!aiMode && nonGitRepo) {
+      throw new Error('Project repoUrl is not a git repository');
+    }
     const prevLocalRepoRoot = process.env.TM_LOCAL_REPO_ROOT;
     const localRootInjected = Boolean(localRepoRoot);
     if (localRootInjected) {
@@ -260,7 +329,18 @@ export const worker = new Worker(
         .catch(() => {});
     }, 2000);
 
-    const work = await makeWorkdir();
+    const resolveRepoRoot = () => {
+      const cwd = process.cwd().replace(/\\/g, "/");
+      if (cwd.endsWith("/apps/api")) return path.resolve(process.cwd(), "../..");
+      if (cwd.endsWith("/apps")) return path.resolve(process.cwd(), "..");
+      return process.cwd();
+    };
+    let work = await makeWorkdir();
+    let cleanupWork = true;
+    if (aiMode) {
+      work = localRepoRoot ?? resolveRepoRoot();
+      cleanupWork = false;
+    }
     try {
       const canceledEarly = await redis.get(cancelKey).catch(() => null);
       if (canceledEarly === "1") {
@@ -281,26 +361,51 @@ export const worker = new Worker(
       });
 
       // 1) Clone
-      await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+      if (aiMode) {
+        console.log("[worker] mode=ai; skipping clone");
+      } else {
+        await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+      }
 
       // 2) Install deps
-      await installDeps(work);
+      if (!aiMode) {
+        await installDeps(work);
+      }
 
       // 3) Detect + run
       const framework = await detectFramework(work);
       const resultsPath = path.join(outDir, 'report.json');
       const webDir = path.join(work, 'apps', 'web');
+      const runWorkdir = aiMode ? work : webDir;
       const extraGlobs: string[] = [];
-      const grep = payload?.grep;
+      const rawGrep = payload?.grep;
+      const isRegexLike = (value: string) =>
+        value.startsWith("^") ||
+        value.endsWith("$") ||
+        value.includes("(?") ||
+        value.includes("|") ||
+        value.includes("\\");
+      let grep = rawGrep;
       const normalizedFileTarget = fileTarget?.replace(/\\/g, "/");
       let specPath = normalizedFileTarget;
+      let absSpecPath: string | undefined;
       if (specPath?.startsWith("apps/web/")) {
         specPath = specPath.slice("apps/web/".length);
       }
       if (specPath) {
         const isAbs = path.isAbsolute(specPath);
         const isWebGenerated = /[\\/]+apps[\\/]+web[\\/]+testmind-generated[\\/]+/i.test(specPath);
-        let abs = isAbs ? specPath : path.join(webDir, specPath);
+        let abs = isAbs ? specPath : path.join(runWorkdir, specPath);
+        if (aiMode) {
+          const posix = specPath.replace(/\\/g, "/");
+          const marker = "testmind-generated/";
+          if (posix.includes(marker)) {
+            const tail = posix.split(marker)[1];
+            abs = path.join(work, "testmind-generated", tail);
+          } else {
+            abs = path.join(work, posix);
+          }
+        }
         if (isAbs && isWebGenerated) {
           const relativeFromWeb = path.relative(webDir, specPath);
           const repoCandidate = path.join(work, relativeFromWeb);
@@ -314,12 +419,13 @@ export const worker = new Worker(
             abs = repoCandidate;
           }
         }
-        const rel = path.relative(webDir, abs).replace(/\\/g, "/");
-        // If the spec sits outside apps/web, pass absolute path so Playwright can find it.
-        if (rel.startsWith("..")) {
-          extraGlobs.push(abs.replace(/\\/g, "/"));
-        } else {
+        absSpecPath = abs;
+        const rel = path.relative(runWorkdir, abs).replace(/\\/g, "/");
+        if (!rel.startsWith("..")) {
           extraGlobs.push(rel);
+        } else if (!aiMode) {
+          // For regular runs, allow absolute paths outside apps/web.
+          extraGlobs.push(abs.replace(/\\/g, "/"));
         }
       }
       const loggedFile = specPath ?? normalizedFileTarget ?? fileTarget ?? "";
@@ -327,9 +433,45 @@ export const worker = new Worker(
       const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const extraEnv: Record<string, string> = {};
+      if (aiMode) {
+        let genDir = payload?.genDir;
+        if (!genDir && specPath) {
+          const normalized = specPath.replace(/\\/g, "/");
+          const marker = "/testmind-generated/";
+          const idx = normalized.indexOf(marker);
+          if (idx !== -1) {
+            const tail = normalized.slice(idx + marker.length);
+            const first = tail.split("/")[0];
+            if (first) {
+              genDir = path.join(work, "testmind-generated", first);
+            }
+          }
+        }
+        if (!genDir) {
+          genDir = path.join(work, "testmind-generated");
+        }
+        if (genDir && !path.isAbsolute(genDir)) {
+          genDir = path.resolve(work, genDir);
+        }
+        extraEnv.TM_TEST_DIR = genDir;
+        extraEnv.TM_GENERATED_ROOT = path.dirname(genDir);
+        if (absSpecPath && genDir) {
+          const relToGen = path.relative(genDir, absSpecPath).replace(/\\/g, "/");
+          if (!relToGen.startsWith("..") && relToGen.length > 0) {
+            extraGlobs.length = 0;
+            extraGlobs.push(relToGen);
+          }
+        }
+        if (rawGrep && genDir) {
+          // Keep AI selection behavior aligned with suite/test-run selection:
+          // send the grep as-is (loose substring match) and scope via genDir.
+          grep = rawGrep;
+        }
+      } else {
       const generatedRoot = path.join(work, "testmind-generated");
       if (fsSync.existsSync(generatedRoot)) {
         extraEnv.TM_GENERATED_ROOT = generatedRoot;
+      }
       }
       if (payload?.livePreview) {
         extraEnv.TM_LIVE_PREVIEW = "1";
@@ -338,7 +480,7 @@ export const worker = new Worker(
       let exec;
       try {
         exec = await runTests({
-        workdir: webDir,
+        workdir: runWorkdir,
         jsonOutPath: resultsPath,
         headed: payload?.headed,
         grep,
@@ -347,6 +489,7 @@ export const worker = new Worker(
         runTimeout: timeoutMs,
         abortSignal: abortController.signal,
         extraEnv,
+        configPath: aiMode ? path.join(work, "tm-ai.playwright.config.mjs") : undefined,
         });
       } catch (err: any) {
         if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
@@ -525,7 +668,9 @@ export const worker = new Worker(
       });
       throw err;
     } finally {
-      await rmrf(work).catch(() => {});
+      if (cleanupWork) {
+        await rmrf(work).catch(() => {});
+      }
       if (localRootInjected) {
         if (prevLocalRepoRoot === undefined) {
           delete process.env.TM_LOCAL_REPO_ROOT;
@@ -549,3 +694,5 @@ worker.on('completed', (job) => {
   const runId = job?.data?.runId;
   console.log(`[worker] job ${job?.id} (run ${runId ?? 'unknown'}) completed`);
 });
+
+

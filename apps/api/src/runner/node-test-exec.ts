@@ -330,6 +330,23 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       ...(req.extraEnv || {}),
     };
 
+    const aiTestDir =
+      req.extraEnv?.TM_TEST_DIR || process.env.TM_TEST_DIR || undefined;
+    const isAiConfig =
+      req.configPath && /tm-ai\.playwright\.config\./i.test(req.configPath);
+    if (aiTestDir && isAiConfig) {
+      found.cwd = path.resolve(aiTestDir);
+      found.configPath = path.resolve(req.configPath as string);
+    }
+    const mapAiGlob = (g: string): string => {
+      if (!aiTestDir) return g;
+      const abs = path.isAbsolute(g) ? g : path.resolve(req.workdir, g);
+      const relToAi = path.relative(aiTestDir, abs).replace(/\\/g, "/");
+      if (relToAi.startsWith("..")) return g;
+      return relToAi;
+    };
+    const mappedGlobs = (req.extraGlobs ?? []).map(mapAiGlob);
+
     const args: string[] = ["playwright", "test"];
     if (req.headed) {
       args.push("--headed");
@@ -340,8 +357,8 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       if (safeGrep) args.push("--grep", safeGrep);
     }
 
-    if (req.extraGlobs && req.extraGlobs.length) {
-      for (const g of req.extraGlobs) {
+    if (mappedGlobs.length && !(aiTestDir && isAiConfig)) {
+      for (const g of mappedGlobs) {
         // Playwright treats positional args as regex filters for test files.
         // Absolute paths or parent traversal often lead to "No tests found".
         if (path.isAbsolute(g)) continue;
@@ -351,10 +368,10 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       }
     }
 
-    args.push(
-      "--config",
-      normalizePath(path.relative(found.cwd, found.configPath))
-    );
+    const configArg = path.isAbsolute(found.configPath)
+      ? normalizePath(found.configPath)
+      : normalizePath(path.relative(found.cwd, found.configPath));
+    args.push("--config", configArg);
 
     const timeoutMs = req.runTimeout ?? runTimeout;
 
@@ -388,7 +405,8 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
           .join(" ")}`
       );
       const globHints = (req.extraGlobs ?? []).map((g) => {
-        const abs = path.isAbsolute(g) ? g : path.join(found.cwd, g);
+        const mapped = mapAiGlob(g);
+        const abs = path.isAbsolute(mapped) ? mapped : path.join(found.cwd, mapped);
         return { glob: g, exists: fsSync.existsSync(abs) };
       });
       if (globHints.length) {

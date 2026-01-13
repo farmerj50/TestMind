@@ -1,7 +1,10 @@
 // apps/api/src/runner/ai-analysis.ts
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import OpenAI from "openai";
+import { config as loadEnv } from "dotenv";
+import { fileURLToPath } from "node:url";
 
 export type AnalysisResult = {
   summary: string;
@@ -40,11 +43,28 @@ export type AnalysisDocument = AnalysisResult & {
 };
 
 const flagEnabled = () => {
+  loadBackendEnv();
   const v = (process.env.ENABLE_AI_ANALYSIS || "").toLowerCase();
   return ["1", "true", "yes", "on"].includes(v) && !!process.env.OPENAI_API_KEY;
 };
 
 const MODEL = process.env.ANALYSIS_MODEL || "gpt-4o-mini";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function loadBackendEnv() {
+  if (process.env.OPENAI_API_KEY) return;
+  const candidates = [
+    path.resolve(__dirname, "..", "..", ".env"),
+    path.resolve(__dirname, "..", "..", "..", ".env"),
+  ];
+  for (const candidate of candidates) {
+    if (!fsSync.existsSync(candidate)) continue;
+    loadEnv({ path: candidate });
+    if (process.env.OPENAI_API_KEY) return;
+  }
+}
 
 export async function analyzeFailure(opts: {
   runId: string;

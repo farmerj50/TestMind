@@ -285,6 +285,7 @@ async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: str
 
 const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
+  mode: z.enum(["regular", "ai"]).optional(),
   baseUrl: z.string().url().optional(), // optional override
   suiteId: z.string().optional(), // spec suite to link edits back to
   file: z.string().optional(),   // relative path to spec to run
@@ -543,7 +544,9 @@ export default async function runRoutes(app: FastifyInstance) {
       );
     }
 
-  const pid = parsed.data.projectId.trim();
+    const pid = parsed.data.projectId.trim();
+    let mode = parsed.data.mode;
+    let aiMode = mode === "ai";
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
     const suiteId = parsed.data.suiteId?.trim() || undefined;
     const requestedBaseUrl = parsed.data.baseUrl;
@@ -575,6 +578,20 @@ export default async function runRoutes(app: FastifyInstance) {
     }
     if (project.ownerId !== userId) {
       return reply.code(403).send({ error: "Forbidden" });
+    }
+
+    if (!mode) {
+      const pathHints = [
+        ...(parsed.data.files ?? []),
+        parsed.data.file,
+        parsed.data.specPath,
+      ].filter((v): v is string => typeof v === "string");
+      const inferredAi =
+        pathHints.some((p) => p.replace(/\\/g, "/").includes("testmind-generated/")) ||
+        (!isLikelyGitRepo(project.repoUrl) &&
+          (parsed.data.file || parsed.data.specPath || (parsed.data.files?.length ?? 0) > 0));
+      mode = inferredAi ? "ai" : "regular";
+      aiMode = mode === "ai";
     }
 
     const rateLimit = Number(process.env.TM_RUN_RATE_LIMIT ?? "5");
@@ -667,7 +684,7 @@ export default async function runRoutes(app: FastifyInstance) {
       app.log.warn({ err }, "[runner] regenerateAttachedSpecs failed (continuing)");
     }
     const allowLocalRepo = (process.env.TM_USE_LOCAL_REPO ?? "1") === "1"; // default: allow local fallback
-    const runFromRepo = (process.env.TM_RUN_FROM_REPO ?? "0") === "1"; // default: standalone generated-only
+    const runFromRepo = !aiMode && (process.env.TM_RUN_FROM_REPO ?? "0") === "1"; // default: standalone generated-only
     const hasRepoUrl = runFromRepo && isLikelyGitRepo(project.repoUrl);
     if (runFromRepo && !hasRepoUrl && !allowLocalRepo) {
       return sendError(
@@ -680,7 +697,7 @@ export default async function runRoutes(app: FastifyInstance) {
     }
 
     // create run entry
-    const runParams: Record<string, any> = { headful, suiteId };
+    const runParams: Record<string, any> = { headful, suiteId, mode };
     if (effectiveBaseUrl) runParams.baseUrl = effectiveBaseUrl;
     const run = await prisma.testRun.create({
       data: {
@@ -808,7 +825,7 @@ export default async function runRoutes(app: FastifyInstance) {
 
         const adapter = "playwright-ts";
         const userSuffix = project.ownerId ? `${adapter}-${project.ownerId}` : adapter;
-        const generatedOnly = !hasRepoUrl;
+        const generatedOnly = aiMode || !hasRepoUrl;
 
         const resolveGeneratedSpecsDir = () => {
           const cwdRoot = process.cwd();
@@ -978,10 +995,14 @@ export default async function runRoutes(app: FastifyInstance) {
         // 2) Detect the workspace that contains Playwright and switch cwd to it
         let cwd: string;
         if (generatedOnly) {
-          const runnerRoot = process.cwd();
-          const apiRoot = path.join(runnerRoot, "apps", "api");
-          const hasApiRoot = fsSync.existsSync(path.join(apiRoot, "package.json"));
-          cwd = hasApiRoot ? apiRoot : runnerRoot;
+          if (aiMode) {
+            cwd = work;
+          } else {
+            const runnerRoot = process.cwd();
+            const apiRoot = path.join(runnerRoot, "apps", "api");
+            const hasApiRoot = fsSync.existsSync(path.join(apiRoot, "package.json"));
+            cwd = hasApiRoot ? apiRoot : runnerRoot;
+          }
         } else {
           const { subdir: appSubdir } = await findPlaywrightWorkspace(work);
           cwd = path.resolve(work, appSubdir);
@@ -1121,11 +1142,16 @@ export default async function runRoutes(app: FastifyInstance) {
 
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
-        const ciConfigPath = path.join(cwd, "tm-ci.playwright.config.mjs");
+        const ciConfigPath = path.join(
+          cwd,
+          aiMode ? "tm-ai.playwright.config.mjs" : "tm-ci.playwright.config.mjs"
+        );
         const legacyTsConfig = path.join(cwd, "tm-ci.playwright.config.ts");
         const legacyJsConfig = path.join(cwd, "tm-ci.playwright.config.js");
-        await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
-        await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
+        if (!aiMode) {
+          await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
+          await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
+        }
         const serverPort = await findAvailablePort(Number(process.env.TM_PORT ?? 4173));
         if (!requestedBaseUrl) {
           effectiveBaseUrl = `http://localhost:${serverPort}`;
@@ -1405,7 +1431,7 @@ export default defineConfig({
         // That pulled in many extra specs and could hang runs. Default is now OFF.
         // Set TM_AGENT_INCLUDE_CURATED=1 to re-enable the merge.
         const includeCuratedAgents =
-          (process.env.TM_AGENT_INCLUDE_CURATED ?? "0") === "1";
+          !aiMode && (process.env.TM_AGENT_INCLUDE_CURATED ?? "0") === "1";
         if (includeCuratedAgents) {
           await mergeAgentSpecs(project.id, genDest, path.join(outDir, "stdout.txt"));
         } else {
@@ -1453,7 +1479,9 @@ export default defineConfig({
           await walk(root);
           await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
         }
-        await logSpecs(cwd, "apps/web");
+        if (!aiMode) {
+          await logSpecs(cwd, "apps/web");
+        }
         await logSpecs(genDest, "generated");
 
         // If the caller provided specific files, restrict to those
@@ -1598,7 +1626,21 @@ export default defineConfig({
           } catch {
             // ignore copy failures
           }
-          extraGlobs.push(abs.replace(/\\/g, "/"));
+          if (aiMode) {
+            const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
+            if (!relFromCwd.startsWith("..") && !path.isAbsolute(relFromCwd)) {
+              extraGlobs.push(relFromCwd);
+            } else {
+              await fs.writeFile(
+                path.join(outDir, "stderr.txt"),
+                `[runner] AI mode: selected file is outside cwd; refusing to run: ${abs}\n`,
+                { flag: "a" }
+              );
+              missingRequested.push(selectedFile);
+            }
+          } else {
+            extraGlobs.push(abs.replace(/\\/g, "/"));
+          }
         }
         if (missingRequested.length) {
           await fs.writeFile(
@@ -1614,7 +1656,9 @@ export default defineConfig({
         const normalizedGrep = runAll
           ? undefined
           : parsed.data.grep
-            ? parsed.data.grep.replace(/^\^/, "")
+            ? (aiMode
+                ? parsed.data.grep
+                : parsed.data.grep.replace(/^\^/, ""))
             : undefined;
 
         const allureResultsDir = path.join(outDir, "allure-results");
@@ -2098,6 +2142,7 @@ export default defineConfig({
     const headful = Boolean((params as any)?.headful);
     const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
     const rerunParams: Record<string, any> = { headful, suiteId };
+    if ((params as any)?.mode) rerunParams.mode = (params as any).mode;
     if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
     const parsedBody = RerunBody.safeParse(req.body ?? {});
     const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
@@ -2121,6 +2166,7 @@ export default defineConfig({
       baseUrl: (params as any)?.baseUrl,
       file: specFile,
       grep,
+      mode: (params as any)?.mode,
     });
     return reply.send({ runId: rerun.id });
   });
