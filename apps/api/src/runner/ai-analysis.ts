@@ -79,7 +79,12 @@ export async function analyzeFailure(opts: {
   file?: string;
   baseUrl?: string;
 }) {
-  if (!flagEnabled()) return null;
+  if (!flagEnabled()) {
+    if ((process.env.ENABLE_AI_ANALYSIS || "").toLowerCase() === "1") {
+      console.log("[ai-analysis] skipped (missing OPENAI_API_KEY)");
+    }
+    return null;
+  }
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     let reportSnippet = "";
@@ -159,7 +164,19 @@ Context:
     const analysisPath = path.join(opts.outDir, "analysis.json");
     await fs.writeFile(analysisPath, JSON.stringify(doc, null, 2), "utf8");
     return parsed;
-  } catch {
+  } catch (err: any) {
+    const fallback: AnalysisDocument = {
+      summary: "AI analysis failed",
+      cause: String(err?.message ?? err ?? "unknown error").slice(0, 500),
+      suggestion: "",
+      model: getModel(),
+    };
+    try {
+      const analysisPath = path.join(opts.outDir, "analysis.json");
+      await fs.writeFile(analysisPath, JSON.stringify(fallback, null, 2), "utf8");
+    } catch {
+      // ignore write failures
+    }
     return null;
   }
 }
