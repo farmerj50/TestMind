@@ -332,6 +332,25 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       ALLURE_RESULTS_DIR: req.extraEnv?.PW_ALLURE_RESULTS || req.extraEnv?.ALLURE_RESULTS_DIR,
       ...(req.extraEnv || {}),
     };
+    const nodePathParts = new Set<string>();
+    const addNodePath = (p: string | undefined) => {
+      if (!p) return;
+      if (fsSync.existsSync(p)) nodePathParts.add(p);
+    };
+    const existingNodePath = env.NODE_PATH
+      ? String(env.NODE_PATH)
+          .split(path.delimiter)
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [];
+    for (const entry of existingNodePath) nodePathParts.add(entry);
+    addNodePath(process.cwd());
+    addNodePath(path.join(process.cwd(), "node_modules"));
+    addNodePath(req.workdir);
+    addNodePath(path.join(req.workdir, "node_modules"));
+    if (nodePathParts.size) {
+      env.NODE_PATH = Array.from(nodePathParts).join(path.delimiter);
+    }
 
     const aiTestDir =
       req.extraEnv?.TM_TEST_DIR || process.env.TM_TEST_DIR || undefined;
