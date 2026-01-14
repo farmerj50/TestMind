@@ -1628,7 +1628,10 @@ export default defineConfig({
           } catch {
             // ignore copy failures
           }
-          if (aiMode) {
+          if (generatedOnly) {
+            // Generated-only runs set Playwright's testDir to genDest, so keep globs relative to it.
+            extraGlobs.push(normalizedFile);
+          } else if (aiMode) {
             const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
             if (!relFromCwd.startsWith("..") && !path.isAbsolute(relFromCwd)) {
               extraGlobs.push(relFromCwd);
