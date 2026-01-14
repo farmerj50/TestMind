@@ -89,6 +89,7 @@ RUN echo "runner-cachebust=$CACHEBUST"
 
 # Copy built output only
 COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
+COPY tm-ai.playwright.config.mjs ./tm-ai.playwright.config.mjs
 
 CMD ["node", "apps/api/dist/index.js"]
 

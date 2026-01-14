@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 
 const multiFrameworkEnabled = (() => {
@@ -15,6 +16,8 @@ const runTimeout =
   Number(process.env.TM_RUN_TIMEOUT ?? "") || 10 * 60 * 1000;
 
 const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 type FindConfigResult = { cwd: string; configPath: string } | null;
 
@@ -390,9 +393,22 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       }
     }
 
-    const configArg = path.isAbsolute(found.configPath)
-      ? normalizePath(found.configPath)
-      : normalizePath(path.relative(found.cwd, found.configPath));
+    let resolvedConfigPath = found.configPath;
+    const absConfigPath = path.isAbsolute(resolvedConfigPath)
+      ? resolvedConfigPath
+      : path.resolve(found.cwd, resolvedConfigPath);
+    if (!fsSync.existsSync(absConfigPath)) {
+      const fallback = path.resolve(process.cwd(), "tm-ai.playwright.config.mjs");
+      const alt = path.resolve(__dirname, "..", "..", "..", "..", "tm-ai.playwright.config.mjs");
+      if (fsSync.existsSync(fallback)) {
+        resolvedConfigPath = fallback;
+      } else if (fsSync.existsSync(alt)) {
+        resolvedConfigPath = alt;
+      }
+    }
+    const configArg = path.isAbsolute(resolvedConfigPath)
+      ? normalizePath(resolvedConfigPath)
+      : normalizePath(path.relative(found.cwd, resolvedConfigPath));
     args.push("--config", configArg);
 
     const timeoutMs = req.runTimeout ?? runTimeout;
