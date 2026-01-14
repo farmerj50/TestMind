@@ -285,6 +285,7 @@ async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: str
 
 const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
+  mode: z.enum(["regular", "ai"]).optional(),
   baseUrl: z.string().url().optional(), // optional override
   suiteId: z.string().optional(), // spec suite to link edits back to
   file: z.string().optional(),   // relative path to spec to run
@@ -292,6 +293,7 @@ const RunBody = z.object({
   files: z.array(z.string()).optional(), // multiple specs
   grep: z.string().optional(),   // test title to match
   headful: z.boolean().optional(),
+  livePreview: z.boolean().optional(),
   runAll: z.boolean().optional(), // if true, ignore file/files/grep and run full suite
   extraGlobs: z.array(z.string()).optional(), // legacy selector; populated internally
 });
@@ -543,7 +545,9 @@ export default async function runRoutes(app: FastifyInstance) {
       );
     }
 
-  const pid = parsed.data.projectId.trim();
+    const pid = parsed.data.projectId.trim();
+    let mode = parsed.data.mode;
+    let aiMode = mode === "ai";
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
     const suiteId = parsed.data.suiteId?.trim() || undefined;
     const requestedBaseUrl = parsed.data.baseUrl;
@@ -575,6 +579,20 @@ export default async function runRoutes(app: FastifyInstance) {
     }
     if (project.ownerId !== userId) {
       return reply.code(403).send({ error: "Forbidden" });
+    }
+
+    if (!mode) {
+      const pathHints = [
+        ...(parsed.data.files ?? []),
+        parsed.data.file,
+        parsed.data.specPath,
+      ].filter((v): v is string => typeof v === "string");
+      const inferredAi =
+        pathHints.some((p) => p.replace(/\\/g, "/").includes("testmind-generated/")) ||
+        (!isLikelyGitRepo(project.repoUrl) &&
+          (parsed.data.file || parsed.data.specPath || (parsed.data.files?.length ?? 0) > 0));
+      mode = inferredAi ? "ai" : "regular";
+      aiMode = mode === "ai";
     }
 
     const rateLimit = Number(process.env.TM_RUN_RATE_LIMIT ?? "5");
@@ -667,7 +685,7 @@ export default async function runRoutes(app: FastifyInstance) {
       app.log.warn({ err }, "[runner] regenerateAttachedSpecs failed (continuing)");
     }
     const allowLocalRepo = (process.env.TM_USE_LOCAL_REPO ?? "1") === "1"; // default: allow local fallback
-    const runFromRepo = (process.env.TM_RUN_FROM_REPO ?? "0") === "1"; // default: standalone generated-only
+    const runFromRepo = !aiMode && (process.env.TM_RUN_FROM_REPO ?? "0") === "1"; // default: standalone generated-only
     const hasRepoUrl = runFromRepo && isLikelyGitRepo(project.repoUrl);
     if (runFromRepo && !hasRepoUrl && !allowLocalRepo) {
       return sendError(
@@ -680,8 +698,9 @@ export default async function runRoutes(app: FastifyInstance) {
     }
 
     // create run entry
-    const runParams: Record<string, any> = { headful, suiteId };
+    const runParams: Record<string, any> = { headful, suiteId, mode };
     if (effectiveBaseUrl) runParams.baseUrl = effectiveBaseUrl;
+    if (parsed.data.livePreview !== undefined) runParams.livePreview = parsed.data.livePreview;
     const run = await prisma.testRun.create({
       data: {
         projectId: pid,
@@ -808,7 +827,7 @@ export default async function runRoutes(app: FastifyInstance) {
 
         const adapter = "playwright-ts";
         const userSuffix = project.ownerId ? `${adapter}-${project.ownerId}` : adapter;
-        const generatedOnly = !hasRepoUrl;
+        const generatedOnly = aiMode || !hasRepoUrl;
 
         const resolveGeneratedSpecsDir = () => {
           const cwdRoot = process.cwd();
@@ -978,10 +997,14 @@ export default async function runRoutes(app: FastifyInstance) {
         // 2) Detect the workspace that contains Playwright and switch cwd to it
         let cwd: string;
         if (generatedOnly) {
-          const runnerRoot = process.cwd();
-          const apiRoot = path.join(runnerRoot, "apps", "api");
-          const hasApiRoot = fsSync.existsSync(path.join(apiRoot, "package.json"));
-          cwd = hasApiRoot ? apiRoot : runnerRoot;
+          if (aiMode) {
+            cwd = work;
+          } else {
+            const runnerRoot = process.cwd();
+            const apiRoot = path.join(runnerRoot, "apps", "api");
+            const hasApiRoot = fsSync.existsSync(path.join(apiRoot, "package.json"));
+            cwd = hasApiRoot ? apiRoot : runnerRoot;
+          }
         } else {
           const { subdir: appSubdir } = await findPlaywrightWorkspace(work);
           cwd = path.resolve(work, appSubdir);
@@ -1121,11 +1144,16 @@ export default async function runRoutes(app: FastifyInstance) {
 
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
-        const ciConfigPath = path.join(cwd, "tm-ci.playwright.config.mjs");
+        const ciConfigPath = path.join(
+          cwd,
+          aiMode ? "tm-ai.playwright.config.mjs" : "tm-ci.playwright.config.mjs"
+        );
         const legacyTsConfig = path.join(cwd, "tm-ci.playwright.config.ts");
         const legacyJsConfig = path.join(cwd, "tm-ci.playwright.config.js");
-        await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
-        await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
+        if (!aiMode) {
+          await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
+          await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
+        }
         const serverPort = await findAvailablePort(Number(process.env.TM_PORT ?? 4173));
         if (!requestedBaseUrl) {
           effectiveBaseUrl = `http://localhost:${serverPort}`;
@@ -1405,7 +1433,7 @@ export default defineConfig({
         // That pulled in many extra specs and could hang runs. Default is now OFF.
         // Set TM_AGENT_INCLUDE_CURATED=1 to re-enable the merge.
         const includeCuratedAgents =
-          (process.env.TM_AGENT_INCLUDE_CURATED ?? "0") === "1";
+          !aiMode && (process.env.TM_AGENT_INCLUDE_CURATED ?? "0") === "1";
         if (includeCuratedAgents) {
           await mergeAgentSpecs(project.id, genDest, path.join(outDir, "stdout.txt"));
         } else {
@@ -1453,7 +1481,9 @@ export default defineConfig({
           await walk(root);
           await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
         }
-        await logSpecs(cwd, "apps/web");
+        if (!aiMode) {
+          await logSpecs(cwd, "apps/web");
+        }
         await logSpecs(genDest, "generated");
 
         // If the caller provided specific files, restrict to those
@@ -1598,7 +1628,21 @@ export default defineConfig({
           } catch {
             // ignore copy failures
           }
-          extraGlobs.push(abs.replace(/\\/g, "/"));
+          if (aiMode) {
+            const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
+            if (!relFromCwd.startsWith("..") && !path.isAbsolute(relFromCwd)) {
+              extraGlobs.push(relFromCwd);
+            } else {
+              await fs.writeFile(
+                path.join(outDir, "stderr.txt"),
+                `[runner] AI mode: selected file is outside cwd; refusing to run: ${abs}\n`,
+                { flag: "a" }
+              );
+              missingRequested.push(selectedFile);
+            }
+          } else {
+            extraGlobs.push(abs.replace(/\\/g, "/"));
+          }
         }
         if (missingRequested.length) {
           await fs.writeFile(
@@ -1614,7 +1658,9 @@ export default defineConfig({
         const normalizedGrep = runAll
           ? undefined
           : parsed.data.grep
-            ? parsed.data.grep.replace(/^\^/, "")
+            ? (aiMode
+                ? parsed.data.grep
+                : parsed.data.grep.replace(/^\^/, ""))
             : undefined;
 
         const allureResultsDir = path.join(outDir, "allure-results");
@@ -1644,6 +1690,15 @@ export default defineConfig({
           TM_PORT: String(serverPort),
           ...secretEnv,
         };
+        if (parsed.data.livePreview) {
+          extraEnv.TM_LIVE_PREVIEW = "1";
+          extraEnv.TM_RUN_LOG_DIR = outDir;
+          if (!extraEnv.PW_OUTPUT_DIR) {
+            extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+          }
+        } else {
+          extraEnv.TM_RUN_LOG_DIR = outDir;
+        }
         if (generatedOnly) {
           const binDir = path.join(cwd, "node_modules", ".bin");
           extraEnv.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
@@ -2079,9 +2134,134 @@ export default defineConfig({
   app.get("/runner/test-runs/:id/events", eventsHandler);
   app.get("/test-runs/:id/events", eventsHandler);
 
+  app.get("/test-runs/:id/live", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.setHeader("X-Accel-Buffering", "no");
+    if (typeof (reply.raw as any).flushHeaders === "function") {
+      (reply.raw as any).flushHeaders();
+    }
+
+    let closed = false;
+    let interval: NodeJS.Timeout | undefined;
+    let lastMtime = 0;
+
+    const findLatestPng = async (rootDir: string) => {
+      try {
+        const stack: string[] = [rootDir];
+        let newest: { path: string; mtimeMs: number } | null = null;
+        while (stack.length) {
+          const current = stack.pop() as string;
+          const entries = await fs.readdir(current, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              stack.push(full);
+            } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".png")) {
+              const stat = await fs.stat(full);
+              if (!newest || stat.mtimeMs > newest.mtimeMs) {
+                newest = { path: full, mtimeMs: stat.mtimeMs };
+              }
+            }
+          }
+        }
+        return newest;
+      } catch {
+        return null;
+      }
+    };
+
+    const findLiveSnapshot = async () => {
+      const roots = [
+        RUNNER_LOGS_ROOT,
+        path.join(process.cwd(), "runner-logs"),
+        path.join(process.cwd(), "apps", "api", "runner-logs"),
+      ];
+      for (const root of roots) {
+        const livePath = path.join(root, id, "live", "latest.png");
+        try {
+          const st = await fs.stat(livePath);
+          return { livePath, mtimeMs: st.mtimeMs, root, isLive: true };
+        } catch {
+          // try next root
+        }
+        const fallbackDir = path.join(root, id, "test-results");
+        const latest = await findLatestPng(fallbackDir);
+        if (latest) {
+          return { livePath: latest.path, mtimeMs: latest.mtimeMs, root, isLive: false };
+        }
+      }
+      return null;
+    };
+
+    const ensureLiveSnapshot = async (found: {
+      livePath: string;
+      mtimeMs: number;
+      root: string;
+      isLive: boolean;
+    }) => {
+      if (found.isLive) return found;
+      const liveDir = path.join(found.root, id, "live");
+      const livePath = path.join(liveDir, "latest.png");
+      try {
+        await fs.mkdir(liveDir, { recursive: true });
+        await fs.copyFile(found.livePath, livePath);
+        const st = await fs.stat(livePath);
+        return { livePath, mtimeMs: st.mtimeMs, root: found.root, isLive: true };
+      } catch {
+        return found;
+      }
+    };
+
+    const sendArtifact = (relPath: string, mtimeMs: number) => {
+      if (closed) return;
+      const payload = { path: relPath, mtimeMs };
+      reply.raw.write(`event: artifact\n`);
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const tick = async () => {
+      const found = await findLiveSnapshot();
+      if (!found) return;
+      const resolved = await ensureLiveSnapshot(found);
+      if (resolved.mtimeMs <= lastMtime) return;
+      lastMtime = resolved.mtimeMs;
+      const rel = resolved.isLive
+        ? `/runner-logs/${id}/live/latest.png`
+        : (() => {
+            const roots = [
+              RUNNER_LOGS_ROOT,
+              path.join(process.cwd(), "runner-logs"),
+              path.join(process.cwd(), "apps", "api", "runner-logs"),
+            ];
+            for (const root of roots) {
+              if (resolved.livePath.startsWith(root)) {
+                const suffix = resolved.livePath.slice(root.length).replace(/\\/g, "/");
+                return `/runner-logs${suffix.startsWith("/") ? "" : "/"}${suffix}`;
+              }
+            }
+            return `/runner-logs/${id}/live/latest.png`;
+          })();
+      sendArtifact(rel, resolved.mtimeMs);
+    };
+
+    await tick();
+    interval = setInterval(tick, 1000);
+
+    req.raw.on("close", () => {
+      closed = true;
+      if (interval) clearInterval(interval);
+    });
+  });
+
   const RerunBody = z.object({
     specFile: z.string().min(1).optional(),
     grep: z.string().optional(),
+    livePreview: z.boolean().optional(),
   });
 
   app.post("/test-runs/:id/rerun", async (req, reply) => {
@@ -2098,12 +2278,19 @@ export default defineConfig({
     const headful = Boolean((params as any)?.headful);
     const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
     const rerunParams: Record<string, any> = { headful, suiteId };
+    if ((params as any)?.mode) rerunParams.mode = (params as any).mode;
     if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
     const parsedBody = RerunBody.safeParse(req.body ?? {});
     const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
     const grep = parsedBody.success ? parsedBody.data.grep : undefined;
+    const livePreview =
+      parsedBody.success ? parsedBody.data.livePreview : undefined;
+    const inheritedLivePreview = Boolean((params as any)?.livePreview);
+    const effectiveLivePreview = livePreview ?? inheritedLivePreview;
     if (specFile) rerunParams.file = specFile;
     if (grep) rerunParams.grep = grep ?? undefined;
+    if (livePreview !== undefined) rerunParams.livePreview = livePreview;
+    else if (inheritedLivePreview) rerunParams.livePreview = true;
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
@@ -2121,6 +2308,8 @@ export default defineConfig({
       baseUrl: (params as any)?.baseUrl,
       file: specFile,
       grep,
+      mode: (params as any)?.mode,
+      livePreview: effectiveLivePreview,
     });
     return reply.send({ runId: rerun.id });
   });

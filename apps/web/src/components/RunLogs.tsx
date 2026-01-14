@@ -3,7 +3,13 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
 import { useApi } from "../lib/api";
 
-export default function RunLogs({ runId }: { runId: string }) {
+export default function RunLogs({
+  runId,
+  refreshKey,
+}: {
+  runId: string;
+  refreshKey?: string | number;
+}) {
   const { apiFetchRaw } = useApi();
   const [type, setType] = useState<"stdout" | "stderr">("stdout");
   const [text, setText] = useState<string>("");
@@ -21,7 +27,7 @@ export default function RunLogs({ runId }: { runId: string }) {
 
   useEffect(() => {
     load(type);
-  }, [runId, type]);
+  }, [runId, type, refreshKey]);
 
   return (
     <div className="space-y-2">
@@ -43,7 +49,7 @@ export default function RunLogs({ runId }: { runId: string }) {
       </div>
 
       <pre className="bg-slate-950 text-slate-100 rounded p-3 text-xs overflow-auto max-h-72 whitespace-pre-wrap">
-        {text || "—"}
+        {text || "-"}
       </pre>
     </div>
   );

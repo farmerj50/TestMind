@@ -282,14 +282,22 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
 
 function resolveGeneratedRoots(projectId: string, optionalRoot?: string) {
   const baseId = stripUserSuffix(projectId);
+  const userSuffix = extractUserSuffix(projectId);
+  const userRoot = path.join(GENERATED_ROOT, projectId);
+  const resolvedOptional = optionalRoot ? path.resolve(optionalRoot) : null;
+  if (resolvedOptional) {
+    return fs.existsSync(resolvedOptional) ? [resolvedOptional] : [];
+  }
+  if (userSuffix && fs.existsSync(userRoot)) {
+    return [userRoot];
+  }
   const roots = [
-    optionalRoot ? path.resolve(optionalRoot) : null,
-    path.join(GENERATED_ROOT, projectId),
+    userRoot,
     path.join(GENERATED_ROOT, baseId),
     path.join(REPO_ROOT, "apps", "api", "testmind-generated", baseId),
     path.join(REPO_ROOT, "apps", "web", "testmind-generated", baseId),
     path.join(REPO_ROOT, "testmind-generated", baseId),
-  ].filter(Boolean) as string[];
+  ];
   const unique = new Set<string>();
   const existing: string[] = [];
   for (const root of roots) {
@@ -1376,25 +1384,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         }
       }
       if (curatedSuite) {
-        const roots = curatedRootCandidates(curatedSuite).filter((root) => {
-          try {
-            return fs.existsSync(root) && fs.statSync(root).isDirectory();
-          } catch {
-            return false;
-          }
-        });
-        const seen = new Set<string>();
-        const out: Array<{ path: string }> = [];
-        for (const specRoot of roots) {
-          const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
-          for (const rel of files) {
-            const key = rel.replace(/\\/g, "/");
-            if (seen.has(key)) continue;
-            seen.add(key);
-            out.push({ path: rel });
-          }
-        }
-        return out;
+        const specRoot = resolveCuratedRoot(curatedSuite);
+        if (!specRoot || !fs.existsSync(specRoot)) return [];
+        const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+        return files.map((rel) => ({ path: rel }));
       }
       const roots = resolveGeneratedRoots(projectId, root);
       const seen = new Set<string>();
