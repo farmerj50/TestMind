@@ -36,6 +36,8 @@ export default function RunResults({
 
   const escapeRegex = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const buildLooseGrep = (title: string) =>
+    `(?:^|\\s)${escapeRegex(title)}(?:$|\\s)`;
 
   const stop = () => {
     if (pollRef.current) {
@@ -94,7 +96,7 @@ export default function RunResults({
       try {
         setAnalyzeLoadingId(specPath || "run");
         const testTitle = title ?? undefined;
-        const grep = testTitle ? escapeRegex(testTitle) : undefined;
+        const grep = testTitle ? buildLooseGrep(testTitle) : undefined;
         const res = await apiFetch<{ runId: string }>(`/runner/test-runs/${runId}/rerun`, {
           method: "POST",
           body: JSON.stringify({

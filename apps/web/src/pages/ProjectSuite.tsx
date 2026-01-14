@@ -323,6 +323,9 @@ export default function ProjectSuite() {
   const [running, setRunning] = useState(false);
   const [runningSuite, setRunningSuite] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [livePreviewEnabled, setLivePreviewEnabled] = useState(
+    () => localStorage.getItem("tm:livePreview") === "1"
+  );
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [runProjectId, setRunProjectId] = useState<string | null>(() => localStorage.getItem("tm:lastProjectId"));
   const [projectLoadErr, setProjectLoadErr] = useState<string | null>(null);
@@ -1454,7 +1457,13 @@ export default function ProjectSuite() {
       .then((rows: SpecFile[]) => {
         const seen = new Set<string>();
         const deletedSpecs = suiteFolderState.deletedSpecs || {};
-        const deduped = rows.filter((row) => {
+        const filtered = activeSuite?.type === "generated" && runProjectId
+          ? rows.filter((row) => {
+              const key = row.path.replace(/\\/g, "/");
+              return key.startsWith(`${runProjectId}/`) || key.startsWith("recordings/");
+            })
+          : rows;
+        const deduped = filtered.filter((row) => {
           const key = row.path.replace(/\\/g, "/");
           if (seen.has(key)) return false;
           seen.add(key);
@@ -1467,7 +1476,7 @@ export default function ProjectSuite() {
         console.error(err);
         setRunError(err instanceof Error ? err.message : "Failed to load specs");
       });
-  }, [pid, specReloadKey, specProjects, apiFetchRaw, isLoaded, isSignedIn, suiteFolderState.deletedSpecs]);
+  }, [pid, specReloadKey, specProjects, apiFetchRaw, isLoaded, isSignedIn, suiteFolderState.deletedSpecs, activeSuite, runProjectId]);
 
   // If a spec path is provided via query (?spec=...), auto-select it once specs are loaded.
   useEffect(() => {
@@ -1664,19 +1673,20 @@ export default function ProjectSuite() {
           )
         );
         const grep = buildGrep(selectedCases.map((c) => c.title));
-        const res = await apiFetch<{ id: string }>("/runner/run", {
-          method: "POST",
-          body: JSON.stringify({
-            projectId: runProjectId,
-            suiteId: pid,
-            files,
-            grep,
-            mode,
-            baseUrl: baseUrl.trim(),
-            headful,
-            reporter,
-          }),
-        });
+          const res = await apiFetch<{ id: string }>("/runner/run", {
+            method: "POST",
+            body: JSON.stringify({
+              projectId: runProjectId,
+              suiteId: pid,
+              files,
+              grep,
+              mode,
+              baseUrl: baseUrl.trim(),
+              headful,
+              reporter,
+              livePreview: livePreviewEnabled,
+            }),
+          });
         if (res?.id) navigate(`/test-runs/${res.id}`);
       } else {
         if (!activeSpec) {
@@ -1684,19 +1694,20 @@ export default function ProjectSuite() {
           return;
         }
         const grep = buildGrep(selectedTitles);
-        const res = await apiFetch<{ id: string }>("/runner/run", {
-          method: "POST",
-          body: JSON.stringify({
-            projectId: runProjectId,
-            suiteId: pid,
-            file: activeSpec.path,
-            grep,
-            mode,
-            baseUrl: baseUrl.trim(),
-            headful,
-            reporter,
-          }),
-        });
+          const res = await apiFetch<{ id: string }>("/runner/run", {
+            method: "POST",
+            body: JSON.stringify({
+              projectId: runProjectId,
+              suiteId: pid,
+              file: activeSpec.path,
+              grep,
+              mode,
+              baseUrl: baseUrl.trim(),
+              headful,
+              reporter,
+              livePreview: livePreviewEnabled,
+            }),
+          });
         if (res?.id) navigate(`/test-runs/${res.id}`);
       }
       setSelected({});
@@ -1727,18 +1738,19 @@ export default function ProjectSuite() {
     const mode = activeSuite?.type === "generated" ? "ai" : "regular";
     try {
       const files = specs.map((s) => s.path);
-      const res = await apiFetch<{ id: string }>("/runner/run", {
-        method: "POST",
-        body: JSON.stringify({
-          projectId: runProjectId,
-          suiteId: pid,
-          files,
-          mode,
-          baseUrl: baseUrl.trim(),
-          headful,
-          reporter,
-        }),
-      });
+        const res = await apiFetch<{ id: string }>("/runner/run", {
+          method: "POST",
+          body: JSON.stringify({
+            projectId: runProjectId,
+            suiteId: pid,
+            files,
+            mode,
+            baseUrl: baseUrl.trim(),
+            headful,
+            reporter,
+            livePreview: livePreviewEnabled,
+          }),
+        });
       if (res?.id) navigate(`/test-runs/${res.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to run suite";
@@ -1969,6 +1981,17 @@ export default function ProjectSuite() {
             <label className="flex items-center gap-2 text-xs text-slate-600 shrink-0">
               <Checkbox checked={headful} onCheckedChange={(val) => setHeadful(Boolean(val))} />
               Headed (capture media)
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-600 shrink-0">
+              <Checkbox
+                checked={livePreviewEnabled}
+                onCheckedChange={(val) => {
+                  const next = Boolean(val);
+                  setLivePreviewEnabled(next);
+                  localStorage.setItem("tm:livePreview", next ? "1" : "0");
+                }}
+              />
+              Live preview
             </label>
 
             {/* base url */}

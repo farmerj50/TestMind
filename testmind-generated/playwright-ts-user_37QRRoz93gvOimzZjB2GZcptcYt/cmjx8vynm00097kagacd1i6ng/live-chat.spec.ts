@@ -1,6 +1,100 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Page, test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
+const RUN_LOG_DIR = process.env.TM_RUN_LOG_DIR || process.env.PW_OUTPUT_DIR;
+const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';
+
+type PageSignals = {
+  url?: string;
+  console: { type: string; text: string; location?: { url?: string; lineNumber?: number; columnNumber?: number } }[];
+  pageErrors: string[];
+  requestFailed: { url: string; errorText?: string }[];
+  dom: { title?: string; h1?: string; bodyText?: string; htmlSnippet?: string };
+};
+
+const SIGNALS = new WeakMap<Page, PageSignals>();
+const LIVE_PREVIEW_STOP = new WeakMap<Page, () => void>();
+
+function attachPageSignals(page: Page): PageSignals {
+  const signals: PageSignals = { console: [], pageErrors: [], requestFailed: [], dom: {} };
+  page.on('console', (msg) => {
+    signals.console.push({
+      type: msg.type(),
+      text: msg.text().slice(0, 500),
+      location: msg.location?.(),
+    });
+  });
+  page.on('pageerror', (err) => signals.pageErrors.push(String(err).slice(0, 800)));
+  page.on('requestfailed', (req) => {
+    signals.requestFailed.push({ url: req.url(), errorText: req.failure()?.errorText });
+  });
+  SIGNALS.set(page, signals);
+  return signals;
+}
+
+async function snapshotSignals(page: Page, signals: PageSignals) {
+  try {
+    signals.url = page.url();
+    signals.dom.title = await page.title().catch(() => undefined);
+    signals.dom.h1 = await page.locator('h1').first().innerText().catch(() => undefined);
+    signals.dom.bodyText = (await page.locator('body').innerText().catch(() => '')).slice(0, 2000);
+    signals.dom.htmlSnippet = (await page.content().catch(() => '')).slice(0, 2000);
+  } catch {
+    // ignore snapshot failures
+  }
+}
+
+async function writeSignals(page: Page, testInfo: any) {
+  if (!RUN_LOG_DIR) return;
+  const signals = SIGNALS.get(page) ?? attachPageSignals(page);
+  await snapshotSignals(page, signals);
+  const payload = {
+    title: testInfo.title,
+    status: testInfo.status,
+    expectedStatus: testInfo.expectedStatus,
+    file: testInfo.file,
+    line: testInfo.line,
+    signals,
+  };
+  await fs.mkdir(RUN_LOG_DIR, { recursive: true });
+  await fs.writeFile(path.join(RUN_LOG_DIR, 'page-signals.json'), JSON.stringify(payload, null, 2));
+}
+
+function startLivePreview(page: Page) {
+  if (!LIVE_PREVIEW_ENABLED || !RUN_LOG_DIR) return;
+  const liveDir = path.join(RUN_LOG_DIR, 'live');
+  let stopped = false;
+  const capture = async () => {
+    if (stopped) return;
+    try {
+      await fs.mkdir(liveDir, { recursive: true });
+      await page.screenshot({ path: path.join(liveDir, 'latest.png'), fullPage: true });
+    } catch {
+      // ignore screenshot failures
+    }
+  };
+  void capture();
+  const interval = setInterval(capture, 1500);
+  LIVE_PREVIEW_STOP.set(page, () => {
+    stopped = true;
+    clearInterval(interval);
+  });
+}
+
+test.beforeEach(async ({ page }) => {
+  attachPageSignals(page);
+  startLivePreview(page);
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  const stopLive = LIVE_PREVIEW_STOP.get(page);
+  if (stopLive) stopLive();
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await writeSignals(page, testInfo);
+  }
+});
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }

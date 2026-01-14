@@ -254,7 +254,7 @@ export default function RunPage() {
 
 
 
-  const { runId } = useParams<{ runId: string }>();
+  const { runId: routeRunId } = useParams<{ runId: string }>();
 
 
 
@@ -320,6 +320,7 @@ export default function RunPage() {
   const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
   const livePreviewTouchedRef = useRef(false);
   const [liveFrameUrl, setLiveFrameUrl] = useState<string | null>(null);
+  const [livePreviewPreferStatic, setLivePreviewPreferStatic] = useState(false);
   const livePollRef = useRef<number | null>(null);
   const livePollStopRef = useRef<number | null>(null);
   const liveStreamRef = useRef<EventSource | null>(null);
@@ -353,12 +354,33 @@ const parsedSummary = useMemo(() => {
 
   }, [run?.summary]);
 
+  const normalizeLiveUrl = useCallback(
+    (rawPath: string) => {
+      const origin = new URL(apiUrl("/")).origin;
+      const normalized = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+      const resolvedPath = livePreviewPreferStatic
+        ? normalized.replace("/runner-logs/", "/_static/runner-logs/")
+        : normalized;
+      return `${origin}${resolvedPath}`;
+    },
+    [livePreviewPreferStatic]
+  );
+
+  const resolvedRunId = routeRunId;
+
+  const attemptLiveFrame = useCallback((url: string) => {
+    const img = new Image();
+    img.onload = () => setLiveFrameUrl(url);
+    img.onerror = () => {};
+    img.src = url;
+  }, []);
+
   const startLivePolling = useCallback(
     (durationMs = 10000, intervalMs = 1000) => {
-      if (!runId) return;
-      const base = apiUrl(`/runner-logs/${runId}/live/latest.png`);
+      if (!resolvedRunId) return;
+      const base = normalizeLiveUrl(`/runner-logs/${resolvedRunId}/live/latest.png`);
       const tick = () => {
-        setLiveFrameUrl(`${base}?t=${Date.now()}`);
+        attemptLiveFrame(`${base}?t=${Date.now()}`);
       };
 
       if (livePollRef.current !== null) {
@@ -377,7 +399,7 @@ const parsedSummary = useMemo(() => {
         }
       }, durationMs);
     },
-    [runId]
+    [resolvedRunId, normalizeLiveUrl, attemptLiveFrame]
   );
 
   const handleTelemetryEvent = useCallback(
@@ -408,7 +430,7 @@ const parsedSummary = useMemo(() => {
     });
   }, [telemetryEvents, telemetryFilter]);
 
-  useTelemetryStream(runId ?? null, handleTelemetryEvent);
+  useTelemetryStream(resolvedRunId ?? null, handleTelemetryEvent);
 
   useEffect(() => {
     return () => {
@@ -426,7 +448,7 @@ const parsedSummary = useMemo(() => {
   }, []);
 
   useEffect(() => {
-    if (!runId || !livePreviewEnabled) {
+    if (!resolvedRunId || !livePreviewEnabled) {
       if (liveStreamRef.current) {
         liveStreamRef.current.close();
         liveStreamRef.current = null;
@@ -434,7 +456,7 @@ const parsedSummary = useMemo(() => {
       return;
     }
 
-    const es = new EventSource(apiUrl(`/test-runs/${runId}/live`), {
+    const es = new EventSource(apiUrl(`/test-runs/${resolvedRunId}/live`), {
       withCredentials: true,
     } as any);
     liveStreamRef.current = es;
@@ -443,7 +465,10 @@ const parsedSummary = useMemo(() => {
       try {
         const payload = JSON.parse(evt.data);
         if (payload?.path) {
-          setLiveFrameUrl(apiUrl(payload.path));
+          const rawPath = String(payload.path);
+          const baseUrl = normalizeLiveUrl(rawPath);
+          const withBust = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+          attemptLiveFrame(withBust);
         }
       } catch {
         // ignore malformed events
@@ -454,7 +479,12 @@ const parsedSummary = useMemo(() => {
       es.close();
       liveStreamRef.current = null;
     };
-  }, [runId, livePreviewEnabled]);
+  }, [resolvedRunId, livePreviewEnabled, normalizeLiveUrl]);
+
+  useEffect(() => {
+    if (!resolvedRunId || !livePreviewEnabled) return;
+    startLivePolling(30000, 1000);
+  }, [resolvedRunId, livePreviewEnabled, startLivePolling]);
 
   useEffect(() => {
     if (livePreviewTouchedRef.current) return;
@@ -462,6 +492,15 @@ const parsedSummary = useMemo(() => {
       setLivePreviewEnabled(true);
     }
   }, [run?.paramsJson]);
+
+  useEffect(() => {
+    if (!routeRunId) return;
+    setRun(null);
+    setErr(null);
+    setLoading(true);
+    setLiveFrameUrl(null);
+    setLivePreviewPreferStatic(false);
+  }, [routeRunId]);
 
 
 
@@ -950,7 +989,7 @@ const fetchMissingLocators = useCallback(
 
   useEffect(() => {
 
-    if (!runId) return;
+    if (!routeRunId) return;
 
 
 
@@ -966,7 +1005,7 @@ const fetchMissingLocators = useCallback(
 
       try {
 
-        const { run: r } = await apiFetch<{ run: Run }>(`/runner/test-runs/${runId}`);
+        const { run: r } = await apiFetch<{ run: Run }>(`/runner/test-runs/${routeRunId}`);
 
         if (!cancelled) {
 
@@ -1016,7 +1055,7 @@ const fetchMissingLocators = useCallback(
 
     };
 
-  }, [runId, apiFetch, friendlyError]);
+  }, [routeRunId, apiFetch, friendlyError]);
 
 
 
@@ -1040,7 +1079,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-    if (!runId || !run || run.status === "queued" || run.status === "running") return;
+    if (!routeRunId || !run || run.status === "queued" || run.status === "running") return;
 
 
 
@@ -1056,7 +1095,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-        const res = await apiFetch<{ analysis: Analysis }>(`/runner/test-runs/${runId}/analysis`);
+        const res = await apiFetch<{ analysis: Analysis }>(`/runner/test-runs/${routeRunId}/analysis`);
 
 
 
@@ -1094,7 +1133,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-  }, [runId, run?.status]);
+  }, [routeRunId, run?.status]);
 
 
 
@@ -2881,7 +2920,7 @@ const fetchMissingLocators = useCallback(
               </div>
             </section>
 
-            {livePreviewEnabled && (run?.paramsJson as any)?.livePreview && (
+            {livePreviewEnabled && (
               <div className="fixed bottom-6 right-6 z-50 w-[520px] max-w-[90vw]">
                 <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
@@ -2900,6 +2939,11 @@ const fetchMissingLocators = useCallback(
                         src={liveFrameUrl}
                         alt="Live preview"
                         className="h-full w-full object-contain"
+                        onError={() => {
+                          if (!livePreviewPreferStatic) {
+                            setLivePreviewPreferStatic(true);
+                          }
+                        }}
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-sm text-slate-500">
