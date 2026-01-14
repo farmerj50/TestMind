@@ -322,7 +322,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
 
     await patchPreviewCommand(found.configPath);
 
-    const env = {
+    const env: Record<string, string> = {
       ...process.env,
       PW_BASE_URL: req.baseUrl ?? "",
       TM_BASE_URL: req.baseUrl ?? "",
