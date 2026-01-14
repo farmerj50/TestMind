@@ -481,6 +481,9 @@ export const worker = new Worker(
       if (payload?.livePreview) {
         extraEnv.TM_LIVE_PREVIEW = "1";
         extraEnv.TM_RUN_LOG_DIR = outDir;
+        if (!extraEnv.PW_OUTPUT_DIR) {
+          extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+        }
       }
       let exec;
       try {
