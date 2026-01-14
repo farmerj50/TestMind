@@ -2,6 +2,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
+import { createRequire } from "node:module";
 import { execa } from "execa";
 
 const multiFrameworkEnabled = (() => {
@@ -12,6 +13,8 @@ const multiFrameworkEnabled = (() => {
 // Cap test command execution to avoid hung runs (default 10 minutes unless overridden).
 const runTimeout =
   Number(process.env.TM_RUN_TIMEOUT ?? "") || 10 * 60 * 1000;
+
+const require = createRequire(import.meta.url);
 
 type FindConfigResult = { cwd: string; configPath: string } | null;
 
@@ -424,6 +427,12 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
         cancelSignal: req.abortSignal,
         stdio: "pipe",
       });
+
+    try {
+      console.log("[dep-check] @playwright/test =", require.resolve("@playwright/test"));
+    } catch (err: any) {
+      console.log("[dep-check] @playwright/test NOT RESOLVABLE", err?.message ?? err);
+    }
 
     const enableLivePreview =
       req.extraEnv?.TM_LIVE_PREVIEW === "1" && !!req.extraEnv?.TM_RUN_LOG_DIR;
