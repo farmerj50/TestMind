@@ -1,6 +1,100 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Page, test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173';
+const RUN_LOG_DIR = process.env.TM_RUN_LOG_DIR || process.env.PW_OUTPUT_DIR;
+const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';
+
+type PageSignals = {
+  url?: string;
+  console: { type: string; text: string; location?: { url?: string; lineNumber?: number; columnNumber?: number } }[];
+  pageErrors: string[];
+  requestFailed: { url: string; errorText?: string }[];
+  dom: { title?: string; h1?: string; bodyText?: string; htmlSnippet?: string };
+};
+
+const SIGNALS = new WeakMap<Page, PageSignals>();
+const LIVE_PREVIEW_STOP = new WeakMap<Page, () => void>();
+
+function attachPageSignals(page: Page): PageSignals {
+  const signals: PageSignals = { console: [], pageErrors: [], requestFailed: [], dom: {} };
+  page.on('console', (msg) => {
+    signals.console.push({
+      type: msg.type(),
+      text: msg.text().slice(0, 500),
+      location: msg.location?.(),
+    });
+  });
+  page.on('pageerror', (err) => signals.pageErrors.push(String(err).slice(0, 800)));
+  page.on('requestfailed', (req) => {
+    signals.requestFailed.push({ url: req.url(), errorText: req.failure()?.errorText });
+  });
+  SIGNALS.set(page, signals);
+  return signals;
+}
+
+async function snapshotSignals(page: Page, signals: PageSignals) {
+  try {
+    signals.url = page.url();
+    signals.dom.title = await page.title().catch(() => undefined);
+    signals.dom.h1 = await page.locator('h1').first().innerText().catch(() => undefined);
+    signals.dom.bodyText = (await page.locator('body').innerText().catch(() => '')).slice(0, 2000);
+    signals.dom.htmlSnippet = (await page.content().catch(() => '')).slice(0, 2000);
+  } catch {
+    // ignore snapshot failures
+  }
+}
+
+async function writeSignals(page: Page, testInfo: any) {
+  if (!RUN_LOG_DIR) return;
+  const signals = SIGNALS.get(page) ?? attachPageSignals(page);
+  await snapshotSignals(page, signals);
+  const payload = {
+    title: testInfo.title,
+    status: testInfo.status,
+    expectedStatus: testInfo.expectedStatus,
+    file: testInfo.file,
+    line: testInfo.line,
+    signals,
+  };
+  await fs.mkdir(RUN_LOG_DIR, { recursive: true });
+  await fs.writeFile(path.join(RUN_LOG_DIR, 'page-signals.json'), JSON.stringify(payload, null, 2));
+}
+
+function startLivePreview(page: Page) {
+  if (!LIVE_PREVIEW_ENABLED || !RUN_LOG_DIR) return;
+  const liveDir = path.join(RUN_LOG_DIR, 'live');
+  let stopped = false;
+  const capture = async () => {
+    if (stopped) return;
+    try {
+      await fs.mkdir(liveDir, { recursive: true });
+      await page.screenshot({ path: path.join(liveDir, 'latest.png'), fullPage: true });
+    } catch {
+      // ignore screenshot failures
+    }
+  };
+  void capture();
+  const interval = setInterval(capture, 1500);
+  LIVE_PREVIEW_STOP.set(page, () => {
+    stopped = true;
+    clearInterval(interval);
+  });
+}
+
+test.beforeEach(async ({ page }) => {
+  attachPageSignals(page);
+  startLivePreview(page);
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  const stopLive = LIVE_PREVIEW_STOP.get(page);
+  if (stopLive) stopLive();
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await writeSignals(page, testInfo);
+  }
+});
 
 type IdentityDescriptor =
   | { kind: 'role'; role: string; name: string }
@@ -210,24 +304,24 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page /case-type-selection 6 test(s)
+// Auto-generated for page /signup 6 test(s)
 
-test("Page loads: /case-type-selection", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Page loads: /case-type-selection" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
-    await navigateTo(page, "/case-type-selection");
-      await ensurePageIdentity(page, "/case-type-selection");
+test("Page loads: /signup", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Page loads: /signup" }, { type: "parameter", description: "page=/signup" });
+  await test.step("1. Navigate to https://www.justicepathlaw.com/signup", async () => {
+    await navigateTo(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
     {
       const rawText = "JusticePath — Accessible Legal Help";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
+      if (/justicepath/i.test(rawText) && "/signup" !== "/") {
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
+        await expect(page).toHaveURL(pathRegex("/signup"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
@@ -249,11 +343,26 @@ test("Page loads: /case-type-selection", async ({ page }) => {
   });
 });
 
-test("Navigate /case-type-selection → /", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
-    await navigateTo(page, "/case-type-selection");
-      await ensurePageIdentity(page, "/case-type-selection");
+test("Form submits – /signup", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Form submits – /signup" }, { type: "parameter", description: "page=/signup" });
+  await test.step("1. Navigate to https://www.justicepathlaw.com/signup", async () => {
+    await navigateTo(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
+  });
+  await sharedLogin(page);
+  await test.step("2. Fill [name='Full Name'], #Full Name", async () => {
+    // Missing locator fields.name-full-name-full-name on /signup; add it to shared locators and rerun generation.
+  });
+  await test.step("6. Click button[type='submit'], input[type='submit']", async () => {
+    // Missing locator locators.button-type-submit-input-type-submit on /signup; add it to shared locators and rerun generation.
+  });
+});
+
+test("Navigate /signup → /", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /" }, { type: "parameter", description: "page=/signup" });
+  await test.step("1. Navigate to https://www.justicepathlaw.com/signup", async () => {
+    await navigateTo(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await test.step("2. Navigate to /", async () => {
     await navigateTo(page, "/");
@@ -262,13 +371,13 @@ test("Navigate /case-type-selection → /", async ({ page }) => {
   await test.step("3. Ensure text \"Page\" is visible", async () => {
     {
       const rawText = "Page";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
+      if (/justicepath/i.test(rawText) && "/signup" !== "/") {
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
+        await expect(page).toHaveURL(pathRegex("/signup"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
@@ -290,11 +399,11 @@ test("Navigate /case-type-selection → /", async ({ page }) => {
   });
 });
 
-test("Navigate /case-type-selection → /live-chat", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /live-chat" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
-    await navigateTo(page, "/case-type-selection");
-      await ensurePageIdentity(page, "/case-type-selection");
+test("Navigate /signup → /live-chat", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /live-chat" }, { type: "parameter", description: "page=/signup" });
+  await test.step("1. Navigate to https://www.justicepathlaw.com/signup", async () => {
+    await navigateTo(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await test.step("2. Navigate to /live-chat", async () => {
     await navigateTo(page, "/live-chat");
@@ -303,13 +412,13 @@ test("Navigate /case-type-selection → /live-chat", async ({ page }) => {
   await test.step("3. Ensure text \"live-chat\" is visible", async () => {
     {
       const rawText = "live-chat";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
+      if (/justicepath/i.test(rawText) && "/signup" !== "/") {
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
+        await expect(page).toHaveURL(pathRegex("/signup"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
@@ -331,11 +440,11 @@ test("Navigate /case-type-selection → /live-chat", async ({ page }) => {
   });
 });
 
-test("Navigate /case-type-selection → /pricing", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /pricing" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
-    await navigateTo(page, "/case-type-selection");
-      await ensurePageIdentity(page, "/case-type-selection");
+test("Navigate /signup → /pricing", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /pricing" }, { type: "parameter", description: "page=/signup" });
+  await test.step("1. Navigate to https://www.justicepathlaw.com/signup", async () => {
+    await navigateTo(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await test.step("2. Navigate to /pricing", async () => {
     await navigateTo(page, "/pricing");
@@ -344,13 +453,13 @@ test("Navigate /case-type-selection → /pricing", async ({ page }) => {
   await test.step("3. Ensure text \"pricing\" is visible", async () => {
     {
       const rawText = "pricing";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
+      if (/justicepath/i.test(rawText) && "/signup" !== "/") {
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
+        await expect(page).toHaveURL(pathRegex("/signup"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       const normalized = rawText.trim().toLowerCase();
@@ -372,11 +481,11 @@ test("Navigate /case-type-selection → /pricing", async ({ page }) => {
   });
 });
 
-test("Navigate /case-type-selection → /login", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /login" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
-    await navigateTo(page, "/case-type-selection");
-      await ensurePageIdentity(page, "/case-type-selection");
+test("Navigate /signup → /login", async ({ page }) => {
+  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/signup" }, { type: "story", description: "Navigate /signup → /login" }, { type: "parameter", description: "page=/signup" });
+  await test.step("1. Navigate to https://www.justicepathlaw.com/signup", async () => {
+    await navigateTo(page, "/signup");
+      await ensurePageIdentity(page, "/signup");
   });
   await sharedLogin(page);
   await test.step("2. Navigate to /login", async () => {
@@ -386,54 +495,13 @@ test("Navigate /case-type-selection → /login", async ({ page }) => {
   await test.step("3. Ensure text \"login\" is visible", async () => {
     {
       const rawText = "login";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
+      if (/justicepath/i.test(rawText) && "/signup" !== "/") {
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
-        return;
-      }
-      const normalized = rawText.trim().toLowerCase();
-      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
-      const routeLike = /^[a-z0-9\-/]+$/.test(normalized) && normalized !== "page";
-      if (routeLike) {
-        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
-        await ensurePageIdentity(page, routeCandidate);
-        return;
-      }
-      const targetPath = identityPathForText(rawText);
-      if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
-        await ensurePageIdentity(page, targetPath);
-        return;
-      }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
-    }
-  });
-});
-
-test("Navigate /case-type-selection → /signup", async ({ page }) => {
-  test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Navigate /case-type-selection → /signup" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
-    await navigateTo(page, "/case-type-selection");
-      await ensurePageIdentity(page, "/case-type-selection");
-  });
-  await test.step("2. Navigate to /signup", async () => {
-    await navigateTo(page, "/signup");
-      await ensurePageIdentity(page, "/signup");
-  });
-  await test.step("3. Ensure text \"signup\" is visible", async () => {
-    {
-      const rawText = "signup";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
-        return;
-      }
-      if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
+        await expect(page).toHaveURL(pathRegex("/signup"), { timeout: 15000 });
+        await ensurePageIdentity(page, "/signup");
         return;
       }
       const normalized = rawText.trim().toLowerCase();

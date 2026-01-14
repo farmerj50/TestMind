@@ -11,6 +11,7 @@ export type RunPayload = {
   tags?: { include?: string[]; exclude?: string[] };
   retries?: number;
   headed?: boolean;
+  livePreview?: boolean;
   envName?: string;
   trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
   grep?: string;

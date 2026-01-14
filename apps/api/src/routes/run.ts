@@ -293,6 +293,7 @@ const RunBody = z.object({
   files: z.array(z.string()).optional(), // multiple specs
   grep: z.string().optional(),   // test title to match
   headful: z.boolean().optional(),
+  livePreview: z.boolean().optional(),
   runAll: z.boolean().optional(), // if true, ignore file/files/grep and run full suite
   extraGlobs: z.array(z.string()).optional(), // legacy selector; populated internally
 });
@@ -699,6 +700,7 @@ export default async function runRoutes(app: FastifyInstance) {
     // create run entry
     const runParams: Record<string, any> = { headful, suiteId, mode };
     if (effectiveBaseUrl) runParams.baseUrl = effectiveBaseUrl;
+    if (parsed.data.livePreview !== undefined) runParams.livePreview = parsed.data.livePreview;
     const run = await prisma.testRun.create({
       data: {
         projectId: pid,
@@ -1688,6 +1690,15 @@ export default defineConfig({
           TM_PORT: String(serverPort),
           ...secretEnv,
         };
+        if (parsed.data.livePreview) {
+          extraEnv.TM_LIVE_PREVIEW = "1";
+          extraEnv.TM_RUN_LOG_DIR = outDir;
+          if (!extraEnv.PW_OUTPUT_DIR) {
+            extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+          }
+        } else {
+          extraEnv.TM_RUN_LOG_DIR = outDir;
+        }
         if (generatedOnly) {
           const binDir = path.join(cwd, "node_modules", ".bin");
           extraEnv.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
@@ -2139,6 +2150,31 @@ export default defineConfig({
     let interval: NodeJS.Timeout | undefined;
     let lastMtime = 0;
 
+    const findLatestPng = async (rootDir: string) => {
+      try {
+        const stack: string[] = [rootDir];
+        let newest: { path: string; mtimeMs: number } | null = null;
+        while (stack.length) {
+          const current = stack.pop() as string;
+          const entries = await fs.readdir(current, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              stack.push(full);
+            } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".png")) {
+              const stat = await fs.stat(full);
+              if (!newest || stat.mtimeMs > newest.mtimeMs) {
+                newest = { path: full, mtimeMs: stat.mtimeMs };
+              }
+            }
+          }
+        }
+        return newest;
+      } catch {
+        return null;
+      }
+    };
+
     const findLiveSnapshot = async () => {
       const roots = [
         RUNNER_LOGS_ROOT,
@@ -2149,12 +2185,36 @@ export default defineConfig({
         const livePath = path.join(root, id, "live", "latest.png");
         try {
           const st = await fs.stat(livePath);
-          return { livePath, mtimeMs: st.mtimeMs };
+          return { livePath, mtimeMs: st.mtimeMs, root, isLive: true };
         } catch {
           // try next root
         }
+        const fallbackDir = path.join(root, id, "test-results");
+        const latest = await findLatestPng(fallbackDir);
+        if (latest) {
+          return { livePath: latest.path, mtimeMs: latest.mtimeMs, root, isLive: false };
+        }
       }
       return null;
+    };
+
+    const ensureLiveSnapshot = async (found: {
+      livePath: string;
+      mtimeMs: number;
+      root: string;
+      isLive: boolean;
+    }) => {
+      if (found.isLive) return found;
+      const liveDir = path.join(found.root, id, "live");
+      const livePath = path.join(liveDir, "latest.png");
+      try {
+        await fs.mkdir(liveDir, { recursive: true });
+        await fs.copyFile(found.livePath, livePath);
+        const st = await fs.stat(livePath);
+        return { livePath, mtimeMs: st.mtimeMs, root: found.root, isLive: true };
+      } catch {
+        return found;
+      }
     };
 
     const sendArtifact = (relPath: string, mtimeMs: number) => {
@@ -2167,9 +2227,26 @@ export default defineConfig({
     const tick = async () => {
       const found = await findLiveSnapshot();
       if (!found) return;
-      if (found.mtimeMs <= lastMtime) return;
-      lastMtime = found.mtimeMs;
-      sendArtifact(`/runner-logs/${id}/live/latest.png`, found.mtimeMs);
+      const resolved = await ensureLiveSnapshot(found);
+      if (resolved.mtimeMs <= lastMtime) return;
+      lastMtime = resolved.mtimeMs;
+      const rel = resolved.isLive
+        ? `/runner-logs/${id}/live/latest.png`
+        : (() => {
+            const roots = [
+              RUNNER_LOGS_ROOT,
+              path.join(process.cwd(), "runner-logs"),
+              path.join(process.cwd(), "apps", "api", "runner-logs"),
+            ];
+            for (const root of roots) {
+              if (resolved.livePath.startsWith(root)) {
+                const suffix = resolved.livePath.slice(root.length).replace(/\\/g, "/");
+                return `/runner-logs${suffix.startsWith("/") ? "" : "/"}${suffix}`;
+              }
+            }
+            return `/runner-logs/${id}/live/latest.png`;
+          })();
+      sendArtifact(rel, resolved.mtimeMs);
     };
 
     await tick();
@@ -2184,6 +2261,7 @@ export default defineConfig({
   const RerunBody = z.object({
     specFile: z.string().min(1).optional(),
     grep: z.string().optional(),
+    livePreview: z.boolean().optional(),
   });
 
   app.post("/test-runs/:id/rerun", async (req, reply) => {
@@ -2205,8 +2283,14 @@ export default defineConfig({
     const parsedBody = RerunBody.safeParse(req.body ?? {});
     const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
     const grep = parsedBody.success ? parsedBody.data.grep : undefined;
+    const livePreview =
+      parsedBody.success ? parsedBody.data.livePreview : undefined;
+    const inheritedLivePreview = Boolean((params as any)?.livePreview);
+    const effectiveLivePreview = livePreview ?? inheritedLivePreview;
     if (specFile) rerunParams.file = specFile;
     if (grep) rerunParams.grep = grep ?? undefined;
+    if (livePreview !== undefined) rerunParams.livePreview = livePreview;
+    else if (inheritedLivePreview) rerunParams.livePreview = true;
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
@@ -2225,6 +2309,7 @@ export default defineConfig({
       file: specFile,
       grep,
       mode: (params as any)?.mode,
+      livePreview: effectiveLivePreview,
     });
     return reply.send({ runId: rerun.id });
   });
