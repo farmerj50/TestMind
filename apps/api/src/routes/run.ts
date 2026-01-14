@@ -19,6 +19,7 @@ import { parseResults, ParsedCase } from "../runner/result-parsers.js";
 import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
 import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
 import { enqueueAllureGenerate, enqueueRun, runQueue } from "../runner/queue.js";
+import { analyzeFailure } from "../runner/ai-analysis.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
 import { generateAndWrite } from "../testmind/service.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
@@ -1898,6 +1899,18 @@ export default defineConfig({
 
         // 5) Mark run finished
         const ok = failed === 0 && ((exec.exitCode ?? 1) === 0);
+        if (!ok) {
+          await analyzeFailure({
+            runId: run.id,
+            outDir,
+            stderr: exec.stderr ?? undefined,
+            stdout: exec.stdout ?? undefined,
+            reportPath: resultsPath,
+            grep: parsed.data.grep ?? undefined,
+            file: parsed.data.file ?? parsed.data.specPath ?? undefined,
+            baseUrl: effectiveBaseUrl,
+          });
+        }
         await prisma.testRun.update({
           where: { id: run.id },
           data: {
