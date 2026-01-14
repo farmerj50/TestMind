@@ -467,11 +467,20 @@ export const worker = new Worker(
             extraGlobs.push(relToGen);
           }
         }
-      if (rawGrep && genDir) {
+        if (rawGrep && genDir) {
           // Keep AI selection behavior aligned with suite/test-run selection.
           // If the grep isn't already regex-like, wrap it with loose word boundaries.
           grep = isRegexLike(rawGrep) ? rawGrep : buildLooseGrepFromTitle(rawGrep);
-      }
+        }
+        if (!extraEnv.PW_JSON_OUTPUT) {
+          extraEnv.PW_JSON_OUTPUT = resultsPath;
+        }
+        if (!extraEnv.PW_ALLURE_RESULTS) {
+          extraEnv.PW_ALLURE_RESULTS = path.join(outDir, "allure-results");
+        }
+        if (!extraEnv.PW_OUTPUT_DIR) {
+          extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+        }
       } else {
       const generatedRoot = path.join(work, "testmind-generated");
       if (fsSync.existsSync(generatedRoot)) {
