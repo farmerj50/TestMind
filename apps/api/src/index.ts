@@ -11,6 +11,7 @@ import fastifyStatic from "@fastify/static";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 
 import { githubRoutes } from "./routes/github.js";
 import { testRoutes } from "./routes/tests.js";
@@ -252,6 +253,22 @@ await registerWithLog("qaAgentRoutes", () => app.register(qaAgentRoutes, { prefi
 await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
+
+const require = createRequire(import.meta.url);
+try {
+  console.log("[BOOT][dep] @playwright/test =", require.resolve("@playwright/test"));
+} catch (err: any) {
+  console.log("[BOOT][dep] @playwright/test NOT RESOLVABLE:", err?.message ?? err);
+}
+try {
+  console.log("[BOOT][dep] playwright =", require.resolve("playwright"));
+} catch (err: any) {
+  console.log("[BOOT][dep] playwright NOT RESOLVABLE:", err?.message ?? err);
+}
+console.log("[BOOT][paths] TM_GENERATED_ROOT =", process.env.TM_GENERATED_ROOT ?? "");
+console.log("[BOOT][paths] TM_REPORT_ROOT =", process.env.TM_REPORT_ROOT ?? "");
+console.log("[BOOT][paths] TM_VOLUME_ROOT =", process.env.TM_VOLUME_ROOT ?? "");
+console.log("[BOOT][paths] cwd =", process.cwd());
 if (disableRecorderRoutes) {
   app.log.warn("[boot] recorderRoutes DISABLED via TM_DISABLE_RECORDER");
 } else {
