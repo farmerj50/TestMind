@@ -51,6 +51,11 @@ function normalizeTitle(value: string): string {
     .trim();
 }
 
+function buildLooseGrepFromTitle(title: string): string {
+  if (!title.trim()) return "";
+  return `(?:^|\\s)${escapeRegex(title)}(?:$|\\s)`;
+}
+
 function extractListTitles(stdout?: string | null): string[] {
   if (!stdout) return [];
   const titles: string[] = [];
@@ -462,11 +467,11 @@ export const worker = new Worker(
             extraGlobs.push(relToGen);
           }
         }
-        if (rawGrep && genDir) {
-          // Keep AI selection behavior aligned with suite/test-run selection:
-          // send the grep as-is (loose substring match) and scope via genDir.
-          grep = rawGrep;
-        }
+      if (rawGrep && genDir) {
+          // Keep AI selection behavior aligned with suite/test-run selection.
+          // If the grep isn't already regex-like, wrap it with loose word boundaries.
+          grep = isRegexLike(rawGrep) ? rawGrep : buildLooseGrepFromTitle(rawGrep);
+      }
       } else {
       const generatedRoot = path.join(work, "testmind-generated");
       if (fsSync.existsSync(generatedRoot)) {

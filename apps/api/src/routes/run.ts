@@ -2123,6 +2123,64 @@ export default defineConfig({
   app.get("/runner/test-runs/:id/events", eventsHandler);
   app.get("/test-runs/:id/events", eventsHandler);
 
+  app.get("/test-runs/:id/live", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.setHeader("X-Accel-Buffering", "no");
+    if (typeof (reply.raw as any).flushHeaders === "function") {
+      (reply.raw as any).flushHeaders();
+    }
+
+    let closed = false;
+    let interval: NodeJS.Timeout | undefined;
+    let lastMtime = 0;
+
+    const findLiveSnapshot = async () => {
+      const roots = [
+        RUNNER_LOGS_ROOT,
+        path.join(process.cwd(), "runner-logs"),
+        path.join(process.cwd(), "apps", "api", "runner-logs"),
+      ];
+      for (const root of roots) {
+        const livePath = path.join(root, id, "live", "latest.png");
+        try {
+          const st = await fs.stat(livePath);
+          return { livePath, mtimeMs: st.mtimeMs };
+        } catch {
+          // try next root
+        }
+      }
+      return null;
+    };
+
+    const sendArtifact = (relPath: string, mtimeMs: number) => {
+      if (closed) return;
+      const payload = { path: relPath, mtimeMs };
+      reply.raw.write(`event: artifact\n`);
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const tick = async () => {
+      const found = await findLiveSnapshot();
+      if (!found) return;
+      if (found.mtimeMs <= lastMtime) return;
+      lastMtime = found.mtimeMs;
+      sendArtifact(`/runner-logs/${id}/live/latest.png`, found.mtimeMs);
+    };
+
+    await tick();
+    interval = setInterval(tick, 1000);
+
+    req.raw.on("close", () => {
+      closed = true;
+      if (interval) clearInterval(interval);
+    });
+  });
+
   const RerunBody = z.object({
     specFile: z.string().min(1).optional(),
     grep: z.string().optional(),
