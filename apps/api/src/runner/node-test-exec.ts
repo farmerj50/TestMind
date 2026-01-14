@@ -467,6 +467,16 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       proc = await runPlaywright();
     }
 
+    try {
+      const reportPath = req.jsonOutPath;
+      const reportExists = fsSync.existsSync(reportPath);
+      console.log(
+        `[runner][report] path=${reportPath} exists=${reportExists} exitCode=${proc.exitCode ?? "null"}`
+      );
+    } catch (err: any) {
+      console.log("[runner][report] failed to stat report.json", err?.message ?? err);
+    }
+
     // Force reporters so JSON + allure artifacts are emitted
     
     const stdout = (debugLines.length ? `${debugLines.join("\n")}\n` : "") + (proc.stdout ?? "");
