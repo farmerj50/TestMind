@@ -439,6 +439,9 @@ export const worker = new Worker(
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const extraEnv: Record<string, string> = {};
       if (aiMode) {
+        const generatedRoot = process.env.TM_GENERATED_ROOT
+          ? path.resolve(process.env.TM_GENERATED_ROOT)
+          : path.join(work, "testmind-generated");
         let genDir = payload?.genDir;
         if (!genDir && specPath) {
           const normalized = specPath.replace(/\\/g, "/");
@@ -448,12 +451,12 @@ export const worker = new Worker(
             const tail = normalized.slice(idx + marker.length);
             const first = tail.split("/")[0];
             if (first) {
-              genDir = path.join(work, "testmind-generated", first);
+              genDir = path.join(generatedRoot, first);
             }
           }
         }
         if (!genDir) {
-          genDir = path.join(work, "testmind-generated");
+          genDir = generatedRoot;
         }
         if (genDir && !path.isAbsolute(genDir)) {
           genDir = path.resolve(work, genDir);
@@ -482,7 +485,9 @@ export const worker = new Worker(
           extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
         }
       } else {
-      const generatedRoot = path.join(work, "testmind-generated");
+      const generatedRoot = process.env.TM_GENERATED_ROOT
+        ? path.resolve(process.env.TM_GENERATED_ROOT)
+        : path.join(work, "testmind-generated");
       if (fsSync.existsSync(generatedRoot)) {
         extraEnv.TM_GENERATED_ROOT = generatedRoot;
       }
