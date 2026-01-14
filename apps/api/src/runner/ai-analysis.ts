@@ -48,7 +48,10 @@ const flagEnabled = () => {
   return ["1", "true", "yes", "on"].includes(v) && !!process.env.OPENAI_API_KEY;
 };
 
-const MODEL = process.env.ANALYSIS_MODEL || "gpt-4o-mini";
+function getModel() {
+  loadBackendEnv();
+  return process.env.ANALYSIS_MODEL || "gpt-4o-mini";
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,6 +91,16 @@ export async function analyzeFailure(opts: {
         // ignore missing report
       }
     }
+    let pageSignals = "";
+    try {
+      const raw = await fs.readFile(
+        path.join(opts.outDir, "page-signals.json"),
+        "utf8"
+      );
+      pageSignals = raw.slice(0, 8000);
+    } catch {
+      // ignore missing signals
+    }
 
     const prompt = `
 You are a senior QA triage assistant. Summarize the likely cause and remediation for this failed run.
@@ -100,11 +113,13 @@ Context:
 - stderr: ${opts.stderr?.slice(0, 4000) || "n/a"}
 - stdout: ${opts.stdout?.slice(0, 4000) || "n/a"}
 - report.json snippet: ${reportSnippet}
+- page-signals.json snippet: ${pageSignals || "n/a"}
 `;
 
     const completion = await openai.chat.completions.create({
-      model: MODEL,
+      model: getModel(),
       temperature: 0.2,
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "You are a concise QA triage assistant. Respond in JSON." },
         { role: "user", content: prompt },
@@ -120,7 +135,7 @@ Context:
           summary: String(maybe.summary || "").slice(0, 500),
           cause: String(maybe.cause || "").slice(0, 500),
           suggestion: String(maybe.suggestion || "").slice(0, 500),
-          model: MODEL,
+          model: getModel(),
         };
       }
     } catch {
@@ -132,7 +147,7 @@ Context:
         summary: content.slice(0, 500) || "Unable to parse analysis",
         cause: "",
         suggestion: "",
-        model: MODEL,
+        model: getModel(),
       };
     }
 

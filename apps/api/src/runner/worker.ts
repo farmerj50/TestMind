@@ -487,12 +487,17 @@ export const worker = new Worker(
         extraEnv.TM_GENERATED_ROOT = generatedRoot;
       }
       }
-      if (payload?.livePreview) {
+      const livePreviewEnabled =
+        payload?.livePreview ?? Boolean((runParams as any)?.livePreview);
+      if (livePreviewEnabled) {
         extraEnv.TM_LIVE_PREVIEW = "1";
         extraEnv.TM_RUN_LOG_DIR = outDir;
         if (!extraEnv.PW_OUTPUT_DIR) {
           extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
         }
+      }
+      if (!extraEnv.TM_RUN_LOG_DIR) {
+        extraEnv.TM_RUN_LOG_DIR = outDir;
       }
       let exec;
       try {
