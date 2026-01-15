@@ -305,6 +305,15 @@ export async function installDeps(repoRoot: string, workspaceCwd = repoRoot) {
 export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
   const fw = await detectFramework(req.workdir);
   const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+    const localPlaywrightBin = path.join(
+      process.cwd(),
+      "node_modules",
+      ".bin",
+      process.platform.startsWith("win") ? "playwright.cmd" : "playwright"
+    );
+    const playwrightCmd = fsSync.existsSync(localPlaywrightBin)
+      ? localPlaywrightBin
+      : npx;
   const normalizePath = (v: string) => v.replace(/\\/g, "/");
 
   // ---- Playwright path ----
@@ -354,6 +363,10 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     if (nodePathParts.size) {
       env.NODE_PATH = Array.from(nodePathParts).join(path.delimiter);
     }
+    const localBin = path.join(process.cwd(), "node_modules", ".bin");
+    env.PATH = env.PATH
+      ? `${localBin}${path.delimiter}${env.PATH}`
+      : localBin;
 
     const aiTestDir =
       req.extraEnv?.TM_TEST_DIR || process.env.TM_TEST_DIR || undefined;
@@ -394,7 +407,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     }
 
     let resolvedConfigPath = found.configPath;
-    const absConfigPath = path.isAbsolute(resolvedConfigPath)
+    let absConfigPath = path.isAbsolute(resolvedConfigPath)
       ? resolvedConfigPath
       : path.resolve(found.cwd, resolvedConfigPath);
     if (!fsSync.existsSync(absConfigPath)) {
@@ -402,13 +415,13 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       const alt = path.resolve(__dirname, "..", "..", "..", "..", "tm-ai.playwright.config.mjs");
       if (fsSync.existsSync(fallback)) {
         resolvedConfigPath = fallback;
+        absConfigPath = fallback;
       } else if (fsSync.existsSync(alt)) {
         resolvedConfigPath = alt;
+        absConfigPath = alt;
       }
     }
-    const configArg = path.isAbsolute(resolvedConfigPath)
-      ? normalizePath(resolvedConfigPath)
-      : normalizePath(path.relative(found.cwd, resolvedConfigPath));
+    const configArg = normalizePath(absConfigPath);
     args.push("--config", configArg);
 
     const timeoutMs = req.runTimeout ?? runTimeout;
@@ -416,10 +429,11 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     const missingBrowserError = (text: string | undefined) =>
       !!text && /Executable doesn't exist|chrome-headless-shell/.test(text);
 
+    const spawnCwd = isAiConfig && aiTestDir ? process.cwd() : found.cwd;
     const installBrowsers = async () => {
       try {
         await execa(npx, ["-y", "playwright", "install", "--with-deps"], {
-          cwd: found.cwd,
+          cwd: spawnCwd,
           stdio: "pipe",
         });
       } catch {
@@ -434,8 +448,9 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     if (debugSpawn) {
       const grepIdx = finalArgs.indexOf("--grep");
       const g = grepIdx >= 0 ? finalArgs[grepIdx + 1] : "";
-      debugLines.push(`[spawn-debug] cwd=${found.cwd}`);
-      debugLines.push(`[spawn-debug] args=${JSON.stringify([npx, ...finalArgs])}`);
+      debugLines.push(`[spawn-debug] cwd=${spawnCwd}`);
+      debugLines.push(`[spawn-debug] cmd=${playwrightCmd}`);
+      debugLines.push(`[spawn-debug] args=${JSON.stringify([playwrightCmd, ...finalArgs])}`);
       debugLines.push(`[spawn-debug] grep=${JSON.stringify(g)}`);
       debugLines.push(
         `[spawn-debug] grepCodepoints=${Array.from(g)
@@ -453,9 +468,13 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       for (const line of debugLines) console.log(line);
     }
 
+    console.log(
+      `[runner][pwbin] repoRoot=${process.cwd()} pwBin=${localPlaywrightBin} exists=${fsSync.existsSync(localPlaywrightBin)}`
+    );
+
     const runPlaywright = () =>
-      execa(npx, finalArgs, {
-        cwd: found.cwd,
+      execa(playwrightCmd, finalArgs, {
+        cwd: spawnCwd,
         env,
         reject: false,
         timeout: timeoutMs,
