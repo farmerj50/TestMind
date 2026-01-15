@@ -229,6 +229,9 @@ const recorderState = globalThis as typeof globalThis & { __tmRecorderHelperStar
 const allowDebugRoutes =
   validatedEnv.NODE_ENV !== "production" || validatedEnv.ENABLE_DEBUG_ROUTES;
 const disableRecorderRoutes = ["1", "true"].includes((process.env.TM_DISABLE_RECORDER ?? "").toLowerCase());
+const allowLocalRecorderHelper =
+  validatedEnv.NODE_ENV !== "production" ||
+  (process.env.TM_ALLOW_LOCAL_RECORDER_HELPER ?? "") === "1";
 const printRoutesEnabled = (process.env.TM_PRINT_ROUTES ?? "").toLowerCase() === "1";
 const debugToken = (process.env.DEBUG_TOKEN ?? "").trim();
 const debugVolumeEnabled = !!debugToken;
@@ -973,6 +976,10 @@ const startWorkersOnce = () => {
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch
 const startRecorderHelper = (force = false) => {
   if (recorderState.__tmRecorderHelperStarted) return;
+  if (!allowLocalRecorderHelper) {
+    app.log.info("[recorder] local helper disabled in production");
+    return;
+  }
   if (!validatedEnv.START_RECORDER_HELPER && !force) {
     app.log.info("[recorder] START_RECORDER_HELPER=false; skipping auto-start");
     return;
@@ -1016,6 +1023,10 @@ app.get("/recorder/helper/status", async () => {
     }
   }
 
+  if (!allowLocalRecorderHelper) {
+    return { started: false, configured: false, mode: "remote", helperUrl: null };
+  }
+
   return {
     started: !!recorderState.__tmRecorderHelperStarted,
     configured: !!validatedEnv.START_RECORDER_HELPER,
@@ -1034,6 +1045,10 @@ app.post("/recorder/helper/start", async () => {
     } catch {
       return { started: false, configured: true, mode: "remote", helperUrl };
     }
+  }
+
+  if (!allowLocalRecorderHelper) {
+    return { started: false, configured: false, mode: "remote", helperUrl: null };
   }
 
   startRecorderHelper(true);
