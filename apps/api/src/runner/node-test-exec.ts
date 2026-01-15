@@ -305,15 +305,16 @@ export async function installDeps(repoRoot: string, workspaceCwd = repoRoot) {
 export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
   const fw = await detectFramework(req.workdir);
   const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
-    const localPlaywrightBin = path.join(
-      process.cwd(),
-      "node_modules",
-      ".bin",
-      process.platform.startsWith("win") ? "playwright.cmd" : "playwright"
-    );
-    const playwrightCmd = fsSync.existsSync(localPlaywrightBin)
-      ? localPlaywrightBin
-      : npx;
+  const repoRoot = req.extraEnv?.TM_SOURCE_ROOT ?? req.workdir ?? process.cwd();
+  const localPlaywrightBin = path.join(
+    repoRoot,
+    "node_modules",
+    ".bin",
+    process.platform.startsWith("win") ? "playwright.cmd" : "playwright"
+  );
+  const playwrightCmd = fsSync.existsSync(localPlaywrightBin)
+    ? localPlaywrightBin
+    : npx;
   const normalizePath = (v: string) => v.replace(/\\/g, "/");
 
   // ---- Playwright path ----
@@ -356,17 +357,25 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
           .filter(Boolean)
       : [];
     for (const entry of existingNodePath) nodePathParts.add(entry);
-    addNodePath(process.cwd());
-    addNodePath(path.join(process.cwd(), "node_modules"));
+    addNodePath(repoRoot);
+    addNodePath(path.join(repoRoot, "node_modules"));
     addNodePath(req.workdir);
     addNodePath(path.join(req.workdir, "node_modules"));
     if (nodePathParts.size) {
       env.NODE_PATH = Array.from(nodePathParts).join(path.delimiter);
     }
-    const localBin = path.join(process.cwd(), "node_modules", ".bin");
-    env.PATH = env.PATH
-      ? `${localBin}${path.delimiter}${env.PATH}`
+    const localBin = path.join(repoRoot, "node_modules", ".bin");
+    const existingPath =
+      env.PATH ||
+      (env as Record<string, string | undefined>).Path ||
+      process.env.PATH ||
+      process.env.Path ||
+      "";
+    env.PATH = existingPath
+      ? `${localBin}${path.delimiter}${existingPath}`
       : localBin;
+    // Keep Windows-friendly PATH casing so child processes can find node.
+    (env as Record<string, string>).Path = env.PATH;
 
     const aiTestDir =
       req.extraEnv?.TM_TEST_DIR || process.env.TM_TEST_DIR || undefined;
@@ -385,7 +394,8 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     };
     const mappedGlobs = (req.extraGlobs ?? []).map(mapAiGlob);
 
-    const args: string[] = ["playwright", "test"];
+    const args: string[] =
+      playwrightCmd === npx ? ["playwright", "test"] : ["test"];
     if (req.headed) {
       args.push("--headed");
     }
@@ -395,14 +405,12 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       if (safeGrep) args.push("--grep", safeGrep);
     }
 
-    if (mappedGlobs.length && !(aiTestDir && isAiConfig)) {
+    if (mappedGlobs.length) {
+      const baseDir = aiTestDir ?? req.workdir ?? repoRoot;
       for (const g of mappedGlobs) {
-        // Playwright treats positional args as regex filters for test files.
-        // Absolute paths or parent traversal often lead to "No tests found".
-        if (path.isAbsolute(g)) continue;
-        const n = normalizePath(g);
-        if (n.startsWith("..")) continue;
-        args.push(n);
+        const abs = path.isAbsolute(g) ? g : path.resolve(baseDir, g);
+        if (!fsSync.existsSync(abs)) continue;
+        args.push(normalizePath(abs));
       }
     }
 
@@ -429,7 +437,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     const missingBrowserError = (text: string | undefined) =>
       !!text && /Executable doesn't exist|chrome-headless-shell/.test(text);
 
-    const spawnCwd = isAiConfig && aiTestDir ? process.cwd() : found.cwd;
+    const spawnCwd = repoRoot;
     const installBrowsers = async () => {
       try {
         await execa(npx, ["-y", "playwright", "install", "--with-deps"], {
@@ -459,8 +467,9 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       );
       const globHints = (req.extraGlobs ?? []).map((g) => {
         const mapped = mapAiGlob(g);
-        const abs = path.isAbsolute(mapped) ? mapped : path.join(found.cwd, mapped);
-        return { glob: g, exists: fsSync.existsSync(abs) };
+        const baseDir = aiTestDir ?? req.workdir ?? repoRoot;
+        const abs = path.isAbsolute(mapped) ? mapped : path.resolve(baseDir, mapped);
+        return { glob: g, exists: fsSync.existsSync(abs), abs };
       });
       if (globHints.length) {
         debugLines.push(`[spawn-debug] extraGlobs=${JSON.stringify(globHints)}`);
@@ -469,7 +478,7 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
     }
 
     console.log(
-      `[runner][pwbin] repoRoot=${process.cwd()} pwBin=${localPlaywrightBin} exists=${fsSync.existsSync(localPlaywrightBin)}`
+      `[runner][pwbin] repoRoot=${repoRoot} pwBin=${localPlaywrightBin} exists=${fsSync.existsSync(localPlaywrightBin)}`
     );
 
     const runPlaywright = () =>
