@@ -31,6 +31,7 @@ import RunResults from "../components/RunResults";
 
 
 import RunLogs from "../components/RunLogs";
+import { LoadingOverlay } from "../components/ui/LoadingOverlay";
 import { useTelemetryStream, type TelemetryEvent } from "../hooks/useTelemetryStream";
 
 
@@ -1410,6 +1411,7 @@ const fetchMissingLocators = useCallback(
 
 
     <div className="p-6 space-y-4">
+      <LoadingOverlay open={loading} subtitle="Loading test run..." showTimer />
 
 
 

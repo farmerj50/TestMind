@@ -2,30 +2,30 @@
   "cookies": [
     {
       "name": "m",
-      "value": "cf44331a-dfb7-4891-bcae-7bbb0494763b51902e",
+      "value": "3a19422b-931d-4566-a16e-db5ddd2c987933fee8",
       "domain": "m.stripe.com",
       "path": "/",
-      "expires": 1802456640.171448,
+      "expires": 1803001423.688064,
       "httpOnly": true,
       "secure": true,
       "sameSite": "None"
     },
     {
       "name": "__stripe_mid",
-      "value": "43171f92-7155-4491-a145-6e35f8055a8eecd8d8",
+      "value": "73db78fa-3edc-40e3-9202-7e08c99e5c4741f605",
       "domain": ".www.justicepathlaw.com",
       "path": "/",
-      "expires": 1799432638,
+      "expires": 1799977419,
       "httpOnly": false,
       "secure": true,
       "sameSite": "Strict"
     },
     {
       "name": "__stripe_sid",
-      "value": "dd15dd51-c949-4ed0-aafa-388fd1c740d7a278b2",
+      "value": "1eb7d5ec-441e-4fa8-9a07-57ac901412fd30bc44",
       "domain": ".www.justicepathlaw.com",
       "path": "/",
-      "expires": 1767898438,
+      "expires": 1768443219,
       "httpOnly": false,
       "secure": true,
       "sameSite": "Strict"
