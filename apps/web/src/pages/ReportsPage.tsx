@@ -168,13 +168,12 @@ export default function ReportsPage() {
   );
 
   const filteredRuns = useMemo(() => {
-    if (range === "all") return runs;
+    const matchesStatus = (r: Run) => statusFilter.includes(r.status);
+    if (range === "all") return runs.filter(matchesStatus);
     const now = Date.now();
     const cutoff = range === "7d" ? now - 7 * 24 * 3600 * 1000 : now - 30 * 24 * 3600 * 1000;
     return runs.filter(
-      (r) =>
-        new Date(r.createdAt).getTime() >= cutoff &&
-        statusFilter.includes(r.status)
+      (r) => new Date(r.createdAt).getTime() >= cutoff && matchesStatus(r)
     );
   }, [runs, range, statusFilter]);
 
