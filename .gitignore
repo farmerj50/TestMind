@@ -24,8 +24,6 @@ coverage
 .tmp
 .turbo
 .vite
-playwright-report/
-testmind-reports/
 
 # Env
 .env
@@ -43,14 +41,11 @@ testmind-reports/
 apps/*/node_modules
 packages/*/node_modules
 runner-logs
-apps/api/testmind-curated/
 apps/api/testmind-generated/playwright-ts/recordings/
 test-results/
 apps/api/test-results/
 apps/web/test-results/
 **/test-results/.last-run.json
-apps/web/testmind-generated/
-testmind-generated/
 testmind-generated/**/recordings/
 apps/web/state.json
 
