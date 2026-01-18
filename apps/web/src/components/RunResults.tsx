@@ -77,13 +77,15 @@ export default function RunResults({
       <CircleAlert className="h-4 w-4 text-amber-500" />
     );
 
-  const handleRerun = async (specPath?: string | null) => {
+  const handleRerun = async (specPath?: string | null, title?: string | null) => {
     if (!specPath) return;
     try {
       setRerunLoadingId(specPath);
+      const testTitle = title ?? undefined;
+      const grep = testTitle ? buildLooseGrep(testTitle) : undefined;
       await apiFetch(`/runner/test-runs/${runId}/rerun`, {
         method: "POST",
-        body: JSON.stringify({ specFile: specPath, grep: null }),
+        body: JSON.stringify({ specFile: specPath, grep }),
       });
     } catch (e: any) {
       alert(e?.message ?? "Failed to trigger rerun");
@@ -212,7 +214,7 @@ export default function RunResults({
                   size="sm"
                   variant="outline"
                   disabled={rerunLoadingId === path}
-                  onClick={() => handleRerun(path)}
+                  onClick={() => handleRerun(path, r.case.title)}
                 >
                   <RotateCcw className="mr-1 h-4 w-4" />
                   {rerunLoadingId === path ? "Rerunning..." : "Rerun this spec"}

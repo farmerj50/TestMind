@@ -8,9 +8,11 @@ import type { AgentScenarioPayload, AgentScenarioStep } from "./types.js";
 import { ensureCuratedProjectEntry, agentSuiteId } from "../testmind/curated-store.js";
 import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library.js";
+import { decryptSecret } from "../lib/crypto.js";
 
 const defaultCoverage: Prisma.InputJsonValue = {};
 const CURATED_ADAPTER = "playwright-ts";
+const OPENAI_SECRET_KEYS = ["OPENAI_API_KEY", "OPEN_API_KEY"] as const;
 
 async function ensureCuratedSuiteRecord(projectId: string, projectName: string, ownerId: string) {
   try {
@@ -178,6 +180,26 @@ async function replaceScenarios(pageId: string, scenarios: AgentScenarioPayload[
   });
 }
 
+async function resolveOpenAiKey(projectId?: string) {
+  if (!projectId) {
+    return { apiKey: process.env.OPENAI_API_KEY, availableKeys: [] as string[] };
+  }
+  const secrets = await prisma.projectSecret.findMany({
+    where: { projectId },
+    select: { key: true, value: true },
+  });
+  const availableKeys = secrets.map((s) => s.key);
+  const secret = secrets.find((s) => OPENAI_SECRET_KEYS.includes(s.key as any));
+  if (!secret) {
+    return { apiKey: process.env.OPENAI_API_KEY, availableKeys };
+  }
+  try {
+    return { apiKey: decryptSecret(secret.value), availableKeys };
+  } catch {
+    throw new Error("Failed to decrypt OPENAI_API_KEY secret. Please re-save it.");
+  }
+}
+
 export async function runAgentForPage(userId: string, pageId: string) {
   const page = await prisma.agentPage.findFirst({
     where: { id: pageId, session: { userId } },
@@ -192,11 +214,20 @@ export async function runAgentForPage(userId: string, pageId: string) {
 
   try {
     const scan = await scanPage(page.url);
+    const { apiKey, availableKeys } = await resolveOpenAiKey(page.session.projectId ?? undefined);
+    if (!apiKey) {
+      throw new Error(
+        `OPENAI_API_KEY is required for the agent. Add OPENAI_API_KEY or OPEN_API_KEY under Integrations > Secrets for this project. Keys found: ${
+          availableKeys.length ? availableKeys.join(", ") : "none"
+        }`
+      );
+    }
     const llm = await requestPageAnalysis({
       baseUrl: page.session.baseUrl,
       url: page.url,
       instructions: page.instructions ?? page.session.instructions ?? undefined,
       scan,
+      apiKey,
     });
 
     await prisma.$transaction([
@@ -228,6 +259,19 @@ export async function runAgentForPage(userId: string, pageId: string) {
     }).catch(() => {});
     throw err;
   }
+}
+
+export async function deleteAgentPage(userId: string, pageId: string) {
+  const page = await prisma.agentPage.findFirst({
+    where: { id: pageId, session: { userId } },
+    select: { id: true, sessionId: true },
+  });
+  if (!page) throw new Error("Page not found");
+
+  await prisma.agentScenario.deleteMany({ where: { pageId } });
+  await prisma.agentPage.delete({ where: { id: pageId } });
+
+  return getAgentSession(userId, page.sessionId);
 }
 
 function pageSlug(pathname: string) {

@@ -10,6 +10,7 @@ import {
   getAgentSession,
   addAgentPage,
   runAgentForPage,
+  deleteAgentPage,
   attachScenarioToProject,
   getOrCreateProjectSession,
   getLatestSessionForProject,
@@ -255,6 +256,18 @@ export default async function agentRoutes(app: FastifyInstance) {
     }
   });
 
+  app.delete("/tm/agent/pages/:id", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    try {
+      const session = await deleteAgentPage(userId, id);
+      return reply.send({ session });
+    } catch (err: any) {
+      return reply.code(404).send({ error: err?.message ?? "Page not found" });
+    }
+  });
+
   app.post("/tm/agent/scenarios/:id/attach", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
@@ -317,6 +330,18 @@ export default async function agentRoutes(app: FastifyInstance) {
     const session = await getAgentSession(userId, id);
     if (!session) return reply.code(404).send({ error: "Session not found" });
     return reply.send({ session });
+  });
+
+  app.delete("/agent/pages/:id", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    try {
+      const session = await deleteAgentPage(userId, id);
+      return reply.send({ session });
+    } catch (err: any) {
+      return reply.code(404).send({ error: err?.message ?? "Page not found" });
+    }
   });
 
   app.patch("/agent/sessions/:id", async (req, reply) => {

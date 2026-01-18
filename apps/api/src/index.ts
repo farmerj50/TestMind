@@ -23,6 +23,7 @@ import jiraRoutes from "./routes/jira.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import qaAgentRoutes from "./routes/qaAgent.js";
 import securityRoutes from "./routes/security.js";
+import testBuilderRoutes from "./routes/testBuilder.js";
 import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
@@ -254,6 +255,7 @@ await registerWithLog("jiraRoutes", () => app.register(jiraRoutes, { prefix: "/"
 await registerWithLog("secretsRoutes", () => app.register(secretsRoutes, { prefix: "/" }));
 await registerWithLog("qaAgentRoutes", () => app.register(qaAgentRoutes, { prefix: "/" }));
 await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
+await registerWithLog("testBuilderRoutes", () => app.register(testBuilderRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
 

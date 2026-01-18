@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
 import { ensureCuratedProjectEntry } from "../testmind/curated-store.js";
 import { GENERATED_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
@@ -88,6 +89,7 @@ export default async function recorderRoutes(app: FastifyInstance) {
 
   app.post("/recorder/specs", async (req, reply) => {
     await ensureStorageDirs();
+    const { userId } = getAuth(req);
     const parsed = SaveBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
@@ -131,10 +133,12 @@ export default async function recorderRoutes(app: FastifyInstance) {
       fsSync.mkdirSync(destDir, { recursive: true });
       const destPath = path.join(destDir, `${fileSlug}.spec.${ext}`);
       await fs.copyFile(absPath, destPath);
-      if (projectExists.ownerId) {
+      const targetUserIds = [userId, projectExists.ownerId].filter(Boolean);
+      const uniqueUserIds = Array.from(new Set(targetUserIds));
+      for (const uid of uniqueUserIds) {
         const userRoot = path.join(
           GENERATED_ROOT,
-          `${USER_ROOT_PREFIX}${projectExists.ownerId}`,
+          `${USER_ROOT_PREFIX}${uid}`,
           "recordings",
           projectId
         );

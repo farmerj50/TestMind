@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import HowToHint from "../components/HowToHint";
 import {
   Card,
   CardContent,
@@ -16,12 +17,18 @@ import {
   SelectItem,
   SelectTrigger,
 } from "../components/ui/select";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 type Project = {
   id: string;
   name: string;
   repoUrl?: string;
+};
+
+type ProjectSecret = {
+  id: string;
+  key: string;
+  name: string;
 };
 
 type AgentScenario = {
@@ -80,6 +87,8 @@ export default function AgentScanPage() {
   const [projectSessions, setProjectSessions] = useState<AgentSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [busyGenerateAll, setBusyGenerateAll] = useState<string | null>(null);
+  const [hasOpenAiKey, setHasOpenAiKey] = useState<boolean | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -105,6 +114,7 @@ export default function AgentScanPage() {
     setBaseUrl(stored);
     fetchSession(selectedProject);
     fetchSessionsForProject(selectedProject);
+    fetchProjectSecrets(selectedProject);
   }, [selectedProject]);
 
   async function fetchSession(projectId: string, opts?: { silent?: boolean }) {
@@ -138,6 +148,20 @@ export default function AgentScanPage() {
       }
     } catch {
       // ignore
+    }
+  }
+
+  async function fetchProjectSecrets(projectId: string) {
+    try {
+      const res = await apiFetch<{ secrets: ProjectSecret[] }>(
+        `/projects/${projectId}/secrets`
+      );
+      const hasKey = res.secrets.some(
+        (s) => s.key === "OPENAI_API_KEY" || s.key === "OPEN_API_KEY"
+      );
+      setHasOpenAiKey(hasKey);
+    } catch {
+      setHasOpenAiKey(null);
     }
   }
 
@@ -267,6 +291,23 @@ export default function AgentScanPage() {
     }
   }
 
+  async function deletePage(pageId: string) {
+    if (!selectedProject) return;
+    setDeleteBusy(pageId);
+    setError(null);
+    try {
+      const res = await apiFetch<{ session: AgentSession | null }>(
+        `/tm/agent/pages/${pageId}`,
+        { method: "DELETE" }
+      );
+      setSession(res.session ?? null);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to delete scan");
+    } finally {
+      setDeleteBusy(null);
+    }
+  }
+
   async function handleCreateProject() {
     if (!baseUrl.trim()) {
       setError("Enter a Base URL first to create a project.");
@@ -304,6 +345,16 @@ export default function AgentScanPage() {
             project.
           </p>
         </div>
+        <HowToHint
+          storageKey="tm-howto-agent-scan"
+          title="How to scan pages"
+          steps={[
+            "Open Integrations > Secrets for this project and add OPENAI_API_KEY (or OPEN_API_KEY).",
+            "Set Base URL once (ex: https://app.example.com) and it is saved per project.",
+            "Use Page URL or path: enter /pricing for a path, or paste a full URL to override the base.",
+            "Optional: add instructions to focus the scan on specific flows or risks.",
+          ]}
+        />
         {selectedProject && (
           <Link
             to={`/projects/${selectedProject}`}
@@ -317,6 +368,11 @@ export default function AgentScanPage() {
       {error && (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
           {error}
+        </div>
+      )}
+      {hasOpenAiKey === false && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Missing OPENAI_API_KEY for this project. Add OPENAI_API_KEY (or OPEN_API_KEY) under Integrations &gt; Secrets to run scans.
         </div>
       )}
 
@@ -436,7 +492,7 @@ export default function AgentScanPage() {
             <div className="flex items-center gap-2">
               <Button
                 type="submit"
-                disabled={scanning || !selectedProject}
+                disabled={scanning || !selectedProject || hasOpenAiKey === false}
                 className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
               >
                 {scanning ? (
@@ -493,7 +549,7 @@ export default function AgentScanPage() {
             </div>
           )}
           {session && session.pages.length > 0 && (
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="rounded-md border border-slate-200 bg-white p-3">
               <div className="mb-2 text-xs font-medium text-slate-700">Page map</div>
               <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                 {session.pages.map((page) => (
@@ -513,9 +569,29 @@ export default function AgentScanPage() {
                     >
                       {page.status}
                     </span>
-                    <Button size="sm" variant="ghost" onClick={() => apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(()=>fetchSession(selectedProject,{silent:true}))}>
-                      Run page
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(() =>
+                            fetchSession(selectedProject, { silent: true })
+                          )
+                        }
+                      >
+                        Run page
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deletePage(page.id)}
+                        disabled={deleteBusy === page.id}
+                        title="Delete scan"
+                        className="text-rose-600 hover:text-rose-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                     {page.coverage && (
                       <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-600">
@@ -547,7 +623,7 @@ export default function AgentScanPage() {
             <p className="text-sm text-slate-500">No pages scanned yet.</p>
           ) : (
             session.pages.map((page) => (
-              <div key={page.id} className="rounded-lg border p-4 space-y-3">
+              <div key={page.id} className="rounded-lg border p-4 space-y-3 bg-white">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-slate-900">
@@ -603,9 +679,21 @@ export default function AgentScanPage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="default" className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm" disabled={busyGenerateAll === page.id} onClick={() => generateAllAccepted(page)}
+                    variant="default"
+                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
+                    disabled={busyGenerateAll === page.id}
+                    onClick={() => generateAllAccepted(page)}
                   >
                     {busyGenerateAll === page.id ? "Generating…" : "Generate all accepted"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                    onClick={() => deletePage(page.id)}
+                    disabled={deleteBusy === page.id}
+                  >
+                    Delete scan
                   </Button>
                 </div>
 

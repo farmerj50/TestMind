@@ -4,14 +4,16 @@ import type { PageAnalysisResult, AgentScenarioPayload } from "./types.js";
 
 const MODEL = process.env.AGENT_MODEL_MODEL || process.env.AGENT_MODEL || "gpt-4o-mini";
 
-let client: OpenAI | null = null;
+const clients = new Map<string, OpenAI>();
 
-function ensureClient() {
-  if (client) return client;
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required for the agent.");
-  client = new OpenAI({ apiKey });
-  return client;
+function ensureClient(apiKey?: string) {
+  const resolved = apiKey ?? process.env.OPENAI_API_KEY;
+  if (!resolved) throw new Error("OPENAI_API_KEY is required for the agent.");
+  const existing = clients.get(resolved);
+  if (existing) return existing;
+  const created = new OpenAI({ apiKey: resolved });
+  clients.set(resolved, created);
+  return created;
 }
 
 export async function requestPageAnalysis(opts: {
@@ -19,8 +21,9 @@ export async function requestPageAnalysis(opts: {
   url: string;
   instructions?: string;
   scan: RouteScan;
+  apiKey?: string;
 }): Promise<PageAnalysisResult> {
-  const openai = ensureClient();
+  const openai = ensureClient(opts.apiKey);
   const payload = {
     baseUrl: opts.baseUrl,
     pageUrl: opts.url,
