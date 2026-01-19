@@ -32,14 +32,14 @@ export default function LandingPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--tm-bg)] text-slate-900">
       <div
-        className="pointer-events-none absolute inset-0 -z-1 landing-pulse"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[40rem] -z-1 landing-pulse"
         style={{
           background: `
             radial-gradient(circle at 20% 25%, rgba(255,255,255,0.15), transparent 45%),
             radial-gradient(circle at 75% 30%, rgba(200,220,255,0.12), transparent 50%),
             radial-gradient(circle at 40% 75%, rgba(255,220,160,0.1), transparent 45%),
             var(--tm-bg)`,
-          opacity: 0.65,
+          opacity: 0.3,
         }}
       />
       <SiteHeader />
@@ -423,7 +423,7 @@ function PriceCard({
 }) {
   return (
     <Card
-      className={`relative border ${highlighted ? "shadow-md bg-white" : "shadow-sm bg-white"} border-slate-200`}
+      className={`relative flex h-full flex-col border ${highlighted ? "shadow-md bg-white" : "shadow-sm bg-white"} border-slate-200`}
     >
       {tag && <span className="absolute right-3 top-3 rounded-full bg-slate-900 px-2 py-1 text-xs font-semibold text-white">{tag}</span>}
       <CardHeader>
@@ -433,8 +433,8 @@ function PriceCard({
         </div>
         <p className="text-sm text-slate-800">{blurb}</p>
       </CardHeader>
-      <CardContent>
-        <ul className="space-y-2 text-sm text-slate-900">
+      <CardContent className="flex flex-1 flex-col">
+        <ul className="flex-1 space-y-2 text-sm text-slate-900">
           {features.map(f => (
             <li key={f} className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-600" /> {f}
@@ -446,21 +446,27 @@ function PriceCard({
           <>
             <SignedOut>
           <SignUpButton mode="modal">
-                <Button className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
-                  {cta}
-                </Button>
+                <div className="mt-6">
+                  <Button className="w-full" variant={highlighted ? 'default' : 'outline'}>
+                    {cta}
+                  </Button>
+                </div>
               </SignUpButton>
             </SignedOut>
             <SignedIn>
-              <Button asChild className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
-                <Link to="/dashboard">{cta}</Link>
-              </Button>
+              <div className="mt-6">
+                <Button asChild className="w-full" variant={highlighted ? 'default' : 'outline'}>
+                  <Link to="/dashboard">{cta}</Link>
+                </Button>
+              </div>
             </SignedIn>
           </>
         ) : (
-          <Button className="mt-6 w-full" variant={highlighted ? 'default' : 'outline'}>
-            {cta}
-          </Button>
+          <div className="mt-6">
+            <Button className="w-full" variant={highlighted ? 'default' : 'outline'}>
+              {cta}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
