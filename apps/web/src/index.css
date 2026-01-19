@@ -9,19 +9,9 @@
 }
 
 html, body, #root {
-  @apply text-slate-900 antialiased;
-  background-color: transparent;
+  @apply text-slate-900 subpixel-antialiased;
+  background-color: var(--tm-bg);
   min-height: 100%;
-}
-
-/* Persistent backdrop so nested panels with white backgrounds still show the tint */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: var(--tm-bg);
-  z-index: -2;
-  pointer-events: none;
 }
 
 body {
