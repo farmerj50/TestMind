@@ -270,7 +270,7 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         const effectiveBaseUrl = baseUrlFromSteps || baseUrl;
         const isBaseUrlDirective = (line: string) => /base\s*url\s*[:=]/i.test(line);
         const filteredStepLines = stepLines.filter((line) => !isBaseUrlDirective(line));
-        const parsedSteps = filteredStepLines.length ? filteredStepLines.map(parseStepLine) : [];
+        const parsedSteps: Step[] = filteredStepLines.length ? filteredStepLines.map(parseStepLine) : [];
 
         const toSimpleAction = (step: Step) => {
           const selector = (step as any).selector as string | undefined;
