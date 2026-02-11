@@ -316,7 +316,7 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
             case "upload":
               return `    await page.locator(${JSON.stringify(step.selector)}).setInputFiles(${JSON.stringify(step.path)});`;
             default:
-              return `    // TODO: ${JSON.stringify(step.kind)}`;
+              return `    // TODO: unsupported step`;
           }
         };
 
