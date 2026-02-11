@@ -50,7 +50,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # -------------------------
 # runner: prod deps + runtime only
 # -------------------------
-FROM mcr.microsoft.com/playwright:v1.57.0-jammy AS runner
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
