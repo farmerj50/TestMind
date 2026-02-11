@@ -73,6 +73,23 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+    if (loading) return;
+    if (projects.length > 0) return;
+    const key = `tm:github-cleaned:${userId}`;
+    if (localStorage.getItem(key)) return;
+    (async () => {
+      try {
+        await apiFetch("/auth/github/reset", { method: "POST", auth: "include" }).catch(() => {});
+        await apiFetch("/github/status", { method: "DELETE", auth: "include" }).catch(() => {});
+      } finally {
+        localStorage.setItem(key, "1");
+      }
+    })();
+  }, [user?.id, loading, projects.length, apiFetch]);
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("github") === "connected") {
       setGithubSuccess("GitHub connected successfully");
@@ -121,6 +138,8 @@ export default function DashboardPage() {
       setErr(e.message || "Failed to delete project");
     }
   }
+
+  const hasProjects = projects.length > 0;
 
   return (
     <>
@@ -217,7 +236,11 @@ export default function DashboardPage() {
         {/* Reporting summary */}
         <div className="rounded-lg border border-slate-300 bg-white p-4 md:col-span-2 xl:col-span-1">
           <h2 className="mb-3 text-sm font-medium text-slate-800">Test run summary</h2>
-          <ReportSummary refreshKey={refreshKey} />
+          {hasProjects ? (
+            <ReportSummary refreshKey={refreshKey} />
+          ) : (
+            <div className="text-sm text-slate-500">No runs yet. Create your first project.</div>
+          )}
         </div>
 
         {/* My projects */}
@@ -309,12 +332,23 @@ export default function DashboardPage() {
           )}
         </div>
         {/* Generated tests preview */}
-        <GeneratedTestsPanel key={`${adapterId}:${genRefresh}`} />
+        {hasProjects ? (
+          <GeneratedTestsPanel key={`${adapterId}:${genRefresh}`} />
+        ) : (
+          <div className="rounded-lg border border-slate-300 bg-[var(--tm-bg)] p-4 md:col-span-2 xl:col-span-2">
+            <h2 className="mb-3 text-sm font-medium text-slate-800">Generated tests</h2>
+            <p className="text-sm text-slate-500">No generated files yet. Create a project to get started.</p>
+          </div>
+        )}
 
         {/* Recent runs */}
         <div className="rounded-lg border bg-white p-4 md:col-span-2 xl:col-span-2">
           <h2 className="mb-3 text-sm font-medium text-slate-800">Recent runs</h2>
-          <RecentRunsTable refreshKey={refreshKey} />
+          {hasProjects ? (
+            <RecentRunsTable refreshKey={refreshKey} />
+          ) : (
+            <div className="text-sm text-slate-500">No recent runs.</div>
+          )}
         </div>
         </div>
       </div>

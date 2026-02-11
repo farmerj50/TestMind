@@ -39,6 +39,7 @@ type RunQuery = { baseUrl?: string; adapterId?: string; projectId?: string };
 const REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT
   ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
   : path.resolve(process.cwd(), '..', '..');
+const LEGACY_CURATED_ROOT = path.resolve(REPO_ROOT, "apps", "api", "testmind-curated");
 
 // If project ids are user-scoped (e.g., playwright-ts-user_xxx), strip the user suffix to resolve paths.
 const stripUserSuffix = (projectId: string) => {
@@ -120,13 +121,11 @@ async function listSpecProjectsForUser(userId: string) {
           };
           walk(legacyDir);
         };
-        // If this user directory is empty or contains only placeholders, seed from legacy.
+        // Optionally seed from legacy when explicitly enabled.
         const hasEntries =
           fs.existsSync(dir) &&
           fs.readdirSync(dir, { withFileTypes: true }).some((d) => d.name !== ".DS_Store");
-        if (!hasEntries) {
-          copyLegacySpecs();
-        } else {
+        if (!hasEntries && process.env.TM_SEED_LEGACY_GENERATED === "1") {
           copyLegacySpecs();
         }
       } catch (err) {
@@ -288,8 +287,8 @@ function resolveGeneratedRoots(projectId: string, optionalRoot?: string) {
   if (resolvedOptional) {
     return fs.existsSync(resolvedOptional) ? [resolvedOptional] : [];
   }
-  if (userSuffix && fs.existsSync(userRoot)) {
-    return [userRoot];
+  if (userSuffix) {
+    return fs.existsSync(userRoot) ? [userRoot] : [];
   }
   const roots = [
     userRoot,
@@ -314,16 +313,21 @@ function curatedRootCandidates(curatedSuite: CuratedSuiteWithOwner) {
   const manifestEntry = getCuratedProject(curatedSuite.id);
   if (manifestEntry?.root) {
     candidates.push(path.resolve(CURATED_ROOT, manifestEntry.root));
+    candidates.push(path.resolve(LEGACY_CURATED_ROOT, manifestEntry.root));
   }
   candidates.push(path.resolve(CURATED_ROOT, curatedSuite.rootRel));
+  candidates.push(path.resolve(LEGACY_CURATED_ROOT, curatedSuite.rootRel));
   if (curatedSuite.projectId && curatedSuite.name) {
     const slug = slugify(curatedSuite.name);
     candidates.push(path.resolve(CURATED_ROOT, `project-${curatedSuite.projectId}`, slug));
+    candidates.push(path.resolve(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`, slug));
   }
   if (curatedSuite.projectId) {
     candidates.push(path.resolve(CURATED_ROOT, `project-${curatedSuite.projectId}`));
+    candidates.push(path.resolve(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`));
   }
   candidates.push(path.resolve(CURATED_ROOT, curatedSuite.id));
+  candidates.push(path.resolve(LEGACY_CURATED_ROOT, curatedSuite.id));
   candidates.push(path.resolve(REPO_ROOT, "testmind-curated", curatedSuite.rootRel));
   if (curatedSuite.projectId && curatedSuite.name) {
     const slug = slugify(curatedSuite.name);
@@ -406,6 +410,8 @@ function projectCuratedRoots(projectId: string) {
   const candidates = [
     path.resolve(CURATED_ROOT, `project-${projectId}`),
     path.resolve(CURATED_ROOT, projectId),
+    path.resolve(LEGACY_CURATED_ROOT, `project-${projectId}`),
+    path.resolve(LEGACY_CURATED_ROOT, projectId),
     path.resolve(REPO_ROOT, "testmind-curated", `project-${projectId}`),
     path.resolve(REPO_ROOT, "testmind-curated", projectId),
   ];

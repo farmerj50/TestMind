@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
+import { useApi } from "../lib/api";
 import LandingPage from "../pages/LandingPage";
 import PricingPage from "../pages/PricingPage";
 import DashboardPage from "../pages/DashboardPage";
@@ -36,6 +39,77 @@ function NotFound() {
 }
 
 export default function AppRoutes() {
+  const { isLoaded, user } = useUser();
+  const { apiFetch } = useApi();
+
+  const clearClientState = () => {
+    const keysToClear: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (
+        key.startsWith("tm:") ||
+        key.startsWith("tm-") ||
+        key.startsWith("agent:baseUrl:")
+      ) {
+        keysToClear.push(key);
+      }
+    }
+    keysToClear.forEach((key) => localStorage.removeItem(key));
+
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const sessionKeys: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i);
+        if (!key) continue;
+        if (
+          key.startsWith("tm:") ||
+          key.startsWith("tm-") ||
+          key.startsWith("agent:baseUrl:")
+        ) {
+          sessionKeys.push(key);
+        }
+      }
+      sessionKeys.forEach((key) => sessionStorage.removeItem(key));
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const currentUserId = user?.id ?? "";
+    const lastUserId = localStorage.getItem("tm:lastUserId") ?? "";
+    const shouldClear = currentUserId ? currentUserId !== lastUserId : !!lastUserId;
+    if (shouldClear) {
+      clearClientState();
+    }
+    if (currentUserId) {
+      localStorage.setItem("tm:lastUserId", currentUserId);
+    } else if (lastUserId) {
+      localStorage.removeItem("tm:lastUserId");
+    }
+  }, [isLoaded, user?.id]);
+
+  useEffect(() => {
+    if (!isLoaded || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ isNew: boolean }>("/auth/bootstrap", { method: "POST" });
+        if (cancelled) return;
+        if (res?.isNew) {
+          clearClientState();
+          await apiFetch("/auth/github/reset", { method: "POST", auth: "include" }).catch(() => {});
+          await apiFetch("/github/status", { method: "DELETE", auth: "include" }).catch(() => {});
+        }
+      } catch {
+        // ignore bootstrap failures
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, user?.id, apiFetch]);
+
   return (
     <Routes>
       {/* App pages (top nav + sidebar) */}

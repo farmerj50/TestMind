@@ -40,6 +40,7 @@ export default function TestBuilderPage() {
   const [loadingGen, setLoadingGen] = useState(false);
   const [notes, setNotes] = useState("Add any special flows, risks, or data here.");
   const [manualSteps, setManualSteps] = useState("");
+  const [manualTitle, setManualTitle] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -127,6 +128,7 @@ export default function TestBuilderPage() {
     if (!projectId) return;
     const text = manualSteps.trim();
     if (!text) return;
+    const title = manualTitle.trim() || "Manual scenario";
     const steps = text
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -137,7 +139,7 @@ export default function TestBuilderPage() {
         method: "POST",
         body: JSON.stringify({
           projectId,
-          title: "Manual scenario",
+          title,
           steps,
           notes,
           docs,
@@ -152,11 +154,12 @@ export default function TestBuilderPage() {
           fileName: res.spec.fileName,
           steps,
           path: res.spec.relativePath,
-          curatedName: "Manual scenario",
+          curatedName: title,
         },
         ...prev,
       ]);
       setManualSteps("");
+      setManualTitle("");
     } catch (error) {
       console.error(error);
     }
@@ -339,6 +342,15 @@ export default function TestBuilderPage() {
               <label className="text-sm font-medium text-slate-700">
                 Manual test steps (free text)
               </label>
+              <div className="space-y-1">
+                <label className="text-xs text-slate-600">Test case name</label>
+                <Input
+                  value={manualTitle}
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder="e.g. Navigate to homepage"
+                  className="text-sm"
+                />
+              </div>
               <textarea
                 className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 bg-white"
                 rows={4}

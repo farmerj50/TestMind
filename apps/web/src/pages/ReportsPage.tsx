@@ -142,6 +142,16 @@ export default function ReportsPage() {
   }, [refreshRuns]);
 
   useEffect(() => {
+    const hasActive = runs.some((r) => r.status === "running" || r.status === "queued");
+    const interval = setInterval(() => {
+      if (hasActive) {
+        refreshRuns();
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [runs, refreshRuns]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await apiFetch<{ projects: Project[] }>("/projects");

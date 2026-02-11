@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useUser } from "@clerk/clerk-react";
 import Editor from "@monaco-editor/react";
 import { Button } from "../components/ui/button";
 import { useApi } from "../lib/api";
@@ -10,15 +11,43 @@ export default function GeneratedTestsPanel() {
   const [active, setActive] = useState<string | null>(null);
   const [content, setContent] = useState<string>("");
   const { apiFetch } = useApi();
-  const adapterId = (localStorage.getItem("tm-adapterId") || "playwright-ts") as string;
-  const projectId = localStorage.getItem("tm:lastGeneratedProjectId") || "";
+  const { user } = useUser();
+  const [adapterId, setAdapterId] = useState<string>(
+    (localStorage.getItem("tm-adapterId") || "playwright-ts") as string
+  );
+  const [projectId, setProjectId] = useState<string>(
+    localStorage.getItem("tm:lastGeneratedProjectId") || ""
+  );
+  const userId = user?.id ?? "";
+  const lastUserId = typeof window !== "undefined" ? localStorage.getItem("tm:lastUserId") : null;
+
+  useEffect(() => {
+    setAdapterId((localStorage.getItem("tm-adapterId") || "playwright-ts") as string);
+    setProjectId(localStorage.getItem("tm:lastGeneratedProjectId") || "");
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (lastUserId !== userId) {
+      localStorage.setItem("tm:lastUserId", userId);
+      localStorage.removeItem("tm:lastGeneratedProjectId");
+      setProjectId("");
+      return;
+    }
+    setProjectId(localStorage.getItem("tm:lastGeneratedProjectId") || "");
+  }, [userId]);
+
+  const queryString = useMemo(
+    () =>
+      new URLSearchParams({
+        adapterId,
+        ...(projectId ? { projectId } : {}),
+      }).toString(),
+    [adapterId, projectId]
+  );
 
   async function load() {
-    const qs = new URLSearchParams({
-      adapterId,
-      ...(projectId ? { projectId } : {}),
-    }).toString();
-    const d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${qs}`);
+    const d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${queryString}`);
     const list = d.files || [];
     setFiles(list);
     if (list.length && !active) setActive(list[0].path);
@@ -38,7 +67,12 @@ export default function GeneratedTestsPanel() {
     setContent(text);
   }
 
-  useEffect(() => { load(); }, [adapterId, projectId]);
+  useEffect(() => {
+    setFiles([]);
+    setActive(null);
+    setContent("");
+    load();
+  }, [adapterId, projectId, userId]);
 
   useEffect(() => { if (active) openFile(active); }, [active]);
 
@@ -64,10 +98,7 @@ export default function GeneratedTestsPanel() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
           <a
-            href={`/tm/generated/download?${new URLSearchParams({
-              adapterId,
-              ...(projectId ? { projectId } : {}),
-            }).toString()}`}
+            href={`/tm/generated/download?${queryString}`}
           >
             <Button variant="secondary" size="sm">Download bundle</Button>
           </a>

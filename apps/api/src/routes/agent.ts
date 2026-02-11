@@ -15,11 +15,13 @@ import {
   getOrCreateProjectSession,
   getLatestSessionForProject,
   regenerateAttachedSpecs,
+  ensureCuratedSuiteRecord,
 } from "../agent/service.js";
 import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { agentSuiteId, ensureCuratedProjectEntry } from "../testmind/curated-store.js";
 import { prisma } from "../prisma.js";
 import { validatedEnv } from "../config/env.js";
+import { GENERATED_ROOT } from "../lib/storageRoots.js";
 
 type CoverageSummary = {
   coverageTotals: Record<string, number>;
@@ -517,9 +519,13 @@ export default async function agentRoutes(app: FastifyInstance) {
     ] as any);
 
     // Write to curated root + local specs (if configured)
-    const suiteId = agentSuiteId(project.id);
-    const { root } = ensureCuratedProjectEntry(suiteId, `Agent - ${project.name}`);
-    const destRoots = [root];
+    const suiteRecord = await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
+    const suiteId = suiteRecord?.id ?? agentSuiteId(project.id);
+    const suiteName = suiteRecord?.name ?? `Agent - ${project.name}`;
+    const rootRel = suiteRecord?.rootRel ?? suiteId;
+    const { root } = ensureCuratedProjectEntry(suiteId, suiteName, rootRel);
+    const generatedRoot = path.join(GENERATED_ROOT, `playwright-ts-${project.ownerId}`, project.id);
+    const destRoots = [root, generatedRoot];
     if (process.env.TM_LOCAL_SPECS) destRoots.push(process.env.TM_LOCAL_SPECS);
 
     await Promise.all(
