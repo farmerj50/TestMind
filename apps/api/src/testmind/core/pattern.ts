@@ -6,6 +6,7 @@ import { RouteScan } from "./scanner.js";
 export type Step =
   | { kind: "goto"; url: string }
   | { kind: "expect-text"; text: string }
+  | { kind: "expect-visible"; selector: string }
   | { kind: "fill"; selector: string; value: string }
   | { kind: "click"; selector: string }
   | { kind: "upload"; selector: string; path: string };
