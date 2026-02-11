@@ -1460,7 +1460,10 @@ export default function ProjectSuite() {
         const filtered = activeSuite?.type === "generated" && runProjectId
           ? rows.filter((row) => {
               const key = row.path.replace(/\\/g, "/");
-              return key.startsWith(`${runProjectId}/`) || key.startsWith("recordings/");
+              return (
+                key.startsWith(`${runProjectId}/`) ||
+                key.startsWith(`recordings/${runProjectId}/`)
+              );
             })
           : rows;
         const deduped = filtered.filter((row) => {
@@ -1470,6 +1473,11 @@ export default function ProjectSuite() {
           if (deletedSpecs[key] || deletedSpecs[row.path]) return false;
           return true;
         });
+        if (rows.length > 0 && deduped.length === 0 && Object.keys(deletedSpecs).length > 0) {
+          updateSuiteFolderState(pid, (state) => ({ ...state, deletedSpecs: {} }));
+          setSpecs(filtered);
+          return;
+        }
         setSpecs(deduped);
       })
       .catch((err) => {

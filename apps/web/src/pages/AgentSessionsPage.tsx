@@ -64,7 +64,7 @@ export default function AgentSessionsPage() {
     setCreating(true);
     setError(null);
     try {
-      await apiFetch("/tm/agent/sessions", {
+      const created = await apiFetch<{ session: AgentSession }>("/tm/agent/sessions", {
         method: "POST",
         body: JSON.stringify({
           baseUrl: form.baseUrl.trim(),
@@ -73,6 +73,11 @@ export default function AgentSessionsPage() {
           projectId: form.projectId || undefined,
         }),
       });
+      if (created?.session?.id) {
+        await apiFetch(`/tm/agent/sessions/${created.session.id}/start`, {
+          method: "POST",
+        });
+      }
       setForm((f) => ({ ...f, name: "", baseUrl: "", instructions: "" }));
       await load();
     } catch (err: any) {

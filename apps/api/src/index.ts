@@ -498,6 +498,14 @@ if (allowDebugRoutes) {
       databaseUrl: (validatedEnv.DATABASE_URL || "").replace(/:\/\/.*@/, "://***@").split("?")[0],
     };
   });
+  app.get("/debug/me", async (req, reply) => {
+    const auth = getAuth(req);
+    return reply.send({
+      userId: auth.userId ?? null,
+      sessionId: auth.sessionId ?? null,
+      hasAuthHeader: Boolean(req.headers.authorization),
+    });
+  });
   app.get("/debug/db-tables", async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
@@ -582,6 +590,28 @@ function requireUser(req: any, reply: any) {
   }
   return userId;
 }
+
+// ---------- Auth bootstrap (create user on first login) ----------
+app.post("/auth/bootstrap", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+  let existing = await prisma.user.findUnique({ where: { id: userId } });
+  if (!existing) {
+    existing = await prisma.user.create({ data: { id: userId } });
+  }
+
+  const ageMs = existing?.createdAt ? Date.now() - new Date(existing.createdAt).getTime() : 0;
+  const recentThresholdMs = 10 * 60 * 1000; // 10 minutes
+  const projectCount = await prisma.project.count({ where: { ownerId: userId } });
+  const isNew = ageMs >= 0 && ageMs < recentThresholdMs && projectCount === 0;
+
+  if (isNew) {
+    // Defensive cleanup: ensure no stale GitHub token is associated with a brand-new user
+    await prisma.gitAccount.deleteMany({ where: { provider: "github", userId } });
+  }
+
+  return reply.send({ isNew });
+});
 
 // ---------- List ----------
 app.get("/projects", async (req, reply) => {

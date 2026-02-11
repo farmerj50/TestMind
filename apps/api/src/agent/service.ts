@@ -9,27 +9,46 @@ import { ensureCuratedProjectEntry, agentSuiteId } from "../testmind/curated-sto
 import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library.js";
 import { decryptSecret } from "../lib/crypto.js";
+import { GENERATED_ROOT } from "../lib/storageRoots.js";
 
 const defaultCoverage: Prisma.InputJsonValue = {};
 const CURATED_ADAPTER = "playwright-ts";
 const OPENAI_SECRET_KEYS = ["OPENAI_API_KEY", "OPEN_API_KEY"] as const;
 
-async function ensureCuratedSuiteRecord(projectId: string, projectName: string, ownerId: string) {
-  try {
-    const suiteId = agentSuiteId(projectId);
-    const existing = await prisma.curatedSuite.findUnique({ where: { id: suiteId } });
-    if (existing) return existing;
-    return prisma.curatedSuite.create({
-      data: {
-        id: suiteId,
-        projectId,
-        name: `Agent - ${projectName}`,
-        rootRel: `agent-${projectId}`,
-      },
-    });
-  } catch {
-    return null;
+function generatedProjectRoot(projectId: string, ownerId: string) {
+  return path.join(GENERATED_ROOT, `${CURATED_ADAPTER}-${ownerId}`, projectId);
+}
+
+export async function ensureCuratedSuiteRecord(projectId: string, projectName: string, _ownerId: string) {
+  const suiteId = agentSuiteId(projectId);
+  const suiteName = `Agent - ${projectName}`;
+  const rootRel = `agent-${projectId}`;
+  const existing = await prisma.curatedSuite.findUnique({ where: { id: suiteId } });
+  if (existing) return existing;
+  const byName = await prisma.curatedSuite.findFirst({
+    where: { projectId, name: suiteName },
+  });
+  if (byName) {
+    if (byName.rootRel !== rootRel) {
+      try {
+        return await prisma.curatedSuite.update({
+          where: { id: byName.id },
+          data: { rootRel },
+        });
+      } catch {
+        return byName;
+      }
+    }
+    return byName;
   }
+  return prisma.curatedSuite.create({
+    data: {
+      id: suiteId,
+      projectId,
+      name: suiteName,
+      rootRel,
+    },
+  });
 }
 
 function normalizePath(baseUrl: string, pathOrUrl: string): { path: string; url: string } {
@@ -397,10 +416,12 @@ export async function attachScenarioToProject(userId: string, scenarioId: string
     steps: (s.steps as AgentScenarioStep[]) || [],
   }));
 
-  const suiteId = agentSuiteId(project.id);
-  await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
-  const { root } = ensureCuratedProjectEntry(suiteId, `Agent - ${project.name}`);
-  const destRoots = [root];
+  const suiteRecord = await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
+  const suiteId = suiteRecord?.id ?? agentSuiteId(project.id);
+  const suiteName = suiteRecord?.name ?? `Agent - ${project.name}`;
+  const rootRel = suiteRecord?.rootRel ?? suiteId;
+  const { root } = ensureCuratedProjectEntry(suiteId, suiteName, rootRel);
+  const destRoots = [root, generatedProjectRoot(project.id, project.ownerId)];
   const localSpecs = process.env.TM_LOCAL_SPECS;
   if (localSpecs) destRoots.push(localSpecs);
   const fileMap = await writeScenarioFiles({
@@ -443,10 +464,12 @@ export async function regenerateAttachedSpecs(userId: string, projectId: string)
   });
   if (!attached.length) return { specPaths: [] };
 
-  const suiteId = agentSuiteId(project.id);
-  await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
-  const { root } = ensureCuratedProjectEntry(suiteId, `Agent - ${project.name}`);
-  const destRoots = [root];
+  const suiteRecord = await ensureCuratedSuiteRecord(project.id, project.name, project.ownerId);
+  const suiteId = suiteRecord?.id ?? agentSuiteId(project.id);
+  const suiteName = suiteRecord?.name ?? `Agent - ${project.name}`;
+  const rootRel = suiteRecord?.rootRel ?? suiteId;
+  const { root } = ensureCuratedProjectEntry(suiteId, suiteName, rootRel);
+  const destRoots = [root, generatedProjectRoot(project.id, project.ownerId)];
   if (process.env.TM_LOCAL_SPECS) destRoots.push(process.env.TM_LOCAL_SPECS);
 
   // group by page

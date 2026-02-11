@@ -276,8 +276,13 @@ export default function AgentScanPage() {
 
   async function generateAllAccepted(page: AgentPage) {
     if (!selectedProject) return;
-    const toGenerate = page.scenarios.filter((s) => s.status === "accepted" && !s.specPath);
-    if (!toGenerate.length) return;
+    const toGenerate = page.scenarios.filter(
+      (s) => (s.status === "accepted" || s.status === "suggested") && !s.specPath
+    );
+    if (!toGenerate.length) {
+      setError("No accepted scenarios to generate for this page.");
+      return;
+    }
     setBusyGenerateAll(page.id);
     try {
       for (const sc of toGenerate) {

@@ -68,6 +68,12 @@ export default function ProjectPage() {
   const [sharedStepsText, setSharedStepsText] = useState("{}");
   const [savingSharedSteps, setSavingSharedSteps] = useState(false);
   const [sharedStepsError, setSharedStepsError] = useState<string | null>(null);
+  const [aiSpecPreview, setAiSpecPreview] = useState<{
+    content: string;
+    curatedPath: string;
+    fileName: string;
+  } | null>(null);
+  const [aiSpecBusy, setAiSpecBusy] = useState(false);
 
   const hasActiveRun = useMemo(
     () => runs.some((r) => r.status === "queued" || r.status === "running"),
@@ -218,22 +224,7 @@ export default function ProjectPage() {
     if (!caseDetail) return;
     setSavingCase(true);
     try {
-      await apiFetch(`/tests/cases/${caseDetail.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          title: caseDetail.title,
-          suiteId: caseDetail.suiteId,
-          priority: caseDetail.priority,
-          type: caseDetail.type,
-          status: caseDetail.status,
-          tags: caseDetail.tags,
-          preconditions: caseDetail.preconditions,
-          steps: caseDetail.steps.map((s) => ({
-            action: s.action,
-            expected: s.expected,
-          })),
-        }),
-      });
+      await saveCasePayload();
       toast.success("Case saved");
       await refreshCases();
     } catch (e: any) {
@@ -284,9 +275,31 @@ export default function ProjectPage() {
     }
   }
 
+  async function saveCasePayload() {
+    if (!caseDetail) return;
+    await apiFetch(`/tests/cases/${caseDetail.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: caseDetail.title,
+        suiteId: caseDetail.suiteId,
+        priority: caseDetail.priority,
+        type: caseDetail.type,
+        status: caseDetail.status,
+        tags: caseDetail.tags,
+        preconditions: caseDetail.preconditions,
+        steps: caseDetail.steps.map((s) => ({
+          action: s.action,
+          expected: s.expected,
+        })),
+      }),
+    });
+  }
+
   async function handleGeneratePlaywright() {
     if (!caseDetail) return;
     try {
+      // Ensure latest edits (steps/base URL) are saved before generation.
+      await saveCasePayload();
       await apiFetch(`/tests/cases/${caseDetail.id}/generate-playwright`, {
         method: "POST",
       });
@@ -296,6 +309,31 @@ export default function ProjectPage() {
       setRuns(runsRes.runs);
     } catch (e: any) {
       toast.error(e?.message || "Failed to queue generation");
+    }
+  }
+
+  async function handleAiGenerateSpec() {
+    if (!caseDetail) return;
+    setAiSpecBusy(true);
+    try {
+      await saveCasePayload();
+      const res = await apiFetch<{
+        fileName: string;
+        curatedPath: string;
+        preview: string;
+      }>(`/tests/cases/${caseDetail.id}/ai-generate-spec`, {
+        method: "POST",
+      });
+      setAiSpecPreview({
+        content: res.preview,
+        curatedPath: res.curatedPath,
+        fileName: res.fileName,
+      });
+      toast.success("AI spec generated");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to generate AI spec");
+    } finally {
+      setAiSpecBusy(false);
     }
   }
 
@@ -648,6 +686,13 @@ export default function ProjectPage() {
                       Generate Playwright from this case
                     </Button>
                     <Button
+                      variant="outline"
+                      onClick={handleAiGenerateSpec}
+                      disabled={aiSpecBusy}
+                    >
+                      {aiSpecBusy ? "Generating AI spec..." : "AI Generate Spec"}
+                    </Button>
+                    <Button
                       variant="destructive"
                       onClick={() => handleDeleteCase(caseDetail.id)}
                     >
@@ -665,6 +710,20 @@ export default function ProjectPage() {
                       placeholder="Record observations when marking pass/fail."
                     />
                   </div>
+
+                  {aiSpecPreview && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        AI Spec Preview
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        Saved to: <code className="rounded bg-white px-1">{aiSpecPreview.curatedPath}</code>
+                      </div>
+                      <pre className="max-h-64 overflow-auto rounded bg-white p-3 text-xs text-slate-800">
+{aiSpecPreview.content}
+                      </pre>
+                    </div>
+                  )}
 
             <div className="space-y-2">
               <div className="text-sm font-medium text-slate-800">Run history</div>

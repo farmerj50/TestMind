@@ -551,6 +551,7 @@ export default async function runRoutes(app: FastifyInstance) {
     let aiMode = mode === "ai";
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
     const suiteId = parsed.data.suiteId?.trim() || undefined;
+    const LEGACY_CURATED_ROOT = path.resolve(process.cwd(), "..", "..", "apps", "api", "testmind-curated");
     const requestedBaseUrl = parsed.data.baseUrl;
     let effectiveBaseUrl = requestedBaseUrl ?? DEFAULT_BASE_URL;
     // Default to honoring file/grep selection unless caller explicitly sets runAll.
@@ -581,6 +582,14 @@ export default async function runRoutes(app: FastifyInstance) {
     if (project.ownerId !== userId) {
       return reply.code(403).send({ error: "Forbidden" });
     }
+
+    const curatedSuite =
+      suiteId
+        ? await prisma.curatedSuite.findUnique({
+            where: { id: suiteId },
+            select: { rootRel: true, projectId: true },
+          })
+        : null;
 
     if (!mode) {
       const pathHints = [
@@ -998,14 +1007,9 @@ export default async function runRoutes(app: FastifyInstance) {
         // 2) Detect the workspace that contains Playwright and switch cwd to it
         let cwd: string;
         if (generatedOnly) {
-          if (aiMode) {
-            cwd = work;
-          } else {
-            const runnerRoot = process.cwd();
-            const apiRoot = path.join(runnerRoot, "apps", "api");
-            const hasApiRoot = fsSync.existsSync(path.join(apiRoot, "package.json"));
-            cwd = hasApiRoot ? apiRoot : runnerRoot;
-          }
+          // Keep generated-only runs anchored at repo root so Playwright + tests
+          // resolve @playwright/test from the same node_modules.
+          cwd = work;
         } else {
           const { subdir: appSubdir } = await findPlaywrightWorkspace(work);
           cwd = path.resolve(work, appSubdir);
@@ -1145,16 +1149,12 @@ export default async function runRoutes(app: FastifyInstance) {
 
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
+        const configDir = work;
         const ciConfigPath = path.join(
-          cwd,
+          configDir,
           aiMode ? "tm-ai.playwright.config.mjs" : "tm-ci.playwright.config.mjs"
         );
-        const legacyTsConfig = path.join(cwd, "tm-ci.playwright.config.ts");
-        const legacyJsConfig = path.join(cwd, "tm-ci.playwright.config.js");
-        if (!aiMode) {
-          await fs.rm(legacyTsConfig, { force: true }).catch(() => {});
-          await fs.rm(legacyJsConfig, { force: true }).catch(() => {});
-        }
+        // Avoid deleting repo configs; we always pass --config explicitly.
         const serverPort = await findAvailablePort(Number(process.env.TM_PORT ?? 4173));
         if (!requestedBaseUrl) {
           effectiveBaseUrl = `http://localhost:${serverPort}`;
@@ -1168,7 +1168,7 @@ export default async function runRoutes(app: FastifyInstance) {
           .replace(/"/g, '\\"');
         const genRoot = process.env.TM_GENERATED_ROOT
           ? path.resolve(process.env.TM_GENERATED_ROOT)
-          : path.join(cwd, "testmind-generated");
+          : path.join(work, "testmind-generated");
         const userGenDest = path.join(genRoot, userSuffix);
         const sharedGenDest = path.join(genRoot, adapter);
         let genDestName = adapter;
@@ -1353,8 +1353,20 @@ export default defineConfig({
           const curatedSuitePath =
             suiteId && fsSync.existsSync(path.join(CURATED_ROOT, suiteId))
               ? path.join(CURATED_ROOT, suiteId)
-              : null;
-          const curatedPath = curatedSuitePath ?? path.join(CURATED_ROOT, project.id);
+              : suiteId && fsSync.existsSync(path.join(LEGACY_CURATED_ROOT, suiteId))
+                ? path.join(LEGACY_CURATED_ROOT, suiteId)
+                : curatedSuite?.rootRel && fsSync.existsSync(path.join(CURATED_ROOT, curatedSuite.rootRel))
+                  ? path.join(CURATED_ROOT, curatedSuite.rootRel)
+                  : curatedSuite?.rootRel && fsSync.existsSync(path.join(LEGACY_CURATED_ROOT, curatedSuite.rootRel))
+                    ? path.join(LEGACY_CURATED_ROOT, curatedSuite.rootRel)
+                    : null;
+          const curatedPath =
+            curatedSuitePath ??
+            (curatedSuite?.projectId && fsSync.existsSync(path.join(CURATED_ROOT, `project-${curatedSuite.projectId}`))
+              ? path.join(CURATED_ROOT, `project-${curatedSuite.projectId}`)
+              : curatedSuite?.projectId && fsSync.existsSync(path.join(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`))
+                ? path.join(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`)
+                : path.join(CURATED_ROOT, project.id));
 
           function pickSource(): string | null {
             // Prefer curated edits when present so saved suite changes are run.
@@ -1541,11 +1553,8 @@ export default defineConfig({
           return null;
         };
 
-        const resolveSelectedPath = async (value: string) => {
+        const stripToRel = (value: string) => {
           const posix = value.replace(/\\/g, "/");
-          const candidates: string[] = [];
-          if (path.isAbsolute(value)) candidates.push(value);
-
           let stripped = posix;
           const needles = [
             `apps/web/testmind-generated/${genDestName}/`,
@@ -1560,9 +1569,32 @@ export default defineConfig({
               break;
             }
           }
+          return stripped;
+        };
+
+        const resolveSelectedPath = async (value: string) => {
+          const posix = value.replace(/\\/g, "/");
+          const candidates: string[] = [];
+          if (path.isAbsolute(value)) candidates.push(value);
+
+          const stripped = stripToRel(value);
           candidates.push(path.join(genDest, stripped));
           if (!generatedOnly) {
             candidates.push(path.join(cwd, posix));
+          }
+          if (suiteId) {
+            const curatedCandidates: string[] = [];
+            const direct = path.join(CURATED_ROOT, suiteId);
+            const legacy = path.join(LEGACY_CURATED_ROOT, suiteId);
+            if (fsSync.existsSync(direct)) curatedCandidates.push(path.join(direct, posix));
+            if (fsSync.existsSync(legacy)) curatedCandidates.push(path.join(legacy, posix));
+            if (curatedSuite?.rootRel) {
+              const rootRel = curatedSuite.rootRel.replace(/\\/g, "/");
+              const absCur = path.join(CURATED_ROOT, rootRel, posix);
+              const absLegacy = path.join(LEGACY_CURATED_ROOT, rootRel, posix);
+              curatedCandidates.push(absCur, absLegacy);
+            }
+            candidates.push(...curatedCandidates);
           }
 
           for (const candidate of candidates) {
@@ -1593,12 +1625,41 @@ export default defineConfig({
             missingRequested.push(selectedFile);
             continue;
           }
-          const normalizedFile = path.relative(genDest, resolved).replace(/\\/g, "/");
+          let normalizedFile = path.relative(genDest, resolved).replace(/\\/g, "/");
           let abs = resolved;
-          const curatedSuiteDir =
-            suiteId && fsSync.existsSync(path.join(CURATED_ROOT, suiteId))
-              ? path.join(CURATED_ROOT, suiteId)
-              : path.join(CURATED_ROOT, agentSuiteId(project.id));
+          if (generatedOnly) {
+            const relFromInput = stripToRel(selectedFile).replace(/^\/+/, "");
+            const safeRel =
+              relFromInput && !relFromInput.startsWith("..") && !path.isAbsolute(relFromInput)
+                ? relFromInput
+                : path.basename(normalizedFile);
+            const dest = path.join(genDest, safeRel);
+            const insideGenDest = abs.replace(/\\/g, "/").startsWith(genDest.replace(/\\/g, "/"));
+            if (!insideGenDest) {
+              await fs.mkdir(path.dirname(dest), { recursive: true }).catch(() => {});
+              await fs.copyFile(abs, dest).catch(() => {});
+              abs = dest;
+              normalizedFile = safeRel.replace(/\\/g, "/");
+            }
+          }
+          const curatedSuiteDir = (() => {
+            if (suiteId) {
+              const candidates: string[] = [];
+              candidates.push(path.join(CURATED_ROOT, suiteId));
+              candidates.push(path.join(LEGACY_CURATED_ROOT, suiteId));
+              if (curatedSuite?.rootRel) {
+                candidates.push(path.join(CURATED_ROOT, curatedSuite.rootRel));
+                candidates.push(path.join(LEGACY_CURATED_ROOT, curatedSuite.rootRel));
+              }
+              if (curatedSuite?.projectId) {
+                candidates.push(path.join(CURATED_ROOT, `project-${curatedSuite.projectId}`));
+                candidates.push(path.join(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`));
+              }
+              const found = candidates.find((p) => fsSync.existsSync(p));
+              if (found) return found;
+            }
+            return path.join(CURATED_ROOT, agentSuiteId(project.id));
+          })();
           const curatedCandidate = path.join(curatedSuiteDir, normalizedFile);
           try {
             const exists = await fs.stat(abs).then(() => true).catch(() => false);
@@ -1630,8 +1691,8 @@ export default defineConfig({
             // ignore copy failures
           }
           if (generatedOnly) {
-            // Generated-only runs set Playwright's testDir to genDest, so keep globs relative to it.
-            extraGlobs.push(normalizedFile);
+            // Generated-only runs use an explicit testDir; pass absolute file paths so Playwright runs only selected files.
+            extraGlobs.push(abs.replace(/\\/g, "/"));
           } else if (aiMode) {
             const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
             if (!relFromCwd.startsWith("..") && !path.isAbsolute(relFromCwd)) {
@@ -1688,6 +1749,9 @@ export default defineConfig({
 
         const extraEnv: Record<string, string> = {
           TM_SOURCE_ROOT: work,
+          TM_GENERATED_ROOT: process.env.TM_GENERATED_ROOT
+            ? path.resolve(process.env.TM_GENERATED_ROOT)
+            : path.join(work, "testmind-generated"),
           PW_JSON_OUTPUT: resultsPath,
           PW_ALLURE_RESULTS: allureResultsDir,
           ALLURE_RESULTS_DIR: allureResultsDir,

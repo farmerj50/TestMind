@@ -61,12 +61,22 @@ function languageToTarget(lang?: string) {
 
 export default async function recorderRoutes(app: FastifyInstance) {
   app.get("/recorder/specs", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
     const { projectId } = (req.query ?? {}) as { projectId?: string };
+    const userProjects = await prisma.project.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+    const allowedIds = new Set(userProjects.map((p) => p.id));
+    if (projectId && !allowedIds.has(projectId)) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
     const roots = projectId
       ? [path.join(RECORD_ROOT, projectId)]
-      : fsSync.existsSync(RECORD_ROOT)
-      ? fsSync.readdirSync(RECORD_ROOT).map((d) => path.join(RECORD_ROOT, d))
-      : [];
+      : userProjects.map((p) => path.join(RECORD_ROOT, p.id));
 
     const specs: { projectId: string; name: string; path: string; pathRelative: string }[] = [];
     for (const root of roots) {
@@ -94,13 +104,16 @@ export default async function recorderRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
     const { projectId: pidInput, name, content, baseUrl, language } = parsed.data;
     if (!pidInput) {
       return reply.code(400).send({ error: "projectId is required to save a recorded spec" });
     }
     const projectId = pidInput;
     const projectExists = await prisma.project.findUnique({
-      where: { id: projectId },
+      where: { id: projectId, ownerId: userId },
       select: { id: true, name: true, ownerId: true },
     });
     if (!projectExists) {
@@ -166,17 +179,24 @@ export default async function recorderRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
-  const { projectId, baseUrl, name, language } = parsed.data;
-  if (!projectId) {
-    return reply.code(400).send({ error: "projectId is required to launch the recorder" });
-  }
-  const pid = projectId;
-  const projectExists = await prisma.project.findUnique({ where: { id: pid }, select: { id: true } });
-  if (!projectExists) {
-    return reply
-      .code(404)
-      .send({ error: `Project ${pid} not found. Select an existing project before launching the recorder.` });
-  }
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    const { projectId, baseUrl, name, language } = parsed.data;
+    if (!projectId) {
+      return reply.code(400).send({ error: "projectId is required to launch the recorder" });
+    }
+    const pid = projectId;
+    const projectExists = await prisma.project.findUnique({
+      where: { id: pid, ownerId: userId },
+      select: { id: true },
+    });
+    if (!projectExists) {
+      return reply
+        .code(404)
+        .send({ error: `Project ${pid} not found. Select an existing project before launching the recorder.` });
+    }
   const slug = slugify(name).replace(/\.spec\.[a-z]+$/i, "");
   const ext = languageToExt(language);
   const target = languageToTarget(language);

@@ -116,17 +116,25 @@ export function ensureWithin(rootDir: string, candidate: string) {
   }
 }
 
-export function ensureCuratedProjectEntry(id: string, name?: string) {
+export function ensureCuratedProjectEntry(id: string, name?: string, rootRel?: string) {
   const manifest = readCuratedManifest();
   let project = manifest.projects.find((p) => p.id === id);
   if (!project) {
-    const rel = id;
+    const rel = rootRel ?? id;
     project = { id, name: name ?? id, root: rel, locked: [] };
     manifest.projects.push(project);
     writeCuratedManifest(manifest);
-  } else if (name && project.name !== name) {
-    project.name = name;
-    writeCuratedManifest(manifest);
+  } else {
+    let dirty = false;
+    if (name && project.name !== name) {
+      project.name = name;
+      dirty = true;
+    }
+    if (rootRel && project.root !== rootRel) {
+      project.root = rootRel;
+      dirty = true;
+    }
+    if (dirty) writeCuratedManifest(manifest);
   }
   const root = path.resolve(CURATED_ROOT, project.root ?? project.id);
   fs.mkdirSync(root, { recursive: true });

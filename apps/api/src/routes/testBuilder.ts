@@ -8,7 +8,13 @@ import { prisma } from "../prisma.js";
 import { GENERATED_ROOT } from "../lib/storageRoots.js";
 import { writeSpecsFromPlan } from "../testmind/pipeline/codegen.js";
 import type { Step, TestPlan } from "../testmind/core/plan.js";
-import { ensureCuratedProjectEntry, ensureWithin, slugify } from "../testmind/curated-store.js";
+import {
+  CURATED_ROOT,
+  ensureWithin,
+  readCuratedManifest,
+  slugify,
+  writeCuratedManifest,
+} from "../testmind/curated-store.js";
 
 const stepLineSchema = z.string().trim().min(1);
 
@@ -37,8 +43,54 @@ const normalizeGeneratedRelPath = (value: string) => {
 };
 
 const filenameFromPagePath = (pagePath: string) => {
-  const safe = pagePath === "/" ? "home" : pagePath.replace(/\//g, "_").replace(/^_/, "");
+  const normalized =
+    pagePath.startsWith("/manual/") ? `/${pagePath.slice("/manual/".length)}` : pagePath;
+  const safe = normalized === "/" ? "home" : normalized.replace(/\//g, "_").replace(/^_/, "");
   return `${safe || "home"}.spec.ts`;
+};
+
+const renderSimplePlaywrightSpec = (title: string, steps: Step[], baseUrl: string) => {
+  const esc = (v: string) => JSON.stringify(v);
+  const lines: string[] = [];
+  lines.push("import { test, expect } from '@playwright/test';");
+  lines.push("");
+  lines.push(`const BASE_URL = ${esc(baseUrl)};`);
+  lines.push("");
+  lines.push(`test(${esc(title)}, async ({ page }) => {`);
+  for (const step of steps) {
+    switch (step.kind) {
+      case "goto": {
+        const raw = step.url;
+        const isAbs = /^https?:\/\//i.test(raw);
+        if (isAbs) {
+          lines.push(`  await page.goto(${esc(raw)});`);
+        } else {
+          lines.push(`  await page.goto(new URL(${esc(raw)}, BASE_URL).toString());`);
+        }
+        break;
+      }
+      case "click":
+        lines.push(`  await page.click(${esc(step.selector)});`);
+        break;
+      case "fill":
+        lines.push(`  await page.fill(${esc(step.selector)}, ${esc(step.value)});`);
+        break;
+      case "expect-text":
+        lines.push(`  await expect(page.getByText(${esc(step.text)})).toBeVisible();`);
+        break;
+      case "expect-visible":
+        lines.push(`  await expect(page.locator(${esc(step.selector)})).toBeVisible();`);
+        break;
+      case "upload":
+        lines.push(`  await page.setInputFiles(${esc(step.selector)}, ${esc(step.path)});`);
+        break;
+      default:
+        lines.push("  // TODO: custom step");
+        break;
+    }
+  }
+  lines.push("});");
+  return lines.join("\n");
 };
 
 const parseStepLine = (line: string): Step => {
@@ -125,7 +177,17 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
     const adapterId = "playwright-ts";
     const outDir = path.join(GENERATED_ROOT, `${adapterId}-${userId}`, projectId);
     await fs.mkdir(outDir, { recursive: true });
-    await writeSpecsFromPlan(outDir, plan, adapterId);
+    if (adapterId === "playwright-ts") {
+      const fileName = filenameFromPagePath(pagePath);
+      const baseUrlResolved =
+        baseUrl?.trim() ||
+        ((project.sharedSteps as any)?.baseUrl as string | undefined) ||
+        "http://localhost:5173";
+      const content = renderSimplePlaywrightSpec(title, parsedSteps, baseUrlResolved);
+      await fs.writeFile(path.join(outDir, fileName), content, "utf8");
+    } else {
+      await writeSpecsFromPlan(outDir, plan, adapterId);
+    }
 
     const fileName = filenameFromPagePath(pagePath);
     const relativePath = path.posix.join(
@@ -156,7 +218,7 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
     const { projectId, specPath, curatedName } = parsed.data;
     const project = await prisma.project.findFirst({
       where: { id: projectId, ownerId: userId },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
@@ -167,17 +229,48 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
       return reply.code(404).send({ error: "Generated spec not found" });
     }
 
-    const { root } = ensureCuratedProjectEntry(projectId, curatedName?.trim());
+    const existingSuite = await prisma.curatedSuite.findFirst({
+      where: { projectId, project: { ownerId: userId } },
+      select: { id: true, name: true, rootRel: true, projectId: true },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    let suite = existingSuite;
+    if (!suite) {
+      const suiteName = `${project.name ?? "Project"} Suite`;
+      const slug = slugify(suiteName);
+      const rootRel = `project-${projectId}/${slug}`;
+      suite = await prisma.curatedSuite.create({
+        data: { projectId, name: suiteName, rootRel },
+        select: { id: true, name: true, rootRel: true, projectId: true },
+      });
+
+      const manifest = readCuratedManifest();
+      const existing = manifest.projects.find((p) => p.id === suite.id);
+      if (existing) {
+        existing.name = suite.name;
+        existing.root = suite.rootRel;
+      } else {
+        manifest.projects.push({ id: suite.id, name: suite.name, root: suite.rootRel, locked: [] });
+      }
+      writeCuratedManifest(manifest);
+    }
+    if (!suite) {
+      return reply.code(500).send({ error: "Failed to resolve curated suite" });
+    }
+
     const destFileBase = curatedName?.trim()
       ? `${slugify(curatedName)}.spec.ts`
       : path.posix.basename(relPath);
-    const destAbs = path.resolve(root, destFileBase);
-    ensureWithin(root, destAbs);
+    const destRoot = path.resolve(CURATED_ROOT, suite.rootRel);
+    const destAbs = path.resolve(destRoot, destFileBase);
+    ensureWithin(destRoot, destAbs);
 
     await fs.mkdir(path.dirname(destAbs), { recursive: true });
     await fs.copyFile(sourceAbs, destAbs);
 
-    const curatedPath = path.posix.join("testmind-curated", projectId, destFileBase);
+    const curatedRootRel = suite.rootRel.replace(/\\/g, "/");
+    const curatedPath = path.posix.join("testmind-curated", curatedRootRel, destFileBase);
     return reply.send({ fileName: destFileBase, curatedPath });
   });
 }
