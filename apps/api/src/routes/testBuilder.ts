@@ -56,6 +56,8 @@ const filenameFromPagePath = (pagePath: string) => {
 const NAV_EXPECTATION_RE =
   /\b(navigat(?:e|ed|es|ing)|redirect(?:ed|s|ing)?|land(?:ed|s|ing)?|open(?:ed|s|ing)?)\b.*\b(url|page|site|home|homepage)\b/i;
 
+type RenderableStep = Step | { kind: "custom"; note?: string };
+
 type SharedLoginConfig = {
   usernameSelector?: string;
   passwordSelector?: string;
@@ -207,7 +209,7 @@ const expandNamedSharedSteps = (sharedSteps: Record<string, any>, names: string[
 
 const renderSimplePlaywrightSpec = (
   title: string,
-  steps: Step[],
+  steps: RenderableStep[],
   baseUrl: string,
   options?: { sharedSteps?: Record<string, any>; preconditions?: string[] }
 ) => {
@@ -324,7 +326,7 @@ const renderSimplePlaywrightSpec = (
   return lines.join("\n");
 };
 
-const parseStepLine = (line: string): Step => {
+const parseStepLine = (line: string): RenderableStep => {
   const raw = line.trim();
   const selectorFromTarget = (target: string) => {
     const trimmed = target.trim();
@@ -725,6 +727,7 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
     const requestedShared = parseSharedStepRequests(preconditions);
     const expandedSharedLines = expandNamedSharedSteps(sharedStepsObj, requestedShared.named);
     const parsedSteps = [...expandedSharedLines, ...steps].map(parseStepLine);
+    const planSteps: Step[] = parsedSteps.filter((step): step is Step => step.kind !== "custom");
     const plan: TestPlan = {
       baseUrl:
         baseUrl?.trim() ||
@@ -735,7 +738,7 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
           id: `manual-${Date.now()}`,
           name: title,
           group: { page: pagePath },
-          steps: parsedSteps,
+          steps: planSteps,
         },
       ],
       meta: { notes, docs },
