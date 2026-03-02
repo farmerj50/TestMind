@@ -54,9 +54,9 @@ const SHARED_STEPS_ENV = "TM_PROJECT_SHARED_STEPS";
 const MISSING_LOCATORS_ENV = "TM_MISSING_LOCATORS_PATH";
 const DEFAULT_LOGIN_CONFIG: ResolvedLoginConfig = {
   usernameSelector:
-    'input[placeholder="Email Address"], input[name="email"], input[type="email"], input[name="username"], #username, #email',
+    'input[name="email"], input[type="email"], input[autocomplete="username"], input[name="username"], #username, #email, input[placeholder*="email" i]',
   passwordSelector:
-    'input[placeholder="Password"], input[name="password"], input[type="password"], #password',
+    'input[name="password"], input[type="password"], input[autocomplete="current-password"], #password, input[placeholder*="password" i]',
   submitSelector: 'button[type="submit"], button:has-text("Login"), button:has-text("Sign in")',
   usernameEnv: "EMAIL_ADDRESS",
   passwordEnv: "PASSWORD",

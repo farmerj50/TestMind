@@ -1575,15 +1575,8 @@ export default defineConfig({
         const resolveSelectedPath = async (value: string) => {
           const posix = value.replace(/\\/g, "/");
           const candidates: string[] = [];
-          if (path.isAbsolute(value)) candidates.push(value);
-
-          const stripped = stripToRel(value);
-          candidates.push(path.join(genDest, stripped));
-          if (!generatedOnly) {
-            candidates.push(path.join(cwd, posix));
-          }
+          const curatedCandidates: string[] = [];
           if (suiteId) {
-            const curatedCandidates: string[] = [];
             const direct = path.join(CURATED_ROOT, suiteId);
             const legacy = path.join(LEGACY_CURATED_ROOT, suiteId);
             if (fsSync.existsSync(direct)) curatedCandidates.push(path.join(direct, posix));
@@ -1594,7 +1587,15 @@ export default defineConfig({
               const absLegacy = path.join(LEGACY_CURATED_ROOT, rootRel, posix);
               curatedCandidates.push(absCur, absLegacy);
             }
-            candidates.push(...curatedCandidates);
+          }
+          if (path.isAbsolute(value)) candidates.push(value);
+          // Prefer curated paths when a suiteId is provided (edited suites should win).
+          if (curatedCandidates.length) candidates.push(...curatedCandidates);
+
+          const stripped = stripToRel(value);
+          candidates.push(path.join(genDest, stripped));
+          if (!generatedOnly) {
+            candidates.push(path.join(cwd, posix));
           }
 
           for (const candidate of candidates) {
@@ -2218,6 +2219,11 @@ export default defineConfig({
     const { id } = req.params as { id: string };
     const auth = await requireRunOwner(req, reply, id);
     if (!auth) return;
+    const runMeta = await prisma.testRun.findUnique({
+      where: { id },
+      select: { paramsJson: true },
+    });
+    const aiMode = ((runMeta?.paramsJson as any)?.mode ?? "") === "ai";
     reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
     reply.raw.setHeader("Connection", "keep-alive");
@@ -2229,6 +2235,7 @@ export default defineConfig({
     let closed = false;
     let interval: NodeJS.Timeout | undefined;
     let lastMtime = 0;
+    const sentArtifacts = new Map<string, number>();
 
     const findLatestPng = async (rootDir: string) => {
       try {
@@ -2305,6 +2312,52 @@ export default defineConfig({
     };
 
     const tick = async () => {
+      if (aiMode) {
+        const roots = [
+          RUNNER_LOGS_ROOT,
+          path.join(process.cwd(), "runner-logs"),
+          path.join(process.cwd(), "apps", "api", "runner-logs"),
+        ];
+        const found = new Map<string, number>();
+
+        for (const root of roots) {
+          const runRoot = path.join(root, id);
+          try {
+            const stack: string[] = [runRoot];
+            while (stack.length) {
+              const current = stack.pop() as string;
+              const entries = await fs.readdir(current, { withFileTypes: true });
+              for (const entry of entries) {
+                const full = path.join(current, entry.name);
+                if (entry.isDirectory()) {
+                  stack.push(full);
+                  continue;
+                }
+                if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".png")) continue;
+                const stat = await fs.stat(full);
+                const suffix = path.relative(runRoot, full).replace(/\\/g, "/");
+                const rel = `/runner-logs/${id}/${suffix}`;
+                const prev = found.get(rel);
+                if (!prev || stat.mtimeMs > prev) {
+                  found.set(rel, stat.mtimeMs);
+                }
+              }
+            }
+          } catch {
+            // ignore missing roots
+          }
+        }
+
+        const ordered = Array.from(found.entries()).sort((a, b) => a[1] - b[1]);
+        for (const [rel, mtime] of ordered) {
+          const prevSent = sentArtifacts.get(rel) ?? 0;
+          if (mtime <= prevSent) continue;
+          sentArtifacts.set(rel, mtime);
+          sendArtifact(rel, mtime);
+        }
+        return;
+      }
+
       const found = await findLiveSnapshot();
       if (!found) return;
       const resolved = await ensureLiveSnapshot(found);
@@ -2342,6 +2395,7 @@ export default defineConfig({
     specFile: z.string().min(1).optional(),
     grep: z.string().optional(),
     livePreview: z.boolean().optional(),
+    mode: z.enum(["regular", "ai"]).optional(),
   });
 
   app.post("/test-runs/:id/rerun", async (req, reply) => {
@@ -2365,10 +2419,13 @@ export default defineConfig({
     const grep = parsedBody.success ? parsedBody.data.grep : undefined;
     const livePreview =
       parsedBody.success ? parsedBody.data.livePreview : undefined;
+    const mode = parsedBody.success ? parsedBody.data.mode : undefined;
     const inheritedLivePreview = Boolean((params as any)?.livePreview);
     const effectiveLivePreview = livePreview ?? inheritedLivePreview;
+    const effectiveMode = mode ?? (params as any)?.mode;
     if (specFile) rerunParams.file = specFile;
     if (grep) rerunParams.grep = grep ?? undefined;
+    if (effectiveMode) rerunParams.mode = effectiveMode;
     if (livePreview !== undefined) rerunParams.livePreview = livePreview;
     else if (inheritedLivePreview) rerunParams.livePreview = true;
     const rerun = await prisma.testRun.create({
@@ -2388,7 +2445,7 @@ export default defineConfig({
       baseUrl: (params as any)?.baseUrl,
       file: specFile,
       grep,
-      mode: (params as any)?.mode,
+      mode: effectiveMode,
       livePreview: effectiveLivePreview,
     });
     return reply.send({ runId: rerun.id });

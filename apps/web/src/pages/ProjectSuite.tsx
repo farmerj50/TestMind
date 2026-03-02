@@ -1457,6 +1457,24 @@ export default function ProjectSuite() {
       .then((rows: SpecFile[]) => {
         const seen = new Set<string>();
         const deletedSpecs = suiteFolderState.deletedSpecs || {};
+        let effectiveDeletedSpecs = deletedSpecs;
+        const existingKeys = new Set(rows.map((row) => row.path.replace(/\\/g, "/")));
+        const deletedKeys = Object.keys(deletedSpecs);
+        const staleDeleted = deletedKeys.filter((key) => existingKeys.has(key.replace(/\\/g, "/")));
+        if (staleDeleted.length) {
+          const nextDeleted = { ...deletedSpecs };
+          staleDeleted.forEach((key) => {
+            delete nextDeleted[key];
+          });
+          effectiveDeletedSpecs = nextDeleted;
+          updateSuiteFolderState(pid, (state) => {
+            const nextDeletedState = { ...(state.deletedSpecs || {}) };
+            staleDeleted.forEach((key) => {
+              delete nextDeletedState[key];
+            });
+            return { ...state, deletedSpecs: nextDeletedState };
+          });
+        }
         const filtered = activeSuite?.type === "generated" && runProjectId
           ? rows.filter((row) => {
               const key = row.path.replace(/\\/g, "/");
@@ -1470,10 +1488,10 @@ export default function ProjectSuite() {
           const key = row.path.replace(/\\/g, "/");
           if (seen.has(key)) return false;
           seen.add(key);
-          if (deletedSpecs[key] || deletedSpecs[row.path]) return false;
+          if (effectiveDeletedSpecs[key] || effectiveDeletedSpecs[row.path]) return false;
           return true;
         });
-        if (rows.length > 0 && deduped.length === 0 && Object.keys(deletedSpecs).length > 0) {
+        if (rows.length > 0 && deduped.length === 0 && Object.keys(effectiveDeletedSpecs).length > 0) {
           updateSuiteFolderState(pid, (state) => ({ ...state, deletedSpecs: {} }));
           setSpecs(filtered);
           return;
