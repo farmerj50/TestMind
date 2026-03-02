@@ -321,10 +321,13 @@ export default function RunPage() {
   const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
   const livePreviewTouchedRef = useRef(false);
   const [liveFrameUrl, setLiveFrameUrl] = useState<string | null>(null);
+  const [liveFrames, setLiveFrames] = useState<Array<{ url: string; path: string; mtimeMs?: number }>>([]);
   const [livePreviewPreferStatic, setLivePreviewPreferStatic] = useState(false);
   const livePollRef = useRef<number | null>(null);
   const livePollStopRef = useRef<number | null>(null);
   const liveStreamRef = useRef<EventSource | null>(null);
+  const livePreviewEnabledRef = useRef(false);
+  const liveAiModeRef = useRef(false);
 const parsedSummary = useMemo(() => {
 
 
@@ -372,15 +375,22 @@ const parsedSummary = useMemo(() => {
   const attemptLiveFrame = useCallback((url: string) => {
     const img = new Image();
     img.onload = () => setLiveFrameUrl(url);
-    img.onerror = () => {};
+    img.onerror = () => {
+      if (!livePreviewPreferStatic && url.includes("/runner-logs/")) {
+        setLivePreviewPreferStatic(true);
+      }
+    };
     img.src = url;
-  }, []);
+  }, [livePreviewPreferStatic]);
 
   const startLivePolling = useCallback(
     (durationMs = 10000, intervalMs = 1000) => {
       if (!resolvedRunId) return;
+      // AI analyze runs use SSE artifact frames; avoid legacy latest.png polling.
+      if (liveAiModeRef.current) return;
       const base = normalizeLiveUrl(`/runner-logs/${resolvedRunId}/live/latest.png`);
       const tick = () => {
+        if (!livePreviewEnabledRef.current || liveAiModeRef.current) return;
         attemptLiveFrame(`${base}?t=${Date.now()}`);
       };
 
@@ -414,6 +424,7 @@ const parsedSummary = useMemo(() => {
         event.type === "healer_retry_start" ||
         event.type === "telemetry_hooked"
       ) {
+        if (!livePreviewEnabledRef.current || !liveAiModeRef.current) return;
         startLivePolling();
       }
     },
@@ -434,6 +445,17 @@ const parsedSummary = useMemo(() => {
   useTelemetryStream(resolvedRunId ?? null, handleTelemetryEvent);
 
   useEffect(() => {
+    livePreviewEnabledRef.current = livePreviewEnabled;
+  }, [livePreviewEnabled]);
+
+  const params = run?.paramsJson ?? null;
+  const isAiAnalyzeRun = (params as any)?.mode === "ai";
+
+  useEffect(() => {
+    liveAiModeRef.current = isAiAnalyzeRun;
+  }, [isAiAnalyzeRun]);
+
+  useEffect(() => {
     return () => {
       if (liveStreamRef.current) {
         liveStreamRef.current.close();
@@ -449,10 +471,18 @@ const parsedSummary = useMemo(() => {
   }, []);
 
   useEffect(() => {
-    if (!resolvedRunId || !livePreviewEnabled) {
+    if (!resolvedRunId || !livePreviewEnabled || !isAiAnalyzeRun) {
       if (liveStreamRef.current) {
         liveStreamRef.current.close();
         liveStreamRef.current = null;
+      }
+      if (livePollRef.current !== null) {
+        window.clearInterval(livePollRef.current);
+        livePollRef.current = null;
+      }
+      if (livePollStopRef.current !== null) {
+        window.clearTimeout(livePollStopRef.current);
+        livePollStopRef.current = null;
       }
       return;
     }
@@ -470,6 +500,12 @@ const parsedSummary = useMemo(() => {
           const baseUrl = normalizeLiveUrl(rawPath);
           const withBust = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
           attemptLiveFrame(withBust);
+          setLiveFrames((prev) => {
+            const key = `${rawPath}|${payload?.mtimeMs ?? "na"}`;
+            if (prev.some((item) => `${item.path}|${item.mtimeMs ?? "na"}` === key)) return prev;
+            const next = [...prev, { url: withBust, path: rawPath, mtimeMs: payload?.mtimeMs }];
+            return next.length > 50 ? next.slice(-50) : next;
+          });
         }
       } catch {
         // ignore malformed events
@@ -480,19 +516,19 @@ const parsedSummary = useMemo(() => {
       es.close();
       liveStreamRef.current = null;
     };
-  }, [resolvedRunId, livePreviewEnabled, normalizeLiveUrl]);
+  }, [resolvedRunId, livePreviewEnabled, isAiAnalyzeRun, normalizeLiveUrl]);
 
   useEffect(() => {
-    if (!resolvedRunId || !livePreviewEnabled) return;
+    if (!resolvedRunId || !livePreviewEnabled || !isAiAnalyzeRun) return;
     startLivePolling(30000, 1000);
-  }, [resolvedRunId, livePreviewEnabled, startLivePolling]);
+  }, [resolvedRunId, livePreviewEnabled, isAiAnalyzeRun, startLivePolling]);
 
   useEffect(() => {
     if (livePreviewTouchedRef.current) return;
-    if (run?.paramsJson && (run.paramsJson as any).livePreview) {
+    if (isAiAnalyzeRun && run?.paramsJson && (run.paramsJson as any).livePreview) {
       setLivePreviewEnabled(true);
     }
-  }, [run?.paramsJson]);
+  }, [run?.paramsJson, isAiAnalyzeRun]);
 
   useEffect(() => {
     if (!routeRunId) return;
@@ -500,17 +536,10 @@ const parsedSummary = useMemo(() => {
     setErr(null);
     setLoading(true);
     setLiveFrameUrl(null);
+    setLiveFrames([]);
     setLivePreviewPreferStatic(false);
   }, [routeRunId]);
 
-
-
-
-
-
-
-
-  const params = run?.paramsJson ?? null;
 
   const suiteIdFromRun = (params as any)?.suiteId as string | undefined;
 
@@ -2922,7 +2951,7 @@ const fetchMissingLocators = useCallback(
               </div>
             </section>
 
-            {livePreviewEnabled && (
+            {livePreviewEnabled && isAiAnalyzeRun && (
               <div className="fixed bottom-6 right-6 z-50 w-[520px] max-w-[90vw]">
                 <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
@@ -2930,7 +2959,10 @@ const fetchMissingLocators = useCallback(
                     <button
                       type="button"
                       className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                      onClick={() => setLivePreviewEnabled(false)}
+                      onClick={() => {
+                        livePreviewTouchedRef.current = true;
+                        setLivePreviewEnabled(false);
+                      }}
                     >
                       Close
                     </button>
@@ -2953,6 +2985,23 @@ const fetchMissingLocators = useCallback(
                       </div>
                     )}
                   </div>
+                  {liveFrames.length > 0 && (
+                    <div className="max-h-28 overflow-x-auto border-t border-slate-200 bg-white p-2">
+                      <div className="flex gap-2">
+                        {liveFrames.map((frame, idx) => (
+                          <button
+                            key={`${frame.path}-${frame.mtimeMs ?? idx}`}
+                            type="button"
+                            className="h-20 w-20 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-50"
+                            onClick={() => setLiveFrameUrl(frame.url)}
+                            title={frame.path}
+                          >
+                            <img src={frame.url} alt={`Live frame ${idx + 1}`} className="h-full w-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

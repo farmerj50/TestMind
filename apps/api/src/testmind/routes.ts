@@ -1152,7 +1152,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     }
   });
 
-  // Delete a single spec from a curated suite
+  // Delete a single spec from a suite (curated or generated)
   app.delete("/suite/projects/:id/specs", async (req, reply) => {
     try {
       const { userId } = getAuth(req);
@@ -1167,39 +1167,65 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         where: { id },
         select: { rootRel: true, project: { select: { ownerId: true } } },
       });
-      if (!suite || suite.project.ownerId !== userId) {
-        return reply.code(404).send({ error: "Project not found" });
-      }
 
-      const root = path.resolve(CURATED_ROOT, suite.rootRel);
-      const abs = path.resolve(root, targetPath);
-      ensureWithin(root, abs);
-      const exists = fs.existsSync(abs);
-      if (exists) {
-        await fs.promises.rm(abs, { force: true });
-        // clean up empty dirs up to root
-        let dir = path.dirname(abs);
-        while (dir.startsWith(root)) {
-          try {
-            const entries = fs.readdirSync(dir);
-            if (entries.length) break;
-            fs.rmdirSync(dir);
-          } catch {
-            break;
+      // Curated suite delete (existing behavior)
+      if (suite && suite.project.ownerId === userId) {
+        const root = path.resolve(CURATED_ROOT, suite.rootRel);
+        const abs = path.resolve(root, targetPath);
+        ensureWithin(root, abs);
+        const exists = fs.existsSync(abs);
+        if (exists) {
+          await fs.promises.rm(abs, { force: true });
+          // clean up empty dirs up to root
+          let dir = path.dirname(abs);
+          while (dir.startsWith(root)) {
+            try {
+              const entries = fs.readdirSync(dir);
+              if (entries.length) break;
+              fs.rmdirSync(dir);
+            } catch {
+              break;
+            }
+            dir = path.dirname(dir);
           }
-          dir = path.dirname(dir);
         }
+
+        // remove from manifest locked list if present
+        const manifest = readCuratedManifest();
+        const proj = manifest.projects.find((p) => p.id === id);
+        if (proj?.locked?.length) {
+          proj.locked = proj.locked.filter((p) => p !== targetPath);
+          writeCuratedManifest(manifest);
+        }
+
+        return reply.code(exists ? 200 : 404).send({ ok: exists, deleted: exists });
       }
 
-      // remove from manifest locked list if present
-      const manifest = readCuratedManifest();
-      const proj = manifest.projects.find((p) => p.id === id);
-      if (proj?.locked?.length) {
-        proj.locked = proj.locked.filter((p) => p !== targetPath);
-        writeCuratedManifest(manifest);
+      // Generated suite delete (id format: <adapter>-<userId>)
+      if (id.endsWith(userId)) {
+        const root = path.resolve(GENERATED_ROOT, id);
+        const abs = path.resolve(root, targetPath);
+        ensureWithin(root, abs);
+        const exists = fs.existsSync(abs);
+        if (exists) {
+          await fs.promises.rm(abs, { force: true });
+          // clean up empty dirs up to suite root
+          let dir = path.dirname(abs);
+          while (dir.startsWith(root)) {
+            try {
+              const entries = fs.readdirSync(dir);
+              if (entries.length) break;
+              fs.rmdirSync(dir);
+            } catch {
+              break;
+            }
+            dir = path.dirname(dir);
+          }
+        }
+        return reply.code(exists ? 200 : 404).send({ ok: exists, deleted: exists });
       }
 
-      return reply.code(exists ? 200 : 404).send({ ok: exists, deleted: exists });
+      return reply.code(404).send({ error: "Project not found" });
     } catch (err) {
       return sendError(app, reply, err);
     }
@@ -1239,6 +1265,24 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         }
       }
       if (!curatedSuite) {
+        const curatedRoots = projectCuratedRoots(projectId);
+        for (const root of curatedRoots) {
+          const abs = path.resolve(root, relPath);
+          if (!fs.existsSync(abs)) continue;
+          ensureWithin(root, abs);
+          let content = await fs.promises.readFile(abs, "utf8");
+          const ext = path.extname(abs).toLowerCase();
+          const coerced = coercePlaywrightTestSource(
+            content,
+            path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
+            ext === ".ts" || ext === ".tsx"
+          );
+          if (coerced.changed) {
+            content = coerced.content;
+            await fs.promises.writeFile(abs, content, "utf8");
+          }
+          return { content };
+        }
         const roots = resolveGeneratedRoots(projectId);
         for (const root of roots) {
           const abs = path.resolve(root, relPath);
@@ -1395,10 +1439,10 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
         return files.map((rel) => ({ path: rel }));
       }
-      const roots = resolveGeneratedRoots(projectId, root);
       const seen = new Set<string>();
       const out: Array<{ path: string }> = [];
-      for (const specRoot of roots) {
+      const curatedRoots = projectCuratedRoots(projectId);
+      for (const specRoot of curatedRoots) {
         const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
         for (const rel of files) {
           const key = rel.replace(/\\/g, "/");
@@ -1407,9 +1451,8 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
           out.push({ path: rel });
         }
       }
-      if (out.length) return out;
-      const curatedRoots = projectCuratedRoots(projectId);
-      for (const specRoot of curatedRoots) {
+      const roots = resolveGeneratedRoots(projectId, root);
+      for (const specRoot of roots) {
         const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
         for (const rel of files) {
           const key = rel.replace(/\\/g, "/");
@@ -1488,6 +1531,16 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         const found = findCuratedFile(curatedSuite, relPath);
         if (found) abs = found.abs;
       } else {
+        const curatedRoots = projectCuratedRoots(projectId);
+        for (const base of curatedRoots) {
+          const candidate = path.join(base, relPath);
+          if (fs.existsSync(candidate)) {
+            abs = candidate;
+            break;
+          }
+        }
+      }
+      if (!abs && !curatedSuite) {
         const roots = resolveGeneratedRoots(projectId, root);
         for (const base of roots) {
           const candidate = path.join(base, relPath);

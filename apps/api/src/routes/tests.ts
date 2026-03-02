@@ -81,6 +81,12 @@ const normalizeBaseUrl = (value?: string | null) => {
   return `https://${raw}`;
 };
 
+const NAV_EXPECTATION_RE =
+  /\b(navigat(?:e|ed|es|ing)|redirect(?:ed|s|ing)?|land(?:ed|s|ing)?|open(?:ed|s|ing)?)\b.*\b(url|page|site|home|homepage)\b/i;
+
+const isNavigationExpectation = (value?: string | null) =>
+  NAV_EXPECTATION_RE.test((value ?? "").trim());
+
 const parseStepLine = (line: string): Step => {
   const raw = line.trim();
   const lower = raw.toLowerCase();
@@ -231,6 +237,10 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         const shouldIncludeExpected = (value?: string | null) => {
           const raw = (value ?? "").trim().toLowerCase();
           if (!raw) return false;
+          if (isNavigationExpectation(raw)) {
+            hasNavigatedExpected = true;
+            return false;
+          }
           const trivial = new Set([
             "navigated",
             "navigation complete",
@@ -1193,6 +1203,12 @@ export async function testRoutes(app: FastifyInstance) {
         return reply.code(500).send({ error: "AI did not return a spec" });
       }
       content = content.replace(/^```[a-z]*\s*/i, "").replace(/```$/i, "").trim();
+      // Guard against common bad assertions like "enduser navigates to url".
+      const badNavRegex =
+        /expect\(\s*page\.getByText\(\s*["']\s*end\s*user(?:\s+is)?\s+navigat(?:es|ed|e|ing)\s+to\s+url\s*["']\s*\)\.first\(\)\s*\)\.toBeVisible\(\s*\)\s*;/gi;
+      if (badNavRegex.test(content)) {
+        content = content.replace(badNavRegex, `await expect(page).toHaveURL(${JSON.stringify(baseUrl)});`);
+      }
       if (!content.includes("import") || !content.includes("test(")) {
         return reply.code(500).send({ error: "AI response did not look like a Playwright spec" });
       }
@@ -1211,13 +1227,26 @@ export async function testRoutes(app: FastifyInstance) {
       await fs.mkdir(path.dirname(destAbs), { recursive: true });
       await fs.writeFile(destAbs, content, "utf8");
 
+      // Mirror AI-generated spec into generated storage so it appears under Generated (playwright-ts) suites.
+      const generatedProjectRoot = path.join(GENERATED_ROOT, `playwright-ts-${userId}`, project.id);
+      const generatedAbs = path.join(generatedProjectRoot, fileName);
+      ensureWithin(generatedProjectRoot, generatedAbs);
+      await fs.mkdir(generatedProjectRoot, { recursive: true });
+      await fs.writeFile(generatedAbs, content, "utf8");
+
       const curatedPath = path.posix.join(
         "testmind-curated",
         rootRel.replace(/\\/g, "/"),
         fileName
       );
+      const generatedPath = path.posix.join(
+        "testmind-generated",
+        `playwright-ts-${userId}`,
+        project.id,
+        fileName
+      );
 
-      return reply.send({ fileName, curatedPath, preview: content });
+      return reply.send({ fileName, curatedPath, generatedPath, preview: content });
     }
   );
 }
