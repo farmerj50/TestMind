@@ -2,15 +2,17 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
 
-const DEFAULT_BASE = "http://localhost:8787"; // dev API URL
+const DEFAULT_DEV_BASE = "http://localhost:8787"; // local API URL in dev
 const ENV_BASE = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-export const API_BASE = ENV_BASE || (import.meta.env.DEV ? DEFAULT_BASE : "");
+const RUNTIME_BASE =
+  typeof window !== "undefined" ? window.location.origin : DEFAULT_DEV_BASE;
+export const API_BASE = ENV_BASE || (import.meta.env.DEV ? DEFAULT_DEV_BASE : RUNTIME_BASE);
 type ApiInit = RequestInit & { auth?: "include" | "omit" };
 
 function buildBaseUrl(path: string) {
   const normalized = path.trim();
   const relative = normalized.startsWith("/") ? normalized.slice(1) : normalized;
-  const base = API_BASE || DEFAULT_BASE;
+  const base = API_BASE;
   const baseWithSlash = base.endsWith("/") ? base : `${base}/`;
   return new URL(relative, baseWithSlash).toString();
 }
