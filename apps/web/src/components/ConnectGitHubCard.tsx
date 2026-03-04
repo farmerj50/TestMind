@@ -67,9 +67,15 @@ export default function ConnectGitHubCard({ onPickRepo }: Props) {
       setRepos(status.connected ? list : []);
     } catch (e: any) {
       const msg = e?.message || "Failed to check GitHub status";
+      const lower = msg.toLowerCase();
+      const isExpectedDisconnected =
+        lower.includes("github not connected") ||
+        lower.includes("token expired") ||
+        lower.includes("\"error\":\"unauthorized\"") ||
+        lower.includes("401");
       setConnected(false);
       setRepos([]);
-      setError(msg);
+      setError(isExpectedDisconnected ? null : msg);
     } finally {
       setLoading(false);
     }

@@ -18,6 +18,8 @@ import { slugify, ensureCuratedProjectEntry, ensureWithin } from "../testmind/cu
 import { decryptSecret } from "../lib/crypto.js";
 
 type IdParams = { id: string };
+type RunLifecycleStatus = "queued" | "running" | "completed" | "failed";
+type ArtifactState = "none" | "partial" | "complete";
 
 function requireUser(req: any, reply: any) {
   const { userId } = getAuth(req);
@@ -61,6 +63,162 @@ async function resolveOpenAiKey(projectId?: string) {
     throw new Error("Failed to decrypt OPENAI_API_KEY secret. Please re-save it.");
   }
 }
+
+const firstHeaderValue = (value?: string | string[]) => {
+  if (Array.isArray(value)) return value[0]?.split(",")[0]?.trim() || "";
+  return value?.split(",")[0]?.trim() || "";
+};
+
+const resolvePublicBaseUrl = (req: any) => {
+  const configured = (process.env.TM_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  const xfProto = firstHeaderValue(req.headers?.["x-forwarded-proto"]);
+  const xfHost = firstHeaderValue(req.headers?.["x-forwarded-host"]);
+  if (xfProto && xfHost) return `${xfProto}://${xfHost}`;
+  const host = firstHeaderValue(req.headers?.host);
+  const proto = (typeof req.protocol === "string" && req.protocol) || (req.raw?.socket?.encrypted ? "https" : "http");
+  return host ? `${proto}://${host}` : "";
+};
+
+const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/^\/+/, "");
+
+const toAbsoluteUrl = (base: string, relOrAbs: string) => {
+  if (!relOrAbs) return "";
+  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
+  return base ? new URL(rel, `${base}/`).toString() : rel;
+};
+
+const toRunnerLogsRoutePath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let routePath = normalized;
+  if (routePath.startsWith("runner/runner-logs/")) {
+    routePath = `/${routePath}`;
+  } else if (routePath.startsWith("runner-logs/")) {
+    routePath = `/runner/${routePath}`;
+  } else if (routePath.startsWith("runner/")) {
+    routePath = `/${routePath}`;
+  } else {
+    routePath = `/runner/runner-logs/${runId}/${routePath}`;
+  }
+  if (options?.indexHtml && !routePath.endsWith("/index.html")) {
+    routePath = `${routePath.replace(/\/+$/, "")}/index.html`;
+  }
+  return routePath;
+};
+
+const toStaticArtifactPath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let artifactPath = normalized;
+  if (artifactPath.startsWith("runner/runner-logs/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (artifactPath.startsWith("runner/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (!artifactPath.startsWith("runner-logs/")) {
+    artifactPath = `runner-logs/${runId}/${artifactPath}`;
+  }
+  let staticPath = `/_static/${artifactPath}`;
+  if (options?.indexHtml && !staticPath.endsWith("/index.html")) {
+    staticPath = `${staticPath.replace(/\/+$/, "")}/index.html`;
+  }
+  return staticPath;
+};
+
+const toLifecycleStatus = (status: string): RunLifecycleStatus => {
+  if (status === "succeeded") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "running") return "running";
+  return "queued";
+};
+
+const toArtifactsState = (artifactsJson: unknown): ArtifactState => {
+  if (!artifactsJson || typeof artifactsJson !== "object") return "none";
+  const artifacts = artifactsJson as Record<string, unknown>;
+  const keys = Object.keys(artifacts).filter((k) => typeof artifacts[k] === "string" && (artifacts[k] as string).trim());
+  if (!keys.length) return "none";
+  const hasReport = typeof artifacts.reportJson === "string";
+  const hasAllure = typeof artifacts["allure-report"] === "string";
+  return hasReport && hasAllure ? "complete" : "partial";
+};
+
+const toStructuredErrors = (run: { error?: string | null; summary?: string | null }) => {
+  const out: Array<{ code: string; message: string; source: "runner" | "summary" }> = [];
+  const seen = new Set<string>();
+  const pushUnique = (code: string, message: string, source: "runner" | "summary") => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const key = `${source}:${trimmed}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ code, message: trimmed, source });
+  };
+  if (run.error) pushUnique("RUN_ERROR", run.error, "runner");
+  if (run.summary) {
+    try {
+      const parsed = JSON.parse(run.summary);
+      const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+      for (const value of errors) {
+        if (typeof value === "string") pushUnique("SUMMARY_ERROR", value, "summary");
+      }
+    } catch {
+      // Ignore non-JSON summaries.
+    }
+  }
+  return out;
+};
+
+const toPublicArtifacts = (
+  req: any,
+  runId: string,
+  artifactsJson?: Record<string, unknown> | null
+) => {
+  const base = resolvePublicBaseUrl(req);
+  const artifacts = (artifactsJson ?? {}) as Record<string, unknown>;
+  const readString = (key: string) => (typeof artifacts[key] === "string" ? String(artifacts[key]) : "");
+  const reportPathRaw = readString("reportJson");
+  const allureReportRaw = readString("allure-report") || readString("allure");
+  const allureResultsRaw = readString("allure-results");
+
+  const reportPath = reportPathRaw
+    ? /^https?:\/\//i.test(reportPathRaw)
+      ? reportPathRaw
+      : toStaticArtifactPath(runId, reportPathRaw)
+    : `/runner/test-runs/${runId}/report.json`;
+  const allureReportPath = allureReportRaw
+    ? /^https?:\/\//i.test(allureReportRaw)
+      ? allureReportRaw
+      : toStaticArtifactPath(runId, allureReportRaw, { indexHtml: true })
+    : "";
+  const allureResultsPath = allureResultsRaw
+    ? /^https?:\/\//i.test(allureResultsRaw)
+      ? allureResultsRaw
+      : toStaticArtifactPath(runId, allureResultsRaw)
+    : "";
+
+  return {
+    reportJsonUrl: toAbsoluteUrl(base, reportPath),
+    allureReportUrl: allureReportPath ? toAbsoluteUrl(base, allureReportPath) : null,
+    allureResultsUrl: allureResultsPath ? toAbsoluteUrl(base, allureResultsPath) : null,
+    analysisUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/analysis`),
+    stdoutUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stdout`),
+    stderrUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stderr`),
+    liveEventsUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/live`),
+    runViewUrl: toAbsoluteUrl(base, `/test-runs/${runId}`),
+  };
+};
+
+const withRunContract = <
+  T extends { id: string; status: string; error?: string | null; summary?: string | null; artifactsJson?: unknown }
+>(
+  req: any,
+  run: T
+) => ({
+  ...run,
+  lifecycleStatus: toLifecycleStatus(run.status),
+  artifactsState: toArtifactsState(run.artifactsJson),
+  errors: toStructuredErrors(run),
+  publicArtifacts: toPublicArtifacts(req, run.id, (run.artifactsJson ?? null) as Record<string, unknown> | null),
+});
 
 async function browsersAlreadyInstalled() {
   try {
@@ -625,7 +783,7 @@ export async function testRoutes(app: FastifyInstance) {
 
     await startGeneratedRun(updatedRun.id, projectId, userId);
 
-    return reply.send({ run: updatedRun });
+    return reply.send({ run: withRunContract(req, updatedRun) });
   });
 
   // List runs for a project
@@ -645,7 +803,7 @@ export async function testRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "desc" },
       take: 20,
     });
-    return reply.send({ runs });
+    return reply.send({ runs: runs.map((run) => withRunContract(req, run)) });
   });
 
   app.get<{

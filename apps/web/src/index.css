@@ -4,7 +4,14 @@
 
 /* Global background tone for all pages */
 :root {
-  --tm-bg: #ffffff;
+  --tm-bg: #f8fafc;
+  --tm-surface: #ffffff;
+  --tm-surface-2: #eef2f7;
+  --tm-border: #cbd5e1;
+  --tm-accent: #2563eb;
+  --tm-accent-strong: #1d4ed8;
+  --tm-accent-soft: #dbeafe;
+  --tm-shell: #e2e8f0;
   --tm-input-bg: rgba(168, 199, 255, 0.12);
 }
 

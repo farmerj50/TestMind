@@ -94,17 +94,20 @@ export default function RunResults({
     }
   };
 
-    const handleAnalyze = async (specPath?: string | null, _title?: string | null) => {
+    const handleAnalyze = async (specPath?: string | null, title?: string | null) => {
       try {
         setAnalyzeLoadingId(specPath || "run");
+        const testTitle = title ?? undefined;
+        const grep = testTitle ? buildLooseGrep(testTitle) : undefined;
         const res = await apiFetch<{ runId: string }>(`/runner/test-runs/${runId}/rerun`, {
           method: "POST",
           body: JSON.stringify({
-          specFile: specPath ?? undefined,
-          mode: "ai",
-          livePreview: true,
-        }),
-      });
+            specFile: specPath ?? undefined,
+            grep,
+            mode: "ai",
+            livePreview: true,
+          }),
+        });
       if (res?.runId) {
         navigate(`/test-runs/${res.runId}`);
       } else {

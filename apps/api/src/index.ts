@@ -134,6 +134,33 @@ const normalizeOrigin = (o: string) => o.trim().replace(/\/$/, "");
 
 const allowedOrigins = (validatedEnv.CORS_ALLOWED_ORIGINS ?? []).map(normalizeOrigin).filter(Boolean);
 const raw = validatedEnv.CORS_ORIGINS_RAW ?? "";
+const isDevEnv = validatedEnv.NODE_ENV !== "production";
+
+const isPrivateIpv4Host = (hostname: string) => {
+  if (/^10\./.test(hostname)) return true;
+  if (/^192\.168\./.test(hostname)) return true;
+  const m = hostname.match(/^172\.(\d{1,3})\./);
+  if (m) {
+    const second = Number(m[1]);
+    if (Number.isFinite(second) && second >= 16 && second <= 31) return true;
+  }
+  return false;
+};
+
+const isDevLocalOrigin = (origin: string) => {
+  try {
+    const u = new URL(origin);
+    if (!/^https?:$/.test(u.protocol)) return false;
+    const host = (u.hostname || "").toLowerCase();
+    if (!host) return false;
+    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1") {
+      return true;
+    }
+    return isPrivateIpv4Host(host);
+  } catch {
+    return false;
+  }
+};
 
 app.log.info(`[CORS] raw=${raw} allowed=${allowedOrigins.join(" | ") || "(empty)"}`);
 
@@ -193,10 +220,11 @@ await registerWithLog("cors", () =>
       if (!origin) return cb(null, true);
 
       const normalized = normalizeOrigin(origin);
-      const ok = allowedOrigins.includes(normalized);
+      const allowDevLocal = isDevEnv && isDevLocalOrigin(normalized);
+      const ok = allowedOrigins.includes(normalized) || allowDevLocal;
 
       // DEBUG: log every origin decision
-      app.log.info({ origin, normalized, ok }, "[CORS] check");
+      app.log.info({ origin, normalized, ok, allowDevLocal }, "[CORS] check");
 
       cb(null, ok);
     },
@@ -591,13 +619,89 @@ function requireUser(req: any, reply: any) {
   return userId;
 }
 
+const TelemetryEventSchema = z.object({
+  event: z.string().min(1).max(120),
+  properties: z.record(z.any()).optional(),
+});
+
+type TelemetryRecord = {
+  ts: string;
+  event: string;
+  userId: string;
+  properties: Record<string, any>;
+};
+
+const TELEMETRY_BUFFER_LIMIT = Number(process.env.TM_TELEMETRY_BUFFER_LIMIT ?? "500");
+const telemetryBuffer: TelemetryRecord[] = [];
+
+const appendTelemetryRecord = (record: TelemetryRecord) => {
+  telemetryBuffer.push(record);
+  const max = Number.isFinite(TELEMETRY_BUFFER_LIMIT) && TELEMETRY_BUFFER_LIMIT > 0
+    ? Math.trunc(TELEMETRY_BUFFER_LIMIT)
+    : 500;
+  if (telemetryBuffer.length > max) {
+    telemetryBuffer.splice(0, telemetryBuffer.length - max);
+  }
+};
+
+app.post("/telemetry/events", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const parsed = TelemetryEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: parsed.error.flatten() });
+  }
+
+  const { event, properties } = parsed.data;
+  appendTelemetryRecord({
+    ts: new Date().toISOString(),
+    event,
+    userId,
+    properties: (properties ?? {}) as Record<string, any>,
+  });
+  req.log.info(
+    {
+      telemetry: {
+        event,
+        userId,
+        properties: properties ?? {},
+      },
+    },
+    "[telemetry] event"
+  );
+  return reply.send({ ok: true });
+});
+
+app.get("/telemetry/events/recent", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const limitRaw = Number((req.query as any)?.limit);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200)
+    : 50;
+
+  const events = telemetryBuffer
+    .filter((record) => record.userId === userId)
+    .slice(-limit)
+    .reverse();
+
+  return reply.send({ events });
+});
+
 // ---------- Auth bootstrap (create user on first login) ----------
 app.post("/auth/bootstrap", async (req, reply) => {
   const userId = requireUser(req, reply);
   if (!userId) return;
   let existing = await prisma.user.findUnique({ where: { id: userId } });
   if (!existing) {
-    existing = await prisma.user.create({ data: { id: userId } });
+    existing = await prisma.user.create({ data: { id: userId, plan: "free" } });
+  } else if (!existing.plan) {
+    existing = await prisma.user.update({
+      where: { id: userId },
+      data: { plan: "free" },
+    });
   }
 
   const ageMs = existing?.createdAt ? Date.now() - new Date(existing.createdAt).getTime() : 0;
@@ -653,7 +757,7 @@ app.post("/projects", async (req, reply) => {
   await prisma.user.upsert({
     where: { id: userId },
     update: {},
-    create: { id: userId },
+    create: { id: userId, plan: "free" },
   });
 
   const { name, repoUrl } = parsed.data;
@@ -1118,16 +1222,26 @@ app.get("/billing/me", async (req, reply) => {
   const userId = requireUser(req, reply);
   if (!userId) return;
 
-  // ensure user exists; allow plan to be unset until selection
-  const user = (await prisma.user.upsert({
+  // Ensure user exists and has a non-null plan.
+  let user = (await prisma.user.findUnique({
     where: { id: userId },
-    update: {},
-    create: { id: userId },
     select: { id: true, plan: true, createdAt: true },
-  })) as { id: string; plan: PlanTier | null; createdAt: Date };
+  })) as { id: string; plan: PlanTier | null; createdAt: Date } | null;
+  if (!user) {
+    user = (await prisma.user.create({
+      data: { id: userId, plan: "free" },
+      select: { id: true, plan: true, createdAt: true },
+    })) as { id: string; plan: PlanTier | null; createdAt: Date };
+  } else if (!user.plan) {
+    user = (await prisma.user.update({
+      where: { id: userId },
+      data: { plan: "free" },
+      select: { id: true, plan: true, createdAt: true },
+    })) as { id: string; plan: PlanTier | null; createdAt: Date };
+  }
 
-  const plan = user.plan ?? null;
-  return { plan, limits: plan ? getLimitsForPlan(plan) : null };
+  const plan = user.plan as PlanTier;
+  return { plan, limits: getLimitsForPlan(plan) };
 });
 
 // Dev-only helper to switch plans
@@ -1192,7 +1306,7 @@ app.post("/billing/checkout", async (req, reply) => {
   await prisma.user.upsert({
     where: { id: userId },
     update: {},
-    create: { id: userId },
+    create: { id: userId, plan: "free" },
     select: { id: true },
   });
 

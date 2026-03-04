@@ -20,7 +20,7 @@ function NavA({ to, children }: { to: string; children: React.ReactNode }) {
 
 export default function TopNav() {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-300 bg-[#8eb7ff]/90 backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b border-[color:var(--tm-border)] bg-[color:var(--tm-shell)]/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link to="/" className="font-semibold tracking-tight">

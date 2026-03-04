@@ -35,6 +35,14 @@ export function useApi() {
     return apiUrl(path);
   }
 
+  const readErrorText = async (res: Response) => {
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      return JSON.stringify(await res.json().catch(() => null));
+    }
+    return await res.text().catch(() => "");
+  };
+
   /** Stable fetch wrapper for components/effects. */
   const apiFetch = useCallback(
     async <T = any>(path: string, init: ApiInit = {}): Promise<T> => {
@@ -42,23 +50,35 @@ export function useApi() {
 
       // Always include auth unless explicitly opted out with auth: "omit"
       const wantAuth = init.auth !== "omit";
-      const token = wantAuth ? await getToken().catch(() => undefined) : undefined;
+      let token = wantAuth ? await getToken().catch(() => undefined) : undefined;
 
-      const headers = new Headers(init.headers || {});
-      // Only set Content-Type when there is a body and user didn't override
-      if (init.body && !headers.has("Content-Type")) {
-        headers.set("Content-Type", "application/json");
-      }
-      if (token && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${token}`);
+      const runFetch = async (tokenOverride?: string | null) => {
+        const headers = new Headers(init.headers || {});
+        if (init.body && !headers.has("Content-Type")) {
+          headers.set("Content-Type", "application/json");
+        }
+        if (wantAuth) {
+          if (headers.has("Authorization")) {
+            // Keep caller-specified authorization header.
+          } else if (tokenOverride) {
+            headers.set("Authorization", `Bearer ${tokenOverride}`);
+          }
+        }
+        return fetch(url, { ...init, headers, credentials: "include" });
+      };
+
+      let res = await runFetch(token);
+      if (wantAuth && res.status === 401) {
+        const refreshed = await getToken({ skipCache: true }).catch(() => undefined);
+        if (refreshed && refreshed !== token) {
+          token = refreshed;
+          res = await runFetch(token);
+        }
       }
 
-      const res = await fetch(url, { ...init, headers, credentials: "include" });
       const contentType = res.headers.get("content-type") ?? "";
       if (!res.ok) {
-        const text = contentType.includes("application/json")
-          ? JSON.stringify(await res.json().catch(() => null))
-          : await res.text().catch(() => "");
+        const text = await readErrorText(res);
         throw new Error(text || `${res.status} ${res.statusText}`);
       }
       if (!contentType.includes("application/json")) {
@@ -74,17 +94,32 @@ export function useApi() {
       const url = buildUrl(path);
 
       const wantAuth = init.auth !== "omit";
-      const token = wantAuth ? await getToken().catch(() => undefined) : undefined;
+      let token = wantAuth ? await getToken().catch(() => undefined) : undefined;
 
-      const headers = new Headers(init.headers || {});
-      if (init.body && !headers.has("Content-Type")) {
-        headers.set("Content-Type", "application/json");
-      }
-      if (token && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${token}`);
-      }
+      const runFetch = async (tokenOverride?: string | null) => {
+        const headers = new Headers(init.headers || {});
+        if (init.body && !headers.has("Content-Type")) {
+          headers.set("Content-Type", "application/json");
+        }
+        if (wantAuth) {
+          if (headers.has("Authorization")) {
+            // Keep caller-specified authorization header.
+          } else if (tokenOverride) {
+            headers.set("Authorization", `Bearer ${tokenOverride}`);
+          }
+        }
+        return fetch(url, { ...init, headers, credentials: "include" });
+      };
 
-      return fetch(url, { ...init, headers, credentials: "include" });
+      let res = await runFetch(token);
+      if (wantAuth && res.status === 401) {
+        const refreshed = await getToken({ skipCache: true }).catch(() => undefined);
+        if (refreshed && refreshed !== token) {
+          token = refreshed;
+          res = await runFetch(token);
+        }
+      }
+      return res;
     },
     [getToken]
   );

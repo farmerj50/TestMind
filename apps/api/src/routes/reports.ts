@@ -5,6 +5,143 @@ import path from "node:path";
 import fsSync from "node:fs";
 import { getAuth } from "@clerk/fastify";
 
+type RunLifecycleStatus = "queued" | "running" | "completed" | "failed";
+type ArtifactState = "none" | "partial" | "complete";
+
+const firstHeaderValue = (value?: string | string[]) => {
+  if (Array.isArray(value)) return value[0]?.split(",")[0]?.trim() || "";
+  return value?.split(",")[0]?.trim() || "";
+};
+
+const resolvePublicBaseUrl = (req: any) => {
+  const configured = (process.env.TM_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  const xfProto = firstHeaderValue(req.headers?.["x-forwarded-proto"]);
+  const xfHost = firstHeaderValue(req.headers?.["x-forwarded-host"]);
+  if (xfProto && xfHost) return `${xfProto}://${xfHost}`;
+  const host = firstHeaderValue(req.headers?.host);
+  const proto =
+    (typeof req.protocol === "string" && req.protocol) ||
+    (req.raw?.socket?.encrypted ? "https" : "http");
+  return host ? `${proto}://${host}` : "";
+};
+
+const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/^\/+/, "");
+
+const toAbsoluteUrl = (base: string, relOrAbs: string) => {
+  if (!relOrAbs) return "";
+  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
+  return base ? new URL(rel, `${base}/`).toString() : rel;
+};
+
+const toStaticArtifactPath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let artifactPath = normalized;
+  if (artifactPath.startsWith("runner/runner-logs/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (artifactPath.startsWith("runner/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (!artifactPath.startsWith("runner-logs/")) {
+    artifactPath = `runner-logs/${runId}/${artifactPath}`;
+  }
+  let staticPath = `/_static/${artifactPath}`;
+  if (options?.indexHtml && !staticPath.endsWith("/index.html")) {
+    staticPath = `${staticPath.replace(/\/+$/, "")}/index.html`;
+  }
+  return staticPath;
+};
+
+const toPublicArtifacts = (req: any, runId: string, artifactsJson?: Record<string, unknown> | null) => {
+  const base = resolvePublicBaseUrl(req);
+  const artifacts = (artifactsJson ?? {}) as Record<string, unknown>;
+  const readString = (key: string) => (typeof artifacts[key] === "string" ? String(artifacts[key]) : "");
+  const reportPathRaw = readString("reportJson");
+  const allureReportRaw = readString("allure-report") || readString("allure");
+  const allureResultsRaw = readString("allure-results");
+
+  const reportPath = reportPathRaw
+    ? /^https?:\/\//i.test(reportPathRaw)
+      ? reportPathRaw
+      : toStaticArtifactPath(runId, reportPathRaw)
+    : `/runner/test-runs/${runId}/report.json`;
+  const allureReportPath = allureReportRaw
+    ? /^https?:\/\//i.test(allureReportRaw)
+      ? allureReportRaw
+      : toStaticArtifactPath(runId, allureReportRaw, { indexHtml: true })
+    : "";
+  const allureResultsPath = allureResultsRaw
+    ? /^https?:\/\//i.test(allureResultsRaw)
+      ? allureResultsRaw
+      : toStaticArtifactPath(runId, allureResultsRaw)
+    : "";
+
+  return {
+    reportJsonUrl: toAbsoluteUrl(base, reportPath),
+    allureReportUrl: allureReportPath ? toAbsoluteUrl(base, allureReportPath) : null,
+    allureResultsUrl: allureResultsPath ? toAbsoluteUrl(base, allureResultsPath) : null,
+    analysisUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/analysis`),
+    stdoutUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stdout`),
+    stderrUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stderr`),
+    liveEventsUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/live`),
+    runViewUrl: toAbsoluteUrl(base, `/test-runs/${runId}`),
+  };
+};
+
+const toLifecycleStatus = (status: string): RunLifecycleStatus => {
+  if (status === "succeeded") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "running") return "running";
+  return "queued";
+};
+
+const toArtifactsState = (artifactsJson: unknown): ArtifactState => {
+  if (!artifactsJson || typeof artifactsJson !== "object") return "none";
+  const artifacts = artifactsJson as Record<string, unknown>;
+  const keys = Object.keys(artifacts).filter((k) => typeof artifacts[k] === "string" && (artifacts[k] as string).trim());
+  if (!keys.length) return "none";
+  const hasReport = typeof artifacts.reportJson === "string";
+  const hasAllure = typeof artifacts["allure-report"] === "string";
+  return hasReport && hasAllure ? "complete" : "partial";
+};
+
+const toStructuredErrors = (run: { error?: string | null; summary?: string | null }) => {
+  const out: Array<{ code: string; message: string; source: "runner" | "summary" }> = [];
+  const seen = new Set<string>();
+  const pushUnique = (code: string, message: string, source: "runner" | "summary") => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const key = `${source}:${trimmed}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ code, message: trimmed, source });
+  };
+  if (run.error) pushUnique("RUN_ERROR", run.error, "runner");
+  if (run.summary) {
+    try {
+      const parsed = JSON.parse(run.summary);
+      const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+      for (const value of errors) {
+        if (typeof value === "string") pushUnique("SUMMARY_ERROR", value, "summary");
+      }
+    } catch {
+      // Ignore non-JSON summaries.
+    }
+  }
+  return out;
+};
+
+const withReportsRunContract = <T extends { id: string; status: string; error?: string | null; summary?: string | null; artifactsJson?: unknown }>(
+  req: any,
+  run: T
+) => ({
+  ...run,
+  lifecycleStatus: toLifecycleStatus(run.status),
+  artifactsState: toArtifactsState(run.artifactsJson),
+  errors: toStructuredErrors(run),
+  publicArtifacts: toPublicArtifacts(req, run.id, (run.artifactsJson ?? null) as Record<string, unknown> | null),
+});
+
 export default async function reportsRoutes(app: FastifyInstance) {
   // small helpers
   const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
@@ -87,7 +224,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
    * GET /reports/recent
    * Query:
    *   projectId?: string
-   *   take?: number (default 20, max 50)
+   *   take?: number (default 100, max 200)
    *   cursorId?: string  -> for pagination (exclusive)
    *   since?: ISO string -> only runs createdAt >= since
    *   status?: 'queued'|'running'|'succeeded'|'failed'
@@ -116,7 +253,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
       if (!projectIds.length) return reply.send({ runs: [], nextCursor: undefined, hasMore: false });
 
       // hard clamp to keep memory sane
-      const n = clamp(parseIntSafe(take, 20), 1, 50);
+      const n = clamp(parseIntSafe(take, 100), 1, 200);
 
       // build filters
       const where: any = projectId
@@ -147,6 +284,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
           summary: true,
           error: true,
           issueUrl: true,
+          artifactsJson: true,
         },
       });
 
@@ -161,7 +299,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
 
       reply.header("Cache-Control", "no-store");
       return reply.send({
-        runs: paged,
+        runs: paged.map((run) => withReportsRunContract(req, run)),
         nextCursor,
         hasMore: Boolean(nextCursor),
       });
