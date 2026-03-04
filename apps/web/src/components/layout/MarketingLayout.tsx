@@ -1,11 +1,11 @@
 import { Outlet } from "react-router-dom";
 import TopNav from "./TopNav";
 
-export default function BareLayout() {
+export default function MarketingLayout() {
   return (
     <div className="min-h-screen bg-[var(--tm-bg)]">
-      <TopNav mode="auth" />
-      <main className="mx-auto max-w-3xl px-4 pt-6">
+      <TopNav mode="marketing" />
+      <main>
         <Outlet />
       </main>
     </div>

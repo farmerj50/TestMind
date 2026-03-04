@@ -23,6 +23,7 @@ import AgentSessionDetailPage from "../pages/AgentSessionDetailPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import AppLayout from "../components/layout/AppLayout";
 import BareLayout from "../components/layout/BareLayout";
+import MarketingLayout from "../components/layout/MarketingLayout";
 import ProjectSuite from "../pages/ProjectSuite";
 import QaAgentPage from "../pages/QaAgentPage";
 import SecurityScanPage from "../pages/SecurityScanPage";
@@ -112,12 +113,15 @@ export default function AppRoutes() {
 
   return (
     <Routes>
-      {/* App pages (top nav + sidebar) */}
-      <Route element={<AppLayout />}>
+      {/* Marketing pages (top nav only) */}
+      <Route element={<MarketingLayout />}>
         <Route index element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/contact" element={<ContactPage />} />
+      </Route>
 
+      {/* App pages (app header + sidebar) */}
+      <Route element={<AppLayout />}>
         <Route
           path="/dashboard"
           element={
