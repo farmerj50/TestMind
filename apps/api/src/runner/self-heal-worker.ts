@@ -498,6 +498,7 @@ export const selfHealWorker = new Worker(
       }
 
       const promptPayload: HealPrompt = {
+        projectId: job.data.projectId,
         specPath: context.repoRelativePath,
         failureMessage: context.message,
         stdout: (context.stdout || '').slice(0, 4000),

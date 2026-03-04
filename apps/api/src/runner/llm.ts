@@ -3,10 +3,13 @@ import { config as loadEnv } from "dotenv";
 import fsSync from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prisma } from "../prisma.js";
+import { decryptSecret } from "../lib/crypto.js";
 
 const MODEL = process.env.HEALING_LLM_MODEL || "gpt-4o-mini";
 
 let client: OpenAI | null = null;
+let clientKey: string | null = null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,16 +27,38 @@ function loadBackendEnv() {
   }
 }
 
-function getClient() {
+const OPENAI_SECRET_KEYS = ["OPENAI_API_KEY", "OPEN_API_KEY"] as const;
+
+async function resolveOpenAiKey(projectId?: string) {
   loadBackendEnv();
-  if (client) return client;
-  const apiKey = process.env.OPENAI_API_KEY;
+  if (!projectId) {
+    return process.env.OPENAI_API_KEY ?? "";
+  }
+  const secrets = await prisma.projectSecret.findMany({
+    where: { projectId },
+    select: { key: true, value: true },
+  });
+  const secret = secrets.find((s) => OPENAI_SECRET_KEYS.includes(s.key as any));
+  if (!secret) return process.env.OPENAI_API_KEY ?? "";
+  try {
+    return decryptSecret(secret.value);
+  } catch {
+    throw new Error("Failed to decrypt OPENAI_API_KEY secret. Please re-save it.");
+  }
+}
+
+async function getClient(projectId?: string) {
+  loadBackendEnv();
+  const apiKey = await resolveOpenAiKey(projectId);
   if (!apiKey) throw new Error("OPENAI_API_KEY is required to run self-healing.");
+  if (client && clientKey === apiKey) return client;
   client = new OpenAI({ apiKey });
+  clientKey = apiKey;
   return client;
 }
 
 export type HealPrompt = {
+  projectId?: string;
   specPath: string;
   failureMessage?: string | null;
   stdout?: string;
@@ -48,7 +73,7 @@ export type HealResponse = {
 };
 
 export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse> {
-  const openai = getClient();
+  const openai = await getClient(prompt.projectId);
 
   const system = [
     "You are TestMind, an autonomous QA engineer.",

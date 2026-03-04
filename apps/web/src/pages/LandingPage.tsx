@@ -42,7 +42,6 @@ export default function LandingPage() {
           opacity: 0.3,
         }}
       />
-      <SiteHeader />
       <Hero />
       <Logos />
       <Features />
@@ -57,50 +56,6 @@ export default function LandingPage() {
   );
 }
 
-// Header / Nav
-function SiteHeader() {
-  return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-300 bg-[var(--tm-input-bg)]/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
-            <Sparkles className="h-5 w-5" />
-          </span>
-          <span className="font-semibold">TestMind AI</span>
-        </Link>
-
-        <nav className="hidden items-center gap-6 text-sm md:flex">
-          <Link to="/#features" className="hover:text-slate-900 text-slate-800">Features</Link>
-          <Link to="/#how" className="hover:text-slate-900 text-slate-800">How it works</Link>
-          <Link to="/#pricing" className="hover:text-slate-900 text-slate-800">Pricing</Link>
-          <Link to="/#faq" className="hover:text-slate-900 text-slate-800">FAQ</Link>
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" className="hidden md:inline-flex">
-            <Link to="/signin">Sign in</Link>
-          </Button>
-          <SignedOut>
-            <SignUpButton mode="modal">
-              <Button className="group">
-                Start free
-                <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Button>
-            </SignUpButton>
-          </SignedOut>
-          <SignedIn>
-            <Button asChild className="group">
-              <Link to="/dashboard">
-                Go to dashboard
-                <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-            </Button>
-          </SignedIn>
-        </div>
-      </div>
-    </header>
-  );
-}
 // Hero Section
 function Hero() {
   return (
