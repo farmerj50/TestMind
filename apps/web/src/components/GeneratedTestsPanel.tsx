@@ -10,6 +10,7 @@ export default function GeneratedTestsPanel() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [content, setContent] = useState<string>("");
+  const [effectiveProjectId, setEffectiveProjectId] = useState<string>("");
   const { apiFetch } = useApi();
   const { user } = useUser();
   const [adapterId, setAdapterId] = useState<string>(
@@ -41,14 +42,26 @@ export default function GeneratedTestsPanel() {
     () =>
       new URLSearchParams({
         adapterId,
-        ...(projectId ? { projectId } : {}),
+        ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
       }).toString(),
-    [adapterId, projectId]
+    [adapterId, effectiveProjectId]
   );
 
   async function load() {
-    const d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${queryString}`);
-    const list = d.files || [];
+    const scopedQuery = new URLSearchParams({
+      adapterId,
+      ...(projectId ? { projectId } : {}),
+    }).toString();
+    let usedProjectId = projectId;
+    let d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${scopedQuery}`);
+    let list = d.files || [];
+    if (projectId && list.length === 0) {
+      const unscopedQuery = new URLSearchParams({ adapterId }).toString();
+      d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${unscopedQuery}`);
+      list = d.files || [];
+      usedProjectId = "";
+    }
+    setEffectiveProjectId(usedProjectId);
     setFiles(list);
     if (list.length && !active) setActive(list[0].path);
   }
@@ -58,7 +71,7 @@ export default function GeneratedTestsPanel() {
     const qs = new URLSearchParams({
       adapterId,
       file: p,
-      ...(projectId ? { projectId } : {}),
+      ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
     }).toString();
     const text = await apiFetch<string>(`/tm/generated/file?${qs}`, {
       // apiFetch treats non-JSON as text when content-type isn't JSON; force that here

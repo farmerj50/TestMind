@@ -1,5 +1,5 @@
 // apps/web/src/pages/DashboardPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useApi } from "../lib/api";
@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [formErrors, setFormErrors] = useState<{ name?: string; repoUrl?: string }>({});
   const [refreshKey, setRefreshKey] = useState(0);
   const [genRefresh, setGenRefresh] = useState(0);
+  const telemetrySentRef = useRef(false);
   useEffect(() => {
     localStorage.setItem("tm-adapterId", adapterId);
   }, [adapterId]);
@@ -66,11 +67,24 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    if (!user?.id) return;
     load();
     apiFetch<{ plan: string | null }>("/billing/me")
       .then((d) => setPlan(d.plan))
       .catch(() => { });
-  }, []);
+  }, [user?.id, apiFetch]);
+
+  useEffect(() => {
+    if (!user?.id || telemetrySentRef.current) return;
+    telemetrySentRef.current = true;
+    apiFetch("/telemetry/events", {
+      method: "POST",
+      body: JSON.stringify({
+        event: "page_view_dashboard",
+        properties: { path: "/dashboard" },
+      }),
+    }).catch(() => {});
+  }, [apiFetch, user?.id]);
 
   useEffect(() => {
     const userId = user?.id;

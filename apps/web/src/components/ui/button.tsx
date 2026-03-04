@@ -6,18 +6,18 @@ const cn = (...xs: Array<string | false | null | undefined>) =>
   xs.filter(Boolean).join(" ");
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--tm-accent-soft)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-blue-600 text-white shadow hover:bg-blue-700",
-        destructive: "bg-blue-700 text-white shadow-sm hover:bg-blue-800",
+        default: "bg-[color:var(--tm-accent)] text-white shadow hover:bg-[color:var(--tm-accent-strong)]",
+        destructive: "bg-[color:var(--tm-accent-strong)] text-white shadow-sm hover:bg-[color:var(--tm-accent-strong)]/90",
         outline:
-          "border border-blue-500 text-blue-700 bg-white shadow-sm hover:bg-blue-50",
+          "border border-[color:var(--tm-accent)] text-[color:var(--tm-accent-strong)] bg-[color:var(--tm-surface)] shadow-sm hover:bg-[color:var(--tm-accent-soft)]",
         secondary:
-          "bg-blue-500 text-white shadow-sm hover:bg-blue-600",
-        ghost: "text-blue-700 hover:bg-blue-50 hover:text-blue-800",
-        link: "text-blue-700 underline-offset-4 hover:underline",
+          "bg-[color:var(--tm-accent)]/90 text-white shadow-sm hover:bg-[color:var(--tm-accent)]",
+        ghost: "text-[color:var(--tm-accent-strong)] hover:bg-[color:var(--tm-accent-soft)] hover:text-[color:var(--tm-accent-strong)]",
+        link: "text-[color:var(--tm-accent-strong)] underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2",

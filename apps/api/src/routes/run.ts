@@ -309,6 +309,8 @@ function parseBool(val: unknown, fallback: boolean) {
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
+type RunLifecycleStatus = "queued" | "running" | "completed" | "failed";
+type ArtifactState = "none" | "partial" | "complete";
 const TestRunStatus: Record<RunStatus, RunStatus> = {
   queued: "queued",
   running: "running",
@@ -343,6 +345,180 @@ const filterRunnerError = (value?: string | null) => {
     .trim();
   return cleaned || null;
 };
+
+const firstHeaderValue = (value?: string | string[]) => {
+  if (Array.isArray(value)) return value[0]?.split(",")[0]?.trim() || "";
+  return value?.split(",")[0]?.trim() || "";
+};
+
+const resolvePublicBaseUrl = (req: any) => {
+  const configured = (process.env.TM_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  const xfProto = firstHeaderValue(req.headers?.["x-forwarded-proto"]);
+  const xfHost = firstHeaderValue(req.headers?.["x-forwarded-host"]);
+  if (xfProto && xfHost) return `${xfProto}://${xfHost}`;
+  const host = firstHeaderValue(req.headers?.host);
+  const proto = (typeof req.protocol === "string" && req.protocol) || (req.raw?.socket?.encrypted ? "https" : "http");
+  return host ? `${proto}://${host}` : "";
+};
+
+const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/^\/+/, "");
+
+const toAbsoluteUrl = (base: string, relOrAbs: string) => {
+  if (!relOrAbs) return "";
+  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
+  return base ? new URL(rel, `${base}/`).toString() : rel;
+};
+
+const toRunnerLogsRoutePath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let routePath = normalized;
+  if (routePath.startsWith("runner/runner-logs/")) {
+    routePath = `/${routePath}`;
+  } else if (routePath.startsWith("runner-logs/")) {
+    routePath = `/runner/${routePath}`;
+  } else if (routePath.startsWith("runner/")) {
+    routePath = `/${routePath}`;
+  } else {
+    routePath = `/runner/runner-logs/${runId}/${routePath}`;
+  }
+  if (options?.indexHtml && !routePath.endsWith("/index.html")) {
+    routePath = `${routePath.replace(/\/+$/, "")}/index.html`;
+  }
+  return routePath;
+};
+
+const toStaticArtifactPath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let artifactPath = normalized;
+  if (artifactPath.startsWith("runner/runner-logs/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (artifactPath.startsWith("runner/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (!artifactPath.startsWith("runner-logs/")) {
+    artifactPath = `runner-logs/${runId}/${artifactPath}`;
+  }
+  let staticPath = `/_static/${artifactPath}`;
+  if (options?.indexHtml && !staticPath.endsWith("/index.html")) {
+    staticPath = `${staticPath.replace(/\/+$/, "")}/index.html`;
+  }
+  return staticPath;
+};
+
+const toLifecycleStatus = (status: string): RunLifecycleStatus => {
+  if (status === "succeeded") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "running") return "running";
+  return "queued";
+};
+
+const toArtifactsState = (artifactsJson: unknown): ArtifactState => {
+  if (!artifactsJson || typeof artifactsJson !== "object") return "none";
+  const artifacts = artifactsJson as Record<string, unknown>;
+  const keys = Object.keys(artifacts).filter((k) => typeof artifacts[k] === "string" && (artifacts[k] as string).trim());
+  if (!keys.length) return "none";
+  const hasReport = typeof artifacts.reportJson === "string";
+  const hasAllure = typeof artifacts["allure-report"] === "string";
+  return hasReport && hasAllure ? "complete" : "partial";
+};
+
+const toStructuredErrors = (run: { error?: string | null; summary?: string | null }) => {
+  const out: Array<{ code: string; message: string; source: "runner" | "summary" }> = [];
+  const seen = new Set<string>();
+  const pushUnique = (code: string, message: string, source: "runner" | "summary") => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const key = `${source}:${trimmed}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ code, message: trimmed, source });
+  };
+  if (run.error) pushUnique("RUN_ERROR", run.error, "runner");
+  if (run.summary) {
+    try {
+      const parsed = JSON.parse(run.summary);
+      const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+      for (const value of errors) {
+        if (typeof value === "string") pushUnique("SUMMARY_ERROR", value, "summary");
+      }
+    } catch {
+      // Ignore non-JSON summaries.
+    }
+  }
+  return out;
+};
+
+const toPublicArtifacts = (
+  req: any,
+  runId: string,
+  artifactsJson?: Record<string, unknown> | null
+) => {
+  const base = resolvePublicBaseUrl(req);
+  const artifacts = (artifactsJson ?? {}) as Record<string, unknown>;
+  const readString = (key: string) => (typeof artifacts[key] === "string" ? String(artifacts[key]) : "");
+  const reportPathRaw = readString("reportJson");
+  const allureReportRaw = readString("allure-report") || readString("allure");
+  const allureResultsRaw = readString("allure-results");
+
+  const reportPath = reportPathRaw
+    ? /^https?:\/\//i.test(reportPathRaw)
+      ? reportPathRaw
+      : toStaticArtifactPath(runId, reportPathRaw)
+    : `/runner/test-runs/${runId}/report.json`;
+  const allureReportPath = allureReportRaw
+    ? /^https?:\/\//i.test(allureReportRaw)
+      ? allureReportRaw
+      : toStaticArtifactPath(runId, allureReportRaw, { indexHtml: true })
+    : "";
+  const allureResultsPath = allureResultsRaw
+    ? /^https?:\/\//i.test(allureResultsRaw)
+      ? allureResultsRaw
+      : toStaticArtifactPath(runId, allureResultsRaw)
+    : "";
+
+  return {
+    reportJsonUrl: toAbsoluteUrl(base, reportPath),
+    allureReportUrl: allureReportPath ? toAbsoluteUrl(base, allureReportPath) : null,
+    allureResultsUrl: allureResultsPath ? toAbsoluteUrl(base, allureResultsPath) : null,
+    analysisUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/analysis`),
+    stdoutUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stdout`),
+    stderrUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stderr`),
+    liveEventsUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/live`),
+    runViewUrl: toAbsoluteUrl(base, `/test-runs/${runId}`),
+  };
+};
+
+async function normalizeAllureBrokenStatuses(allureResultsDir: string) {
+  const entries = await fs.readdir(allureResultsDir, { withFileTypes: true }).catch(() => []);
+  let changed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith("-result.json")) continue;
+    const fullPath = path.join(allureResultsDir, entry.name);
+    try {
+      const raw = await fs.readFile(fullPath, "utf8");
+      const parsed = JSON.parse(raw) as { status?: string };
+      if (parsed?.status !== "broken") continue;
+      parsed.status = "failed";
+      await fs.writeFile(fullPath, JSON.stringify(parsed, null, 2), "utf8");
+      changed += 1;
+    } catch {
+      // Ignore malformed/unreadable result files and continue.
+    }
+  }
+  return changed;
+}
+
+const withRunContract = <T extends { id: string; status: string; error?: string | null; summary?: string | null; artifactsJson?: unknown }>(
+  req: any,
+  run: T
+) => ({
+  ...run,
+  lifecycleStatus: toLifecycleStatus(run.status),
+  artifactsState: toArtifactsState(run.artifactsJson),
+  errors: toStructuredErrors(run),
+  publicArtifacts: toPublicArtifacts(req, run.id, (run.artifactsJson ?? null) as Record<string, unknown> | null),
+});
 
 type MissingLocatorItem = {
   pagePath: string;
@@ -1833,6 +2009,14 @@ export default defineConfig({
             const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
             hasAllureResults = allureEntries.length > 0;
             if (hasAllureResults) {
+              const normalizedAllureCount = await normalizeAllureBrokenStatuses(allureResultsDir);
+              if (normalizedAllureCount > 0) {
+                await fs.writeFile(
+                  path.join(outDir, "stdout.txt"),
+                  `[runner] normalized ${normalizedAllureCount} allure result(s): broken -> failed\n`,
+                  { flag: "a" }
+                );
+              }
               const allureTimeoutMs = Number(process.env.TM_ALLURE_TIMEOUT_MS ?? "120000");
               await fs.writeFile(
                 path.join(outDir, "stdout.txt"),
@@ -2048,7 +2232,11 @@ export default defineConfig({
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-    const { projectId } = (req.query ?? {}) as { projectId?: string };
+    const { projectId, limit } = (req.query ?? {}) as { projectId?: string; limit?: string | number };
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 500)
+      : 200;
     const allowedProjects = await prisma.project.findMany({
       where: { ownerId: userId },
       select: { id: true },
@@ -2061,7 +2249,7 @@ export default defineConfig({
         ? { projectId, project: { ownerId: userId } }
         : { projectId: { in: projectIds } },
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take,
       select: {
         id: true,
         projectId: true,
@@ -2074,7 +2262,7 @@ export default defineConfig({
         artifactsJson: true,
       },
     });
-    return reply.send(runs);
+    return reply.send(runs.map((run) => withRunContract(req, run)));
   });
 
   // GET /runner/test-runs/:id
@@ -2084,7 +2272,7 @@ export default defineConfig({
     if (!auth) return;
     const run = await loadRunById(id);
     if (!run) return reply.code(404).send({ error: "Run not found" });
-    return reply.send({ run });
+    return reply.send({ run: withRunContract(req, run) });
   });
 
   // POST /runner/test-runs/:id/stop
@@ -2421,8 +2609,9 @@ export default defineConfig({
       parsedBody.success ? parsedBody.data.livePreview : undefined;
     const mode = parsedBody.success ? parsedBody.data.mode : undefined;
     const inheritedLivePreview = Boolean((params as any)?.livePreview);
-    const effectiveLivePreview = livePreview ?? inheritedLivePreview;
     const effectiveMode = mode ?? (params as any)?.mode;
+    const effectiveLivePreview =
+      livePreview ?? (effectiveMode === "ai" ? true : inheritedLivePreview);
     if (specFile) rerunParams.file = specFile;
     if (grep) rerunParams.grep = grep ?? undefined;
     if (effectiveMode) rerunParams.mode = effectiveMode;
@@ -2629,6 +2818,8 @@ export default defineConfig({
     const { id } = req.params as { id: string };
     const auth = await requireRunOwner(req, reply, id);
     if (!auth) return;
+    const run = await loadRunById(id);
+    if (!run) return reply.code(404).send({ error: "Run not found" });
     const paths = [
       path.join(RUNNER_LOGS_ROOT, id, "analysis.json"),
       path.join(process.cwd(), "runner-logs", id, "analysis.json"),
@@ -2644,7 +2835,10 @@ export default defineConfig({
         // try next
       }
     }
-    return reply.code(404).send({ ok: false, error: "analysis not found for this run" });
+    return reply.send({
+      analysis: null,
+      pending: run.status === TestRunStatus.queued || run.status === TestRunStatus.running,
+    });
   });
 
   // GET /projects/:id/specs  -> returns a tree of the generated specs

@@ -365,6 +365,7 @@ export default function ProjectSuite() {
   const [editorSaving, setEditorSaving] = useState(false);
   const [suiteCases, setSuiteCases] = useState<CaseItem[]>([]);
   const [suiteSelected, setSuiteSelected] = useState(false);
+  const lastTelemetrySuiteRef = useRef<string | null>(null);
   const specFromQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);
     const raw = params.get("spec");
@@ -617,6 +618,19 @@ export default function ProjectSuite() {
     if (typeof window === "undefined") return;
     localStorage.setItem("tm:lastSuiteId", pid);
   }, [pid, specProjects]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    if (lastTelemetrySuiteRef.current === pid) return;
+    lastTelemetrySuiteRef.current = pid;
+    apiFetch("/telemetry/events", {
+      method: "POST",
+      body: JSON.stringify({
+        event: "page_view_suites",
+        properties: { suiteId: pid },
+      }),
+    }).catch(() => {});
+  }, [apiFetch, isLoaded, isSignedIn, pid]);
 
   const resolveSuite = (suiteId?: string | null) =>
     specProjects.find((proj) => proj.id === suiteId) || activeSuite || null;
@@ -1484,16 +1498,23 @@ export default function ProjectSuite() {
               );
             })
           : rows;
-        const deduped = filtered.filter((row) => {
+        const visibleRows =
+          activeSuite?.type === "generated" &&
+          runProjectId &&
+          rows.length > 0 &&
+          filtered.length === 0
+            ? rows
+            : filtered;
+        const deduped = visibleRows.filter((row) => {
           const key = row.path.replace(/\\/g, "/");
           if (seen.has(key)) return false;
           seen.add(key);
           if (effectiveDeletedSpecs[key] || effectiveDeletedSpecs[row.path]) return false;
           return true;
         });
-        if (rows.length > 0 && deduped.length === 0 && Object.keys(effectiveDeletedSpecs).length > 0) {
+        if (visibleRows.length > 0 && deduped.length === 0 && Object.keys(effectiveDeletedSpecs).length > 0) {
           updateSuiteFolderState(pid, (state) => ({ ...state, deletedSpecs: {} }));
-          setSpecs(filtered);
+          setSpecs(visibleRows);
           return;
         }
         setSpecs(deduped);

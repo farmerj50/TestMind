@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useApi } from "../lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiUrl, useApi } from "../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -9,16 +9,35 @@ import HowToHint from "../components/HowToHint";
 type Run = {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed";
+  lifecycleStatus?: "queued" | "running" | "completed" | "failed";
+  artifactsState?: "none" | "partial" | "complete";
   projectId?: string;
   createdAt: string;
   startedAt?: string | null;
   finishedAt?: string | null;
   summary?: string | null;
   error?: string | null;
+  errors?: Array<{ code: string; message: string; source: "runner" | "summary" }>;
   artifactsJson?: Record<string, string> | null;
+  publicArtifacts?: {
+    reportJsonUrl: string;
+    allureReportUrl?: string | null;
+    allureResultsUrl?: string | null;
+    analysisUrl: string;
+    stdoutUrl: string;
+    stderrUrl: string;
+    liveEventsUrl: string;
+    runViewUrl: string;
+  } | null;
 };
 
 type Project = { id: string; name: string };
+type TelemetryEvent = {
+  ts: string;
+  event: string;
+  userId: string;
+  properties?: Record<string, any>;
+};
 
 const STATUS_COLORS: Record<string, string> = {
   succeeded: "#10b981",
@@ -126,20 +145,63 @@ export default function ReportsPage() {
   const [showTimeline, setShowTimeline] = useState(true);
   const [showFeed, setShowFeed] = useState(true);
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+  const telemetrySentRef = useRef(false);
+  const [telemetryEvents, setTelemetryEvents] = useState<TelemetryEvent[]>([]);
 
   const refreshRuns = useCallback(async () => {
     try {
-      const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-      const res = await apiFetch<Run[]>(`/runner/test-runs${qs}`);
-      setRuns(res || []);
+      const all: Run[] = [];
+      let cursorId: string | undefined;
+      let guard = 0;
+
+      while (guard < 10) {
+        const params = new URLSearchParams({ take: "100" });
+        if (projectId) params.set("projectId", projectId);
+        if (cursorId) params.set("cursorId", cursorId);
+        const qs = `?${params.toString()}`;
+        const res = await apiFetch<{ runs?: Run[]; nextCursor?: string; hasMore?: boolean }>(`/reports/recent${qs}`);
+        const page = res?.runs ?? [];
+        all.push(...page);
+        if (!res?.hasMore || !res?.nextCursor || page.length === 0) break;
+        cursorId = res.nextCursor;
+        guard += 1;
+        if (all.length >= 500) break;
+      }
+
+      setRuns(all.slice(0, 500));
     } catch {
       setRuns([]);
     }
   }, [apiFetch, projectId]);
 
+  const refreshTelemetry = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ events?: TelemetryEvent[] }>("/telemetry/events/recent?limit=20");
+      setTelemetryEvents(res?.events ?? []);
+    } catch {
+      setTelemetryEvents([]);
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     refreshRuns();
   }, [refreshRuns]);
+
+  useEffect(() => {
+    refreshTelemetry();
+  }, [refreshTelemetry]);
+
+  useEffect(() => {
+    if (telemetrySentRef.current) return;
+    telemetrySentRef.current = true;
+    apiFetch("/telemetry/events", {
+      method: "POST",
+      body: JSON.stringify({
+        event: "page_view_reports",
+        properties: { path: "/reports" },
+      }),
+    }).catch(() => {});
+  }, [apiFetch]);
 
   useEffect(() => {
     const hasActive = runs.some((r) => r.status === "running" || r.status === "queued");
@@ -252,20 +314,16 @@ export default function ReportsPage() {
   }, [filteredRuns]);
 
   const resolveAllureHref = (run: Run) => {
+    if (run.publicArtifacts?.allureReportUrl) return run.publicArtifacts.allureReportUrl;
     const artifacts = run.artifactsJson || {};
     const p = artifacts["allure-report"] || artifacts["allure"];
-    if (!p) return null;
-    if (/^https?:\/\//i.test(p)) return p;
-    const clean = p.replace(/^[\\/]+/, "").replace(/\\/g, "/");
-    const withIndex = clean.endsWith("index.html") ? clean : `${clean.replace(/\/$/, "")}/index.html`;
-    const apiBase =
-      (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
-      window.location.origin.replace(/\/$/, "");
-
-    // If the artifact path is relative, prefix with /runner/ so it hits the API (which serves runner-logs).
-    const needsPrefix = !withIndex.startsWith("runner-logs/") && !withIndex.startsWith("/runner-logs/");
-    const pathWithPrefix = needsPrefix ? `/runner/${withIndex}` : `/${withIndex.replace(/^\//, "")}`;
-    return `${apiBase}${pathWithPrefix}`;
+    if (p) {
+      if (/^https?:\/\//i.test(p)) return p;
+      const clean = p.replace(/^[\\/]+/, "").replace(/\\/g, "/");
+      const withIndex = clean.endsWith("index.html") ? clean : `${clean.replace(/\/$/, "")}/index.html`;
+      return apiUrl(`/_static/${withIndex}`);
+    }
+    return null;
   };
 
   const suiteHref = (projectId?: string) =>
@@ -636,6 +694,33 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
         )}
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-slate-800">Telemetry (debug)</CardTitle>
+            <Button size="sm" variant="outline" onClick={refreshTelemetry}>
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-slate-700">
+            {telemetryEvents.length === 0 && (
+              <div className="text-xs text-slate-500">No telemetry events captured yet.</div>
+            )}
+            {telemetryEvents.map((event) => (
+              <div key={`${event.ts}:${event.event}`} className="rounded-md border border-slate-200 bg-white p-2">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>{event.event}</span>
+                  <span>{new Date(event.ts).toLocaleString()}</span>
+                </div>
+                {event.properties && Object.keys(event.properties).length > 0 && (
+                  <pre className="mt-1 overflow-auto text-[11px] text-slate-600">
+                    {JSON.stringify(event.properties)}
+                  </pre>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

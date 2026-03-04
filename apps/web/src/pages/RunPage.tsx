@@ -33,6 +33,7 @@ import RunResults from "../components/RunResults";
 import RunLogs from "../components/RunLogs";
 import { LoadingOverlay } from "../components/ui/LoadingOverlay";
 import { useTelemetryStream, type TelemetryEvent } from "../hooks/useTelemetryStream";
+import { toast } from "sonner";
 
 
 
@@ -53,6 +54,8 @@ type Run = {
 
 
   status: TestRunStatus;
+  lifecycleStatus?: "queued" | "running" | "completed" | "failed";
+  artifactsState?: "none" | "partial" | "complete";
 
 
 
@@ -61,6 +64,7 @@ type Run = {
 
 
   error?: string | null;
+  errors?: Array<{ code: string; message: string; source: "runner" | "summary" }>;
 
 
 
@@ -152,6 +156,16 @@ type Run = {
 
 
   artifactsJson?: Record<string, string> | null;
+  publicArtifacts?: {
+    reportJsonUrl: string;
+    allureReportUrl?: string | null;
+    allureResultsUrl?: string | null;
+    analysisUrl: string;
+    stdoutUrl: string;
+    stderrUrl: string;
+    liveEventsUrl: string;
+    runViewUrl: string;
+  } | null;
 
 
 
@@ -328,6 +342,7 @@ export default function RunPage() {
   const liveStreamRef = useRef<EventSource | null>(null);
   const livePreviewEnabledRef = useRef(false);
   const liveAiModeRef = useRef(false);
+  const lastTelemetryRunRef = useRef<string | null>(null);
 const parsedSummary = useMemo(() => {
 
 
@@ -386,11 +401,9 @@ const parsedSummary = useMemo(() => {
   const startLivePolling = useCallback(
     (durationMs = 10000, intervalMs = 1000) => {
       if (!resolvedRunId) return;
-      // AI analyze runs use SSE artifact frames; avoid legacy latest.png polling.
-      if (liveAiModeRef.current) return;
       const base = normalizeLiveUrl(`/runner-logs/${resolvedRunId}/live/latest.png`);
       const tick = () => {
-        if (!livePreviewEnabledRef.current || liveAiModeRef.current) return;
+        if (!livePreviewEnabledRef.current) return;
         attemptLiveFrame(`${base}?t=${Date.now()}`);
       };
 
@@ -540,12 +553,26 @@ const parsedSummary = useMemo(() => {
     setLivePreviewPreferStatic(false);
   }, [routeRunId]);
 
+  useEffect(() => {
+    if (!run?.id) return;
+    if (lastTelemetryRunRef.current === run.id) return;
+    lastTelemetryRunRef.current = run.id;
+    apiFetch("/telemetry/events", {
+      method: "POST",
+      body: JSON.stringify({
+        event: "page_view_run_detail",
+        properties: { runId: run.id, projectId: run.project.id },
+      }),
+    }).catch(() => {});
+  }, [apiFetch, run?.id, run?.project?.id]);
+
 
   const suiteIdFromRun = (params as any)?.suiteId as string | undefined;
 
 
 
   const artifacts = run?.artifactsJson ?? null;
+  const publicArtifacts = run?.publicArtifacts ?? null;
 
 
 
@@ -574,6 +601,15 @@ const parsedSummary = useMemo(() => {
 
 
   };
+
+  const allureReportHref =
+    publicArtifacts?.allureReportUrl ??
+    buildStaticUrl(artifacts?.["allure-report"], { index: true }) ??
+    null;
+  const reportJsonHref =
+    publicArtifacts?.reportJsonUrl ??
+    buildStaticUrl(artifacts?.reportJson) ??
+    null;
 
 
 
@@ -923,13 +959,13 @@ const fetchMissingLocators = useCallback(
 
   const handleLocatorSave = useCallback(
 
-    async (item: MissingLocatorItem) => {
+    async (item: MissingLocatorItem, selectorOverride?: string) => {
 
-      if (!run) return;
+      if (!run) return false;
 
       const key = locatorKey(item);
 
-      const selector = (selectorValues[key] ?? "").trim();
+      const selector = (selectorOverride ?? selectorValues[key] ?? "").trim();
 
       if (!selector) {
 
@@ -941,7 +977,7 @@ const fetchMissingLocators = useCallback(
 
         }));
 
-        return;
+        return false;
 
       }
 
@@ -983,7 +1019,23 @@ const fetchMissingLocators = useCallback(
 
         }));
 
+        apiFetch("/telemetry/events", {
+          method: "POST",
+          body: JSON.stringify({
+            event: "locator_promoted",
+            properties: {
+              runId: run.id,
+              projectId: run.project.id,
+              pagePath: item.pagePath,
+              bucket: item.bucket,
+              name: item.name,
+              source: "run_detail",
+            },
+          }),
+        }).catch(() => {});
+
         await fetchMissingLocators({ projectId: run.project.id, runId: run.id });
+        return true;
 
       } catch (e: any) {
 
@@ -1002,11 +1054,83 @@ const fetchMissingLocators = useCallback(
         }));
 
       }
+      return false;
 
     },
 
     [apiFetch, run, selectorValues, locatorKey, fetchMissingLocators]
 
+  );
+
+  const getSuggestedSelector = useCallback(
+    (item: MissingLocatorItem) => item.suggestions.find((s) => typeof s === "string" && s.trim().length > 0)?.trim() ?? "",
+    []
+  );
+
+  const handleQuickPromote = useCallback(
+    async (item: MissingLocatorItem) => {
+      const key = locatorKey(item);
+      const suggested = getSuggestedSelector(item);
+      const current = (selectorValues[key] ?? "").trim();
+      const selector = current || suggested;
+      if (!selector) {
+        setSaveStates((prev) => ({
+          ...prev,
+          [key]: { loading: false, error: "No suggested selector available" },
+        }));
+        return false;
+      }
+      if (!current) {
+        setSelectorValues((prev) => ({
+          ...prev,
+          [key]: selector,
+        }));
+      }
+      return handleLocatorSave(item, selector);
+    },
+    [getSuggestedSelector, handleLocatorSave, locatorKey, selectorValues]
+  );
+
+  const hasSavingLocator = useMemo(
+    () => Object.values(saveStates).some((state) => state.loading),
+    [saveStates]
+  );
+
+  const handlePromoteAll = useCallback(
+    async (items: MissingLocatorItem[]) => {
+      if (!run) return;
+      let attempted = 0;
+      let saved = 0;
+      for (const item of items) {
+        const key = locatorKey(item);
+        if (saveStates[key]?.success) continue;
+        attempted += 1;
+        const ok = await handleQuickPromote(item);
+        if (ok) saved += 1;
+      }
+      apiFetch("/telemetry/events", {
+        method: "POST",
+        body: JSON.stringify({
+          event: "locator_promote_all",
+          properties: {
+            runId: run.id,
+            projectId: run.project.id,
+            attempted,
+            saved,
+            failed: attempted - saved,
+            source: "run_detail",
+          },
+        }),
+      }).catch(() => {});
+      if (attempted === 0) {
+        toast.message("All missing locators are already promoted.");
+      } else if (saved === attempted) {
+        toast.success(`Promoted ${saved} locator${saved === 1 ? "" : "s"}.`);
+      } else {
+        toast.error(`Promoted ${saved}/${attempted} locators. ${attempted - saved} failed.`);
+      }
+    },
+    [apiFetch, handleQuickPromote, locatorKey, run, saveStates]
   );
 
 
@@ -1533,6 +1657,10 @@ const fetchMissingLocators = useCallback(
             )}
 </div>
 
+          <div className="text-xs text-slate-500">
+            Lifecycle: {run.lifecycleStatus ?? "unknown"} • Artifacts: {run.artifactsState ?? "unknown"}
+          </div>
+
 
 
 
@@ -1881,7 +2009,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                {buildStaticUrl(artifacts?.["allure-report"], { index: true }) && (
+                {allureReportHref && (
 
 
 
@@ -1889,7 +2017,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                    <a href={buildStaticUrl(artifacts?.["allure-report"], { index: true })!} target="_blank" rel="noreferrer">
+                    <a href={allureReportHref} target="_blank" rel="noreferrer">
 
 
 
@@ -1909,7 +2037,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                {buildStaticUrl(artifacts?.reportJson) && (
+                {reportJsonHref && (
 
 
 
@@ -1917,7 +2045,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                    <a href={buildStaticUrl(artifacts?.reportJson)!} target="_blank" rel="noreferrer">
+                    <a href={reportJsonHref} target="_blank" rel="noreferrer">
 
 
 
@@ -1953,7 +2081,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-              {artifacts && !artifacts["allure-report"] && (
+              {artifacts && !allureReportHref && (
 
 
 
@@ -1973,7 +2101,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-              {artifacts && !artifacts.reportJson && (
+              {artifacts && !reportJsonHref && (
 
 
 
@@ -2014,6 +2142,25 @@ const fetchMissingLocators = useCallback(
                   {missingLoading && (
 
                     <span className="text-xs text-slate-500">Refreshing locators.</span>
+
+                  )}
+                  {missingNavMappings.length > 0 && (
+
+                    <Button
+
+                      size="sm"
+
+                      variant="outline"
+
+                      onClick={() => handlePromoteAll(missingNavMappings)}
+
+                      disabled={missingLoading || hasSavingLocator}
+
+                    >
+
+                      {hasSavingLocator ? "Promoting..." : "Promote all suggestions"}
+
+                    </Button>
 
                   )}
 
@@ -2297,7 +2444,21 @@ const fetchMissingLocators = useCallback(
 
                             {state?.loading ? "Saving?" : state?.success ? "Saved" : "Add to Global nav"}
 
+                          </Button>
 
+                          <Button
+
+                            size="sm"
+
+                            variant="outline"
+
+                            onClick={() => handleQuickPromote(item)}
+
+                            disabled={state?.loading || state?.success}
+
+                          >
+
+                            {state?.success ? "Promoted" : "Promote suggestion"}
 
                           </Button>
 
@@ -2420,6 +2581,25 @@ const fetchMissingLocators = useCallback(
                   {missingLoading && (
 
                     <span className="text-xs text-slate-500">Refreshing locators.</span>
+
+                  )}
+                  {missingLocators.length > 0 && (
+
+                    <Button
+
+                      size="sm"
+
+                      variant="outline"
+
+                      onClick={() => handlePromoteAll(missingLocators)}
+
+                      disabled={missingLoading || hasSavingLocator}
+
+                    >
+
+                      {hasSavingLocator ? "Promoting..." : "Promote all suggestions"}
+
+                    </Button>
 
                   )}
 
@@ -2721,9 +2901,23 @@ const fetchMissingLocators = useCallback(
 
 
 
-                            {state?.loading ? "Saving�" : state?.success ? "Saved" : "Save locator"}
+                            {state?.loading ? "Saving..." : state?.success ? "Saved" : "Save locator"}
 
+                          </Button>
 
+                          <Button
+
+                            size="sm"
+
+                            variant="outline"
+
+                            onClick={() => handleQuickPromote(item)}
+
+                            disabled={state?.loading || state?.success}
+
+                          >
+
+                            {state?.success ? "Promoted" : "Promote suggestion"}
 
                           </Button>
 
@@ -3006,6 +3200,19 @@ const fetchMissingLocators = useCallback(
               </div>
             )}
 
+            {run.errors && run.errors.length > 0 && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <div className="font-medium text-slate-800">Structured errors</div>
+                <ul className="mt-1 list-disc pl-5">
+                  {run.errors.map((entry, idx) => (
+                    <li key={`${entry.source}:${entry.code}:${idx}`}>
+                      [{entry.source}] {entry.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <section>
 
 
@@ -3171,6 +3378,9 @@ const fetchMissingLocators = useCallback(
 
 
 }
+
+
+
 
 
 
