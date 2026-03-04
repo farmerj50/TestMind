@@ -313,6 +313,14 @@ export default function TestBuilderPage() {
   const [sharedStepNameInput, setSharedStepNameInput] = useState("");
   const [sharedStepLinesInput, setSharedStepLinesInput] = useState("");
   const [savingSharedStep, setSavingSharedStep] = useState(false);
+  const selectedLanguageLabel =
+    LANGUAGES.find((item) => item.value === language)?.label ?? "TypeScript (Playwright)";
+  const traceSourceLabel = useMemo(() => {
+    if (sheetSourceLabel) return sheetSourceLabel;
+    if (sheetUploads[0]?.name) return sheetUploads[0].name;
+    if (docs[0]?.name) return docs[0].name;
+    return "Spreadsheet";
+  }, [sheetSourceLabel, sheetUploads, docs]);
 
   useEffect(() => {
     (async () => {
@@ -655,9 +663,9 @@ export default function TestBuilderPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Test Builder</p>
-          <h1 className="text-2xl font-semibold text-slate-900">Generate and run AI-assisted tests</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Structured Test Conversion &amp; Execution</h1>
           <p className="text-sm text-slate-600">
-            Upload specs, pick test types, generate cases, and run them against a project.
+            Convert structured test cases into executable Playwright specs with review and control.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -684,6 +692,27 @@ export default function TestBuilderPage() {
         </div>
       </div>
 
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1">Upload Spreadsheet</span>
+            <span className="text-slate-400">-&gt;</span>
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1">Select Test Cases</span>
+            <span className="text-slate-400">-&gt;</span>
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1">Generate Spec (Preview)</span>
+            <span className="text-slate-400">-&gt;</span>
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1">
+              Promote to Curated Suite (Review Approved)
+            </span>
+            <span className="text-slate-400">-&gt;</span>
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1">Run in QA Environment</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Deterministic generation with optional AI augmentation.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -704,7 +733,7 @@ export default function TestBuilderPage() {
                 className="bg-white"
               />
               <p className="text-xs text-slate-500">
-                For spreadsheet files (.xlsx/.xls/.csv), we open testcase selection in a popup.
+                For spreadsheet files (.xlsx/.xls/.csv), we open test case selection in a popup.
               </p>
               <div className="flex gap-2">
                 <Input
@@ -836,7 +865,7 @@ export default function TestBuilderPage() {
                 className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
               >
                 <Sparkles className="mr-2 h-4 w-4" />
-                {loadingGen ? "Generating..." : "Generate tests"}
+                {loadingGen ? "Generating..." : "Generate spec (preview)"}
               </Button>
               {projectId && (
                 <Button
@@ -893,9 +922,18 @@ export default function TestBuilderPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-slate-800">Generated tests</CardTitle>
+            <CardTitle className="text-slate-800">Spec Preview (Review Before Promotion)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Source: {traceSourceLabel} • Generated: {selectedLanguageLabel} • Environment: QA only
+            </div>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2 text-xs">
+              <span className="font-medium text-slate-600">Review artifact</span>
+              <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
+                Status: Preview (Not Promoted)
+              </span>
+            </div>
             {generated.length === 0 && (
               <div className="text-sm text-slate-500">No tests yet. Upload a doc and click Generate.</div>
             )}
@@ -931,7 +969,7 @@ export default function TestBuilderPage() {
                 </div>
                 <div className="mt-2 flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => handleCurate(t)}>
-                    Copy to curated suite
+                    Promote to Curated Suite (Review Approved)
                   </Button>
                 </div>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
@@ -950,7 +988,7 @@ export default function TestBuilderPage() {
           <div className="w-full max-w-3xl rounded-lg border border-slate-200 bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-slate-900">Select testcases to AI-generate</div>
+                <div className="text-sm font-semibold text-slate-900">Select Test Cases for Spec Preview</div>
                 <div className="text-xs text-slate-500">
                   Source: {sheetSourceLabel || "Spreadsheet"} • {selectedSheetCases.length}/{sheetCases.length} selected
                 </div>
