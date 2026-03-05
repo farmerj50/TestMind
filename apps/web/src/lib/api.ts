@@ -2,7 +2,15 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
 
-const DEFAULT_DEV_BASE = "http://localhost:8787"; // local API URL in dev
+const DEV_HOST =
+  typeof window !== "undefined" && window.location.hostname
+    ? window.location.hostname
+    : "localhost";
+const DEV_PROTOCOL =
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? "https"
+    : "http";
+const DEFAULT_DEV_BASE = `${DEV_PROTOCOL}://${DEV_HOST}:8787`; // local API URL in dev
 const ENV_BASE = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
 const RUNTIME_BASE =
   typeof window !== "undefined" ? window.location.origin : DEFAULT_DEV_BASE;

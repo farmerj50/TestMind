@@ -46,9 +46,22 @@ export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
   }
 
   let url = repoUrl;
-  // Optional: inject token for private repos (GitHub)
+  // Optional: authenticate to private GitHub repos without embedding token in URL.
   if (token && /^https:\/\/github\.com\//i.test(repoUrl)) {
-    url = repoUrl.replace("https://", `https://${token}@`);
+    const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+    await execa(
+      "git",
+      [
+        "-c",
+        `http.https://github.com/.extraheader=Authorization: Basic ${basic}`,
+        "clone",
+        "--depth=1",
+        url,
+        destResolved,
+      ],
+      { stdio: "pipe" }
+    );
+    return;
   }
   await execa("git", ["clone", "--depth=1", url, destResolved], { stdio: "pipe" });
 }

@@ -544,6 +544,17 @@ const parsedSummary = useMemo(() => {
   }, [run?.paramsJson, isAiAnalyzeRun]);
 
   useEffect(() => {
+    if (!livePreviewEnabled || !isAiAnalyzeRun) return;
+    const onKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key !== "Escape") return;
+      livePreviewTouchedRef.current = true;
+      setLivePreviewEnabled(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [livePreviewEnabled, isAiAnalyzeRun]);
+
+  useEffect(() => {
     if (!routeRunId) return;
     setRun(null);
     setErr(null);
@@ -3146,8 +3157,8 @@ const fetchMissingLocators = useCallback(
             </section>
 
             {livePreviewEnabled && isAiAnalyzeRun && (
-              <div className="fixed bottom-6 right-6 z-50 w-[520px] max-w-[90vw]">
-                <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+              <div className="fixed inset-x-2 bottom-4 top-20 z-50 sm:inset-x-auto sm:right-4 sm:w-[520px] sm:max-w-[90vw]">
+                <div className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                     <div className="text-sm font-semibold text-slate-800">Live preview</div>
                     <button
@@ -3161,7 +3172,7 @@ const fetchMissingLocators = useCallback(
                       Close
                     </button>
                   </div>
-                  <div className="aspect-square bg-slate-50">
+                  <div className="min-h-0 flex-1 bg-slate-50">
                     {liveFrameUrl ? (
                       <img
                         src={liveFrameUrl}

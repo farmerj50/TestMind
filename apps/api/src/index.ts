@@ -102,10 +102,11 @@ const scheduleSpecRegeneration = (params: {
 
 app.addHook("onRequest", async (req) => {
   const origin = req.headers.origin;
+  const pathOnly = req.url.split("?")[0] || req.url;
   req.log.info(
     {
       method: req.method,
-      url: req.url,
+      url: pathOnly,
       origin,
       requestId: req.id,
       ip: req.ip,
@@ -117,10 +118,11 @@ app.addHook("onRequest", async (req) => {
 });
 
 app.addHook("onResponse", async (req, reply) => {
+  const pathOnly = req.url.split("?")[0] || req.url;
   req.log.info(
     {
       method: req.method,
-      url: req.url,
+      url: pathOnly,
       statusCode: reply.statusCode,
       requestId: req.id,
     },

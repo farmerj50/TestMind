@@ -138,13 +138,39 @@ export default function RunResults({
       return [`Goto ${route}`, "Wait for page load"];
     }
     if (clean.toLowerCase().startsWith("navigate ")) {
-      const arrowParts = clean.split("→").map((p) => p.trim()).filter(Boolean);
+      const arrowParts = clean.split(/→|â†’/).map((p) => p.trim()).filter(Boolean);
       if (arrowParts.length >= 2) {
         return [`${arrowParts[0]}`, `Open ${arrowParts[1]}`];
       }
       return [clean];
     }
     return [clean];
+  };
+  const inferExpectedPathFromTitle = (title?: string | null) => {
+    if (!title) return null;
+    const cleaned = title.trim();
+    const navMatch = cleaned.match(/^Navigate\s+(.+?)(?:\s*(?:→|â†’)\s*(.+))?$/i);
+    if (!navMatch) return null;
+    const left = navMatch[1]?.trim();
+    if (left && left.startsWith("/")) return left;
+    const right = navMatch[2]?.trim();
+    if (right && right.startsWith("/")) return right;
+    return null;
+  };
+  const extractExpectedPathFromMessage = (message?: string | null) => {
+    if (!message) return null;
+    const lines = message.split("\n");
+    const expectedLine = lines.find((line) => /Expected pattern:/i.test(line)) || "";
+    if (!expectedLine) return null;
+    const escapedPath = expectedLine.match(/\\\/([a-z0-9\-_/]+)/i)?.[1];
+    if (escapedPath) return `/${escapedPath.replace(/^\/+/, "")}`;
+    const plainPath = expectedLine.match(/\/([a-z0-9\-_/]+)(?:\(\?:\$|\[|\)|\/|$)/i)?.[1];
+    if (plainPath) return `/${plainPath.replace(/^\/+/, "")}`;
+    return null;
+  };
+  const isUrlAssertionFailure = (message?: string | null, stepText?: string | null) => {
+    const haystack = `${message ?? ""}\n${stepText ?? ""}`.toLowerCase();
+    return haystack.includes("tohaveurl") || haystack.includes("expected pattern:");
   };
   const estimateStepDurations = (count: number, totalMs: number | null, failedIndex: number | null, timeoutMs: number | null) => {
     if (!count || totalMs == null) return new Array<number | null>(count).fill(null);
@@ -172,7 +198,19 @@ export default function RunResults({
     if (cssLike) return cssLike;
     return null;
   };
-  const buildSuggestion = (selector: string | null, failedStepText: string | null) => {
+  const buildSuggestion = (
+    selector: string | null,
+    failedStepText: string | null,
+    message?: string | null,
+    testTitle?: string | null
+  ) => {
+    if (isUrlAssertionFailure(message, failedStepText)) {
+      const expectedPath = extractExpectedPathFromMessage(message) || inferExpectedPathFromTitle(testTitle) || "/";
+      return {
+        text: `await expect(page).toHaveURL(pathRegex('${expectedPath}'), { timeout: 15000 })`,
+        confidence: "High" as const,
+      };
+    }
     if (!selector) return { text: "Try role-based selectors or a stable data-testid.", confidence: "Medium" as const };
     const quoted = failedStepText?.match(/"([^"]+)"/)?.[1]?.trim();
     if (selector.includes("button")) {
@@ -207,7 +245,7 @@ export default function RunResults({
     try {
       setAnalyzeLoadingId(specPath || "run");
       const testTitle = title ?? undefined;
-      const grep = testTitle ? buildLooseGrep(testTitle) : undefined;
+      const grep = specPath && testTitle ? buildLooseGrep(testTitle) : undefined;
       const res = await apiFetch<{ runId: string }>(`/runner/test-runs/${runId}/rerun`, {
         method: "POST",
         body: JSON.stringify({
@@ -344,8 +382,10 @@ export default function RunResults({
     [selectedSteps.length, selected?.durationMs, detectedFailedStepIndex, timeoutFromMessage]
   );
   const failedStepText = detectedFailedStepIndex != null ? selectedSteps[detectedFailedStepIndex] : null;
-  const failedSelector = extractSelector(selected?.message, failedStepText);
-  const failedSuggestion = buildSuggestion(failedSelector, failedStepText);
+  const failedUrlAssertion = isUrlAssertionFailure(selected?.message, failedStepText);
+  const failedSelector = failedUrlAssertion ? null : extractSelector(selected?.message, failedStepText);
+  const failedExpectedPath = extractExpectedPathFromMessage(selected?.message) || inferExpectedPathFromTitle(selectedDisplayTitle);
+  const failedSuggestion = buildSuggestion(failedSelector, failedStepText, selected?.message, selectedDisplayTitle);
 
   if (err) return <div className="text-sm text-rose-600">{err}</div>;
   if (!results.length) return <div className="text-sm text-slate-500">No results yet.</div>;
@@ -474,17 +514,17 @@ export default function RunResults({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={!selectedIsFailed || analyzeLoadingId === (selectedPath || "run")}
+                    disabled={!selectedIsFailed || !selectedHasValidPath || analyzeLoadingId === (selectedPath || "run")}
                     onClick={() => {
-                      if (!selectedIsFailed) return;
+                      if (!selectedIsFailed || !selectedHasValidPath) return;
                       handleAnalyze(selectedHasValidPath ? selectedPath : null, selected.case.title);
                     }}
                   >
                     {analyzeLoadingId === (selectedPath || "run")
                       ? "Analyzing..."
-                      : selectedIsFailed
+                      : selectedIsFailed && selectedHasValidPath
                         ? "AI analyze"
-                        : "AI analyze (failed only)"}
+                        : "AI analyze (needs failed spec)"}
                   </Button>
                   {openTraceHref ? (
                     <Button asChild size="sm" variant="outline">
@@ -569,7 +609,11 @@ export default function RunResults({
                     <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Failed step</div>
                     <div className="mt-1 text-sm text-rose-900">{failedStepText}</div>
                     {selected.message && <div className="mt-2 text-xs text-rose-800">❌ {selected.message.split("\n")[0]}</div>}
-                    <div className="mt-2 font-mono text-xs text-rose-900">Selector: {failedSelector ?? "Not detected"}</div>
+                    {failedUrlAssertion ? (
+                      <div className="mt-2 font-mono text-xs text-rose-900">Expected path: {failedExpectedPath ?? "Not detected"}</div>
+                    ) : (
+                      <div className="mt-2 font-mono text-xs text-rose-900">Selector: {failedSelector ?? "Not detected"}</div>
+                    )}
                     <div className="mt-1 font-mono text-xs text-rose-900">Suggestion: {failedSuggestion.text}</div>
                     <div className="mt-1 text-xs text-rose-700">Confidence: {failedSuggestion.confidence}</div>
                   </div>
