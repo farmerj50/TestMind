@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Octokit } from "@octokit/rest";
 import { prisma } from "../../prisma.js";
 import type { IntegrationProvider } from "../registry.js";
+import { decryptSecret } from "../../lib/crypto.js";
 
 const ConfigSchema = z
   .object({
@@ -81,7 +82,13 @@ const githubIssuesProvider: IntegrationProvider = {
     if (!git?.token) {
       throw new Error("GitHub not connected");
     }
-    const octokit = new Octokit({ auth: git.token });
+    let accessToken = git.token;
+    try {
+      accessToken = decryptSecret(git.token);
+    } catch {
+      // Backward compatibility for legacy plaintext tokens.
+    }
+    const octokit = new Octokit({ auth: accessToken });
     const defaultTitle = title ?? `Test run ${run.id.slice(0, 8)} ${run.status}`;
     const defaultBody =
       body ??

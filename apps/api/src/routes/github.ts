@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import crypto from "node:crypto";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
+import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 
 const GH_AUTH = "https://github.com/login/oauth/authorize";
 const GH_TOKEN = "https://github.com/login/oauth/access_token";
@@ -67,6 +68,16 @@ export async function githubRoutes(app: FastifyInstance) {
     return prisma.gitAccount.findUnique({
       where: { provider_userId: { provider: "github", userId } },
     });
+  }
+
+  function decodeGitToken(raw?: string | null): string | null {
+    if (!raw) return null;
+    try {
+      return decryptSecret(raw);
+    } catch {
+      // Backward compatibility for legacy plaintext tokens already stored.
+      return raw;
+    }
   }
 
 function buildAuthUrl(state: string) {
@@ -210,18 +221,23 @@ function buildAuthUrl(state: string) {
   app.get("/auth/github/callback", async (req, reply) => {
     const { code, state } = (req.query ?? {}) as { code?: string; state?: string };
     if (!code || !state) {
-      app.log.error({ code, state }, "GitHub callback missing code/state");
+      app.log.error("GitHub callback missing code/state");
       return reply.code(400).send("Missing code/state");
     }
 
     const parsedState = parseState(state);
     if (!parsedState) {
-      app.log.error({ state }, "GitHub callback invalid/expired state");
+      app.log.error("GitHub callback invalid/expired state");
       return reply.code(400).send("Invalid or expired state");
+    }
+    const { userId: activeUserId } = getAuth(req);
+    if (activeUserId && activeUserId !== parsedState.userId) {
+      app.log.warn({ activeUserId, stateUserId: parsedState.userId }, "GitHub callback user mismatch");
+      return reply.code(403).send("OAuth callback user mismatch");
     }
     const userId = parsedState.userId;
 
-    app.log.info({ userId, code, state }, "GitHub callback received");
+    app.log.info({ userId }, "GitHub callback received");
 
     try {
       const r = await fetch(GH_TOKEN, {
@@ -251,9 +267,11 @@ function buildAuthUrl(state: string) {
 
       // Identify the GitHub account tied to this token so we can avoid cross-user reuse.
       const ghUser = await fetchGitHubUser(data.access_token);
+      // Enterprise setup: the same GitHub identity (or bot account) may be linked by
+      // multiple TestMind users who work on the same repository/org.
 
       app.log.info(
-        { userId, ghLogin: ghUser.login, ghId: ghUser.id, tokenPrefix: data.access_token.slice(0, 6) },
+        { userId, ghLogin: ghUser.login, ghId: ghUser.id },
         "GitHub token fetched; writing to DB"
       );
 
@@ -261,19 +279,19 @@ function buildAuthUrl(state: string) {
         const saved = await prisma.gitAccount.upsert({
           where: { provider_userId: { provider: "github", userId } },
           update: {
-            token: data.access_token,
+            token: encryptSecret(data.access_token),
             githubUserId: ghUser.id,
             githubLogin: ghUser.login,
           },
           create: {
             provider: "github",
             userId,
-            token: data.access_token,
+            token: encryptSecret(data.access_token),
             githubUserId: ghUser.id,
             githubLogin: ghUser.login,
           },
         });
-        app.log.info({ userId, saved }, "GitHub upsert completed");
+        app.log.info({ userId, accountId: saved.id }, "GitHub upsert completed");
       } catch (dbErr: any) {
         app.log.error(
           {
@@ -329,9 +347,11 @@ function buildAuthUrl(state: string) {
       where: { provider_userId: { provider: "github", userId } },
     });
     if (!account) return reply.code(401).send({ error: "GitHub not connected" });
+    const accessToken = decodeGitToken(account.token);
+    if (!accessToken) return reply.code(401).send({ error: "GitHub token missing" });
 
     const r = await fetch(`${GH_API}/user/repos?per_page=100&sort=updated`, {
-      headers: { Authorization: `Bearer ${account.token}`, "User-Agent": "TestMindAI" },
+      headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "TestMindAI" },
     });
     if (!r.ok) {
       const text = await r.text().catch(() => "");
@@ -370,7 +390,6 @@ function buildAuthUrl(state: string) {
         githubLogin: r.githubLogin,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
-        tokenPrefix: r.token.slice(0, 6),
       })),
     });
   });
@@ -380,9 +399,10 @@ function buildAuthUrl(state: string) {
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     const account = await getAccount(userId);
-    if (account?.token) {
+    const accessToken = decodeGitToken(account?.token);
+    if (accessToken) {
       try {
-        await revokeGithubAuth(account.token);
+        await revokeGithubAuth(accessToken);
       } catch (revErr: any) {
         app.log.warn(
           {

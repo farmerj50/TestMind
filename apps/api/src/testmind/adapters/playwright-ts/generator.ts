@@ -477,7 +477,7 @@ function emitStep(step: Step, index: number, pagePath: string, locatorStore: Loc
     .split("\n")
     .map((line) => `    ${line}`)
     .join("\n");
-  return `  await test.step(${JSON.stringify(title)}, async () => {\n${action}\n  });`;
+  return `  await test.step(${JSON.stringify(title)}, async () => {\n    try {\n${action}\n    } finally {\n      await captureStepArtifact(page, testInfo, ${JSON.stringify(title)});\n    }\n  });`;
 }
 
 function makePostLoginCheck(postLoginPath?: string): string {
@@ -590,7 +590,7 @@ function emitTest(
   }
 
   return `
-test(${JSON.stringify(title)}, async ({ page }) => {
+test(${JSON.stringify(title)}, async ({ page }, testInfo: TestInfo) => {
 ${emitAnnotations(pagePath, tc.name)}${body}
 });`.trim();
 }
@@ -657,11 +657,12 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     const helperLines = [
     "import fs from 'node:fs/promises';",
     "import path from 'node:path';",
-    "import { Page, test, expect } from '@playwright/test';",
+    "import { Page, TestInfo, test, expect } from '@playwright/test';",
     "",
     `const BASE_URL = ${baseUrlLiteral};`,
     "const RUN_LOG_DIR = process.env.TM_RUN_LOG_DIR || process.env.PW_OUTPUT_DIR;",
     "const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';",
+    "const ACTION_SHOTS_ENABLED = process.env.TM_AI_ACTION_SHOTS !== '0';",
     "",
     "type PageSignals = {",
     "  url?: string;",
@@ -673,6 +674,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "",
     "const SIGNALS = new WeakMap<Page, PageSignals>();",
     "const LIVE_PREVIEW_STOP = new WeakMap<Page, () => void>();",
+    "const STEP_CAPTURE_COUNT = new WeakMap<Page, number>();",
     "",
     "function attachPageSignals(page: Page): PageSignals {",
     "  const signals: PageSignals = { console: [], pageErrors: [], requestFailed: [], dom: {} };",
@@ -740,8 +742,43 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "  });",
     "}",
     "",
+    "function slugForFileName(input: string) {",
+    "  return input",
+    "    .toLowerCase()",
+    "    .replace(/[^a-z0-9]+/g, '-')",
+    "    .replace(/^-+|-+$/g, '')",
+    "    .slice(0, 80) || 'step';",
+    "}",
+    "",
+    "async function captureStepArtifact(page: Page, testInfo: any, stepTitle: string) {",
+    "  if (!RUN_LOG_DIR || !ACTION_SHOTS_ENABLED) return;",
+    "  const nextCount = (STEP_CAPTURE_COUNT.get(page) ?? 0) + 1;",
+    "  STEP_CAPTURE_COUNT.set(page, nextCount);",
+    "  const ts = Date.now();",
+    "  const stepSlug = slugForFileName(stepTitle);",
+    "  const liveDir = path.join(RUN_LOG_DIR, 'live');",
+    "  const stepsDir = path.join(liveDir, 'steps');",
+    "  const name = `${String(nextCount).padStart(3, '0')}-${stepSlug}-${ts}.png`;",
+    "  const stepPath = path.join(stepsDir, name);",
+    "  const latestPath = path.join(liveDir, 'latest.png');",
+    "  try {",
+    "    await fs.mkdir(stepsDir, { recursive: true });",
+    "    await page.screenshot({ path: stepPath, fullPage: true });",
+    "    await fs.copyFile(stepPath, latestPath).catch(() => {});",
+    "    if (typeof testInfo?.attach === 'function') {",
+    "      await testInfo.attach(`step-${nextCount}-${stepSlug}`, {",
+    "        path: stepPath,",
+    "        contentType: 'image/png',",
+    "      });",
+    "    }",
+    "  } catch {",
+    "    // ignore per-step capture failures",
+    "  }",
+    "}",
+    "",
     "test.beforeEach(async ({ page }) => {",
     "  attachPageSignals(page);",
+    "  STEP_CAPTURE_COUNT.set(page, 0);",
     "  startLivePreview(page);",
     "});",
     "",

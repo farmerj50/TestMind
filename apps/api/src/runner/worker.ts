@@ -14,6 +14,7 @@ import type { RunPayload } from './queue.js';
 import { analyzeFailure } from './ai-analysis.js';
 import type { LocatorBucket } from '../testmind/runtime/locator-store.js';
 import { REPORT_ROOT } from '../lib/storageRoots.js';
+import { decryptSecret } from '../lib/crypto.js';
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
@@ -364,12 +365,21 @@ export const worker = new Worker(
         where: { userId: project.ownerId, provider: 'github' },
         select: { token: true },
       });
+      let gitToken: string | undefined;
+      if (gitAcct?.token) {
+        try {
+          gitToken = decryptSecret(gitAcct.token);
+        } catch {
+          // Backward compatibility for legacy plaintext tokens.
+          gitToken = gitAcct.token;
+        }
+      }
 
       // 1) Clone
       if (aiMode) {
         console.log("[worker] mode=ai; skipping clone");
       } else {
-        await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+        await cloneRepo(project.repoUrl, work, gitToken);
       }
 
       // 2) Install deps
@@ -439,6 +449,8 @@ export const worker = new Worker(
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const extraEnv: Record<string, string> = {};
       if (aiMode) {
+        extraEnv.TM_AI_MODE = "1";
+        extraEnv.TM_AI_ACTION_SHOTS = process.env.TM_AI_ACTION_SHOTS ?? "1";
         const generatedRoot = process.env.TM_GENERATED_ROOT
           ? path.resolve(process.env.TM_GENERATED_ROOT)
           : path.join(work, "testmind-generated");

@@ -990,10 +990,19 @@ export default async function runRoutes(app: FastifyInstance) {
           where: { userId: project.ownerId, provider: "github" },
           select: { token: true },
         });
+        let gitToken: string | undefined;
+        if (gitAcct?.token) {
+          try {
+            gitToken = decryptSecret(gitAcct.token);
+          } catch {
+            // Backward compatibility for legacy plaintext tokens.
+            gitToken = gitAcct.token;
+          }
+        }
 
         // 1) Clone (skip if using local/reuse workspace)
         if (!usingLocalRepo && hasRepoUrl && project.repoUrl) {
-          await cloneRepo(project.repoUrl, work, gitAcct?.token || undefined);
+          await cloneRepo(project.repoUrl, work, gitToken);
         } else if (usingLocalRepo) {
           await fs.writeFile(
             path.join(outDir, "stdout.txt"),
@@ -1935,6 +1944,10 @@ export default defineConfig({
           TM_PORT: String(serverPort),
           ...secretEnv,
         };
+        if (aiMode) {
+          extraEnv.TM_AI_MODE = "1";
+          extraEnv.TM_AI_ACTION_SHOTS = process.env.TM_AI_ACTION_SHOTS ?? "1";
+        }
         if (parsed.data.livePreview) {
           extraEnv.TM_LIVE_PREVIEW = "1";
           extraEnv.TM_RUN_LOG_DIR = outDir;
@@ -2604,12 +2617,16 @@ export default defineConfig({
     if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
     const parsedBody = RerunBody.safeParse(req.body ?? {});
     const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
-    const grep = parsedBody.success ? parsedBody.data.grep : undefined;
+    const grepRaw = parsedBody.success ? parsedBody.data.grep : undefined;
     const livePreview =
       parsedBody.success ? parsedBody.data.livePreview : undefined;
     const mode = parsedBody.success ? parsedBody.data.mode : undefined;
     const inheritedLivePreview = Boolean((params as any)?.livePreview);
     const effectiveMode = mode ?? (params as any)?.mode;
+    const grep =
+      effectiveMode === "ai" && !specFile
+        ? undefined
+        : grepRaw;
     const effectiveLivePreview =
       livePreview ?? (effectiveMode === "ai" ? true : inheritedLivePreview);
     if (specFile) rerunParams.file = specFile;
