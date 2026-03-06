@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { prisma } from "../prisma.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 
 type NotifyOn = "all" | "failures" | "success";
 
@@ -145,10 +146,13 @@ function buildEmail(params: {
 }
 
 async function sendSlack(webhookUrl: string, text: string) {
-  const res = await fetch(webhookUrl, {
+  const res = await safeFetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
+  }, {
+    allowHttp: false,
+    allowPrivateHosts: false,
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

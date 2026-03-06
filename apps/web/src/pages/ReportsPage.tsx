@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
 import HowToHint from "../components/HowToHint";
+import { toast } from "sonner";
 
 type Run = {
   id: string;
@@ -37,6 +38,51 @@ type TelemetryEvent = {
   event: string;
   userId: string;
   properties?: Record<string, any>;
+};
+
+type QualityMetrics = {
+  windowDays: number;
+  since: string;
+  metrics: {
+    llmPatchSuccessRate: number | null;
+    selfHealRerunPassRate: number | null;
+    firstRerunPassRate: number | null;
+    meanTimeToGreenMinutes: number | null;
+    weakLocatorCount: number;
+    navPromotionYieldRate: number | null;
+    locatorPromotionYieldRate: number | null;
+    counts: {
+      healingAttempts: number;
+      selfHealReruns: number;
+      failedParents: number;
+      navPromotionActions: number;
+      locatorPromotionActions: number;
+    };
+    trend: Array<{
+      day: string;
+      llmPatchSuccessRate: number | null;
+      selfHealRerunPassRate: number | null;
+      navPromotionYieldRate: number | null;
+      locatorPromotionYieldRate: number | null;
+      counts: {
+        healingAttempts: number;
+        selfHealReruns: number;
+        navPromotionActions: number;
+        locatorPromotionActions: number;
+      };
+    }>;
+  };
+};
+
+type WeakLocator = {
+  pagePath: string;
+  bucket: string;
+  name: string;
+  failCount: number;
+  successCount: number;
+  total: number;
+  failRate: number;
+  updatedAt?: string;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -147,6 +193,10 @@ export default function ReportsPage() {
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
   const telemetrySentRef = useRef(false);
   const [telemetryEvents, setTelemetryEvents] = useState<TelemetryEvent[]>([]);
+  const [qualityMetrics, setQualityMetrics] = useState<QualityMetrics | null>(null);
+  const [weakLocators, setWeakLocators] = useState<WeakLocator[]>([]);
+  const [promotingLocators, setPromotingLocators] = useState(false);
+  const [promotingNav, setPromotingNav] = useState(false);
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -183,6 +233,25 @@ export default function ReportsPage() {
     }
   }, [apiFetch]);
 
+  const refreshQuality = useCallback(async () => {
+    if (!projectId) {
+      setQualityMetrics(null);
+      setWeakLocators([]);
+      return;
+    }
+    try {
+      const [metrics, weak] = await Promise.all([
+        apiFetch<QualityMetrics>(`/projects/${projectId}/quality-metrics?days=14`),
+        apiFetch<{ weakLocators?: WeakLocator[] }>(`/projects/${projectId}/locator-health/weak?limit=5`),
+      ]);
+      setQualityMetrics(metrics ?? null);
+      setWeakLocators(weak?.weakLocators ?? []);
+    } catch {
+      setQualityMetrics(null);
+      setWeakLocators([]);
+    }
+  }, [apiFetch, projectId]);
+
   useEffect(() => {
     refreshRuns();
   }, [refreshRuns]);
@@ -190,6 +259,10 @@ export default function ReportsPage() {
   useEffect(() => {
     refreshTelemetry();
   }, [refreshTelemetry]);
+
+  useEffect(() => {
+    refreshQuality();
+  }, [refreshQuality]);
 
   useEffect(() => {
     if (telemetrySentRef.current) return;
@@ -238,6 +311,60 @@ export default function ReportsPage() {
     },
     [apiFetch, refreshRuns]
   );
+
+  const promoteHighConfidenceLocators = useCallback(async () => {
+    if (!projectId || promotingLocators) return;
+    setPromotingLocators(true);
+    try {
+      const res = await apiFetch<{ promotedCount?: number }>(`/projects/${projectId}/locators/promote-high-confidence`, {
+        method: "POST",
+        body: JSON.stringify({
+          minConfidence: 75,
+          limit: 300,
+          overwriteExisting: false,
+        }),
+      });
+      const promotedCount = typeof res?.promotedCount === "number" ? res.promotedCount : 0;
+      if (promotedCount > 0) {
+        toast.success(`Promoted ${promotedCount} high-confidence locator${promotedCount === 1 ? "" : "s"}.`);
+      } else {
+        toast.message("No high-confidence locators were eligible for promotion.");
+      }
+      await refreshQuality();
+      await refreshRuns();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to promote high-confidence locators.");
+    } finally {
+      setPromotingLocators(false);
+    }
+  }, [apiFetch, projectId, promotingLocators, refreshQuality, refreshRuns]);
+
+  const promoteHighConfidenceNav = useCallback(async () => {
+    if (!projectId || promotingNav) return;
+    setPromotingNav(true);
+    try {
+      const res = await apiFetch<{ promotedCount?: number }>(`/projects/${projectId}/nav-suggestions/promote-high-confidence`, {
+        method: "POST",
+        body: JSON.stringify({
+          minConfidence: 75,
+          removeAfterPromote: true,
+          limit: 100,
+        }),
+      });
+      const promotedCount = typeof res?.promotedCount === "number" ? res.promotedCount : 0;
+      if (promotedCount > 0) {
+        toast.success(`Promoted ${promotedCount} high-confidence nav mapping${promotedCount === 1 ? "" : "s"}.`);
+      } else {
+        toast.message("No high-confidence nav suggestions were eligible for promotion.");
+      }
+      await refreshQuality();
+      await refreshRuns();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to promote high-confidence nav suggestions.");
+    } finally {
+      setPromotingNav(false);
+    }
+  }, [apiFetch, projectId, promotingNav, refreshQuality, refreshRuns]);
 
   const filteredRuns = useMemo(() => {
     const matchesStatus = (r: Run) => statusFilter.includes(r.status);
@@ -298,6 +425,11 @@ export default function ReportsPage() {
   const failureRate = filteredRuns.length
     ? Math.round((stats.counts.failed / filteredRuns.length) * 100)
     : 0;
+
+  const fmtPct = (value: number | null | undefined) =>
+    value == null ? "-" : `${Math.round(value * 100)}%`;
+  const fmtMinutes = (value: number | null | undefined) =>
+    value == null ? "-" : `${value.toFixed(1)}m`;
 
   const failureReasons = useMemo(() => {
     const reasons: Record<string, number> = {};
@@ -542,6 +674,118 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
         )}
+
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="text-slate-800">Quality loop</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-slate-700">
+            {!projectId && (
+              <div className="text-xs text-slate-500">Select a project to view self-heal metrics.</div>
+            )}
+            {projectId && !qualityMetrics && (
+              <div className="text-xs text-slate-500">No quality metrics yet.</div>
+            )}
+            {projectId && qualityMetrics && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span>LLM patch success</span>
+                  <span className="font-semibold">{fmtPct(qualityMetrics.metrics.llmPatchSuccessRate)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Self-heal rerun pass</span>
+                  <span className="font-semibold">{fmtPct(qualityMetrics.metrics.selfHealRerunPassRate)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>First rerun pass</span>
+                  <span className="font-semibold">{fmtPct(qualityMetrics.metrics.firstRerunPassRate)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Mean time to green</span>
+                  <span className="font-semibold">{fmtMinutes(qualityMetrics.metrics.meanTimeToGreenMinutes)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Weak locators</span>
+                  <span className="font-semibold text-rose-600">{qualityMetrics.metrics.weakLocatorCount}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Nav promotion yield</span>
+                  <span className="font-semibold">{fmtPct(qualityMetrics.metrics.navPromotionYieldRate)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Locator promotion yield</span>
+                  <span className="font-semibold">{fmtPct(qualityMetrics.metrics.locatorPromotionYieldRate)}</span>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                  Window: {qualityMetrics.windowDays}d.
+                  Nav actions: {qualityMetrics.metrics.counts.navPromotionActions}.
+                  Locator actions: {qualityMetrics.metrics.counts.locatorPromotionActions}.
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={promoteHighConfidenceLocators}
+                    disabled={promotingLocators || promotingNav}
+                  >
+                    {promotingLocators ? "Promoting locators..." : "Promote high-confidence locators"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={promoteHighConfidenceNav}
+                    disabled={promotingLocators || promotingNav}
+                  >
+                    {promotingNav ? "Promoting nav..." : "Promote high-confidence nav"}
+                  </Button>
+                </div>
+                {weakLocators.length > 0 && (
+                  <div className="rounded-md border border-slate-200 bg-white p-2">
+                    <div className="mb-1 text-xs font-medium text-slate-600">Top weak locators</div>
+                    <div className="space-y-1">
+                      {weakLocators.map((item) => (
+                        <div key={`${item.pagePath}-${item.bucket}-${item.name}`} className="text-xs text-slate-700">
+                          <span className="font-mono">{item.name}</span>{" "}
+                          <span className="text-slate-500">({item.pagePath})</span>{" "}
+                          <span className="text-rose-600">{Math.round(item.failRate * 100)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {qualityMetrics.metrics.trend?.length > 0 && (
+                  <div className="rounded-md border border-slate-200 bg-white p-2">
+                    <div className="mb-1 text-xs font-medium text-slate-600">Daily trend</div>
+                    <div className="max-h-44 overflow-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-slate-500">
+                            <th className="pb-1">Day</th>
+                            <th className="pb-1">LLM</th>
+                            <th className="pb-1">Rerun</th>
+                            <th className="pb-1">Nav</th>
+                            <th className="pb-1">Locator</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {qualityMetrics.metrics.trend.slice(-14).reverse().map((row) => (
+                            <tr key={row.day} className="border-t border-slate-100 text-slate-700">
+                              <td className="py-1">{row.day.slice(5)}</td>
+                              <td className="py-1">{fmtPct(row.llmPatchSuccessRate)}</td>
+                              <td className="py-1">{fmtPct(row.selfHealRerunPassRate)}</td>
+                              <td className="py-1">{fmtPct(row.navPromotionYieldRate)}</td>
+                              <td className="py-1">{fmtPct(row.locatorPromotionYieldRate)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

@@ -29,6 +29,8 @@ import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 import { generateAndWrite } from "./testmind/service.js";
+import { validateAndNormalizeRepoUrl } from "./lib/git-url.js";
+import { safeFetch } from "./lib/safe-fetch.js";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans.js";
@@ -561,8 +563,7 @@ const optionalRepoUrl = z
   .string()
   .trim()
   .optional()
-  .transform((v) => (v === "" ? undefined : v))
-  .refine((v) => !v || z.string().url().safeParse(v).success, { message: "Enter a valid URL" });
+  .transform((v) => (v === "" ? undefined : v));
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1, "Project name is required"),
@@ -583,6 +584,11 @@ const SharedLocatorSchema = z.object({
   bucket: z.enum(["fields", "buttons", "links", "locators"]),
   name: z.string().min(1),
   selector: z.string().min(1),
+  suggestionOnly: z.boolean().optional(),
+  confidence: z.number().min(0).max(100).optional(),
+  sourcePath: z.string().optional(),
+  href: z.string().optional(),
+  label: z.string().optional(),
   projectId: z.string().optional(),
 });
 type SharedLocatorBody = z.infer<typeof SharedLocatorSchema>;
@@ -599,6 +605,37 @@ const LocatorSaveSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 type LocatorSaveBody = z.infer<typeof LocatorSaveSchema>;
+
+const PromoteNavSuggestionSchema = z.object({
+  key: z.string().min(1),
+  selector: z.string().optional(),
+  removeAfterPromote: z.boolean().optional(),
+});
+type PromoteNavSuggestionBody = z.infer<typeof PromoteNavSuggestionSchema>;
+
+const PromoteHighConfidenceNavSchema = z.object({
+  minConfidence: z.number().min(0).max(100).optional(),
+  removeAfterPromote: z.boolean().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+type PromoteHighConfidenceNavBody = z.infer<typeof PromoteHighConfidenceNavSchema>;
+
+const PromoteHighConfidenceLocatorsSchema = z.object({
+  minConfidence: z.number().min(0).max(100).optional(),
+  limit: z.number().int().min(1).max(2000).optional(),
+  overwriteExisting: z.boolean().optional(),
+});
+type PromoteHighConfidenceLocatorsBody = z.infer<typeof PromoteHighConfidenceLocatorsSchema>;
+
+const LocatorHealthUpdateSchema = z.object({
+  pagePath: z.string().min(1),
+  bucket: z.enum(["fields", "buttons", "links", "locators"]),
+  name: z.string().min(1),
+  status: z.enum(["passed", "failed"]),
+  selector: z.string().optional(),
+  reason: z.string().optional(),
+});
+type LocatorHealthUpdateBody = z.infer<typeof LocatorHealthUpdateSchema>;
 
 const normalizeLocatorPath = (pathValue: string) => {
   try {
@@ -633,6 +670,206 @@ type TelemetryRecord = {
   properties: Record<string, any>;
 };
 
+type NavSuggestionEntry = {
+  selector: string;
+  confidence?: number;
+  confidenceBreakdown?: string[];
+  sourcePath?: string;
+  href?: string;
+  label?: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+const TELEMETRY_REDACT_KEYS = /(authorization|token|secret|password|cookie|api[-_]?key|session)/i;
+const TELEMETRY_MAX_STRING = 500;
+const TELEMETRY_MAX_DEPTH = 4;
+const TELEMETRY_MAX_ARRAY = 50;
+const TELEMETRY_MAX_KEYS = 100;
+
+const truncateTelemetryString = (value: string) =>
+  value.length > TELEMETRY_MAX_STRING ? `${value.slice(0, TELEMETRY_MAX_STRING)}...[truncated]` : value;
+
+const sanitizeTelemetryValue = (value: unknown, depth = 0): unknown => {
+  if (value == null) return value;
+  if (typeof value === "string") return truncateTelemetryString(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= TELEMETRY_MAX_DEPTH) return "[depth-limited]";
+  if (Array.isArray(value)) {
+    return value.slice(0, TELEMETRY_MAX_ARRAY).map((item) => sanitizeTelemetryValue(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    let count = 0;
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      if (count >= TELEMETRY_MAX_KEYS) break;
+      if (TELEMETRY_REDACT_KEYS.test(key)) {
+        out[key] = "[redacted]";
+      } else {
+        out[key] = sanitizeTelemetryValue(raw, depth + 1);
+      }
+      count += 1;
+    }
+    return out;
+  }
+  return String(value);
+};
+
+const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+const scoreSelectorConfidence = (selector: string, options?: { hasHref?: boolean; hasStableLabel?: boolean }) => {
+  const breakdown: string[] = [];
+  let score = 25; // neutral baseline
+  const s = selector.trim();
+  const normalized = s.toLowerCase();
+
+  if (/data-testid|getbytestid|testid=/.test(normalized)) {
+    score += 40;
+    breakdown.push("+40 data-testid");
+  }
+  if (/getbyrole|role=/.test(normalized) && /name=/.test(normalized)) {
+    score += 15;
+    breakdown.push("+15 role+name");
+  }
+  if (options?.hasHref) {
+    score += 10;
+    breakdown.push("+10 stable href");
+  }
+  if (options?.hasStableLabel) {
+    score += 8;
+    breakdown.push("+8 stable label");
+  }
+  if (/nth-child|:nth-|>.*>.*>/.test(normalized)) {
+    score -= 30;
+    breakdown.push("-30 positional/deep selector");
+  }
+  if (/text=/.test(normalized) && /\d/.test(normalized)) {
+    score -= 20;
+    breakdown.push("-20 dynamic text");
+  }
+  if (breakdown.length === 0) {
+    breakdown.push("baseline");
+  }
+  return { score: clampScore(score), breakdown };
+};
+
+const appendNavSuggestion = (
+  sharedSteps: Record<string, any>,
+  key: string,
+  entry: Omit<NavSuggestionEntry, "updatedAt" | "updatedBy">,
+  userId: string
+) => {
+  const now = new Date().toISOString();
+  const existing = sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
+    ? (sharedSteps.navSuggestions as Record<string, NavSuggestionEntry[]>)
+    : {};
+  const keyList = Array.isArray(existing[key]) ? [...existing[key]] : [];
+  const deduped = keyList.filter((item) => item?.selector !== entry.selector);
+  const computed =
+    typeof entry.confidence === "number"
+      ? {
+          score: clampScore(entry.confidence),
+          breakdown: entry.confidenceBreakdown ?? ["provided"],
+        }
+      : scoreSelectorConfidence(entry.selector, {
+          hasHref: !!entry.href,
+          hasStableLabel: !!entry.label,
+        });
+  const nextEntry: NavSuggestionEntry = {
+    ...entry,
+    confidence: computed.score,
+    confidenceBreakdown: computed.breakdown,
+    updatedAt: now,
+    updatedBy: userId,
+  };
+  const nextList = [nextEntry, ...deduped]
+    .sort((a, b) => {
+      const scoreA = typeof a.confidence === "number" ? a.confidence : -1;
+      const scoreB = typeof b.confidence === "number" ? b.confidence : -1;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+    })
+    .slice(0, 10);
+
+  return {
+    navSuggestions: {
+      ...existing,
+      [key]: nextList,
+    },
+    now,
+  };
+};
+
+type LocatorHealthEntry = {
+  pagePath: string;
+  bucket: "fields" | "buttons" | "links" | "locators";
+  name: string;
+  selector?: string;
+  successCount: number;
+  failCount: number;
+  lastPassedAt?: string;
+  lastFailedAt?: string;
+  lastFailureReason?: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+const locatorHealthKey = (pagePath: string, bucket: string, name: string) =>
+  `${pagePath}::${bucket}::${name}`;
+
+const upsertLocatorHealth = (
+  sharedSteps: Record<string, any>,
+  update: LocatorHealthUpdateBody,
+  userId: string
+) => {
+  const now = new Date().toISOString();
+  const key = locatorHealthKey(update.pagePath, update.bucket, update.name);
+  const existingMap =
+    sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
+      ? ({ ...(sharedSteps.locatorHealth as Record<string, LocatorHealthEntry>) } as Record<string, LocatorHealthEntry>)
+      : ({} as Record<string, LocatorHealthEntry>);
+  const prev = existingMap[key];
+  const next: LocatorHealthEntry = {
+    pagePath: update.pagePath,
+    bucket: update.bucket,
+    name: update.name,
+    selector: update.selector ?? prev?.selector,
+    successCount: Math.max(0, Number(prev?.successCount ?? 0)),
+    failCount: Math.max(0, Number(prev?.failCount ?? 0)),
+    lastPassedAt: prev?.lastPassedAt,
+    lastFailedAt: prev?.lastFailedAt,
+    lastFailureReason: prev?.lastFailureReason,
+    updatedAt: now,
+    updatedBy: userId,
+  };
+  if (update.status === "passed") {
+    next.successCount += 1;
+    next.lastPassedAt = now;
+  } else {
+    next.failCount += 1;
+    next.lastFailedAt = now;
+    next.lastFailureReason = update.reason?.trim() || prev?.lastFailureReason;
+  }
+  existingMap[key] = next;
+  return { locatorHealth: existingMap, updatedAt: now };
+};
+
+const checkRecorderHelperStatus = async (helperUrl: string) => {
+  const normalized = helperUrl.replace(/\/$/, "");
+  const parsed = new URL(normalized);
+  const isLocalHost =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "::1" ||
+    parsed.hostname === "0.0.0.0";
+  const res = await safeFetch(`${normalized}/status`, undefined, {
+    allowHttp: isLocalHost,
+    allowedHosts: [parsed.hostname],
+    allowPrivateHosts: isLocalHost,
+  });
+  return res.ok;
+};
+
 const TELEMETRY_BUFFER_LIMIT = Number(process.env.TM_TELEMETRY_BUFFER_LIMIT ?? "500");
 const telemetryBuffer: TelemetryRecord[] = [];
 
@@ -655,19 +892,20 @@ app.post("/telemetry/events", async (req, reply) => {
     return reply.code(400).send({ error: parsed.error.flatten() });
   }
 
-  const { event, properties } = parsed.data;
+  const { event } = parsed.data;
+  const sanitizedProperties = sanitizeTelemetryValue(parsed.data.properties ?? {}) as Record<string, any>;
   appendTelemetryRecord({
     ts: new Date().toISOString(),
     event,
     userId,
-    properties: (properties ?? {}) as Record<string, any>,
+    properties: sanitizedProperties,
   });
   req.log.info(
     {
       telemetry: {
         event,
         userId,
-        properties: properties ?? {},
+        properties: sanitizedProperties,
       },
     },
     "[telemetry] event"
@@ -763,8 +1001,17 @@ app.post("/projects", async (req, reply) => {
   });
 
   const { name, repoUrl } = parsed.data;
+  let normalizedRepoUrl = "";
+  if (repoUrl) {
+    const checked = validateAndNormalizeRepoUrl(repoUrl);
+    if (!checked.ok) {
+      const reason = "reason" in checked ? checked.reason : "Invalid repository URL";
+      return reply.code(400).send({ error: reason });
+    }
+    normalizedRepoUrl = checked.normalized;
+  }
   const project = await prisma.project.create({
-    data: { name, repoUrl: repoUrl ?? "", ownerId: userId },
+    data: { name, repoUrl: normalizedRepoUrl, ownerId: userId },
   });
 
   return reply.code(201).send({ project });
@@ -792,7 +1039,16 @@ app.patch<{ Params: { id: string }; Body: UpdateProjectBody }>(
     if (parsed.data.repoUrl === undefined) {
       delete data.repoUrl;
     } else {
-      data.repoUrl = parsed.data.repoUrl ?? "";
+      if (!parsed.data.repoUrl) {
+        data.repoUrl = "";
+      } else {
+        const checked = validateAndNormalizeRepoUrl(parsed.data.repoUrl);
+        if (!checked.ok) {
+          const reason = "reason" in checked ? checked.reason : "Invalid repository URL";
+          return reply.code(400).send({ error: reason });
+        }
+        data.repoUrl = checked.normalized;
+      }
     }
     if (parsed.data.sharedSteps === undefined) {
       delete data.sharedSteps;
@@ -827,12 +1083,37 @@ app.post<{ Params: { id: string }; Body: SharedLocatorBody }>(
     });
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
-    const { pagePath, bucket, name, selector } = parsed.data;
+    const { pagePath, bucket, name, selector, suggestionOnly, confidence, sourcePath, href, label } = parsed.data;
     const isGlobalNav = pagePath === GLOBAL_NAV_KEY;
     const normalizedPath = isGlobalNav ? GLOBAL_NAV_KEY : normalizeLocatorPath(pagePath);
     const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
 
     if (isGlobalNav) {
+      if (suggestionOnly) {
+        const navSuggestionState = appendNavSuggestion(
+          sharedSteps,
+          name,
+          { selector, confidence, sourcePath, href, label },
+          userId
+        );
+        const nextSharedSteps = {
+          ...sharedSteps,
+          navSuggestions: navSuggestionState.navSuggestions,
+          locatorMeta: {
+            ...(sharedSteps.locatorMeta ?? {}),
+            updatedAt: navSuggestionState.now,
+            updatedBy: userId,
+          },
+        };
+
+        const updated = await prisma.project.update({
+          where: { id },
+          data: { sharedSteps: nextSharedSteps },
+          select: { sharedSteps: true },
+        });
+        return reply.send({ sharedSteps: updated.sharedSteps });
+      }
+
       const nav = { ...(sharedSteps.nav ?? {}) };
       nav[name] = selector;
       const now = new Date().toISOString();
@@ -966,6 +1247,11 @@ app.post<{ Body: LocatorSaveBody }>("/locators", async (req, reply) => {
   const cleanFallbacks = Array.from(
     new Set((fallbacks ?? []).map((v) => v.trim()).filter(Boolean))
   ).filter((value) => value !== primary.trim());
+  const primaryConfidence = scoreSelectorConfidence(primary.trim());
+  const fallbackConfidence = cleanFallbacks.map((value) => ({
+    selector: value,
+    ...scoreSelectorConfidence(value),
+  }));
 
   const locatorFallbacks: Record<string, any> = {
     ...(sharedSteps.locatorFallbacks ?? {}),
@@ -975,7 +1261,12 @@ app.post<{ Body: LocatorSaveBody }>("/locators", async (req, reply) => {
   bucketFallbacks[name] = {
     primary: primary.trim(),
     fallbacks: cleanFallbacks,
-    metadata,
+    metadata: {
+      ...(metadata ?? {}),
+      confidenceScore: primaryConfidence.score,
+      confidenceBreakdown: primaryConfidence.breakdown,
+      fallbackConfidence,
+    },
     updatedBy: userId,
     updatedAt: new Date().toISOString(),
   };
@@ -1022,6 +1313,706 @@ app.get<{ Params: { id: string } }>("/projects/:id/shared-locators", async (req,
   if (!project) return reply.code(404).send({ error: "Project not found" });
 
   return reply.send({ sharedSteps: project.sharedSteps ?? {} });
+});
+
+app.get<{ Params: { id: string } }>("/projects/:id/nav-suggestions", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const project = await prisma.project.findFirst({
+    where: { id, ownerId: userId },
+    select: { id: true, sharedSteps: true },
+  });
+  if (!project) return reply.code(404).send({ error: "Project not found" });
+
+  const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+  const navSuggestions =
+    sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
+      ? sharedSteps.navSuggestions
+      : {};
+  return reply.send({ navSuggestions });
+});
+
+app.post<{ Params: { id: string }; Body: PromoteNavSuggestionBody }>(
+  "/projects/:id/nav-suggestions/promote",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const parsed = PromoteNavSuggestionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const { id } = req.params;
+    const project = await prisma.project.findFirst({
+      where: { id, ownerId: userId },
+      select: { id: true, sharedSteps: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const { key, selector, removeAfterPromote } = parsed.data;
+    const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+    const navSuggestions =
+      sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
+        ? ({ ...(sharedSteps.navSuggestions as Record<string, NavSuggestionEntry[]>) } as Record<string, NavSuggestionEntry[]>)
+        : {};
+    const candidates = Array.isArray(navSuggestions[key]) ? navSuggestions[key] : [];
+    if (!candidates.length) {
+      return reply.code(404).send({ error: "No nav suggestions found for key" });
+    }
+
+    const selected =
+      (selector ? candidates.find((item) => item.selector === selector) : undefined) ??
+      candidates[0];
+    if (!selected?.selector) {
+      return reply.code(404).send({ error: "No matching selector to promote" });
+    }
+
+    const nav = { ...(sharedSteps.nav ?? {}) };
+    nav[key] = selected.selector;
+
+    const shouldRemove = removeAfterPromote ?? true;
+    if (shouldRemove) {
+      navSuggestions[key] = candidates.filter((item) => item.selector !== selected.selector);
+      if (!navSuggestions[key].length) delete navSuggestions[key];
+    }
+
+    const now = new Date().toISOString();
+    const nextSharedSteps = {
+      ...sharedSteps,
+      nav,
+      navSuggestions,
+      locatorMeta: {
+        ...(sharedSteps.locatorMeta ?? {}),
+        updatedAt: now,
+        updatedBy: userId,
+      },
+    };
+
+    const updated = await prisma.project.update({
+      where: { id },
+      data: { sharedSteps: nextSharedSteps },
+      select: { sharedSteps: true },
+    });
+
+    appendTelemetryRecord({
+      ts: now,
+      event: "nav_suggestion_promoted",
+      userId,
+      properties: {
+        projectId: id,
+        key,
+        selector: selected.selector,
+        confidence: typeof selected.confidence === "number" ? selected.confidence : null,
+        removeAfterPromote: shouldRemove,
+      },
+    });
+
+    scheduleSpecRegeneration({
+      projectId: id,
+      userId,
+      baseUrl: (sharedSteps as any)?.baseUrl,
+      sharedSteps: nextSharedSteps,
+    });
+
+    return reply.send({
+      promoted: { key, selector: selected.selector },
+      navSuggestions,
+      sharedSteps: updated.sharedSteps,
+    });
+  }
+);
+
+app.post<{ Params: { id: string }; Body: PromoteHighConfidenceNavBody }>(
+  "/projects/:id/nav-suggestions/promote-high-confidence",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const parsed = PromoteHighConfidenceNavSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const { id } = req.params;
+    const project = await prisma.project.findFirst({
+      where: { id, ownerId: userId },
+      select: { id: true, sharedSteps: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const minConfidence = parsed.data.minConfidence ?? 75;
+    const removeAfterPromote = parsed.data.removeAfterPromote ?? true;
+    const limit = parsed.data.limit ?? 100;
+
+    const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+    const nav = { ...(sharedSteps.nav ?? {}) };
+    const navSuggestions =
+      sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
+        ? ({ ...(sharedSteps.navSuggestions as Record<string, any[]>) } as Record<string, any[]>)
+        : {};
+
+    const promoted: Array<{ key: string; selector: string; confidence: number | null }> = [];
+
+    for (const [key, entriesRaw] of Object.entries(navSuggestions)) {
+      if (promoted.length >= limit) break;
+      const entries = Array.isArray(entriesRaw) ? entriesRaw : [];
+      if (!entries.length) continue;
+      const sorted = [...entries].sort((a: any, b: any) => {
+        const scoreA = typeof a?.confidence === "number" ? a.confidence : -1;
+        const scoreB = typeof b?.confidence === "number" ? b.confidence : -1;
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        return String(b?.updatedAt ?? "").localeCompare(String(a?.updatedAt ?? ""));
+      });
+      const pick = sorted.find((entry: any) => {
+        const score = typeof entry?.confidence === "number" ? entry.confidence : 0;
+        return score >= minConfidence && typeof entry?.selector === "string" && entry.selector.trim().length > 0;
+      });
+      if (!pick) continue;
+      nav[key] = pick.selector;
+      promoted.push({
+        key,
+        selector: pick.selector,
+        confidence: typeof pick.confidence === "number" ? pick.confidence : null,
+      });
+
+      if (removeAfterPromote) {
+        const remaining = entries.filter((entry: any) => entry?.selector !== pick.selector);
+        if (remaining.length) navSuggestions[key] = remaining;
+        else delete navSuggestions[key];
+      }
+    }
+
+    const now = new Date().toISOString();
+    const nextSharedSteps = {
+      ...sharedSteps,
+      nav,
+      navSuggestions,
+      locatorMeta: {
+        ...(sharedSteps.locatorMeta ?? {}),
+        updatedAt: now,
+        updatedBy: userId,
+      },
+    };
+
+    const updated = await prisma.project.update({
+      where: { id },
+      data: { sharedSteps: nextSharedSteps },
+      select: { sharedSteps: true },
+    });
+
+    appendTelemetryRecord({
+      ts: now,
+      event: "nav_promote_high_confidence",
+      userId,
+      properties: {
+        projectId: id,
+        promotedCount: promoted.length,
+        minConfidence,
+        removeAfterPromote,
+        limit,
+      },
+    });
+
+    scheduleSpecRegeneration({
+      projectId: id,
+      userId,
+      baseUrl: (sharedSteps as any)?.baseUrl,
+      sharedSteps: nextSharedSteps,
+    });
+
+    return reply.send({
+      promotedCount: promoted.length,
+      promoted,
+      filters: { minConfidence, removeAfterPromote, limit },
+      sharedSteps: updated.sharedSteps,
+    });
+  }
+);
+
+app.post<{ Params: { id: string }; Body: PromoteHighConfidenceLocatorsBody }>(
+  "/projects/:id/locators/promote-high-confidence",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const parsed = PromoteHighConfidenceLocatorsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const { id } = req.params;
+    const project = await prisma.project.findFirst({
+      where: { id, ownerId: userId },
+      select: { id: true, sharedSteps: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const minConfidence = parsed.data.minConfidence ?? 75;
+    const limit = parsed.data.limit ?? 300;
+    const overwriteExisting = parsed.data.overwriteExisting ?? false;
+
+    const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+    const locatorFallbacks =
+      sharedSteps.locatorFallbacks && typeof sharedSteps.locatorFallbacks === "object"
+        ? (sharedSteps.locatorFallbacks as Record<string, any>)
+        : {};
+
+    let pages: Record<string, any> = {};
+    if (sharedSteps.pages && typeof sharedSteps.pages === "object") {
+      pages = { ...sharedSteps.pages };
+    } else if (sharedSteps.locators && typeof sharedSteps.locators === "object") {
+      pages = Object.entries(sharedSteps.locators as Record<string, any>).reduce(
+        (acc, [key, locators]) => {
+          acc[key] = { locators: { ...(locators as Record<string, string>) } };
+          return acc;
+        },
+        {} as Record<string, any>
+      );
+    }
+
+    const promoted: Array<{
+      pagePath: string;
+      bucket: "fields" | "buttons" | "links" | "locators";
+      name: string;
+      selector: string;
+      confidence: number | null;
+    }> = [];
+
+    const bucketNames: Array<"fields" | "buttons" | "links" | "locators"> = ["fields", "buttons", "links", "locators"];
+
+    for (const [pagePath, fallbackPageRaw] of Object.entries(locatorFallbacks)) {
+      if (promoted.length >= limit) break;
+      if (!fallbackPageRaw || typeof fallbackPageRaw !== "object") continue;
+      const fallbackPage = fallbackPageRaw as Record<string, any>;
+      const page = { ...(pages[pagePath] ?? {}) };
+
+      for (const bucket of bucketNames) {
+        if (promoted.length >= limit) break;
+        const fallbackBucket =
+          fallbackPage[bucket] && typeof fallbackPage[bucket] === "object"
+            ? (fallbackPage[bucket] as Record<string, any>)
+            : {};
+        const pageBucket = { ...(page[bucket] ?? {}) };
+
+        for (const [name, fallbackEntryRaw] of Object.entries(fallbackBucket)) {
+          if (promoted.length >= limit) break;
+          if (!fallbackEntryRaw || typeof fallbackEntryRaw !== "object") continue;
+          const fallbackEntry = fallbackEntryRaw as Record<string, any>;
+          const selector =
+            typeof fallbackEntry.primary === "string" && fallbackEntry.primary.trim()
+              ? fallbackEntry.primary.trim()
+              : "";
+          if (!selector) continue;
+
+          const confidenceValue = Number(fallbackEntry?.metadata?.confidenceScore);
+          const confidence = Number.isFinite(confidenceValue) ? confidenceValue : null;
+          if ((confidence ?? 0) < minConfidence) continue;
+
+          const hasExisting = typeof pageBucket[name] === "string" && pageBucket[name].trim().length > 0;
+          if (hasExisting && !overwriteExisting) continue;
+
+          pageBucket[name] = selector;
+          promoted.push({
+            pagePath,
+            bucket,
+            name,
+            selector,
+            confidence,
+          });
+        }
+
+        page[bucket] = pageBucket;
+      }
+
+      pages[pagePath] = page;
+    }
+
+    const now = new Date().toISOString();
+    const nextSharedSteps = {
+      ...sharedSteps,
+      pages,
+      locatorMeta: {
+        ...(sharedSteps.locatorMeta ?? {}),
+        updatedAt: now,
+        updatedBy: userId,
+      },
+    };
+
+    const updated = await prisma.project.update({
+      where: { id },
+      data: { sharedSteps: nextSharedSteps },
+      select: { sharedSteps: true },
+    });
+
+    appendTelemetryRecord({
+      ts: now,
+      event: "locator_promote_high_confidence",
+      userId,
+      properties: {
+        projectId: id,
+        promotedCount: promoted.length,
+        minConfidence,
+        limit,
+        overwriteExisting,
+      },
+    });
+
+    scheduleSpecRegeneration({
+      projectId: id,
+      userId,
+      baseUrl: (sharedSteps as any)?.baseUrl,
+      sharedSteps: nextSharedSteps,
+    });
+
+    return reply.send({
+      promotedCount: promoted.length,
+      promoted,
+      filters: { minConfidence, limit, overwriteExisting },
+      sharedSteps: updated.sharedSteps,
+    });
+  }
+);
+
+app.get<{ Params: { id: string } }>("/projects/:id/locator-health", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const project = await prisma.project.findFirst({
+    where: { id, ownerId: userId },
+    select: { id: true, sharedSteps: true },
+  });
+  if (!project) return reply.code(404).send({ error: "Project not found" });
+
+  const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+  const locatorHealth =
+    sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
+      ? sharedSteps.locatorHealth
+      : {};
+  return reply.send({ locatorHealth });
+});
+
+app.get<{ Params: { id: string } }>("/projects/:id/locator-health/weak", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const project = await prisma.project.findFirst({
+    where: { id, ownerId: userId },
+    select: { id: true, sharedSteps: true },
+  });
+  if (!project) return reply.code(404).send({ error: "Project not found" });
+
+  const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+  const locatorHealthRaw =
+    sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
+      ? (sharedSteps.locatorHealth as Record<string, any>)
+      : {};
+
+  const limitRaw = Number((req.query as any)?.limit);
+  const minSamplesRaw = Number((req.query as any)?.minSamples);
+  const minFailRateRaw = Number((req.query as any)?.minFailRate);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 25;
+  const minSamples = Number.isFinite(minSamplesRaw) ? Math.max(Math.trunc(minSamplesRaw), 1) : 2;
+  const minFailRate = Number.isFinite(minFailRateRaw) ? Math.max(0, Math.min(1, minFailRateRaw)) : 0.5;
+
+  const weak = Object.values(locatorHealthRaw)
+    .map((entry: any) => {
+      const successCount = Math.max(0, Number(entry?.successCount ?? 0));
+      const failCount = Math.max(0, Number(entry?.failCount ?? 0));
+      const total = successCount + failCount;
+      const failRate = total > 0 ? failCount / total : 0;
+      return {
+        ...entry,
+        successCount,
+        failCount,
+        total,
+        failRate,
+      };
+    })
+    .filter((entry: any) => entry.total >= minSamples && entry.failRate >= minFailRate)
+    .sort((a: any, b: any) => {
+      if (b.failRate !== a.failRate) return b.failRate - a.failRate;
+      if (b.failCount !== a.failCount) return b.failCount - a.failCount;
+      return String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""));
+    })
+    .slice(0, limit);
+
+  return reply.send({
+    weakLocators: weak,
+    filters: { limit, minSamples, minFailRate },
+  });
+});
+
+app.post<{ Params: { id: string }; Body: LocatorHealthUpdateBody }>(
+  "/projects/:id/locator-health",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const parsed = LocatorHealthUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const { id } = req.params;
+    const project = await prisma.project.findFirst({
+      where: { id, ownerId: userId },
+      select: { id: true, sharedSteps: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+    const nextHealth = upsertLocatorHealth(sharedSteps, parsed.data, userId);
+    const nextSharedSteps = {
+      ...sharedSteps,
+      locatorHealth: nextHealth.locatorHealth,
+      locatorMeta: {
+        ...(sharedSteps.locatorMeta ?? {}),
+        updatedAt: nextHealth.updatedAt,
+        updatedBy: userId,
+      },
+    };
+
+    const updated = await prisma.project.update({
+      where: { id },
+      data: { sharedSteps: nextSharedSteps },
+      select: { sharedSteps: true },
+    });
+    return reply.send({ locatorHealth: nextSharedSteps.locatorHealth, sharedSteps: updated.sharedSteps });
+  }
+);
+
+app.get<{ Params: { id: string } }>("/projects/:id/quality-metrics", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const project = await prisma.project.findFirst({
+    where: { id, ownerId: userId },
+    select: { id: true, sharedSteps: true },
+  });
+  if (!project) return reply.code(404).send({ error: "Project not found" });
+
+  const daysRaw = Number((req.query as any)?.days);
+  const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.trunc(daysRaw), 1), 90) : 14;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const [healingAttempts, selfHealReruns, parentRuns] = await Promise.all([
+    prisma.testHealingAttempt.findMany({
+      where: { run: { projectId: id }, createdAt: { gte: since } },
+      select: { id: true, status: true, runId: true, createdAt: true },
+    }),
+    prisma.testRun.findMany({
+      where: { projectId: id, rerunOfId: { not: null }, trigger: "self-heal", createdAt: { gte: since } },
+      select: { id: true, rerunOfId: true, status: true, createdAt: true, finishedAt: true },
+    }),
+    prisma.testRun.findMany({
+      where: { projectId: id, createdAt: { gte: since }, status: "failed" },
+      select: { id: true, createdAt: true },
+    }),
+  ]);
+
+  const healingTotal = healingAttempts.length;
+  const healingSucceeded = healingAttempts.filter((x) => x.status === "succeeded").length;
+  const llmPatchSuccessRate = healingTotal > 0 ? healingSucceeded / healingTotal : null;
+
+  const rerunTotal = selfHealReruns.length;
+  const rerunSucceeded = selfHealReruns.filter((x) => x.status === "succeeded").length;
+  const selfHealRerunPassRate = rerunTotal > 0 ? rerunSucceeded / rerunTotal : null;
+
+  const firstRerunByParent = new Map<string, { status: string; createdAt: Date; finishedAt: Date | null }>();
+  for (const rerun of selfHealReruns) {
+    const parentId = rerun.rerunOfId as string | null;
+    if (!parentId) continue;
+    const prev = firstRerunByParent.get(parentId);
+    if (!prev || rerun.createdAt < prev.createdAt) {
+      firstRerunByParent.set(parentId, {
+        status: rerun.status,
+        createdAt: rerun.createdAt,
+        finishedAt: rerun.finishedAt,
+      });
+    }
+  }
+  const firstRerunTotal = firstRerunByParent.size;
+  const firstRerunPassed = Array.from(firstRerunByParent.values()).filter((x) => x.status === "succeeded").length;
+  const firstRerunPassRate = firstRerunTotal > 0 ? firstRerunPassed / firstRerunTotal : null;
+
+  const parentById = new Map(parentRuns.map((r) => [r.id, r]));
+  const timeToGreenMinutes: number[] = [];
+  for (const rerun of selfHealReruns) {
+    if (rerun.status !== "succeeded") continue;
+    const parentId = rerun.rerunOfId as string | null;
+    if (!parentId) continue;
+    const parent = parentById.get(parentId);
+    if (!parent) continue;
+    const diffMs = rerun.createdAt.getTime() - parent.createdAt.getTime();
+    if (diffMs >= 0) timeToGreenMinutes.push(diffMs / (60 * 1000));
+  }
+  const meanTimeToGreenMinutes =
+    timeToGreenMinutes.length > 0
+      ? timeToGreenMinutes.reduce((acc, n) => acc + n, 0) / timeToGreenMinutes.length
+      : null;
+
+  const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
+  const locatorHealthRaw =
+    sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
+      ? (sharedSteps.locatorHealth as Record<string, any>)
+      : {};
+  const weakLocatorCount = Object.values(locatorHealthRaw).filter((entry: any) => {
+    const successCount = Math.max(0, Number(entry?.successCount ?? 0));
+    const failCount = Math.max(0, Number(entry?.failCount ?? 0));
+    const total = successCount + failCount;
+    if (total < 2) return false;
+    return failCount / total >= 0.5;
+  }).length;
+
+  const sinceMs = since.getTime();
+  const recentTelemetry = telemetryBuffer.filter((record) => {
+    if (record.userId !== userId) return false;
+    const ts = Date.parse(record.ts);
+    if (!Number.isFinite(ts) || ts < sinceMs) return false;
+    return record.properties?.projectId === id;
+  });
+  const navPromotionActions = recentTelemetry.filter(
+    (record) => record.event === "nav_suggestion_promoted" || record.event === "nav_promote_high_confidence"
+  );
+  const locatorPromotionActions = recentTelemetry.filter(
+    (record) => record.event === "locator_promoted" || record.event === "locator_promote_all" || record.event === "locator_promote_high_confidence"
+  );
+  const navPromotionWithChanges = navPromotionActions.filter((record) => {
+    if (record.event === "nav_suggestion_promoted") return true;
+    const promotedCount = Number(record.properties?.promotedCount ?? 0);
+    return Number.isFinite(promotedCount) && promotedCount > 0;
+  }).length;
+  const locatorPromotionWithChanges = locatorPromotionActions.filter((record) => {
+    if (record.event === "locator_promoted") return true;
+    if (record.event === "locator_promote_all") {
+      const saved = Number(record.properties?.saved ?? 0);
+      return Number.isFinite(saved) && saved > 0;
+    }
+    const promotedCount = Number(record.properties?.promotedCount ?? 0);
+    return Number.isFinite(promotedCount) && promotedCount > 0;
+  }).length;
+  const navPromotionYieldRate =
+    navPromotionActions.length > 0 ? navPromotionWithChanges / navPromotionActions.length : null;
+  const locatorPromotionYieldRate =
+    locatorPromotionActions.length > 0 ? locatorPromotionWithChanges / locatorPromotionActions.length : null;
+
+  const dayKey = (dateValue: Date | string | number) => new Date(dateValue).toISOString().slice(0, 10);
+  const trendDays = Math.min(days, 30);
+  const trendStart = new Date(Date.now() - (trendDays - 1) * 24 * 60 * 60 * 1000);
+  const trendByDay = new Map<
+    string,
+    {
+      llmTotal: number;
+      llmSucceeded: number;
+      rerunTotal: number;
+      rerunSucceeded: number;
+      navActions: number;
+      navChanges: number;
+      locatorActions: number;
+      locatorChanges: number;
+    }
+  >();
+  for (let i = 0; i < trendDays; i++) {
+    const d = new Date(trendStart.getTime() + i * 24 * 60 * 60 * 1000);
+    trendByDay.set(dayKey(d), {
+      llmTotal: 0,
+      llmSucceeded: 0,
+      rerunTotal: 0,
+      rerunSucceeded: 0,
+      navActions: 0,
+      navChanges: 0,
+      locatorActions: 0,
+      locatorChanges: 0,
+    });
+  }
+
+  for (const attempt of healingAttempts) {
+    const k = dayKey(attempt.createdAt);
+    const row = trendByDay.get(k);
+    if (!row) continue;
+    row.llmTotal += 1;
+    if (attempt.status === "succeeded") row.llmSucceeded += 1;
+  }
+  for (const rerun of selfHealReruns) {
+    const k = dayKey(rerun.createdAt);
+    const row = trendByDay.get(k);
+    if (!row) continue;
+    row.rerunTotal += 1;
+    if (rerun.status === "succeeded") row.rerunSucceeded += 1;
+  }
+  for (const record of recentTelemetry) {
+    const ts = Date.parse(record.ts);
+    if (!Number.isFinite(ts)) continue;
+    const k = dayKey(ts);
+    const row = trendByDay.get(k);
+    if (!row) continue;
+    if (record.event === "nav_suggestion_promoted" || record.event === "nav_promote_high_confidence") {
+      row.navActions += 1;
+      if (record.event === "nav_suggestion_promoted") row.navChanges += 1;
+      else {
+        const promotedCount = Number(record.properties?.promotedCount ?? 0);
+        if (Number.isFinite(promotedCount) && promotedCount > 0) row.navChanges += 1;
+      }
+    }
+    if (
+      record.event === "locator_promoted" ||
+      record.event === "locator_promote_all" ||
+      record.event === "locator_promote_high_confidence"
+    ) {
+      row.locatorActions += 1;
+      if (record.event === "locator_promoted") row.locatorChanges += 1;
+      else if (record.event === "locator_promote_all") {
+        const saved = Number(record.properties?.saved ?? 0);
+        if (Number.isFinite(saved) && saved > 0) row.locatorChanges += 1;
+      } else {
+        const promotedCount = Number(record.properties?.promotedCount ?? 0);
+        if (Number.isFinite(promotedCount) && promotedCount > 0) row.locatorChanges += 1;
+      }
+    }
+  }
+  const trend = Array.from(trendByDay.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, row]) => ({
+      day,
+      llmPatchSuccessRate: row.llmTotal > 0 ? row.llmSucceeded / row.llmTotal : null,
+      selfHealRerunPassRate: row.rerunTotal > 0 ? row.rerunSucceeded / row.rerunTotal : null,
+      navPromotionYieldRate: row.navActions > 0 ? row.navChanges / row.navActions : null,
+      locatorPromotionYieldRate: row.locatorActions > 0 ? row.locatorChanges / row.locatorActions : null,
+      counts: {
+        healingAttempts: row.llmTotal,
+        selfHealReruns: row.rerunTotal,
+        navPromotionActions: row.navActions,
+        locatorPromotionActions: row.locatorActions,
+      },
+    }));
+
+  return reply.send({
+    windowDays: days,
+    since: since.toISOString(),
+    metrics: {
+      llmPatchSuccessRate,
+      selfHealRerunPassRate,
+      firstRerunPassRate,
+      meanTimeToGreenMinutes,
+      weakLocatorCount,
+      navPromotionYieldRate,
+      locatorPromotionYieldRate,
+      counts: {
+        healingAttempts: healingTotal,
+        selfHealReruns: rerunTotal,
+        failedParents: parentRuns.length,
+        navPromotionActions: navPromotionActions.length,
+        locatorPromotionActions: locatorPromotionActions.length,
+      },
+      trend,
+    },
+  });
 });
 
 // ---------- Delete ----------
@@ -1153,8 +2144,8 @@ app.get("/recorder/helper/status", async () => {
   const helperUrl = process.env.RECORDER_HELPER || null;
   if (helperUrl) {
     try {
-      const res = await fetch(`${helperUrl.replace(/\/$/, "")}/status`);
-      if (!res.ok) throw new Error(`status ${res.status}`);
+      const ok = await checkRecorderHelperStatus(helperUrl);
+      if (!ok) throw new Error("status not ok");
       return { started: true, configured: true, mode: "remote", helperUrl };
     } catch {
       return { started: false, configured: true, mode: "remote", helperUrl };
@@ -1178,8 +2169,8 @@ app.post("/recorder/helper/start", async () => {
   const helperUrl = process.env.RECORDER_HELPER || null;
   if (helperUrl) {
     try {
-      const res = await fetch(`${helperUrl.replace(/\/$/, "")}/status`);
-      return { started: res.ok, configured: true, mode: "remote", helperUrl };
+      const ok = await checkRecorderHelperStatus(helperUrl);
+      return { started: ok, configured: true, mode: "remote", helperUrl };
     } catch {
       return { started: false, configured: true, mode: "remote", helperUrl };
     }

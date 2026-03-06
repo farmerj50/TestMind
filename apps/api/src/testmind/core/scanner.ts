@@ -2,6 +2,7 @@
 
 import { load } from "cheerio";
 import { URL } from "url";
+import { safeFetch } from "../../lib/safe-fetch.js";
 
 export type Field = {
   name: string;
@@ -35,7 +36,7 @@ function sameOrigin(base: string, href: string) {
 }
 
 export async function scanRoute(url: string): Promise<RouteScan> {
-  const res = await fetch(url);
+  const res = await safeFetch(url, undefined, { allowHttp: true });
   const html = await res.text();
   const $ = load(html);
 

@@ -8,7 +8,7 @@ import { redis } from './redis.js';
 import { makeWorkdir, rmrf } from './workdir.js';
 import { cloneRepo } from './git.js';
 import { detectFramework, installDeps, runTests } from './node-test-exec.js';
-import { parseResults } from './result-parsers.js';
+import { parseResults, type ParsedCase } from './result-parsers.js';
 import { scheduleSelfHealingForRun } from './self-heal.js';
 import type { RunPayload } from './queue.js';
 import { analyzeFailure } from './ai-analysis.js';
@@ -232,6 +232,66 @@ function isMissingLocatorFailure(message?: string | null, steps?: string[]): boo
   return /getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator\(/i.test(raw);
 }
 
+type LocatorHealthUpdate = {
+  pagePath: string;
+  bucket: "locators";
+  name: string;
+  selector: string;
+  status: "passed" | "failed";
+  reason?: string | null;
+};
+
+function buildLocatorHealthUpdates(cases: ParsedCase[]): LocatorHealthUpdate[] {
+  const updates: LocatorHealthUpdate[] = [];
+  for (const c of cases) {
+    const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
+    if (!locatorExpr) continue;
+    const selector = locatorExpr.trim();
+    if (!selector) continue;
+    const name = extractLocatorName(selector).trim() || selector;
+    const status: "passed" | "failed" =
+      c.status === "failed" || c.status === "error" ? "failed" : "passed";
+    updates.push({
+      pagePath: pagePathFromTitle(c.fullName ?? null),
+      bucket: "locators",
+      name,
+      selector,
+      status,
+      reason: status === "failed" ? (c.message ?? null) : null,
+    });
+  }
+  return updates;
+}
+
+type NavSuggestionAuto = {
+  key: string;
+  selector: string;
+  sourcePath: string;
+  confidence: number;
+};
+
+function buildNavSuggestionUpdates(cases: ParsedCase[]): NavSuggestionAuto[] {
+  const out: NavSuggestionAuto[] = [];
+  const seen = new Set<string>();
+  for (const c of cases) {
+    const target = extractNavTargetFromTitle(c.fullName ?? null);
+    if (!target) continue;
+    const key = navKeyFromPath(target);
+    const selector = `a[href="${target}"]`;
+    const confidence = c.status === "passed" ? 88 : 64;
+    const dedupeKey = `${key}::${selector}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({
+      key,
+      selector,
+      sourcePath: target,
+      confidence,
+    });
+  }
+  return out;
+}
+
 async function appendMissingLocators(
   filePath: string,
   items: MissingLocatorItem[]
@@ -262,7 +322,7 @@ export const worker = new Worker(
     const run = await prisma.testRun.findUnique({
       where: { id: runId },
       select: {
-        project: { select: { id: true, ownerId: true, repoUrl: true } },
+        project: { select: { id: true, ownerId: true, repoUrl: true, sharedSteps: true } },
         paramsJson: true,
       },
     });
@@ -572,6 +632,8 @@ export const worker = new Worker(
 
       if (exec.resultsPath) {
         const cases = await parseResults(exec.resultsPath);
+        const locatorHealthUpdates = buildLocatorHealthUpdates(cases);
+        const navSuggestionUpdates = buildNavSuggestionUpdates(cases);
         const missingLocators: MissingLocatorItem[] = [];
 
         for (const c of cases) {
@@ -641,6 +703,85 @@ export const worker = new Worker(
             if (c.status === 'passed') passed++;
             else if (c.status === 'failed' || c.status === 'error') failed++;
             else skipped++;
+          }
+
+          if (locatorHealthUpdates.length || navSuggestionUpdates.length) {
+            const projectRecord = await db.project.findUnique({
+              where: { id: project.id },
+              select: { sharedSteps: true },
+            });
+            const sharedSteps = (projectRecord?.sharedSteps ?? {}) as Record<string, any>;
+            const locatorHealth =
+              sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
+                ? ({ ...(sharedSteps.locatorHealth as Record<string, any>) } as Record<string, any>)
+                : ({} as Record<string, any>);
+            const navSuggestions =
+              sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
+                ? ({ ...(sharedSteps.navSuggestions as Record<string, any[]>) } as Record<string, any[]>)
+                : ({} as Record<string, any[]>);
+            const now = new Date().toISOString();
+            for (const item of locatorHealthUpdates) {
+              const key = `${item.pagePath}::${item.bucket}::${item.name}`;
+              const prev = locatorHealth[key] ?? {};
+              const next = {
+                pagePath: item.pagePath,
+                bucket: item.bucket,
+                name: item.name,
+                selector: item.selector || prev.selector,
+                successCount: Math.max(0, Number(prev.successCount ?? 0)),
+                failCount: Math.max(0, Number(prev.failCount ?? 0)),
+                lastPassedAt: prev.lastPassedAt,
+                lastFailedAt: prev.lastFailedAt,
+                lastFailureReason: prev.lastFailureReason,
+                updatedAt: now,
+                updatedBy: project.ownerId,
+              };
+              if (item.status === "passed") {
+                next.successCount += 1;
+                next.lastPassedAt = now;
+              } else {
+                next.failCount += 1;
+                next.lastFailedAt = now;
+                if (item.reason) next.lastFailureReason = item.reason.slice(0, 2000);
+              }
+              locatorHealth[key] = next;
+            }
+
+            for (const nav of navSuggestionUpdates) {
+              const existing = Array.isArray(navSuggestions[nav.key]) ? [...navSuggestions[nav.key]] : [];
+              const deduped = existing.filter((item) => item?.selector !== nav.selector);
+              const entry = {
+                selector: nav.selector,
+                confidence: nav.confidence,
+                confidenceBreakdown: ["auto-captured from run title"],
+                sourcePath: nav.sourcePath,
+                updatedAt: now,
+                updatedBy: project.ownerId,
+              };
+              navSuggestions[nav.key] = [entry, ...deduped]
+                .sort((a: any, b: any) => {
+                  const scoreA = typeof a.confidence === "number" ? a.confidence : -1;
+                  const scoreB = typeof b.confidence === "number" ? b.confidence : -1;
+                  if (scoreA !== scoreB) return scoreB - scoreA;
+                  return String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""));
+                })
+                .slice(0, 10);
+            }
+            await db.project.update({
+              where: { id: project.id },
+              data: {
+                sharedSteps: {
+                  ...sharedSteps,
+                  locatorHealth,
+                  navSuggestions,
+                  locatorMeta: {
+                    ...(sharedSteps.locatorMeta ?? {}),
+                    updatedAt: now,
+                    updatedBy: project.ownerId,
+                  },
+                },
+              },
+            });
           }
         });
       }
