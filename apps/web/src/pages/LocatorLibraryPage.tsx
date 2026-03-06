@@ -18,7 +18,15 @@ type SharedSteps = {
   pages?: Record<string, LocatorPage>;
   locators?: Record<string, Record<string, string>>;
   nav?: Record<string, string>;
-  navSuggestions?: Record<string, Array<{ selector: string; confidence?: number | null; updatedAt?: string }>>;
+  navSuggestions?: Record<
+    string,
+    Array<{
+      selector: string;
+      confidence?: number | null;
+      updatedAt?: string;
+      confidenceBreakdown?: Array<{ delta: number; reason: string }>;
+    }>
+  >;
   locatorFallbacks?: Record<
     string,
     Partial<Record<LocatorBucket, Record<string, { metadata?: { urlPattern?: string; uniqueAnchor?: string } }>>>
@@ -450,14 +458,19 @@ export default function LocatorLibraryPage() {
 
   const navSuggestions = useMemo(() => {
     const raw = sharedSteps?.navSuggestions;
-    if (!raw || typeof raw !== "object") return [] as Array<{ key: string; selector: string; confidence: number | null; updatedAt?: string }>;
-    const rows: Array<{ key: string; selector: string; confidence: number | null; updatedAt?: string }> = [];
+    if (!raw || typeof raw !== "object") return [] as Array<{ key: string; selector: string; confidence: number | null; updatedAt?: string; confidenceBreakdown?: Array<{ delta: number; reason: string }> }>;
+    const rows: Array<{ key: string; selector: string; confidence: number | null; updatedAt?: string; confidenceBreakdown?: Array<{ delta: number; reason: string }> }> = [];
     for (const [key, candidates] of Object.entries(raw)) {
       if (!Array.isArray(candidates)) continue;
       for (const c of candidates) {
         if (!c || typeof c.selector !== "string" || !c.selector.trim()) continue;
         const confidence = typeof c.confidence === "number" ? c.confidence : null;
-        rows.push({ key, selector: c.selector.trim(), confidence, updatedAt: c.updatedAt });
+        const confidenceBreakdown = Array.isArray((c as any).confidenceBreakdown)
+          ? (c as any).confidenceBreakdown.filter(
+              (item: any) => item && typeof item.delta === "number" && typeof item.reason === "string"
+            )
+          : undefined;
+        rows.push({ key, selector: c.selector.trim(), confidence, updatedAt: c.updatedAt, confidenceBreakdown });
       }
     }
     return rows.sort((a, b) => {
@@ -701,7 +714,18 @@ export default function LocatorLibraryPage() {
                     return (
                       <div key={opKey} className="grid gap-2 rounded-md border border-slate-200 p-3 md:grid-cols-[180px_1fr_100px_auto]">
                         <div className="text-sm font-medium text-slate-700">{item.key}</div>
-                        <code className="text-xs text-slate-700">{item.selector}</code>
+                        <div>
+                          <code className="text-xs text-slate-700">{item.selector}</code>
+                          {item.confidenceBreakdown && item.confidenceBreakdown.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {item.confidenceBreakdown.map((part, idx) => (
+                                <span key={`${opKey}-bd-${idx}`} className="rounded border border-slate-200 px-1 py-0.5 text-[10px] text-slate-500">
+                                  {part.delta >= 0 ? `+${part.delta}` : part.delta} {part.reason}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <div className="text-xs text-slate-500">{item.confidence == null ? "-" : `${Math.round(item.confidence)}%`}</div>
                         <Button
                           size="sm"

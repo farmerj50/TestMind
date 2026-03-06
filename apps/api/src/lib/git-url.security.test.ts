@@ -39,6 +39,15 @@ test("repo url rejects private hosts by default", () => {
   });
 });
 
+test("repo url rejects link-local and loopback IPv6 hosts by default", () => {
+  withEnv({ TM_ALLOW_PRIVATE_GIT_HOSTS: undefined, TM_GIT_ALLOWED_HOSTS: "169.254.169.254,::1" }, () => {
+    const linkLocal = validateAndNormalizeRepoUrl("https://169.254.169.254/org/repo");
+    assert.equal(linkLocal.ok, false);
+    const loopbackV6 = validateAndNormalizeRepoUrl("https://[::1]/org/repo");
+    assert.equal(loopbackV6.ok, false);
+  });
+});
+
 test("repo url allows enterprise host from allowlist", () => {
   withEnv({ TM_GIT_ALLOWED_HOSTS: "github.enterprise.local" }, () => {
     const res = validateAndNormalizeRepoUrl("https://github.enterprise.local/org/repo");
@@ -66,4 +75,3 @@ test("repo url rejects non-allowlisted hosts", () => {
     if (!res.ok) assert.match(res.reason, /not allowed/i);
   });
 });
-

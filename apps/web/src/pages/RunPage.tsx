@@ -136,6 +136,8 @@ type Run = {
     structuredFallbackReason?: string | null;
     operationCount?: number | null;
     operationTypes?: string[];
+    fixType?: "fallback" | "rule_fixed" | "llm_patch_fixed" | "llm_rejected_policy" | "none" | null;
+    fixDetails?: Record<string, unknown> | null;
   }[];
 
 
@@ -2024,6 +2026,20 @@ const fetchMissingLocators = useCallback(
                           {attempt.summary && (
                             <div className="mt-1 text-xs text-slate-600">{attempt.summary}</div>
                           )}
+                          {attempt.fixType && (
+                            <div className="mt-1 text-xs text-slate-600">
+                              Fix type:{" "}
+                              <span className="font-medium">
+                                {attempt.fixType === "rule_fixed"
+                                  ? "rule_fixed"
+                                  : attempt.fixType === "llm_patch_fixed"
+                                  ? "llm_patch_fixed"
+                                  : attempt.fixType === "llm_rejected_policy"
+                                  ? "llm_rejected_policy"
+                                  : attempt.fixType}
+                              </span>
+                            </div>
+                          )}
                           {attempt.structuredFallbackReason && (
                             <div className="mt-1 text-xs text-amber-700">
                               Structured fallback: {attempt.structuredFallbackReason}
@@ -2039,6 +2055,11 @@ const fetchMissingLocators = useCallback(
                           )}
                           {attempt.error && (
                             <div className="mt-1 text-xs text-rose-700">{attempt.error}</div>
+                          )}
+                          {attempt.fixDetails && (
+                            <pre className="mt-1 overflow-x-auto rounded bg-slate-50 p-2 text-[11px] text-slate-600">
+{JSON.stringify(attempt.fixDetails, null, 2)}
+                            </pre>
                           )}
                         </li>
                       ))}

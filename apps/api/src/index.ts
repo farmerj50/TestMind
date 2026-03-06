@@ -31,6 +31,10 @@ import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoo
 import { generateAndWrite } from "./testmind/service.js";
 import { validateAndNormalizeRepoUrl } from "./lib/git-url.js";
 import { safeFetch } from "./lib/safe-fetch.js";
+import {
+  scoreSelectorConfidence,
+  type ConfidenceBreakdownItem,
+} from "./lib/selector-confidence.js";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans.js";
@@ -673,7 +677,7 @@ type TelemetryRecord = {
 type NavSuggestionEntry = {
   selector: string;
   confidence?: number;
-  confidenceBreakdown?: string[];
+  confidenceBreakdown?: ConfidenceBreakdownItem[];
   sourcePath?: string;
   href?: string;
   label?: string;
@@ -715,44 +719,6 @@ const sanitizeTelemetryValue = (value: unknown, depth = 0): unknown => {
   return String(value);
 };
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
-
-const scoreSelectorConfidence = (selector: string, options?: { hasHref?: boolean; hasStableLabel?: boolean }) => {
-  const breakdown: string[] = [];
-  let score = 25; // neutral baseline
-  const s = selector.trim();
-  const normalized = s.toLowerCase();
-
-  if (/data-testid|getbytestid|testid=/.test(normalized)) {
-    score += 40;
-    breakdown.push("+40 data-testid");
-  }
-  if (/getbyrole|role=/.test(normalized) && /name=/.test(normalized)) {
-    score += 15;
-    breakdown.push("+15 role+name");
-  }
-  if (options?.hasHref) {
-    score += 10;
-    breakdown.push("+10 stable href");
-  }
-  if (options?.hasStableLabel) {
-    score += 8;
-    breakdown.push("+8 stable label");
-  }
-  if (/nth-child|:nth-|>.*>.*>/.test(normalized)) {
-    score -= 30;
-    breakdown.push("-30 positional/deep selector");
-  }
-  if (/text=/.test(normalized) && /\d/.test(normalized)) {
-    score -= 20;
-    breakdown.push("-20 dynamic text");
-  }
-  if (breakdown.length === 0) {
-    breakdown.push("baseline");
-  }
-  return { score: clampScore(score), breakdown };
-};
-
 const appendNavSuggestion = (
   sharedSteps: Record<string, any>,
   key: string,
@@ -768,12 +734,13 @@ const appendNavSuggestion = (
   const computed =
     typeof entry.confidence === "number"
       ? {
-          score: clampScore(entry.confidence),
-          breakdown: entry.confidenceBreakdown ?? ["provided"],
+          score: Math.max(0, Math.min(100, Math.round(entry.confidence))),
+          breakdown: entry.confidenceBreakdown ?? [{ delta: 0, reason: "provided" }],
         }
       : scoreSelectorConfidence(entry.selector, {
           hasHref: !!entry.href,
           hasStableLabel: !!entry.label,
+          hasStableRoleName: /role=|getbyrole/i.test(entry.selector),
         });
   const nextEntry: NavSuggestionEntry = {
     ...entry,

@@ -2253,7 +2253,7 @@ export default defineConfig({
                 const entry = {
                   selector: nav.selector,
                   confidence: nav.confidence,
-                  confidenceBreakdown: ["auto-captured from run title"],
+                  confidenceBreakdown: [{ delta: 0, reason: "auto-captured from run title" }],
                   sourcePath: nav.sourcePath,
                   updatedAt: now,
                   updatedBy: projectRecord?.ownerId ?? userId,
@@ -2507,12 +2507,19 @@ export default defineConfig({
       const operationTypes = Array.isArray(response?.operationTypes)
         ? (response?.operationTypes.filter((v) => typeof v === "string") as string[])
         : [];
+      const fixType = typeof response?.fixType === "string" ? response.fixType : null;
+      const fixDetails =
+        response?.fixDetails && typeof response.fixDetails === "object"
+          ? (response.fixDetails as Record<string, unknown>)
+          : null;
       return {
         ...attempt,
         mode,
         structuredFallbackReason,
         operationCount,
         operationTypes,
+        fixType,
+        fixDetails,
       };
     });
     return { ...rest, healingAttempts };

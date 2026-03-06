@@ -11,6 +11,7 @@ const parseBoolean = (value: string | undefined, fallback: boolean) => {
 const isPrivateIpv4Host = (hostname: string) => {
   if (/^10\./.test(hostname)) return true;
   if (/^192\.168\./.test(hostname)) return true;
+  if (/^169\.254\./.test(hostname)) return true;
   const m = hostname.match(/^172\.(\d{1,3})\./);
   if (m) {
     const second = Number(m[1]);
@@ -20,8 +21,25 @@ const isPrivateIpv4Host = (hostname: string) => {
   return false;
 };
 
+const isPrivateIpv6Host = (hostname: string) => {
+  const normalized = hostname.toLowerCase();
+  if (normalized === "::1") return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  if (
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb")
+  ) {
+    return true;
+  }
+  const v4mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4mapped?.[1]) return isPrivateIpv4Host(v4mapped[1]);
+  return false;
+};
+
 const isLoopbackOrLocalHost = (hostname: string) =>
-  hostname === "localhost" || hostname === "::1" || hostname === "0.0.0.0" || isPrivateIpv4Host(hostname);
+  hostname === "localhost" || hostname === "0.0.0.0" || isPrivateIpv4Host(hostname) || isPrivateIpv6Host(hostname);
 
 const getAllowedHosts = () => {
   const envHosts = (process.env.TM_GIT_ALLOWED_HOSTS ?? "")

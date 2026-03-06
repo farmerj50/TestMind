@@ -753,7 +753,7 @@ export const worker = new Worker(
               const entry = {
                 selector: nav.selector,
                 confidence: nav.confidence,
-                confidenceBreakdown: ["auto-captured from run title"],
+                confidenceBreakdown: [{ delta: 0, reason: "auto-captured from run title" }],
                 sourcePath: nav.sourcePath,
                 updatedAt: now,
                 updatedBy: project.ownerId,
