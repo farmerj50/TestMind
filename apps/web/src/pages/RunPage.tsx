@@ -124,7 +124,19 @@ type Run = {
 
 
 
-  healingAttempts: { id: string; status: "queued" | "running" | "succeeded" | "failed" | "skipped" }[];
+  healingAttempts: {
+    id: string;
+    status: "queued" | "running" | "succeeded" | "failed" | "skipped";
+    attempt?: number;
+    summary?: string | null;
+    error?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+    mode?: "structured" | "full-rewrite" | null;
+    structuredFallbackReason?: string | null;
+    operationCount?: number | null;
+    operationTypes?: string[];
+  }[];
 
 
 
@@ -328,6 +340,8 @@ export default function RunPage() {
     Record<string, { loading: boolean; error?: string; success?: boolean }>
 
   >({});
+  const [promotingHighConfidenceLocators, setPromotingHighConfidenceLocators] = useState(false);
+  const [promotingHighConfidenceNav, setPromotingHighConfidenceNav] = useState(false);
 
   const [stopping, setStopping] = useState(false);
   const [telemetryEvents, setTelemetryEvents] = useState<TelemetryEvent[]>([]);
@@ -1150,6 +1164,64 @@ const fetchMissingLocators = useCallback(
 
 
 
+  const handlePromoteHighConfidenceLocators = useCallback(async () => {
+    if (!run || promotingHighConfidenceLocators) return;
+    setPromotingHighConfidenceLocators(true);
+    try {
+      const res = await apiFetch<{ promotedCount?: number }>(
+        `/projects/${run.project.id}/locators/promote-high-confidence`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            minConfidence: 75,
+            limit: 300,
+            overwriteExisting: false,
+          }),
+        }
+      );
+      const promotedCount = typeof res?.promotedCount === "number" ? res.promotedCount : 0;
+      if (promotedCount > 0) {
+        toast.success(`Promoted ${promotedCount} high-confidence locator${promotedCount === 1 ? "" : "s"}.`);
+      } else {
+        toast.message("No high-confidence locators were eligible for promotion.");
+      }
+      await fetchMissingLocators({ projectId: run.project.id, runId: run.id });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to promote high-confidence locators.");
+    } finally {
+      setPromotingHighConfidenceLocators(false);
+    }
+  }, [apiFetch, fetchMissingLocators, promotingHighConfidenceLocators, run]);
+
+  const handlePromoteHighConfidenceNav = useCallback(async () => {
+    if (!run || promotingHighConfidenceNav) return;
+    setPromotingHighConfidenceNav(true);
+    try {
+      const res = await apiFetch<{ promotedCount?: number }>(
+        `/projects/${run.project.id}/nav-suggestions/promote-high-confidence`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            minConfidence: 75,
+            removeAfterPromote: true,
+            limit: 100,
+          }),
+        }
+      );
+      const promotedCount = typeof res?.promotedCount === "number" ? res.promotedCount : 0;
+      if (promotedCount > 0) {
+        toast.success(`Promoted ${promotedCount} high-confidence nav mapping${promotedCount === 1 ? "" : "s"}.`);
+      } else {
+        toast.message("No high-confidence nav suggestions were eligible for promotion.");
+      }
+      await fetchMissingLocators({ projectId: run.project.id, runId: run.id });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to promote high-confidence nav suggestions.");
+    } finally {
+      setPromotingHighConfidenceNav(false);
+    }
+  }, [apiFetch, fetchMissingLocators, promotingHighConfidenceNav, run]);
+
   // load + live updates via SSE (fallback to polling on error)
 
   useEffect(() => {
@@ -1926,21 +1998,57 @@ const fetchMissingLocators = useCallback(
 
 
 
-                <div className="mb-1 flex flex-col gap-1 text-slate-800">
-
-
-
-                  <div className="font-medium">Self-heal reruns</div>
-
-
-
-                  <div className="text-xs text-slate-500">{healStatusMessage}</div>
-
-
-
+                
+                <div className="mb-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Self-heal attempts
+                  </div>
+                  {healingAttempts.length > 0 ? (
+                    <ul className="space-y-2">
+                      {healingAttempts.map((attempt) => (
+                        <li
+                          key={attempt.id}
+                          className="rounded-md border border-slate-200 bg-white p-3 text-sm"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">Attempt {attempt.attempt ?? "?"}</span>
+                              {attempt.mode && (
+                                <span className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600">
+                                  {attempt.mode === "structured" ? "Structured patch" : "Full rewrite"}
+                                </span>
+                              )}
+                            </div>
+                            <StatusBadge status={attempt.status as any} />
+                          </div>
+                          {attempt.summary && (
+                            <div className="mt-1 text-xs text-slate-600">{attempt.summary}</div>
+                          )}
+                          {attempt.structuredFallbackReason && (
+                            <div className="mt-1 text-xs text-amber-700">
+                              Structured fallback: {attempt.structuredFallbackReason}
+                            </div>
+                          )}
+                          {attempt.mode === "structured" && (
+                            <div className="mt-1 text-xs text-slate-500">
+                              Operations: {attempt.operationCount ?? 0}
+                              {attempt.operationTypes && attempt.operationTypes.length > 0
+                                ? ` (${attempt.operationTypes.join(", ")})`
+                                : ""}
+                            </div>
+                          )}
+                          {attempt.error && (
+                            <div className="mt-1 text-xs text-rose-700">{attempt.error}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                      No self-heal attempts recorded yet.
+                    </div>
+                  )}
                 </div>
-
-
 
                 {reruns.length > 0 ? (
 
@@ -2173,6 +2281,16 @@ const fetchMissingLocators = useCallback(
 
                     </Button>
 
+                  )}
+                  {run && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handlePromoteHighConfidenceNav}
+                      disabled={promotingHighConfidenceNav || missingLoading || hasSavingLocator}
+                    >
+                      {promotingHighConfidenceNav ? "Promoting..." : "Promote high-confidence"}
+                    </Button>
                   )}
 
                   {run && (
@@ -2609,6 +2727,25 @@ const fetchMissingLocators = useCallback(
                     >
 
                       {hasSavingLocator ? "Promoting..." : "Promote all suggestions"}
+
+                    </Button>
+
+                  )}
+                  {run && (
+
+                    <Button
+
+                      size="sm"
+
+                      variant="outline"
+
+                      onClick={handlePromoteHighConfidenceLocators}
+
+                      disabled={promotingHighConfidenceLocators || missingLoading || hasSavingLocator}
+
+                    >
+
+                      {promotingHighConfidenceLocators ? "Promoting..." : "Promote high-confidence"}
 
                     </Button>
 
@@ -3389,6 +3526,7 @@ const fetchMissingLocators = useCallback(
 
 
 }
+
 
 
 

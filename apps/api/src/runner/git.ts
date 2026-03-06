@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
+import { validateAndNormalizeRepoUrl } from "../lib/git-url.js";
 
 const LOCAL_REPO_ROOT = process.env.TM_LOCAL_REPO_ROOT?.trim()
   ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
@@ -45,9 +46,15 @@ export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
     return;
   }
 
-  let url = repoUrl;
+  const checked = validateAndNormalizeRepoUrl(repoUrl);
+  if (!checked.ok) {
+    const reason = "reason" in checked ? checked.reason : "Invalid repository URL";
+    throw new Error(`Repository URL failed security validation: ${reason}`);
+  }
+
+  const url = checked.normalized;
   // Optional: authenticate to private GitHub repos without embedding token in URL.
-  if (token && /^https:\/\/github\.com\//i.test(repoUrl)) {
+  if (token && /^https:\/\/github\.com\//i.test(url)) {
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
     await execa(
       "git",

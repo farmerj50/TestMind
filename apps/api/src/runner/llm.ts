@@ -72,6 +72,75 @@ export type HealResponse = {
   raw: string;
 };
 
+export type HealOperation =
+  | { type: "replace_literal"; find: string; replace: string }
+  | { type: "replace_regex_once"; pattern: string; flags?: string; replace: string }
+  | { type: "insert_after_literal"; find: string; insert: string };
+
+export type HealPatchResponse = {
+  summary: string;
+  operations: HealOperation[];
+  raw: string;
+};
+
+export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatchResponse> {
+  const openai = await getClient(prompt.projectId);
+
+  const system = [
+    "You are TestMind, an autonomous QA engineer.",
+    "You receive a failing Playwright test spec and must provide deterministic patch operations.",
+    "Return JSON with keys `summary` and `operations` only.",
+    "Allowed operation types:",
+    "replace_literal {type, find, replace}",
+    "replace_regex_once {type, pattern, flags?, replace}",
+    "insert_after_literal {type, find, insert}",
+    "Do not add imports. Do not rename tests. Keep changes minimal and deterministic.",
+  ].join(" ");
+
+  const failureDetails = [
+    `Spec path: ${prompt.specPath}`,
+    prompt.failureMessage ? `Failure: ${prompt.failureMessage}` : "",
+    prompt.stdout ? `stdout:\n${prompt.stdout}` : "",
+    prompt.stderr ? `stderr:\n${prompt.stderr}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const userContent = [
+    failureDetails,
+    "Current spec file:",
+    "```ts",
+    prompt.specContent,
+    "```",
+    "Respond ONLY with JSON:",
+    '{"summary": string, "operations": Array<replace_literal|replace_regex_once|insert_after_literal>}',
+  ].join("\n\n");
+
+  const completion = await openai.chat.completions.create({
+    model: MODEL,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: userContent },
+    ],
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`LLM returned invalid JSON: ${(err as Error).message}`);
+  }
+
+  const summary = typeof parsed.summary === "string" ? parsed.summary : "LLM patch operations";
+  const operations = Array.isArray(parsed.operations) ? parsed.operations : [];
+  if (!operations.length) {
+    throw new Error("LLM did not return patch operations.");
+  }
+  return { summary, operations, raw };
+}
+
 export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse> {
   const openai = await getClient(prompt.projectId);
 

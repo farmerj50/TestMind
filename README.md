@@ -69,3 +69,7 @@ Run `pnpm first-run` to:
 ### Environment & secrets strategy
 - Store Clerk/OpenAI keys, the database/Redis URLs, and the future payment key as encrypted secrets on GitHub and Jenkins—never commit real values. The `.env.example` lists all the fields the API validates via Zod, so you can copy it as a template.
 - The backend Dockerfile copies the built API assets plus Prisma schema so Railway (or any platform) can run migrations/tasks as needed.
+
+## Self-heal rollout ops
+- Production rollout/rollback guidance for structured self-heal hardening:
+  - `apps/api/scripts/SELF_HEAL_HARDENING_RUNBOOK.md`

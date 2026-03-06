@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { prisma } from "../prisma.js";
 import { GENERATED_ROOT } from "../lib/storageRoots.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 import { writeSpecsFromPlan } from "../testmind/pipeline/codegen.js";
 import type { Step, TestPlan } from "../testmind/core/plan.js";
 import {
@@ -675,7 +676,10 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
 
     try {
       const csvUrl = toGoogleSheetCsvUrl(parsed.data.url);
-      const response = await fetch(csvUrl);
+      const response = await safeFetch(csvUrl, undefined, {
+        allowHttp: false,
+        allowedHosts: ["docs.google.com"],
+      });
       if (!response.ok) {
         return reply.code(400).send({ error: "Unable to read Google Sheet. Make sure it is accessible." });
       }

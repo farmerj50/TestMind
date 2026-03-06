@@ -8,6 +8,9 @@ import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 const GH_AUTH = "https://github.com/login/oauth/authorize";
 const GH_TOKEN = "https://github.com/login/oauth/access_token";
 const GH_API   = "https://api.github.com";
+const GITHUB_HTTP_TIMEOUT_MS = Number(process.env.GITHUB_HTTP_TIMEOUT_MS ?? "12000");
+const GITHUB_HTTP_GET_RETRIES = Number(process.env.GITHUB_HTTP_GET_RETRIES ?? "1");
+const GITHUB_HTTP_RETRY_BACKOFF_MS = Number(process.env.GITHUB_HTTP_RETRY_BACKOFF_MS ?? "300");
 // near top
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:5173";
 const JSON_PARSE_FAIL = "JSON_PARSE_FAIL";
@@ -37,6 +40,16 @@ function buildState(userId: string, returnTo: string) {
 
 type ParsedState = { userId: string; ts: number; returnTo: string };
 
+function sanitizeReturnTo(value?: string | null): string {
+  const fallback = "/dashboard";
+  const raw = (value ?? "").trim();
+  if (!raw) return fallback;
+  if (!raw.startsWith("/")) return fallback;
+  if (raw.startsWith("//")) return fallback;
+  if (/[\r\n]/.test(raw)) return fallback;
+  return raw;
+}
+
 function parseState(state?: string | null): ParsedState | null {
   if (!state) return null;
   try {
@@ -59,6 +72,56 @@ function parseState(state?: string | null): ParsedState | null {
   }
 }
 
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = GITHUB_HTTP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error(`GitHub request timeout after ${timeoutMs}ms: ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isRetryableStatus(status: number) {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+async function fetchGithubGetWithRetry(
+  url: string,
+  init?: RequestInit,
+  retries = GITHUB_HTTP_GET_RETRIES
+): Promise<Response> {
+  const maxRetries = Number.isFinite(retries) ? Math.max(0, Math.trunc(retries)) : 1;
+  let lastErr: unknown = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, { ...(init ?? {}), method: "GET" });
+      if (!isRetryableStatus(res.status) || attempt === maxRetries) {
+        return res;
+      }
+      await sleep(GITHUB_HTTP_RETRY_BACKOFF_MS * (attempt + 1));
+    } catch (err) {
+      lastErr = err;
+      if (attempt === maxRetries) throw err;
+      await sleep(GITHUB_HTTP_RETRY_BACKOFF_MS * (attempt + 1));
+    }
+  }
+
+  throw (lastErr instanceof Error ? lastErr : new Error("GitHub GET request failed"));
+}
+
+function githubAccountWhereForUser(userId: string) {
+  return { provider_userId: { provider: "github" as const, userId } };
+}
+
 export async function githubRoutes(app: FastifyInstance) {
   const CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
   const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
@@ -66,7 +129,7 @@ export async function githubRoutes(app: FastifyInstance) {
 
   async function getAccount(userId: string) {
     return prisma.gitAccount.findUnique({
-      where: { provider_userId: { provider: "github", userId } },
+      where: githubAccountWhereForUser(userId),
     });
   }
 
@@ -101,7 +164,7 @@ function buildAuthUrl(state: string) {
   }
 
   async function fetchGitHubUser(accessToken: string) {
-    const r = await fetch(`${GH_API}/user`, {
+    const r = await fetchGithubGetWithRetry(`${GH_API}/user`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
@@ -132,7 +195,7 @@ function buildAuthUrl(state: string) {
 
     async function revoke(path: "token" | "grant") {
       const url = `https://api.github.com/applications/${CLIENT_ID}/${path}`;
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: "DELETE",
         headers,
         body,
@@ -172,7 +235,7 @@ function buildAuthUrl(state: string) {
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     // Defensive: clear any existing token for this user before starting a new connect flow
-    const returnTo = (req.query as any)?.returnTo ?? "/dashboard";
+    const returnTo = sanitizeReturnTo((req.query as any)?.returnTo);
     const state = buildState(userId, returnTo); // unique, signed per-user state to prevent cross-user reuse
     // `prompt=login` forces GitHub to show the account chooser/login even if a previous
     // GitHub session is active in the browser. This prevents reusing an old GitHub token
@@ -188,7 +251,7 @@ function buildAuthUrl(state: string) {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-    const returnTo = (req.query as any)?.returnTo ?? "/dashboard";
+    const returnTo = sanitizeReturnTo((req.query as any)?.returnTo);
     const state = buildState(userId, returnTo);
     const url = buildAuthUrl(state);
     app.log.info({ userId }, "GitHub start-url -> redirect");
@@ -240,7 +303,7 @@ function buildAuthUrl(state: string) {
     app.log.info({ userId }, "GitHub callback received");
 
     try {
-      const r = await fetch(GH_TOKEN, {
+      const r = await fetchWithTimeout(GH_TOKEN, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -331,7 +394,7 @@ function buildAuthUrl(state: string) {
     app.log.info({ userId }, "github/status requested");
 
     const account = await prisma.gitAccount.findUnique({
-      where: { provider_userId: { provider: "github", userId } },
+      where: githubAccountWhereForUser(userId),
       select: { id: true },
     });
 
@@ -344,13 +407,13 @@ function buildAuthUrl(state: string) {
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     const account = await prisma.gitAccount.findUnique({
-      where: { provider_userId: { provider: "github", userId } },
+      where: githubAccountWhereForUser(userId),
     });
     if (!account) return reply.code(401).send({ error: "GitHub not connected" });
     const accessToken = decodeGitToken(account.token);
     if (!accessToken) return reply.code(401).send({ error: "GitHub token missing" });
 
-    const r = await fetch(`${GH_API}/user/repos?per_page=100&sort=updated`, {
+    const r = await fetchGithubGetWithRetry(`${GH_API}/user/repos?per_page=100&sort=updated`, {
       headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "TestMindAI" },
     });
     if (!r.ok) {
@@ -421,3 +484,10 @@ function buildAuthUrl(state: string) {
     return reply.send({ ok: true, removed });
   });
 }
+
+export const __githubSecurityInternals = {
+  buildState,
+  parseState,
+  sanitizeReturnTo,
+  githubAccountWhereForUser,
+};
