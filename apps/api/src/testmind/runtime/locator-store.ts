@@ -257,6 +257,8 @@ export function resolveLocator(
   fallbackIndex?: number;
   attemptedSelectors?: string[];
   identityMatched?: boolean;
+  expectedIdentity?: { urlPattern?: string; uniqueAnchor?: string };
+  actualPath?: string;
 } {
   if (pagePath === "__global_nav__") {
     const selector = store.nav?.[name];
@@ -290,6 +292,21 @@ export function resolveLocator(
     : true;
   const fallbackAnchorMatched = anchorMatchesPageIdentity(page, fallbackEntry?.metadata?.uniqueAnchor);
   const fallbackAllowed = fallbackIdentityMatched && fallbackAnchorMatched;
+  const hasIdentityConstraints = !!(
+    fallbackEntry?.metadata?.urlPattern || fallbackEntry?.metadata?.uniqueAnchor
+  );
+  if (hasIdentityConstraints && !fallbackAllowed) {
+    return {
+      pageKey,
+      identityMatched: false,
+      attemptedSelectors: [],
+      expectedIdentity: {
+        urlPattern: fallbackEntry?.metadata?.urlPattern,
+        uniqueAnchor: fallbackEntry?.metadata?.uniqueAnchor,
+      },
+      actualPath: normalizedPath,
+    };
+  }
   const candidates = [
     targetFromPage,
     ...(fallbackAllowed ? [fallbackEntry?.primary, ...(fallbackEntry?.fallbacks ?? [])] : []),

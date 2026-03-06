@@ -1,8 +1,12 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 type SafeFetchPolicy = {
   allowHttp?: boolean;
   allowPrivateHosts?: boolean;
   allowedHosts?: string[];
   maxRedirects?: number;
+  resolveHost?: (hostname: string) => Promise<string[]>;
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean) => {
@@ -16,6 +20,7 @@ const parseBoolean = (value: string | undefined, fallback: boolean) => {
 const isPrivateIpv4Host = (hostname: string) => {
   if (/^10\./.test(hostname)) return true;
   if (/^192\.168\./.test(hostname)) return true;
+  if (/^169\.254\./.test(hostname)) return true;
   const m = hostname.match(/^172\.(\d{1,3})\./);
   if (m) {
     const second = Number(m[1]);
@@ -25,10 +30,41 @@ const isPrivateIpv4Host = (hostname: string) => {
   return false;
 };
 
-const isLocalHost = (hostname: string) =>
-  hostname === "localhost" || hostname === "::1" || hostname === "0.0.0.0" || isPrivateIpv4Host(hostname);
+const isPrivateIpv6Host = (hostname: string) => {
+  const normalized = hostname.toLowerCase();
+  if (normalized === "::1") return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // fc00::/7
+  if (
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb")
+  ) {
+    return true; // fe80::/10
+  }
+  const v4mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4mapped?.[1]) return isPrivateIpv4Host(v4mapped[1]);
+  return false;
+};
 
-function validateUrl(rawUrl: string, policy: SafeFetchPolicy): URL {
+const isLocalHost = (hostname: string) => {
+  if (hostname === "localhost" || hostname === "0.0.0.0") return true;
+  if (isPrivateIpv4Host(hostname)) return true;
+  if (isPrivateIpv6Host(hostname)) return true;
+  return false;
+};
+
+const resolveHostAddresses = async (
+  hostname: string,
+  resolver?: (hostname: string) => Promise<string[]>
+): Promise<string[]> => {
+  if (isIP(hostname)) return [hostname];
+  if (resolver) return resolver(hostname);
+  const results = await dnsLookup(hostname, { all: true, verbatim: true });
+  return results.map((entry) => entry.address);
+};
+
+async function validateUrl(rawUrl: string, policy: SafeFetchPolicy): Promise<URL> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -53,6 +89,18 @@ function validateUrl(rawUrl: string, policy: SafeFetchPolicy): URL {
     if (!ok) throw new Error(`Outbound URL host '${hostname}' is not in allowlist.`);
   }
 
+  if (!allowPrivateHosts) {
+    const resolvedAddresses = await resolveHostAddresses(hostname, policy.resolveHost);
+    if (
+      resolvedAddresses.some((address) => {
+        const normalized = String(address ?? "").trim().toLowerCase();
+        return normalized ? isLocalHost(normalized) : false;
+      })
+    ) {
+      throw new Error("Outbound URL host resolves to a private/local address.");
+    }
+  }
+
   return parsed;
 }
 
@@ -67,7 +115,7 @@ export async function safeFetch(
     maxRedirects: 5,
     ...policy,
   };
-  let currentUrl = validateUrl(rawUrl, mergedPolicy).toString();
+  let currentUrl = (await validateUrl(rawUrl, mergedPolicy)).toString();
   const redirects = Number.isFinite(mergedPolicy.maxRedirects)
     ? Math.max(0, Math.trunc(mergedPolicy.maxRedirects as number))
     : 5;
@@ -81,7 +129,7 @@ export async function safeFetch(
     const location = response.headers.get("location");
     if (!location) return response;
     const nextUrl = new URL(location, currentUrl).toString();
-    currentUrl = validateUrl(nextUrl, mergedPolicy).toString();
+    currentUrl = (await validateUrl(nextUrl, mergedPolicy)).toString();
   }
 
   throw new Error("Too many redirects while fetching outbound URL.");

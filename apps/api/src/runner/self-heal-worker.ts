@@ -338,12 +338,14 @@ const parseIntEnv = (value: string | undefined, fallback: number, min = 1, max =
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
 };
-const isProduction = (process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
 const SELF_HEAL_HEAL_ONLY = parseBoolEnv(process.env.SELF_HEAL_HEAL_ONLY, false);
 const SELF_HEAL_STRUCTURED_PATCH = parseBoolEnv(process.env.SELF_HEAL_STRUCTURED_PATCH, true);
-const SELF_HEAL_ALLOW_FULL_REWRITE_FALLBACK = parseBoolEnv(
-  process.env.SELF_HEAL_ALLOW_FULL_REWRITE_FALLBACK,
-  !isProduction
+const SELF_HEAL_ALLOW_FULL_REWRITE_FALLBACK = parseBoolEnv(process.env.SELF_HEAL_ALLOW_FULL_REWRITE_FALLBACK, true);
+const SELF_HEAL_STRUCTURED_TIMEOUT_MS = parseIntEnv(
+  process.env.SELF_HEAL_STRUCTURED_TIMEOUT_MS,
+  Math.min(45000, SELF_HEAL_TIMEOUT_MS),
+  5000,
+  SELF_HEAL_TIMEOUT_MS
 );
 const SELF_HEAL_MAX_PATCH_OPS = parseIntEnv(process.env.SELF_HEAL_MAX_PATCH_OPS, 8, 1, 50);
 const SELF_HEAL_MAX_PATCH_TEXT = parseIntEnv(process.env.SELF_HEAL_MAX_PATCH_TEXT, 8000, 200, 20000);
@@ -381,9 +383,14 @@ const FORBIDDEN_RUNTIME_PATTERNS: RegExp[] = [
   /\bXMLHttpRequest\b/i,
 ];
 
+type HealFixType = "fallback" | "rule_fixed" | "llm_patch_fixed" | "llm_rejected_policy" | "none";
+const toJson = <T>(value: T): any => JSON.parse(JSON.stringify(value));
+
 console.log("[self-heal] config", {
   structuredPatch: SELF_HEAL_STRUCTURED_PATCH,
   allowFullRewriteFallback: SELF_HEAL_ALLOW_FULL_REWRITE_FALLBACK,
+  structuredTimeoutMs: SELF_HEAL_STRUCTURED_TIMEOUT_MS,
+  totalTimeoutMs: SELF_HEAL_TIMEOUT_MS,
   maxPatchOps: SELF_HEAL_MAX_PATCH_OPS,
   maxPatchText: SELF_HEAL_MAX_PATCH_TEXT,
   healOnly: SELF_HEAL_HEAL_ONLY,
@@ -612,7 +619,13 @@ export const selfHealWorker = new Worker(
         throw new Error(`Spec file not found for ${context.repoRelativePath}`);
       }
 
-      const writeAndRecordSuccess = async (patched: string, summary: string, note: string) => {
+      const writeAndRecordSuccess = async (
+        patched: string,
+        summary: string,
+        note: string,
+        fixType: HealFixType = "rule_fixed",
+        fixDetails?: Record<string, unknown>
+      ) => {
         await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
         await fs.writeFile(context.repoAbsolutePath, patched, "utf8");
         const diff = createTwoFilesPatch(
@@ -628,7 +641,11 @@ export const selfHealWorker = new Worker(
             summary,
             diff,
             prompt: { note },
-            response: { raw: note },
+            response: {
+              raw: note,
+              fixType,
+              fixDetails: toJson(fixDetails ?? { note }),
+            },
           },
         });
         await triggerRerun(
@@ -679,7 +696,13 @@ export const selfHealWorker = new Worker(
       }
 
       if (didNavPatch) {
-        await writeAndRecordSuccess(navPatchedSpec, "Auto-fixed navigation URL", "rule-based url fix");
+        await writeAndRecordSuccess(
+          navPatchedSpec,
+          "Auto-fixed navigation URL",
+          "rule-based url fix",
+          "rule_fixed",
+          { rule: "url-fix" }
+        );
         return;
       }
 
@@ -709,7 +732,13 @@ export const selfHealWorker = new Worker(
         }
 
         if (updated) {
-          await writeAndRecordSuccess(patched, "Auto-increased navigation timeout", "rule-based nav-timeout");
+          await writeAndRecordSuccess(
+            patched,
+            "Auto-increased navigation timeout",
+            "rule-based nav-timeout",
+            "rule_fixed",
+            { rule: "nav-timeout" }
+          );
           return;
         }
       }
@@ -729,7 +758,9 @@ export const selfHealWorker = new Worker(
             await writeAndRecordSuccess(
               patched,
               `Auto-fixed strict-mode locator via href=${href}`,
-              "rule-based strict-mode href"
+              "rule-based strict-mode href",
+              "rule_fixed",
+              { rule: "strict-mode-href", href }
             );
             return;
           }
@@ -744,7 +775,9 @@ export const selfHealWorker = new Worker(
           await writeAndRecordSuccess(
             patched,
             "Auto-selected first match for strict-mode locator",
-            "rule-based strict-mode"
+            "rule-based strict-mode",
+            "rule_fixed",
+            { rule: "strict-mode-first" }
           );
           return;
         }
@@ -769,10 +802,14 @@ export const selfHealWorker = new Worker(
       let healMode: "structured" | "full-rewrite" = "full-rewrite";
       let structuredFallbackReason: string | null = null;
       let structuredOperations: HealOperation[] | null = null;
+      const healStartedAt = Date.now();
+      const remainingBudgetMs = () =>
+        Math.max(0, SELF_HEAL_TIMEOUT_MS - (Date.now() - healStartedAt));
 
       if (SELF_HEAL_STRUCTURED_PATCH) {
         try {
-          const patchResult = await withTimeout(requestSpecPatchOps(promptPayload), SELF_HEAL_TIMEOUT_MS);
+          const structuredBudget = Math.max(5000, Math.min(SELF_HEAL_STRUCTURED_TIMEOUT_MS, remainingBudgetMs()));
+          const patchResult = await withTimeout(requestSpecPatchOps(promptPayload), structuredBudget);
           const opValidation = validateHealOperations(patchResult.operations);
           if (opValidation) {
             throw new Error(`Structured patch validation failed: ${opValidation}`);
@@ -796,7 +833,11 @@ export const selfHealWorker = new Worker(
       }
 
       if (!patchedSpec) {
-        const healResult = await withTimeout(requestSpecHeal(promptPayload), SELF_HEAL_TIMEOUT_MS);
+        const budget = remainingBudgetMs();
+        if (budget <= 0) {
+          throw new Error(`self-heal timeout after ${SELF_HEAL_TIMEOUT_MS}ms`);
+        }
+        const healResult = await withTimeout(requestSpecHeal(promptPayload), budget);
         patchedSpec = healResult.updatedSpec;
         healedSummary = healResult.summary;
         healedRaw = healResult.raw;
@@ -829,6 +870,13 @@ export const selfHealWorker = new Worker(
             structuredFallbackReason,
             operationCount: structuredOperations?.length ?? null,
             operationTypes: structuredOperations?.map((op) => op.type) ?? [],
+            fixType: "llm_patch_fixed" as HealFixType,
+            fixDetails: toJson({
+              mode: healMode,
+              operationCount: structuredOperations?.length ?? 0,
+              operationTypes: structuredOperations?.map((op) => op.type) ?? [],
+              structuredFallbackReason,
+            }),
           },
         },
       });
@@ -872,11 +920,23 @@ export const selfHealWorker = new Worker(
         }
       }
     } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      const rejectedByPolicy =
+        /validation failed|forbidden|payload too large|introduced new import|dynamic import|new Function|eval|patch operations/i.test(
+          msg
+        );
       await prisma.testHealingAttempt.update({
         where: { id: attemptId },
         data: {
           status: HealingStatus.failed,
-          error: err?.message ?? String(err),
+          error: msg,
+          response: {
+            fixType: (rejectedByPolicy ? "llm_rejected_policy" : "none") as HealFixType,
+            fixDetails: toJson({
+              reason: msg,
+              rejectedByPolicy,
+            }),
+          },
         },
       });
       console.error(`[self-heal] attempt ${attemptId} failed:`, err);

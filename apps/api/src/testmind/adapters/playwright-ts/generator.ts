@@ -282,11 +282,10 @@ function regionForKind(kind: LocatorKind): Region | undefined {
   return undefined;
 }
 
-function buildLocatorExpression(selector: string, kind: LocatorKind): { expr: string; region?: Region } {
-  return {
-    expr: `chooseLocator(page, ${JSON.stringify(selector)}, ${JSON.stringify(regionForKind(kind))})`,
-    region: regionForKind(kind),
-  };
+function buildResolutionExpression(candidates: string[], kind: LocatorKind): string {
+  return `findFirstWorkingLocator(page, { candidates: ${JSON.stringify(candidates)}, region: ${JSON.stringify(
+    regionForKind(kind)
+  )} })`;
 }
 
 function recordMissingLocator(item: MissingLocatorItem) {
@@ -311,13 +310,31 @@ function resolveStepSelector(
   pagePath: string,
   locatorStore: LocatorStore,
   bucket: LocatorBucket
-): { selector?: string; missing?: MissingLocatorItem } {
+): {
+  selector?: string;
+  attemptedSelectors?: string[];
+  identityMismatch?: { expected?: { urlPattern?: string; uniqueAnchor?: string }; actualPath?: string };
+  missing?: MissingLocatorItem;
+} {
   const selectorRaw = "selector" in step ? step.selector : undefined;
   const textRaw = step.kind === "expect-text" ? step.text : undefined;
   const rawName = selectorRaw ?? textRaw ?? step.kind;
   const name = semanticKeyFromString(rawName);
-  const { selector } = resolveLocator(locatorStore, pagePath, bucket, name);
-  if (selector) return { selector };
+  const resolved = resolveLocator(locatorStore, pagePath, bucket, name);
+  if (resolved.identityMatched === false && resolved.expectedIdentity) {
+    return {
+      identityMismatch: {
+        expected: resolved.expectedIdentity,
+        actualPath: resolved.actualPath,
+      },
+    };
+  }
+  if (resolved.selector) {
+    return {
+      selector: resolved.selector,
+      attemptedSelectors: resolved.attemptedSelectors ?? [resolved.selector],
+    };
+  }
   const missing: MissingLocatorItem = {
     pagePath,
     bucket,
@@ -334,6 +351,20 @@ function formatMissingLocatorAction(step: Step, detail?: MissingLocatorItem): st
     ? `${detail.bucket}.${detail.name} on ${detail.pagePath}`
     : describeStep(step);
   return `// Missing locator ${why}; add it to shared locators and rerun generation.`;
+}
+
+function formatIdentityMismatchAction(detail: { expected?: { urlPattern?: string; uniqueAnchor?: string }; actualPath?: string }): string {
+  return `{
+  const expected = ${JSON.stringify(detail.expected ?? {})};
+  const payload = {
+    code: "IDENTITY_MISMATCH",
+    message: "Identity mismatch before locator resolution",
+    expected,
+    actualPath: ${JSON.stringify(detail.actualPath ?? "")},
+    actualUrl: page.url(),
+  };
+  throw new Error(JSON.stringify(payload));
+}`;
 }
 
 function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): string {
@@ -374,26 +405,33 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
 }`;
     case "expect-visible": {
       const resolved = resolveStepSelector(step, pagePath, locatorStore, "locators");
+      if (resolved.identityMismatch) {
+        return formatIdentityMismatchAction(resolved.identityMismatch);
+      }
       if (!resolved.selector) {
         return formatMissingLocatorAction(step, resolved.missing);
       }
       const selector = resolved.selector;
-      const built = buildLocatorExpression(selector, "expect-visible");
+      const attempted = resolved.attemptedSelectors ?? [selector];
       return `{
-  const locator = ${built.expr}.first();
-  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  const resolvedLocator = await ${buildResolutionExpression(attempted, "expect-visible")};
+  const locator = resolvedLocator.locator;
   await expect(locator).toBeVisible({ timeout: 10000 });
 }`;
     }
     case "fill": {
       const resolved = resolveStepSelector(step, pagePath, locatorStore, "fields");
+      if (resolved.identityMismatch) {
+        return formatIdentityMismatchAction(resolved.identityMismatch);
+      }
       if (!resolved.selector) {
         return formatMissingLocatorAction(step, resolved.missing);
       }
       const selector = resolved.selector;
+      const attempted = resolved.attemptedSelectors ?? [selector];
       return `{
-  const locator = ${buildLocatorExpression(selector, "fill").expr}.first();
-  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  const resolvedLocator = await ${buildResolutionExpression(attempted, "fill")};
+  const locator = resolvedLocator.locator;
   await locator.fill(${JSON.stringify(step.value)});
 }`;
     }
@@ -418,21 +456,29 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
           recordMissingLocator(missing);
           return formatMissingLocatorAction(step, missing);
         }
-        const locatorExpr = buildLocatorExpression(nav.selector, "click").expr;
         return `{
-  const locator = ${locatorExpr}.first();
-  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  const resolvedLocator = await ${buildResolutionExpression([nav.selector], "click")};
+  const locator = resolvedLocator.locator;
   await locator.click({ timeout: 10000 });
   await expect(page).toHaveURL(pathRegex(${JSON.stringify(routeCandidate)}), { timeout: 15000 });
   await ensurePageIdentity(page, ${JSON.stringify(routeCandidate)});
 }`;
       }
       let resolved = resolveStepSelector(step, pagePath, locatorStore, "buttons");
+      if (resolved.identityMismatch) {
+        return formatIdentityMismatchAction(resolved.identityMismatch);
+      }
       if (!resolved.selector) {
         resolved = resolveStepSelector(step, pagePath, locatorStore, "links");
+        if (resolved.identityMismatch) {
+          return formatIdentityMismatchAction(resolved.identityMismatch);
+        }
       }
       if (!resolved.selector) {
         resolved = resolveStepSelector(step, pagePath, locatorStore, "locators");
+        if (resolved.identityMismatch) {
+          return formatIdentityMismatchAction(resolved.identityMismatch);
+        }
       }
       if (!resolved.selector) {
         return formatMissingLocatorAction(step, resolved.missing);
@@ -447,22 +493,26 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
   await ensurePageIdentity(page, ${JSON.stringify(normalizedHref)});
 }`;
       }
-      const locatorExpr = buildLocatorExpression(selector, "click").expr;
+      const attempted = resolved.attemptedSelectors ?? [selector];
       return `{
-  const locator = ${locatorExpr}.first();
-  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  const resolvedLocator = await ${buildResolutionExpression(attempted, "click")};
+  const locator = resolvedLocator.locator;
   await locator.click({ timeout: 10000 });
 }`;
     }
     case "upload": {
       const resolved = resolveStepSelector(step, pagePath, locatorStore, "fields");
+      if (resolved.identityMismatch) {
+        return formatIdentityMismatchAction(resolved.identityMismatch);
+      }
       if (!resolved.selector) {
         return formatMissingLocatorAction(step, resolved.missing);
       }
       const selector = resolved.selector;
+      const attempted = resolved.attemptedSelectors ?? [selector];
       return `{
-  const locator = page.locator(${JSON.stringify(selector)}).first();
-  await locator.waitFor({ state: 'visible', timeout: 10000 });
+  const resolvedLocator = await ${buildResolutionExpression(attempted, "fill")};
+  const locator = resolvedLocator.locator;
   await locator.setInputFiles(${JSON.stringify(step.path)});
 }`;
     }
@@ -657,7 +707,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     const helperLines = [
     "import fs from 'node:fs/promises';",
     "import path from 'node:path';",
-    "import { Page, TestInfo, test, expect } from '@playwright/test';",
+    "import { Locator, Page, TestInfo, test, expect } from '@playwright/test';",
     "",
     `const BASE_URL = ${baseUrlLiteral};`,
     "const RUN_LOG_DIR = process.env.TM_RUN_LOG_DIR || process.env.PW_OUTPUT_DIR;",
@@ -894,6 +944,62 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     "    return scope.getByRole(role, name ? { name } : undefined);",
     "  }",
     "  return scope.locator(selector);",
+    "}",
+    "",
+    "type LocatorResolution = {",
+    "  candidates: string[];",
+    "  region?: Region;",
+    "  perCandidateTimeoutMs?: number;",
+    "  maxTotalResolveMs?: number;",
+    "};",
+    "",
+    "type LocatorResolutionResult = {",
+    "  locator: Locator;",
+    "  attemptedSelectors: string[];",
+    "  selectedSelector: string;",
+    "  selectedIndex: number;",
+    "  resolveTimeMs: number;",
+    "};",
+    "",
+    "async function findFirstWorkingLocator(page: Page, resolution: LocatorResolution): Promise<LocatorResolutionResult> {",
+    "  const attemptedSelectors = Array.from(new Set((resolution.candidates ?? []).map((v) => (v || '').trim()).filter(Boolean)));",
+    "  if (!attemptedSelectors.length) {",
+    "    throw new Error(JSON.stringify({ code: 'LOCATOR_RESOLUTION_FAILED', message: 'No locator candidates provided' }));",
+    "  }",
+    "  const perCandidateTimeoutMs = Math.max(200, Math.trunc(resolution.perCandidateTimeoutMs ?? 900));",
+    "  const maxTotalResolveMs = Math.max(perCandidateTimeoutMs, Math.trunc(resolution.maxTotalResolveMs ?? 2500));",
+    "  const startedAt = Date.now();",
+    "  const failures: string[] = [];",
+    "  for (let i = 0; i < attemptedSelectors.length; i++) {",
+    "    const selector = attemptedSelectors[i];",
+    "    const elapsed = Date.now() - startedAt;",
+    "    const remaining = maxTotalResolveMs - elapsed;",
+    "    if (remaining <= 0) break;",
+    "    const timeout = Math.max(150, Math.min(perCandidateTimeoutMs, remaining));",
+    "    const locator = chooseLocator(page, selector, resolution.region).first();",
+    "    try {",
+    "      await locator.waitFor({ state: 'visible', timeout });",
+    "      return {",
+    "        locator,",
+    "        attemptedSelectors,",
+    "        selectedSelector: selector,",
+    "        selectedIndex: i,",
+    "        resolveTimeMs: Date.now() - startedAt,",
+    "      };",
+    "    } catch (err) {",
+    "      failures.push(`${i}:${selector}:${err instanceof Error ? err.message : String(err)}`);",
+    "    }",
+    "  }",
+    "  throw new Error(",
+    "    JSON.stringify({",
+    "      code: 'LOCATOR_RESOLUTION_FAILED',",
+    "      attemptedSelectors,",
+    "      selectedSelector: null,",
+    "      selectedIndex: -1,",
+    "      resolveTimeMs: Date.now() - startedAt,",
+    "      failures: failures.slice(0, 6),",
+    "    })",
+    "  );",
     "}",
     "",
     "function escapeRegex(value: string): string {",

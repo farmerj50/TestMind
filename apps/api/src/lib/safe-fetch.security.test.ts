@@ -40,8 +40,11 @@ test("safeFetch allows http only when explicitly enabled", async () => {
 
 test("safeFetch blocks private/loopback hosts by default", async () => {
   await withMockFetch(async () => new Response("ok", { status: 200 }), async () => {
-    await assert.rejects(() => safeFetch("https://127.0.0.1/health"), /host is not allowed/i);
-    await assert.rejects(() => safeFetch("https://192.168.1.10/health"), /host is not allowed/i);
+    await assert.rejects(() => safeFetch("https://127.0.0.1/health"), /host is not allowed|private\/local/i);
+    await assert.rejects(() => safeFetch("https://192.168.1.10/health"), /host is not allowed|private\/local/i);
+    await assert.rejects(() => safeFetch("https://169.254.169.254/latest/meta-data"), /host is not allowed|private\/local/i);
+    await assert.rejects(() => safeFetch("https://[::1]/health"), /host is not allowed|private\/local/i);
+    await assert.rejects(() => safeFetch("https://[fe80::1]/health"), /host is not allowed|private\/local/i);
   });
 });
 
@@ -91,9 +94,31 @@ test("safeFetch follows allowed redirects within allowlisted domain", async () =
     const res = await safeFetch("https://example.com/start", undefined, {
       allowedHosts: ["example.com"],
       maxRedirects: 2,
+      resolveHost: async (host) => {
+        if (host === "example.com") return ["203.0.113.10"];
+        if (host === "api.example.com") return ["203.0.113.11"];
+        return ["203.0.113.12"];
+      },
     });
     assert.equal(res.status, 200);
     assert.deepEqual(calls, ["https://example.com/start", "https://api.example.com/final"]);
   });
 });
 
+test("safeFetch blocks hostname that resolves to private address (dns rebinding guard)", async () => {
+  let calls = 0;
+  await withMockFetch(async () => {
+    calls += 1;
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    await assert.rejects(
+      () =>
+        safeFetch("https://public.example.com/resource", undefined, {
+          allowedHosts: ["example.com"],
+          resolveHost: async () => ["127.0.0.1"],
+        }),
+      /resolves to a private\/local address/i
+    );
+    assert.equal(calls, 0);
+  });
+});
