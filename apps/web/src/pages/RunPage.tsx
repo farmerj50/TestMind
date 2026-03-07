@@ -287,7 +287,7 @@ export default function RunPage() {
 
 
 
-  const { apiFetch } = useApi();
+  const { apiFetch, apiFetchRaw } = useApi();
 
 
 
@@ -353,9 +353,11 @@ export default function RunPage() {
   const [liveFrameUrl, setLiveFrameUrl] = useState<string | null>(null);
   const [liveFrames, setLiveFrames] = useState<Array<{ url: string; path: string; mtimeMs?: number }>>([]);
   const [livePreviewPreferStatic, setLivePreviewPreferStatic] = useState(false);
+  const liveFramesRef = useRef<Array<{ url: string; path: string; mtimeMs?: number }>>([]);
   const livePollRef = useRef<number | null>(null);
   const livePollStopRef = useRef<number | null>(null);
   const liveStreamRef = useRef<EventSource | null>(null);
+  const liveFrameUrlsRef = useRef<string[]>([]);
   const livePreviewEnabledRef = useRef(false);
   const liveAiModeRef = useRef(false);
   const lastTelemetryRunRef = useRef<string | null>(null);
@@ -389,38 +391,76 @@ const parsedSummary = useMemo(() => {
 
   }, [run?.summary]);
 
-  const normalizeLiveUrl = useCallback(
-    (rawPath: string) => {
-      const origin = new URL(apiUrl("/")).origin;
+  const normalizeLivePath = useCallback(
+    (rawPath: string, preferStatic = livePreviewPreferStatic) => {
       const normalized = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
-      const resolvedPath = livePreviewPreferStatic
+      return preferStatic
         ? normalized.replace("/runner-logs/", "/_static/runner-logs/")
         : normalized;
-      return `${origin}${resolvedPath}`;
     },
     [livePreviewPreferStatic]
   );
 
   const resolvedRunId = routeRunId;
 
-  const attemptLiveFrame = useCallback((url: string) => {
-    const img = new Image();
-    img.onload = () => setLiveFrameUrl(url);
-    img.onerror = () => {
-      if (!livePreviewPreferStatic && url.includes("/runner-logs/")) {
+  const revokeLiveFrameUrl = useCallback((url?: string | null) => {
+    if (!url || !url.startsWith("blob:")) return;
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore revoke failures
+    }
+  }, []);
+
+  const attemptLiveFrame = useCallback(
+    async (rawPath: string, mtimeMs?: number) => {
+      const candidates = livePreviewPreferStatic
+        ? [normalizeLivePath(rawPath, true), normalizeLivePath(rawPath, false)]
+        : [normalizeLivePath(rawPath, false), normalizeLivePath(rawPath, true)];
+
+      let lastStatus = 0;
+      for (const candidate of candidates) {
+        const separator = candidate.includes("?") ? "&" : "?";
+        const target = `${candidate}${separator}t=${mtimeMs ?? Date.now()}`;
+        try {
+          const res = await apiFetchRaw(target, {
+            headers: { Accept: "image/png,image/*;q=0.9,*/*;q=0.8" },
+          });
+          if (!res.ok) {
+            lastStatus = res.status;
+            continue;
+          }
+          const blob = await res.blob();
+          if (!blob.size) continue;
+          const objectUrl = URL.createObjectURL(blob);
+          liveFrameUrlsRef.current.push(objectUrl);
+          setLiveFrameUrl((prev) => {
+            if (prev && !liveFramesRef.current.some((frame) => frame.url === prev)) {
+              revokeLiveFrameUrl(prev);
+            }
+            return objectUrl;
+          });
+          return { url: objectUrl, path: rawPath, mtimeMs };
+        } catch {
+          // try next candidate
+        }
+      }
+
+      if (!livePreviewPreferStatic && rawPath.includes("/runner-logs/") && lastStatus === 404) {
         setLivePreviewPreferStatic(true);
       }
-    };
-    img.src = url;
-  }, [livePreviewPreferStatic]);
+      return null;
+    },
+    [apiFetchRaw, livePreviewPreferStatic, normalizeLivePath, revokeLiveFrameUrl]
+  );
 
   const startLivePolling = useCallback(
     (durationMs = 10000, intervalMs = 1000) => {
       if (!resolvedRunId) return;
-      const base = normalizeLiveUrl(`/runner-logs/${resolvedRunId}/live/latest.png`);
+      const rawPath = `/runner-logs/${resolvedRunId}/live/latest.png`;
       const tick = () => {
         if (!livePreviewEnabledRef.current) return;
-        attemptLiveFrame(`${base}?t=${Date.now()}`);
+        void attemptLiveFrame(rawPath);
       };
 
       if (livePollRef.current !== null) {
@@ -439,7 +479,7 @@ const parsedSummary = useMemo(() => {
         }
       }, durationMs);
     },
-    [resolvedRunId, normalizeLiveUrl, attemptLiveFrame]
+    [resolvedRunId, attemptLiveFrame]
   );
 
   const handleTelemetryEvent = useCallback(
@@ -474,6 +514,10 @@ const parsedSummary = useMemo(() => {
   useTelemetryStream(resolvedRunId ?? null, handleTelemetryEvent);
 
   useEffect(() => {
+    liveFramesRef.current = liveFrames;
+  }, [liveFrames]);
+
+  useEffect(() => {
     livePreviewEnabledRef.current = livePreviewEnabled;
   }, [livePreviewEnabled]);
 
@@ -486,6 +530,8 @@ const parsedSummary = useMemo(() => {
 
   useEffect(() => {
     return () => {
+      liveFrameUrlsRef.current.forEach((url) => revokeLiveFrameUrl(url));
+      liveFrameUrlsRef.current = [];
       if (liveStreamRef.current) {
         liveStreamRef.current.close();
         liveStreamRef.current = null;
@@ -497,7 +543,7 @@ const parsedSummary = useMemo(() => {
         window.clearTimeout(livePollStopRef.current);
       }
     };
-  }, []);
+  }, [revokeLiveFrameUrl]);
 
   useEffect(() => {
     if (!resolvedRunId || !livePreviewEnabled || !isAiAnalyzeRun) {
@@ -526,14 +572,20 @@ const parsedSummary = useMemo(() => {
         const payload = JSON.parse(evt.data);
         if (payload?.path) {
           const rawPath = String(payload.path);
-          const baseUrl = normalizeLiveUrl(rawPath);
-          const withBust = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
-          attemptLiveFrame(withBust);
-          setLiveFrames((prev) => {
-            const key = `${rawPath}|${payload?.mtimeMs ?? "na"}`;
-            if (prev.some((item) => `${item.path}|${item.mtimeMs ?? "na"}` === key)) return prev;
-            const next = [...prev, { url: withBust, path: rawPath, mtimeMs: payload?.mtimeMs }];
-            return next.length > 50 ? next.slice(-50) : next;
+          void attemptLiveFrame(rawPath, payload?.mtimeMs).then((frame) => {
+            if (!frame) return;
+            setLiveFrames((prev) => {
+              const key = `${rawPath}|${payload?.mtimeMs ?? "na"}`;
+              if (prev.some((item) => `${item.path}|${item.mtimeMs ?? "na"}` === key)) {
+                revokeLiveFrameUrl(frame.url);
+                return prev;
+              }
+              const next = [...prev, frame];
+              if (next.length <= 50) return next;
+              const removed = next.shift();
+              revokeLiveFrameUrl(removed?.url);
+              return next;
+            });
           });
         }
       } catch {
@@ -545,7 +597,7 @@ const parsedSummary = useMemo(() => {
       es.close();
       liveStreamRef.current = null;
     };
-  }, [resolvedRunId, livePreviewEnabled, isAiAnalyzeRun, normalizeLiveUrl]);
+  }, [resolvedRunId, livePreviewEnabled, isAiAnalyzeRun, attemptLiveFrame, revokeLiveFrameUrl]);
 
   useEffect(() => {
     if (!resolvedRunId || !livePreviewEnabled || !isAiAnalyzeRun) return;
@@ -575,10 +627,16 @@ const parsedSummary = useMemo(() => {
     setRun(null);
     setErr(null);
     setLoading(true);
-    setLiveFrameUrl(null);
-    setLiveFrames([]);
+    setLiveFrameUrl((prev) => {
+      revokeLiveFrameUrl(prev);
+      return null;
+    });
+    setLiveFrames((prev) => {
+      prev.forEach((frame) => revokeLiveFrameUrl(frame.url));
+      return [];
+    });
     setLivePreviewPreferStatic(false);
-  }, [routeRunId]);
+  }, [routeRunId, revokeLiveFrameUrl]);
 
   useEffect(() => {
     if (!run?.id) return;
