@@ -1,4 +1,4 @@
-// src/pages/ProjectSuite.tsx
+﻿// src/pages/ProjectSuite.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Button } from "../components/ui/button";
@@ -519,6 +519,14 @@ export default function ProjectSuite() {
     [specProjects]
   );
   const activeSuite = specProjects.find((proj) => proj.id === pid);
+  const activeAdapterId = useMemo(() => {
+    const suite = activeSuite;
+    if (!suite) return "playwright-ts";
+    const generatedMatch = suite.id.match(/^(playwright-ts|cucumber-js|cypress-js|appium-js|xctest)(?:-|$)/);
+    if (generatedMatch?.[1]) return generatedMatch[1];
+    const nameMatch = suite.name.match(/^Generated \((.+)\)$/);
+    return nameMatch?.[1] || "playwright-ts";
+  }, [activeSuite]);
   const isActiveCurated = activeSuite?.type === "curated";
   const activeSpecLocked = useMemo(() => {
     if (!activeSuite || !activeSpec || !isActiveCurated) return false;
@@ -1271,7 +1279,7 @@ export default function ProjectSuite() {
       const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}/sync-from-generated`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adapterId: "playwright-ts", mode }),
+        body: JSON.stringify({ adapterId: activeAdapterId, mode }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to sync suite");
@@ -1732,6 +1740,7 @@ export default function ProjectSuite() {
               headful,
               reporter,
               livePreview: livePreviewEnabled,
+              adapterId: activeAdapterId,
             }),
           });
         if (res?.id) navigate(`/test-runs/${res.id}`);
@@ -1753,6 +1762,7 @@ export default function ProjectSuite() {
               headful,
               reporter,
               livePreview: livePreviewEnabled,
+              adapterId: activeAdapterId,
             }),
           });
         if (res?.id) navigate(`/test-runs/${res.id}`);
@@ -2065,7 +2075,7 @@ export default function ProjectSuite() {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search test titles…"
+                placeholder="Search test titlesâ€¦"
                 className="pl-8 h-10"
               />
             </div>
@@ -2267,7 +2277,7 @@ export default function ProjectSuite() {
             <div className="flex-1">
               <Editor
                 height="100%"
-                defaultLanguage="typescript"
+                defaultLanguage={editorPath?.endsWith(".feature") ? "gherkin" : editorPath?.endsWith(".js") || editorPath?.endsWith(".cjs") || editorPath?.endsWith(".mjs") ? "javascript" : "typescript"}
                 theme="vs-dark"
                 value={editorContent}
                 onChange={(value) => setEditorContent(value ?? "")}
@@ -2280,3 +2290,5 @@ export default function ProjectSuite() {
     </>
   );
 }
+
+

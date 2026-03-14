@@ -1,4 +1,4 @@
-// apps/api/src/routes/run.ts
+﻿// apps/api/src/routes/run.ts
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import fs from "fs/promises";
@@ -21,7 +21,7 @@ import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
 import { enqueueAllureGenerate, enqueueRun, runQueue } from "../runner/queue.js";
 import { analyzeFailure } from "../runner/ai-analysis.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
-import { generateAndWrite } from "../testmind/service.js";
+import { generateAndWrite, runAdapter } from "../testmind/service.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
@@ -287,6 +287,7 @@ async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: str
 const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
   mode: z.enum(["regular", "ai"]).optional(),
+  adapterId: z.enum(["playwright-ts", "cucumber-js", "cypress-js", "appium-js", "xctest"]).optional(),
   baseUrl: z.string().url().optional(), // optional override
   suiteId: z.string().optional(), // spec suite to link edits back to
   file: z.string().optional(),   // relative path to spec to run
@@ -530,7 +531,7 @@ type MissingLocatorItem = {
 
 function extractNavTargetFromTitle(title?: string | null): string | null {
   if (!title) return null;
-  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
+  const match = title.match(/Navigate\s+[^â†’-]+(?:â†’|->)\s+([^\s]+)/i);
   const target = match?.[1]?.trim() ?? "";
   if (!target || !target.startsWith("/")) return null;
   return target;
@@ -783,10 +784,20 @@ export default async function runRoutes(app: FastifyInstance) {
     }
 
     const pid = parsed.data.projectId.trim();
+    const suiteId = parsed.data.suiteId?.trim() || undefined;
+    const adapterHintPaths = [
+      ...(parsed.data.files ?? []),
+      parsed.data.file,
+      parsed.data.specPath,
+    ].filter((value): value is string => typeof value === "string");
+    const suiteAdapterMatch = suiteId?.match(/^(playwright-ts|cucumber-js|cypress-js|appium-js|xctest)(?:-|$)/);
+    const adapterId =
+      parsed.data.adapterId ??
+      suiteAdapterMatch?.[1] ??
+      (adapterHintPaths.some((value) => value.toLowerCase().endsWith(".feature")) ? "cucumber-js" : "playwright-ts");
     let mode = parsed.data.mode;
     let aiMode = mode === "ai";
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
-    const suiteId = parsed.data.suiteId?.trim() || undefined;
     const LEGACY_CURATED_ROOT = path.resolve(process.cwd(), "..", "..", "apps", "api", "testmind-curated");
     const requestedBaseUrl = parsed.data.baseUrl;
     let effectiveBaseUrl = requestedBaseUrl ?? DEFAULT_BASE_URL;
@@ -874,7 +885,7 @@ export default async function runRoutes(app: FastifyInstance) {
     const shouldRegenerate =
       !!locatorUpdatedAt && (!lastGeneratedAt || locatorUpdatedAt > lastGeneratedAt);
 
-    if (shouldRegenerate) {
+    if (shouldRegenerate && adapterId === "playwright-ts") {
       try {
         const adapterId = "playwright-ts";
         const repoRoot = process.env.TM_LOCAL_REPO_ROOT
@@ -944,7 +955,7 @@ export default async function runRoutes(app: FastifyInstance) {
     }
 
     // create run entry
-    const runParams: Record<string, any> = { headful, suiteId, mode };
+    const runParams: Record<string, any> = { headful, suiteId, mode, adapterId };
     if (effectiveBaseUrl) runParams.baseUrl = effectiveBaseUrl;
     if (parsed.data.livePreview !== undefined) runParams.livePreview = parsed.data.livePreview;
     const run = await prisma.testRun.create({
@@ -1080,9 +1091,9 @@ export default async function runRoutes(app: FastifyInstance) {
         // 2) Install deps
         // await installDeps(work);
 
-        const adapter = "playwright-ts";
+        const adapter = adapterId;
         const userSuffix = project.ownerId ? `${adapter}-${project.ownerId}` : adapter;
-        const generatedOnly = aiMode || !hasRepoUrl;
+        const generatedOnly = adapterId === "cucumber-js" || aiMode || !hasRepoUrl;
 
         const resolveGeneratedSpecsDir = () => {
           const cwdRoot = process.cwd();
@@ -1817,6 +1828,14 @@ export default defineConfig({
           return stripped;
         };
 
+        const stripProjectPrefix = (value: string) => {
+          const normalized = value.replace(/^\/+/, "");
+          if (normalized.startsWith(`${project.id}/`)) {
+            return normalized.slice(project.id.length + 1);
+          }
+          return normalized;
+        };
+
         const resolveSelectedPath = async (value: string) => {
           const posix = value.replace(/\\/g, "/");
           const candidates: string[] = [];
@@ -1837,7 +1856,7 @@ export default defineConfig({
           // Prefer curated paths when a suiteId is provided (edited suites should win).
           if (curatedCandidates.length) candidates.push(...curatedCandidates);
 
-          const stripped = stripToRel(value);
+          const stripped = stripProjectPrefix(stripToRel(value));
           candidates.push(path.join(genDest, stripped));
           if (!generatedOnly) {
             candidates.push(path.join(cwd, posix));
@@ -1874,7 +1893,7 @@ export default defineConfig({
           let normalizedFile = path.relative(genDest, resolved).replace(/\\/g, "/");
           let abs = resolved;
           if (generatedOnly) {
-            const relFromInput = stripToRel(selectedFile).replace(/^\/+/, "");
+            const relFromInput = stripProjectPrefix(stripToRel(selectedFile));
             const safeRel =
               relFromInput && !relFromInput.startsWith("..") && !path.isAbsolute(relFromInput)
                 ? relFromInput
@@ -2022,6 +2041,96 @@ export default defineConfig({
           extraEnv.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
         }
         if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
+        if (adapterId === "cucumber-js") {
+          const cucumberLogLines: string[] = [];
+          extraEnv.TM_CUCUMBER_FEATURES_ROOT = path.join(genDest, "features");
+          extraEnv.TM_CUCUMBER_REPORT_PATH = resultsPath;
+          if (requestedFiles.length) {
+            extraEnv.TM_CUCUMBER_FILES = JSON.stringify(
+              requestedFiles
+                .map((file) => stripProjectPrefix(stripToRel(file)))
+                .filter((file) => file.toLowerCase().endsWith(".feature"))
+            );
+          }
+          if (normalizedGrep) {
+            extraEnv.TM_CUCUMBER_GREP = normalizedGrep;
+          }
+          const tRunStart = Date.now();
+          const exitCode = await runAdapter({
+            outRoot: genDest,
+            adapterId,
+            env: extraEnv,
+            onLine: (line) => {
+              cucumberLogLines.push(line);
+            },
+          });
+          const exec = {
+            exitCode,
+            stdout: cucumberLogLines.join(""),
+            stderr: "",
+            framework: adapterId,
+            resultsPath,
+          };
+
+          const selectedFilesForLog = requestedFiles.filter(Boolean);
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] framework=${adapterId} exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} durationMs=${Date.now() - tRunStart}\n`,
+            { flag: "a" }
+          );
+          await fs.writeFile(path.join(outDir, "stdout.txt"), exec.stdout ?? "", { flag: "a" });
+          await fs.writeFile(path.join(outDir, "stderr.txt"), exec.stderr ?? "", { flag: "w" });
+          const exists = await fs.stat(resultsPath).then(() => true).catch(() => false);
+          if (!exists) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] expected Cucumber report was not written: ${resultsPath}\n`,
+              { flag: "a" }
+            );
+          }
+
+          let parsedCount = 0;
+          let failed = 0;
+          let passed = 0;
+          let skipped = 0;
+          if (exists) {
+            const cases = await parseResults(resultsPath);
+            parsedCount = cases.length;
+            for (const c of cases) {
+              if (c.status === "failed" || c.status === "error") failed += 1;
+              else if (c.status === "passed") passed += 1;
+              else skipped += 1;
+            }
+          }
+
+          if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+            await markRunCanceled(run.id);
+            return;
+          }
+
+          const ok = failed === 0 && ((exec.exitCode ?? 1) === 0);
+          await prisma.testRun.update({
+            where: { id: run.id },
+            data: {
+              status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
+              finishedAt: new Date(),
+              summary: JSON.stringify({
+                framework: exec.framework ?? adapterId,
+                baseUrl: effectiveBaseUrl,
+                parsedCount,
+                passed,
+                failed,
+                skipped,
+              }),
+              error: ok ? null : "Cucumber command failed",
+              artifactsJson: artifacts ?? undefined,
+            },
+          });
+          sendRunNotifications(run.id).catch((err) => {
+            console.error(`[notifications] run ${run.id} failed`, err);
+          });
+          return;
+        }
         const allureReportDir = path.join(outDir, "allure-report");
         let hasAllureResults = false;
         const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
@@ -2122,7 +2231,7 @@ export default defineConfig({
         }
 
 
-        // 4) Parse → DB (single source: resultsPath)
+        // 4) Parse â†’ DB (single source: resultsPath)
         let parsedCount = 0;
         let failed = 0;
         let passed = 0;
@@ -2319,7 +2428,7 @@ export default defineConfig({
             status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
             finishedAt: new Date(),
             summary: JSON.stringify({
-              framework: exec.framework,
+              framework: exec.framework ?? adapterId,
               baseUrl: effectiveBaseUrl,
               parsedCount,
               passed,
@@ -2778,6 +2887,7 @@ export default defineConfig({
     grep: z.string().optional(),
     livePreview: z.boolean().optional(),
     mode: z.enum(["regular", "ai"]).optional(),
+  adapterId: z.enum(["playwright-ts", "cucumber-js", "cypress-js", "appium-js", "xctest"]).optional(),
   });
 
   app.post("/test-runs/:id/rerun", async (req, reply) => {
@@ -2967,7 +3077,7 @@ export default defineConfig({
         extras[`${c.file}#${c.fullName}`] = c;
       }
     } catch {
-      // ignore – enriched info optional
+      // ignore â€“ enriched info optional
     }
 
     const results = rows.map((r) => {
@@ -3161,3 +3271,7 @@ ${rows.map((r:any)=>`<tr><td>${r.status}</td><td>${r.duration ?? ""}</td><td>${r
 
 
 }
+
+
+
+

@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+﻿import fs from "fs/promises";
 
 export type ParsedCase = {
   file: string;
@@ -28,7 +28,7 @@ const extractCallLog = (raw?: string | null) => {
   const steps = raw
     .slice(idx + "Call log:".length)
     .split("\n")
-    .map((line) => line.replace(/^\s*[-•]+\s*/, "").trim())
+    .map((line) => line.replace(/^\s*[-â€¢]+\s*/, "").trim())
     .filter(Boolean);
   return { message: message || null, steps };
 };
@@ -78,6 +78,50 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
     return out;
   }
 
+  // CUCUMBER (json formatter)
+  if (Array.isArray(raw) && raw.some((entry: any) => Array.isArray(entry?.elements))) {
+    const out: ParsedCase[] = [];
+    for (const feature of raw) {
+      const file = normalizePath(feature?.uri || feature?.path || feature?.name);
+      for (const scenario of feature?.elements || []) {
+        const steps = (scenario?.steps || [])
+          .map((step: any) => [step?.keyword, step?.name].filter(Boolean).join(" ").trim())
+          .filter(Boolean);
+        const firstFailedStep = (scenario?.steps || []).find((step: any) => {
+          const status = step?.result?.status;
+          return status === "failed" || status === "ambiguous" || status === "undefined";
+        });
+        const hasPassed = (scenario?.steps || []).some((step: any) => step?.result?.status === "passed");
+        const hasSkipped = (scenario?.steps || []).every((step: any) => {
+          const status = step?.result?.status;
+          return status === "skipped" || status === "pending" || status === undefined;
+        });
+        const status = firstFailedStep
+          ? "failed"
+          : hasPassed
+            ? "passed"
+            : hasSkipped
+              ? "skipped"
+              : "error";
+        const durationMs = (scenario?.steps || []).reduce((total: number, step: any) => {
+          const nanos = Number(step?.result?.duration ?? 0);
+          return total + (Number.isFinite(nanos) ? nanos / 1_000_000 : 0);
+        }, 0);
+        out.push({
+          file,
+          fullName: scenario?.name || feature?.name || "scenario",
+          durationMs: durationMs || undefined,
+          status,
+          message: stripAnsi(firstFailedStep?.result?.error_message || null),
+          steps,
+          stdout: [],
+          stderr: [],
+          attachments: [],
+        });
+      }
+    }
+    return out;
+  }
   // VITEST (json reporter)
   if (Array.isArray(raw)) {
     const out: ParsedCase[] = [];
@@ -214,3 +258,4 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
 
   return [];
 }
+
