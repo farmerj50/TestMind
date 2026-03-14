@@ -1,4 +1,4 @@
-// apps/api/src/testmind/routes.ts
+﻿// apps/api/src/testmind/routes.ts
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
@@ -111,7 +111,7 @@ async function listSpecProjectsForUser(userId: string) {
               if (entry.isDirectory()) {
                 walk(srcPath, relPath);
               } else if (entry.isFile()) {
-                if (!/\.(spec|test)\.(t|j)sx?$/i.test(entry.name)) continue;
+                if (!/\.(spec|test)\.(t|j)sx?$|\.feature$/i.test(entry.name)) continue;
                 const exists = fs.existsSync(destPath);
                 if (exists && !isPlaceholderSpec(destPath)) continue;
                 fs.mkdirSync(path.dirname(destPath), { recursive: true });
@@ -194,7 +194,7 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
   const hasUserSuffix = !!userSuffix;
   const baseId = stripUserSuffix(projectId);
   const hasSpecFiles = (dir: string) => {
-    const hasMatch = (name: string) => /\.(spec|test)\.(ts|js|mjs|cjs)$/i.test(name);
+    const hasMatch = (name: string) => /\.(spec|test)\.(ts|js|mjs|cjs)$|\.feature$/i.test(name);
     const walk = (current: string) => {
       let entries: fs.Dirent[];
       try {
@@ -308,6 +308,51 @@ function resolveGeneratedRoots(projectId: string, optionalRoot?: string) {
   return existing;
 }
 
+const VISIBLE_SUITE_FILE_GLOBS = [
+  "**/*.spec.{ts,js,mjs,cjs}",
+  "**/*.test.{ts,js,mjs,cjs}",
+  "**/*.feature",
+];
+
+function suiteSyncFileGlobs(adapterId: string) {
+  if (adapterId === "cucumber-js") {
+    return [
+      "**/*.feature",
+      "steps/**/*.{js,ts,mjs,cjs}",
+      "support/**/*.{js,ts,mjs,cjs}",
+    ];
+  }
+  return ["**/*.spec.{ts,js,mjs,cjs}"];
+}
+
+function parseSuiteCases(relPath: string, source: string) {
+  const normalizedPath = relPath.replace(/\\/g, "/").toLowerCase();
+  if (normalizedPath.endsWith(".feature")) {
+    const out: Array<{ title: string; line: number }> = [];
+    const lines = source.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const match = line.match(/^\s*Scenario(?: Outline)?:\s*(.+?)\s*$/i);
+      if (match?.[1]) {
+        out.push({ title: match[1].trim(), line: i + 1 });
+      }
+    }
+    return out;
+  }
+
+  const caseRe = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['""`]([^'""`]+)['""`]\s*,/g;
+  const out: Array<{ title: string; line: number }> = [];
+  const lines = source.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let match: RegExpExecArray | null;
+    caseRe.lastIndex = 0;
+    while ((match = caseRe.exec(line))) {
+      out.push({ title: match[1], line: i + 1 });
+    }
+  }
+  return out;
+}
 function curatedRootCandidates(curatedSuite: CuratedSuiteWithOwner) {
   const candidates: string[] = [];
   const manifestEntry = getCuratedProject(curatedSuite.id);
@@ -471,7 +516,7 @@ function renderGenerateForm(defaultBaseUrl = ''): string {
 
       <div style="height:12px"></div>
       <label style="display:block;margin:8px 0 4px">Auth Password (optional)</label>
-      <input name="authPassword" type="password" placeholder="••••••••"
+      <input name="authPassword" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
              style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
 
       <div style="height:16px"></div>
@@ -1036,14 +1081,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const existingSet = new Set<string>();
       let destHasFiles = false;
       if (mode === "overwriteMatches" || mode === "addMissing") {
-        const existing = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: destRoot, dot: false, onlyFiles: true });
+        const existing = await globby(suiteSyncFileGlobs(adapterId), { cwd: destRoot, dot: false, onlyFiles: true });
         destHasFiles = existing.length > 0;
         if (mode === "overwriteMatches") {
           existing.forEach((f) => existingSet.add(f.replace(/\\/g, "/")));
         }
       }
 
-      const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: sourceRoot, dot: false, onlyFiles: true });
+      const files = await globby(suiteSyncFileGlobs(adapterId), { cwd: sourceRoot, dot: false, onlyFiles: true });
       const copied: string[] = [];
       const skipped: string[] = [];
       for (const rel of files) {
@@ -1436,14 +1481,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (curatedSuite) {
         const specRoot = resolveCuratedRoot(curatedSuite);
         if (!specRoot || !fs.existsSync(specRoot)) return [];
-        const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+        const files = await globby(VISIBLE_SUITE_FILE_GLOBS, { cwd: specRoot, dot: false });
         return files.map((rel) => ({ path: rel }));
       }
       const seen = new Set<string>();
       const out: Array<{ path: string }> = [];
       const curatedRoots = projectCuratedRoots(projectId);
       for (const specRoot of curatedRoots) {
-        const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+        const files = await globby(VISIBLE_SUITE_FILE_GLOBS, { cwd: specRoot, dot: false });
         for (const rel of files) {
           const key = rel.replace(/\\/g, "/");
           if (seen.has(key)) continue;
@@ -1453,7 +1498,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       }
       const roots = resolveGeneratedRoots(projectId, root);
       for (const specRoot of roots) {
-        const files = await globby(["**/*.spec.{ts,js,mjs,cjs}"], { cwd: specRoot, dot: false });
+        const files = await globby(VISIBLE_SUITE_FILE_GLOBS, { cwd: specRoot, dot: false });
         for (const rel of files) {
           const key = rel.replace(/\\/g, "/");
           if (seen.has(key)) continue;
@@ -1573,17 +1618,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         await fs.promises.writeFile(abs, src, "utf8");
       }
 
-    const CASE_RE = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['"`]([^'"`]+)['"`]\s*,/g;
-    const out: Array<{ title: string; line: number }> = [];
-
-    const lines = src.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      let m: RegExpExecArray | null;
-      CASE_RE.lastIndex = 0;
-      while ((m = CASE_RE.exec(line))) out.push({ title: m[1], line: i + 1 });
-    }
-      return out;
+      return parseSuiteCases(relPath, src);
     } catch {
       // If we still can't read cases, treat as empty so the UI can proceed.
       return [];
@@ -1635,7 +1670,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
           for (const t of node.tests) {
             const res = t.results?.[0];
             rows.push({
-              title: t.titlePath?.join(' › ') || t.title,
+              title: t.titlePath?.join(' â€º ') || t.title,
               file: file || t.location?.file || 'unknown',
               status: res?.status || t.outcome || 'unknown',
               duration: res?.duration || 0,
@@ -1659,3 +1694,6 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 export async function discoverRoutesFromRepo(_repoPath: string) {
   return { routes: ["/", "/pricing", "/login", "/signup", "/case-type-selection"] };
 }
+
+
+
