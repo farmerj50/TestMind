@@ -1,3 +1,4 @@
+import { cypressFailureAdapter } from "./cypress.js";
 import { playwrightFailureAdapter } from "./playwright.js";
 import type { FrameworkFailureAdapter, FrameworkParseInput, NormalizedFailure } from "./types.js";
 import { normalizeFrameworkId } from "./types.js";
@@ -8,6 +9,7 @@ function register(adapter: FrameworkFailureAdapter) {
   adapters.set(adapter.framework, adapter);
 }
 
+register(cypressFailureAdapter);
 register(playwrightFailureAdapter);
 
 export function registerFrameworkAdapter(adapter: FrameworkFailureAdapter) {
