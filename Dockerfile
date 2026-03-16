@@ -10,6 +10,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
+COPY packages/testmind-core/package.json ./packages/testmind-core/package.json
 
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
@@ -33,17 +34,18 @@ RUN echo "cachebust=$CACHEBUST"
 
 COPY apps/api ./apps/api
 COPY packages/runner ./packages/runner
+COPY packages/testmind-core ./packages/testmind-core
 
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
 
-# ✅ Generate Prisma client in builder (keeps build consistent)
+# Generate Prisma client in builder (keeps build consistent)
 RUN pnpm --filter api exec prisma generate
 
-# ✅ Build API
+# Build API
 RUN pnpm --filter api build
 
-# ✅ Install Playwright browsers only (no OS deps here)
+# Install Playwright browsers only (no OS deps here)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 
@@ -56,7 +58,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# ✅ Install runtime OS deps (including Playwright/Chromium deps) with retries
+# Install runtime OS deps (including Playwright/Chromium deps) with retries
 RUN set -eux; \
   for i in 1 2 3; do \
     apt-get update && break || sleep 5; \
@@ -73,17 +75,18 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/runner/package.json ./packages/runner/package.json
+COPY packages/testmind-core/package.json ./packages/testmind-core/package.json
 
-# ✅ Install prod deps for the api workspace (THIS fixes @prisma/client resolution)
+# Install prod deps for the api workspace
 RUN pnpm --filter api... install --frozen-lockfile --prod
 
 # Prisma schema needed for generate
 COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
 
-# ✅ Generate Prisma client in runtime (matches runtime pnpm layout)
+# Generate Prisma client in runtime (matches runtime pnpm layout)
 RUN pnpm --filter api exec prisma generate
 
-# ✅ Copy Playwright browsers from builder
+# Copy Playwright browsers from builder
 ARG CACHEBUST=174
 RUN echo "runner-cachebust=$CACHEBUST"
 
@@ -92,5 +95,3 @@ COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
 COPY tm-ai.playwright.config.mjs ./tm-ai.playwright.config.mjs
 
 CMD ["node", "apps/api/dist/index.js"]
-
-
