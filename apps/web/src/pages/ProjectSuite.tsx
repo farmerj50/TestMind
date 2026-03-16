@@ -13,8 +13,6 @@ import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { useApi, apiUrl } from "../lib/api";
-import { DEFAULT_FRAMEWORK_ID, type FrameworkId } from "@testmind/core/framework";
-import { getFrameworkDefinition, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 import HowToHint from "../components/HowToHint";
 import GlobalActionsMenu from "../components/spec-tree/GlobalActionsMenu";
 import SuiteActionsMenu from "../components/spec-tree/SuiteActionsMenu";
@@ -168,9 +166,9 @@ function TreeItem({
     <div>
       <div
         className={cn(
-          "group relative flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer border-l-2 border-transparent transition-colors hover:bg-white/30",
-          isActiveSuite && "bg-white/30 font-medium border-white/70",
-          isActiveFile && "bg-white/90 font-medium border-white shadow-sm"
+          "group relative flex items-center gap-2 rounded-xl border-l-2 border-transparent px-3 py-2 text-slate-700 transition-colors hover:bg-slate-100",
+          isActiveSuite && "border-sky-500 bg-slate-100 font-medium text-slate-950",
+          isActiveFile && "border-blue-600 bg-blue-50 font-medium text-slate-950 shadow-sm"
         )}
         style={{ paddingLeft: depth * 12 }}
         onClick={handleClick}
@@ -311,7 +309,7 @@ function writeFolderState(suiteId: string, state: SuiteFolderState) {
 
 export default function ProjectSuite() {
   const { projectId } = useParams(); // route: /suite/:projectId
-  const pid = projectId ?? DEFAULT_FRAMEWORK_ID;
+  const pid = projectId ?? "playwright-ts";
   const navigate = useNavigate();
   const location = useLocation();
   const { apiFetch, apiFetchRaw } = useApi();
@@ -521,19 +519,13 @@ export default function ProjectSuite() {
     [specProjects]
   );
   const activeSuite = specProjects.find((proj) => proj.id === pid);
-  const activeAdapterId = useMemo<FrameworkId>(() => {
-    const suite = activeSuite;
-    if (!suite) return DEFAULT_FRAMEWORK_ID;
-    return (
-      matchFrameworkIdFromValue(suite.id) ??
-      matchFrameworkIdFromValue(suite.name) ??
-      DEFAULT_FRAMEWORK_ID
-    );
-  }, [activeSuite]);
-  const activeFramework = useMemo(
-    () => getFrameworkDefinition(activeAdapterId),
-    [activeAdapterId]
-  );
+  const activeFrameworkLabel = useMemo(() => {
+    const source = `${activeSuite?.name || ""} ${pid}`.toLowerCase();
+    if (source.includes("cypress")) return "Cypress";
+    if (source.includes("cucumber")) return "Cucumber";
+    if (source.includes("playwright")) return "Playwright";
+    return "Custom";
+  }, [activeSuite?.name, pid]);
   const isActiveCurated = activeSuite?.type === "curated";
   const activeSpecLocked = useMemo(() => {
     if (!activeSuite || !activeSpec || !isActiveCurated) return false;
@@ -1286,7 +1278,7 @@ export default function ProjectSuite() {
       const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}/sync-from-generated`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adapterId: activeAdapterId, mode }),
+        body: JSON.stringify({ adapterId: "playwright-ts", mode }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to sync suite");
@@ -1373,7 +1365,7 @@ export default function ProjectSuite() {
       }
       setSpecProjects((prev) => prev.filter((proj) => proj.id !== suite.id));
       if (suite.id === pid) {
-        const fallback = specProjects.find((proj) => proj.id !== suite.id)?.id || DEFAULT_FRAMEWORK_ID;
+        const fallback = specProjects.find((proj) => proj.id !== suite.id)?.id || "playwright-ts";
         navigate(`/suite/${fallback}`);
       }
       setSpecProjectErr(null);
@@ -1747,7 +1739,6 @@ export default function ProjectSuite() {
               headful,
               reporter,
               livePreview: livePreviewEnabled,
-              adapterId: activeAdapterId,
             }),
           });
         if (res?.id) navigate(`/test-runs/${res.id}`);
@@ -1769,7 +1760,6 @@ export default function ProjectSuite() {
               headful,
               reporter,
               livePreview: livePreviewEnabled,
-              adapterId: activeAdapterId,
             }),
           });
         if (res?.id) navigate(`/test-runs/${res.id}`);
@@ -1874,12 +1864,20 @@ export default function ProjectSuite() {
 
   return (
     <>
-    <div className="h-full grid grid-cols-[300px_1fr]">
+    <div className="grid h-full grid-cols-[320px_minmax(0,1fr)] gap-5 bg-slate-50 p-5">
       {/* Left: tree */}
-      <div className="border-r border-slate-300 bg-[#8eb7ff] text-slate-900">
-        <div className="p-3 flex items-center gap-2">
-          <FolderTree className="h-4 w-4" />
-          <span className="font-medium">Spec Tree</span>
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-900 shadow-sm">
+        <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-5">
+          <div className="rounded-2xl bg-slate-950 p-3 text-white">
+            <FolderTree className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Spec Tree</div>
+            <div className="mt-2 font-semibold text-slate-950">Suite explorer</div>
+            <div className="mt-1 text-sm text-slate-600">
+              Browse generated and curated specs without changing the current run flow.
+            </div>
+          </div>
           <div className="ml-auto">
             <HowToHint
               storageKey="tm-howto-suites"
@@ -1895,12 +1893,12 @@ export default function ProjectSuite() {
             />
           </div>
         </div>
-        <div className="px-3 pb-3 space-y-2">
+        <div className="px-5 py-4">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 justify-center"
+              className="h-10 flex-1 justify-center rounded-xl border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
               onClick={handleCreateSuite}
               disabled={creatingSuite}
             >
@@ -1909,11 +1907,11 @@ export default function ProjectSuite() {
             <GlobalActionsMenu onAction={handleGlobalAction} canCopySpec={canCopySpec} />
           </div>
         </div>
-        <Separator />
-        <ScrollArea className="h-[calc(100vh-64px)] p-2 space-y-1">
+        <div className="min-h-0 flex-1">
+        <ScrollArea className="h-full px-3 py-4">
           {!!suiteTree.generated.length && (
             <div className="space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-slate-700 px-2">Generated</div>
+              <div className="px-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">Generated</div>
               {suiteTree.generated.map((node) => (
                 <TreeItem
                   key={node.suiteId || node.name}
@@ -1934,8 +1932,8 @@ export default function ProjectSuite() {
             </div>
           )}
           {!!suiteTree.curated.length && (
-            <div className="space-y-1 mt-2">
-              <div className="text-[11px] uppercase tracking-wide text-slate-700 px-2">Curated</div>
+            <div className="mt-4 space-y-1">
+              <div className="px-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">Curated</div>
               {suiteTree.curated.map((node) => (
                 <TreeItem
                   key={node.suiteId || node.name}
@@ -1956,22 +1954,49 @@ export default function ProjectSuite() {
             </div>
           )}
         </ScrollArea>
+        </div>
       </div>
 
       {/* Right: cases */}
-      <div className="flex flex-col">
+      <div className="flex min-h-0 flex-col gap-4">
                 {/* top bar */}
-        <div className="p-3 border-b border-slate-300 bg-[#8eb7ff] text-slate-900">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Suites</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+                Organize and run framework suites
+              </div>
+              <div className="mt-2 text-sm text-slate-600">
+                Organize generated and imported tests into framework-specific execution groups without changing existing run behavior.
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Total suites</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-950">{specProjects.length}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Total specs</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-950">{specs.length}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Framework</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-950">{activeFrameworkLabel}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             {/* left nav */}
             <div className="flex items-center gap-2 mr-2 shrink-0">
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="h-9 rounded-full px-4 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
                 <Link to="/dashboard">Dashboard</Link>
               </Button>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="h-9 rounded-full px-4 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
                 <Link to="/integrations">Integrations</Link>
               </Button>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="h-9 rounded-full px-4 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
                 <Link to="/projects">Projects</Link>
               </Button>
             </div>
@@ -1979,7 +2004,7 @@ export default function ProjectSuite() {
             {/* suite */}
             <div className="shrink-0 w-[220px]">
               <Select value={activeSuite?.id} onValueChange={(val) => navigate(`/suite/${val}`)}>
-                <SelectTrigger className="w-full h-10" disabled={!suiteOptions.length}>
+                <SelectTrigger className="h-11 w-full rounded-xl border-slate-300" disabled={!suiteOptions.length}>
                   <SelectValue placeholder={suiteOptions.length ? "Select suite" : "No suites"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -2001,7 +2026,7 @@ export default function ProjectSuite() {
                   localStorage.setItem("tm:lastProjectId", val);
                 }}
               >
-                <SelectTrigger className="w-full h-10" disabled={!projects.length}>
+                <SelectTrigger className="h-11 w-full rounded-xl border-slate-300" disabled={!projects.length}>
                   <SelectValue placeholder={projects.length ? "Select project" : "No projects"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -2015,10 +2040,10 @@ export default function ProjectSuite() {
             </div>
 
             {/* branch */}
-            <div className="flex items-center gap-2 shrink-0">
-              <GitBranch className="h-4 w-4" />
+            <div className="flex items-center gap-2 shrink-0 rounded-xl border border-slate-300 px-3">
+              <GitBranch className="h-4 w-4 text-slate-500" />
               <Select value={branch} onValueChange={setBranch}>
-                <SelectTrigger className="w-[160px] h-10">
+                <SelectTrigger className="h-11 w-[160px] border-0 px-0 shadow-none focus:ring-0">
                   <SelectValue placeholder="Branch" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2031,7 +2056,7 @@ export default function ProjectSuite() {
             {/* reporter */}
             <div className="shrink-0">
               <Select value={reporter} onValueChange={(val) => setReporter(val as ReporterId)}>
-                <SelectTrigger className="w-[160px] h-10">
+                <SelectTrigger className="h-11 w-[160px] rounded-xl border-slate-300">
                   <SelectValue placeholder="Reporter" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2042,11 +2067,11 @@ export default function ProjectSuite() {
             </div>
 
             {/* headed */}
-            <label className="flex items-center gap-2 text-xs text-slate-600 shrink-0">
+            <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm text-slate-600 shrink-0">
               <Checkbox checked={headful} onCheckedChange={(val) => setHeadful(Boolean(val))} />
               Headed (capture media)
             </label>
-            <label className="flex items-center gap-2 text-xs text-slate-600 shrink-0">
+            <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm text-slate-600 shrink-0">
               <Checkbox
                 checked={livePreviewEnabled}
                 onCheckedChange={(val) => {
@@ -2060,42 +2085,42 @@ export default function ProjectSuite() {
 
             {/* base url */}
             <div className="flex items-center gap-2 shrink-0 w-[320px]">
-              <span className="text-xs text-slate-600 whitespace-nowrap">Base URL</span>
+              <span className="text-xs uppercase tracking-[0.2em] text-slate-500 whitespace-nowrap">Base URL</span>
               <Input
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder="https://example.com"
-                className="bg-white/80 h-10"
+                className="h-11 rounded-xl border-slate-300 bg-white"
               />
             </div>
 
             {/* back to run */}
             {returnTo && (
-              <Button asChild variant="outline" className="border-white/90 shrink-0 h-10">
+              <Button asChild variant="outline" className="h-11 rounded-xl border-slate-300 shrink-0">
                 <Link to={returnTo}>Back to run</Link>
               </Button>
             )}
 
             {/* search grows */}
             <div className="relative flex-1 min-w-[240px] max-w-[480px]">
-              <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 opacity-60" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search test titlesâ€¦"
-                className="pl-8 h-10"
+                placeholder="Search test titles…"
+                className="h-11 rounded-xl border-slate-300 pl-9"
               />
             </div>
 
             {/* actions */}
-            <Button variant="outline" onClick={() => setSelected({})} className="shrink-0 h-10">
+            <Button variant="outline" onClick={() => setSelected({})} className="h-11 rounded-xl border-slate-300 shrink-0">
               <RefreshCw className="h-4 w-4 mr-1" /> Clear
             </Button>
 
             <Button
               disabled={!anySelected || running}
               onClick={handleRunSelection}
-              className="border border-white/90 shrink-0 h-10"
+              className="h-11 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800 shrink-0"
             >
               <Play className="h-4 w-4 mr-1" /> {running ? "Starting..." : "Run selection"}
             </Button>
@@ -2103,55 +2128,94 @@ export default function ProjectSuite() {
         </div>
 
         {(runError || projectLoadErr || specProjectErr) && (
-          <div className="px-3 pb-2 text-xs text-rose-600">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {runError || projectLoadErr || specProjectErr}
           </div>
         )}
 
         {/* body */}
-        <ScrollArea className="p-4">
+        <ScrollArea className="min-h-0 flex-1 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           {!activeSpec ? (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-muted-foreground">
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-sm text-slate-600">
+              <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Suite Preview</div>
               {specs.length === 0 ? (
-                <div className="space-y-2">
-                  <div>This suite is empty.</div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled title="Coming soon">
-                      New spec
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <div className="text-2xl font-semibold text-slate-950">This suite is empty</div>
+                    <div className="mt-2 max-w-2xl">
+                      Create a new suite or move generated specs into a curated suite to start organizing test coverage.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      onClick={handleCreateSuite}
+                      disabled={creatingSuite}
+                      className="h-11 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800"
+                    >
+                      {creatingSuite ? "Creating..." : "Create suite"}
                     </Button>
-                    <Button variant="outline" size="sm" disabled title="Select a spec first">
-                      Copy spec
+                    <Button asChild variant="outline" className="h-11 rounded-xl border-slate-300 px-5">
+                      <Link to="/projects">Open projects</Link>
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div>Select a spec on the left to view steps.</div>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <div className="text-2xl font-semibold text-slate-950">Select a spec to inspect</div>
+                    <div className="mt-2 max-w-2xl">
+                      Select a spec from the left panel to inspect steps, update suite grouping, and run tests from the current workspace.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      onClick={() => {
+                        setSuiteSelected(false);
+                        setActiveSpec(specs[0]);
+                      }}
+                      className="h-11 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800"
+                    >
+                      Open first spec
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl border-slate-300 px-5"
+                      onClick={handleCreateSuite}
+                      disabled={creatingSuite}
+                    >
+                      {creatingSuite ? "Creating..." : "Create suite"}
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-3 px-1">
-                <div className="text-sm text-muted-foreground">{formatDisplayPath(activeSpec.path)}</div>
-                <div className="flex gap-2">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Suite Workspace</div>
+                  <div className="mt-1 text-sm font-medium text-slate-950">{formatDisplayPath(activeSpec.path)}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="default"
                     onClick={()=>selectAll(true)}
-                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                    className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
                   >
                     Select page
                   </Button>
                   <Button
-                    variant="default"
+                    variant="outline"
                     onClick={()=>selectAll(false)}
-                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                    className="h-10 rounded-xl border-slate-300"
                   >
                     Clear page
                   </Button>
                   <Button
-                    variant="default"
+                    variant="outline"
                     onClick={loadSuiteCases}
                     disabled={suiteSelected && !runError}
-                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                    className="h-10 rounded-xl border-slate-300"
                   >
                     Load suite
                   </Button>
@@ -2159,20 +2223,20 @@ export default function ProjectSuite() {
                     variant="default"
                     onClick={handleRunSuite}
                     disabled={runningSuite || running}
-                    className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm border border-white/90"
+                    className="h-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800"
                   >
                     {runningSuite ? "Running suite..." : "Run suite"}
                   </Button>
                 </div>
               </div>
-              <Separator className="mb-3" />
-              <div className="grid gap-2">
+              <Separator className="mb-4" />
+              <div className="grid gap-3">
                 {filtered.map(c => {
                   const key = `case:${c.specPath || activeSpec?.path || ""}:${c.title}`;
                   return (
                   <div
                     key={key}
-                    className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white shadow-sm cursor-pointer"
+                    className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
                     onClick={(e) => {
                       const target = e.target as HTMLElement | null;
                       if (target?.closest("[data-checkbox]")) return;
@@ -2191,16 +2255,16 @@ export default function ProjectSuite() {
                     </div>
                     <div className="flex-1">
                       <div className="font-medium leading-tight">{c.title}</div>
-                      <div className="text-xs text-muted-foreground">line {c.line}</div>
+                      <div className="text-xs text-slate-500">line {c.line}</div>
                       {c.specPath && <div className="text-[11px] text-slate-500">{c.specPath}</div>}
                     </div>
                   </div>
                   );
                 })}
                 {filtered.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-muted-foreground">
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
                     {hasQuery ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span>No results for "{trimmedQuery}".</span>
                         <Button variant="outline" size="sm" onClick={() => setQuery("")}>
                           Clear search
@@ -2284,7 +2348,7 @@ export default function ProjectSuite() {
             <div className="flex-1">
               <Editor
                 height="100%"
-                defaultLanguage={activeFramework.previewMode === "gherkin" || editorPath?.endsWith(".feature") ? "gherkin" : editorPath?.endsWith(".js") || editorPath?.endsWith(".cjs") || editorPath?.endsWith(".mjs") ? "javascript" : "typescript"}
+                defaultLanguage="typescript"
                 theme="vs-dark"
                 value={editorContent}
                 onChange={(value) => setEditorContent(value ?? "")}
