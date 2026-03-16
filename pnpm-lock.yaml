@@ -291,6 +291,8 @@ importers:
         specifier: ^11.2.0
         version: 11.3.3
 
+  packages/testmind-core: {}
+
 packages:
 
   '@alloc/quick-lru@5.2.0':

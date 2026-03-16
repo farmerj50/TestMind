@@ -6,8 +6,8 @@ import { globby } from "globby";
 import archiver from "archiver";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
-import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "./core/framework.js";
-import { getFrameworkDefinition } from "./core/framework-registry.js";
+import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "../../../../packages/testmind-core/framework.js";
+import { getFrameworkDefinition } from "../../../../packages/testmind-core/framework-registry.js";
 
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports

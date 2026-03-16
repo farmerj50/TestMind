@@ -1,0 +1,16 @@
+{
+  "name": "@testmind/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./framework": {
+      "types": "./framework.d.ts",
+      "default": "./framework.js"
+    },
+    "./framework-registry": {
+      "types": "./framework-registry.d.ts",
+      "default": "./framework-registry.js"
+    }
+  }
+}
