@@ -6,8 +6,8 @@ import fsSync from "fs";
 import path from "path";
 import net from "net";
 import { z } from "zod";
-import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "../../../../packages/testmind-core/framework.js";
-import { getFrameworkDefinition, matchFrameworkIdFromValue } from "../../../../packages/testmind-core/framework-registry.js";
+import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "@testmind/core/framework";
+import { getFrameworkDefinition, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 import { prisma } from "../prisma.js";
 import { redis } from "../runner/redis.js";
 

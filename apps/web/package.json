@@ -12,6 +12,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.50.0",
     "@monaco-editor/react": "^4.6.0",
+    "@testmind/core": "workspace:*",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-slot": "^1.2.3",
     "class-variance-authority": "^0.7.1",

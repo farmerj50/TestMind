@@ -19,6 +19,7 @@
     "@fastify/static": "^6",
     "@octokit/rest": "^22.0.1",
     "@playwright/test": "1.58.2",
+    "@testmind/core": "workspace:*",
     "@prisma/client": "^6.18.0",
     "allure-commandline": "^2.36.0",
     "allure-js-commons": "^3.4.3",

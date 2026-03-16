@@ -7,7 +7,7 @@ const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://local
 const GEN_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(DIR, 'testmind-generated');
-const GEN_DIR = "D:\\Project\\testmind_fresh_main\\apps\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5";
+const GEN_DIR = "D:\\Project\\testmind_fresh_main\\apps\\testmind-generated\\cucumber-js-user_33gWRDa4D9dgsEJUNxFdjN8Gog5";
 console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
