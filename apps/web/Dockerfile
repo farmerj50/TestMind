@@ -24,7 +24,7 @@ ENV VITE_API_URL=$VITE_API_URL
 # --------------------------------------------------
 
 WORKDIR /workspace/apps/web
-RUN pnpm run build
+RUN pnpm exec tsc -b && pnpm exec vite build
 
 
 # -------------------------
