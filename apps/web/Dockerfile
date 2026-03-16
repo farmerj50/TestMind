@@ -8,11 +8,13 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
+COPY packages/testmind-core/package.json ./packages/testmind-core/package.json
 
 ENV NPM_CONFIG_PRODUCTION=false
 RUN pnpm install --frozen-lockfile --prod=false
 
 COPY apps/web ./apps/web
+COPY packages/testmind-core ./packages/testmind-core
 
 # ---- Build-time Vite envs (REQUIRED for Vite) ----
 ARG VITE_CLERK_PUBLISHABLE_KEY
