@@ -13,6 +13,8 @@ import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { useApi, apiUrl } from "../lib/api";
+import { DEFAULT_FRAMEWORK_ID, type FrameworkId } from "../../../api/src/testmind/core/framework.js";
+import { getFrameworkDefinition, matchFrameworkIdFromValue } from "../../../api/src/testmind/core/framework-registry.js";
 import HowToHint from "../components/HowToHint";
 import GlobalActionsMenu from "../components/spec-tree/GlobalActionsMenu";
 import SuiteActionsMenu from "../components/spec-tree/SuiteActionsMenu";
@@ -309,7 +311,7 @@ function writeFolderState(suiteId: string, state: SuiteFolderState) {
 
 export default function ProjectSuite() {
   const { projectId } = useParams(); // route: /suite/:projectId
-  const pid = projectId ?? "playwright-ts";
+  const pid = projectId ?? DEFAULT_FRAMEWORK_ID;
   const navigate = useNavigate();
   const location = useLocation();
   const { apiFetch, apiFetchRaw } = useApi();
@@ -519,14 +521,19 @@ export default function ProjectSuite() {
     [specProjects]
   );
   const activeSuite = specProjects.find((proj) => proj.id === pid);
-  const activeAdapterId = useMemo(() => {
+  const activeAdapterId = useMemo<FrameworkId>(() => {
     const suite = activeSuite;
-    if (!suite) return "playwright-ts";
-    const generatedMatch = suite.id.match(/^(playwright-ts|cucumber-js|cypress-js|appium-js|xctest)(?:-|$)/);
-    if (generatedMatch?.[1]) return generatedMatch[1];
-    const nameMatch = suite.name.match(/^Generated \((.+)\)$/);
-    return nameMatch?.[1] || "playwright-ts";
+    if (!suite) return DEFAULT_FRAMEWORK_ID;
+    return (
+      matchFrameworkIdFromValue(suite.id) ??
+      matchFrameworkIdFromValue(suite.name) ??
+      DEFAULT_FRAMEWORK_ID
+    );
   }, [activeSuite]);
+  const activeFramework = useMemo(
+    () => getFrameworkDefinition(activeAdapterId),
+    [activeAdapterId]
+  );
   const isActiveCurated = activeSuite?.type === "curated";
   const activeSpecLocked = useMemo(() => {
     if (!activeSuite || !activeSpec || !isActiveCurated) return false;
@@ -1366,7 +1373,7 @@ export default function ProjectSuite() {
       }
       setSpecProjects((prev) => prev.filter((proj) => proj.id !== suite.id));
       if (suite.id === pid) {
-        const fallback = specProjects.find((proj) => proj.id !== suite.id)?.id || "playwright-ts";
+        const fallback = specProjects.find((proj) => proj.id !== suite.id)?.id || DEFAULT_FRAMEWORK_ID;
         navigate(`/suite/${fallback}`);
       }
       setSpecProjectErr(null);
@@ -2277,7 +2284,7 @@ export default function ProjectSuite() {
             <div className="flex-1">
               <Editor
                 height="100%"
-                defaultLanguage={editorPath?.endsWith(".feature") ? "gherkin" : editorPath?.endsWith(".js") || editorPath?.endsWith(".cjs") || editorPath?.endsWith(".mjs") ? "javascript" : "typescript"}
+                defaultLanguage={activeFramework.previewMode === "gherkin" || editorPath?.endsWith(".feature") ? "gherkin" : editorPath?.endsWith(".js") || editorPath?.endsWith(".cjs") || editorPath?.endsWith(".mjs") ? "javascript" : "typescript"}
                 theme="vs-dark"
                 value={editorContent}
                 onChange={(value) => setEditorContent(value ?? "")}

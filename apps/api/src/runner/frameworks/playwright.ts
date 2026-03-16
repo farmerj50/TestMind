@@ -6,6 +6,7 @@ import type {
   NormalizedFailureArtifact,
   PatchTargetKind,
 } from "./types.js";
+import { isPresent } from "./artifacts.js";
 
 const normalizePath = (value?: string | null) =>
   (value ?? "unknown").replace(/\\/g, "/");
@@ -114,7 +115,7 @@ function normalizeArtifacts(attachments?: any[]): NormalizedFailureArtifact[] {
         label: attachment?.name,
       } satisfies NormalizedFailureArtifact;
     })
-    .filter((value): value is NormalizedFailureArtifact => Boolean(value));
+    .filter(isPresent);
 }
 
 function normalizeTitlePath(parts: string[]) {

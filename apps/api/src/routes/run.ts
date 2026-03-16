@@ -1,4 +1,4 @@
-﻿// apps/api/src/routes/run.ts
+// apps/api/src/routes/run.ts
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import fs from "fs/promises";
@@ -6,6 +6,8 @@ import fsSync from "fs";
 import path from "path";
 import net from "net";
 import { z } from "zod";
+import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "../testmind/core/framework.js";
+import { getFrameworkDefinition, matchFrameworkIdFromValue } from "../testmind/core/framework-registry.js";
 import { prisma } from "../prisma.js";
 import { redis } from "../runner/redis.js";
 
@@ -14,6 +16,7 @@ import { makeWorkdir, rmrf } from "../runner/workdir.js";
 import { cloneRepo } from "../runner/git.js";
 import { runTests } from "../runner/node-test-exec.js";
 import { execa } from "execa";
+import { persistParsedRunResults } from "../runner/persist-run-results.js";
 
 import { parseResults, ParsedCase } from "../runner/result-parsers.js";
 import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
@@ -287,7 +290,7 @@ async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: str
 const RunBody = z.object({
   projectId: z.string().min(1, "projectId is required"),
   mode: z.enum(["regular", "ai"]).optional(),
-  adapterId: z.enum(["playwright-ts", "cucumber-js", "cypress-js", "appium-js", "xctest"]).optional(),
+  adapterId: z.enum(FRAMEWORK_IDS).optional(),
   baseUrl: z.string().url().optional(), // optional override
   suiteId: z.string().optional(), // spec suite to link edits back to
   file: z.string().optional(),   // relative path to spec to run
@@ -531,7 +534,7 @@ type MissingLocatorItem = {
 
 function extractNavTargetFromTitle(title?: string | null): string | null {
   if (!title) return null;
-  const match = title.match(/Navigate\s+[^â†’-]+(?:â†’|->)\s+([^\s]+)/i);
+  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
   const target = match?.[1]?.trim() ?? "";
   if (!target || !target.startsWith("/")) return null;
   return target;
@@ -790,11 +793,11 @@ export default async function runRoutes(app: FastifyInstance) {
       parsed.data.file,
       parsed.data.specPath,
     ].filter((value): value is string => typeof value === "string");
-    const suiteAdapterMatch = suiteId?.match(/^(playwright-ts|cucumber-js|cypress-js|appium-js|xctest)(?:-|$)/);
+    const suiteAdapterMatch = matchFrameworkIdFromValue(suiteId);
     const adapterId =
       parsed.data.adapterId ??
-      suiteAdapterMatch?.[1] ??
-      (adapterHintPaths.some((value) => value.toLowerCase().endsWith(".feature")) ? "cucumber-js" : "playwright-ts");
+      suiteAdapterMatch ??
+      (adapterHintPaths.some((value) => value.toLowerCase().endsWith(".feature")) ? "cucumber-js" : DEFAULT_FRAMEWORK_ID);
     let mode = parsed.data.mode;
     let aiMode = mode === "ai";
     const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
@@ -885,9 +888,9 @@ export default async function runRoutes(app: FastifyInstance) {
     const shouldRegenerate =
       !!locatorUpdatedAt && (!lastGeneratedAt || locatorUpdatedAt > lastGeneratedAt);
 
-    if (shouldRegenerate && adapterId === "playwright-ts") {
+    if (shouldRegenerate && adapterId === DEFAULT_FRAMEWORK_ID) {
       try {
-        const adapterId = "playwright-ts";
+        const adapterId = DEFAULT_FRAMEWORK_ID;
         const repoRoot = process.env.TM_LOCAL_REPO_ROOT
           ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
           : path.resolve(process.cwd(), "..", "..");
@@ -1091,9 +1094,9 @@ export default async function runRoutes(app: FastifyInstance) {
         // 2) Install deps
         // await installDeps(work);
 
-        const adapter = adapterId;
+        const adapter = getFrameworkDefinition(adapterId).id;
         const userSuffix = project.ownerId ? `${adapter}-${project.ownerId}` : adapter;
-        const generatedOnly = adapterId === "cucumber-js" || aiMode || !hasRepoUrl;
+        const generatedOnly = getFrameworkDefinition(adapterId).previewMode === "gherkin" || aiMode || !hasRepoUrl;
 
         const resolveGeneratedSpecsDir = () => {
           const cwdRoot = process.cwd();
@@ -1427,7 +1430,7 @@ export default async function runRoutes(app: FastifyInstance) {
           : path.join(work, "testmind-generated");
         const userGenDest = path.join(genRoot, userSuffix);
         const sharedGenDest = path.join(genRoot, adapter);
-        let genDestName = adapter;
+        let genDestName: string = adapter;
         const PORT_PLACEHOLDER = "__TM_PORT__";
         const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} }"`;
         const unixDevCommand = `bash -lc "cd \\"${unixServerDirEsc}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT_PLACEHOLDER}"`;
@@ -2268,112 +2271,19 @@ export default defineConfig({
             missingLocators
           );
 
-          await prisma.$transaction(async (db) => {
-            for (const c of cases) {
-              const key = `${c.file}#${c.fullName}`.slice(0, 255);
-
-              const testCase = await db.testCase.upsert({
-                where: { projectId_key: { projectId: pid, key } },
-                update: { title: c.fullName },
-                create: { projectId: pid, key, title: c.fullName },
-              });
-
-              await db.testResult.create({
-                data: {
-                  run: { connect: { id: run.id } },
-                  testCase: { connect: { id: testCase.id } },
-                  status: mapStatus(c.status),
-                  durationMs: c.durationMs ?? null,
-                  message: c.message ?? null,
-                },
-              });
-
-              parsedCount++;
-              if (c.status === "passed") passed++;
-              else if (c.status === "failed" || c.status === "error") failed++;
-              else skipped++;
-            }
-
-            if (locatorHealthUpdates.length || navSuggestionUpdates.length) {
-              const projectRecord = await db.project.findUnique({
-                where: { id: pid },
-                select: { sharedSteps: true, ownerId: true },
-              });
-              const sharedSteps = (projectRecord?.sharedSteps ?? {}) as Record<string, any>;
-              const locatorHealth =
-                sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
-                  ? ({ ...(sharedSteps.locatorHealth as Record<string, any>) } as Record<string, any>)
-                  : ({} as Record<string, any>);
-              const navSuggestions =
-                sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
-                  ? ({ ...(sharedSteps.navSuggestions as Record<string, any[]>) } as Record<string, any[]>)
-                  : ({} as Record<string, any[]>);
-              const now = new Date().toISOString();
-              for (const item of locatorHealthUpdates) {
-                const key = `${item.pagePath}::${item.bucket}::${item.name}`;
-                const prev = locatorHealth[key] ?? {};
-                const next = {
-                  pagePath: item.pagePath,
-                  bucket: item.bucket,
-                  name: item.name,
-                  selector: item.selector || prev.selector,
-                  successCount: Math.max(0, Number(prev.successCount ?? 0)),
-                  failCount: Math.max(0, Number(prev.failCount ?? 0)),
-                  lastPassedAt: prev.lastPassedAt,
-                  lastFailedAt: prev.lastFailedAt,
-                  lastFailureReason: prev.lastFailureReason,
-                  updatedAt: now,
-                  updatedBy: projectRecord?.ownerId ?? userId,
-                };
-                if (item.status === "passed") {
-                  next.successCount += 1;
-                  next.lastPassedAt = now;
-                } else {
-                  next.failCount += 1;
-                  next.lastFailedAt = now;
-                  if (item.reason) next.lastFailureReason = item.reason.slice(0, 2000);
-                }
-                locatorHealth[key] = next;
-              }
-              for (const nav of navSuggestionUpdates) {
-                const existing = Array.isArray(navSuggestions[nav.key]) ? [...navSuggestions[nav.key]] : [];
-                const deduped = existing.filter((item) => item?.selector !== nav.selector);
-                const entry = {
-                  selector: nav.selector,
-                  confidence: nav.confidence,
-                  confidenceBreakdown: [{ delta: 0, reason: "auto-captured from run title" }],
-                  sourcePath: nav.sourcePath,
-                  updatedAt: now,
-                  updatedBy: projectRecord?.ownerId ?? userId,
-                };
-                navSuggestions[nav.key] = [entry, ...deduped]
-                  .sort((a: any, b: any) => {
-                    const scoreA = typeof a.confidence === "number" ? a.confidence : -1;
-                    const scoreB = typeof b.confidence === "number" ? b.confidence : -1;
-                    if (scoreA !== scoreB) return scoreB - scoreA;
-                    return String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""));
-                  })
-                  .slice(0, 10);
-              }
-              await db.project.update({
-                where: { id: pid },
-                data: {
-                  sharedSteps: {
-                    ...sharedSteps,
-                    locatorHealth,
-                    navSuggestions,
-                    locatorMeta: {
-                      ...(sharedSteps.locatorMeta ?? {}),
-                      updatedAt: now,
-                      updatedBy: projectRecord?.ownerId ?? userId,
-                    },
-                  },
-                },
-              });
-            }
+          const persisted = await persistParsedRunResults({
+            runId: run.id,
+            projectId: pid,
+            userId,
+            cases,
+            locatorHealthUpdates,
+            navSuggestionUpdates,
           });
+          parsedCount = persisted.parsedCount;
+          passed = persisted.passed;
+          failed = persisted.failed;
+          skipped = persisted.skipped;
         }
-
         artifacts = {
           "reportJson": path.join("runner-logs", run.id, "report.json"),
         };
@@ -2866,7 +2776,7 @@ export default defineConfig({
     grep: z.string().optional(),
     livePreview: z.boolean().optional(),
     mode: z.enum(["regular", "ai"]).optional(),
-  adapterId: z.enum(["playwright-ts", "cucumber-js", "cypress-js", "appium-js", "xctest"]).optional(),
+  adapterId: z.enum(FRAMEWORK_IDS).optional(),
   });
 
   app.post("/test-runs/:id/rerun", async (req, reply) => {
@@ -3056,7 +2966,7 @@ export default defineConfig({
         extras[`${c.file}#${c.fullName}`] = c;
       }
     } catch {
-      // ignore â€“ enriched info optional
+      // ignore – enriched info optional
     }
 
     const results = rows.map((r) => {

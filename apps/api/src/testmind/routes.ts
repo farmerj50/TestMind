@@ -6,6 +6,8 @@ import { globby } from "globby";
 import archiver from "archiver";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
+import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "./core/framework.js";
+import { getFrameworkDefinition } from "./core/framework-registry.js";
 
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
@@ -77,7 +79,7 @@ type CuratedSuiteWithOwner = {
 };
 
 async function listSpecProjectsForUser(userId: string) {
-  const adapters = ["playwright-ts", "cucumber-js", "cypress-js", "appium-js", "xctest"];
+  const adapters = [...FRAMEWORK_IDS];
   const generated = adapters
     .map((a) => ({
       id: `${a}-${userId}`,
@@ -249,11 +251,11 @@ async function resolveProjectRoot(projectId: string, optionalRoot?: string) {
         path.join(GENERATED_ROOT, baseId, "playwright"),
         // curated fallback (when generated specs are missing)
         path.join(CURATED_ROOT, baseId),
-        path.join(CURATED_ROOT, baseId, "playwright-ts"),
+        path.join(CURATED_ROOT, baseId, DEFAULT_FRAMEWORK_ID),
         // monorepo fallbacks (legacy)
-        path.join(REPO_ROOT, "apps", "api", "testmind-generated", "playwright-ts"),
-        path.join(REPO_ROOT, "apps", "web", "testmind-generated", "playwright-ts"),
-        path.join(REPO_ROOT, "testmind-generated", "playwright-ts"),
+        path.join(REPO_ROOT, "apps", "api", "testmind-generated", DEFAULT_FRAMEWORK_ID),
+        path.join(REPO_ROOT, "apps", "web", "testmind-generated", DEFAULT_FRAMEWORK_ID),
+        path.join(REPO_ROOT, "testmind-generated", DEFAULT_FRAMEWORK_ID),
       ].filter(Boolean) as string[]);
 
   let firstExisting: string | null = null;
@@ -315,7 +317,7 @@ const VISIBLE_SUITE_FILE_GLOBS = [
 ];
 
 function suiteSyncFileGlobs(adapterId: string) {
-  if (adapterId === "cucumber-js") {
+  if (getFrameworkDefinition(adapterId).previewMode === "gherkin") {
     return [
       "**/*.feature",
       "steps/**/*.{js,ts,mjs,cjs}",
@@ -491,7 +493,7 @@ function renderGenerateForm(defaultBaseUrl = ''): string {
 
       <div style="height:12px"></div>
       <label style="display:block;margin:8px 0 4px">Adapter</label>
-      <input name="adapterId" value="playwright-ts"
+      <input name="adapterId" value="${DEFAULT_FRAMEWORK_ID}"
              style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px"/>
 
       <div style="height:12px"></div>
@@ -591,7 +593,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const {
         repoPath = path.resolve(process.cwd(), '../../'),
         baseUrl,
-        adapterId = 'playwright-ts',
+        adapterId = DEFAULT_FRAMEWORK_ID,
         maxRoutes,
         include,
         exclude,
@@ -670,7 +672,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const {
         repoPath = path.resolve(process.cwd(), '../../'), // monorepo root
         baseUrl,
-        adapterId = 'playwright-ts',
+        adapterId = DEFAULT_FRAMEWORK_ID,
         maxRoutes,
         include,
         exclude,
@@ -741,7 +743,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ----------------------------------------------------------------------------
   app.get<{ Querystring: RunQuery }>('/run/stream', async (req, reply: FastifyReply) => {
     try {
-      const { baseUrl, adapterId = 'playwright-ts', projectId } = req.query || {};
+      const { baseUrl, adapterId = DEFAULT_FRAMEWORK_ID, projectId } = req.query || {};
       app.log.info({ baseUrl, adapterId }, '[TM] /run/stream params');
       if (!baseUrl) throw new Error('baseUrl is required');
       assertUrl(baseUrl);
@@ -791,7 +793,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     try {
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-      const { adapterId = 'playwright-ts', projectId } = (req.query as any) || {};
+      const { adapterId = DEFAULT_FRAMEWORK_ID, projectId } = (req.query as any) || {};
       let root = adapterProjectDir(adapterId, userId, projectId);
       if (projectId && !fs.existsSync(root)) {
         const fallback = adapterDir(adapterId, userId);
@@ -825,7 +827,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-      const { adapterId = 'playwright-ts', projectId, file } = (req.query as any) || {};
+      const { adapterId = DEFAULT_FRAMEWORK_ID, projectId, file } = (req.query as any) || {};
       if (!file) return reply.code(400).send({ ok: false, error: 'file required' });
 
       let base = adapterProjectDir(adapterId, userId, projectId);
@@ -852,7 +854,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     try {
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-      const { adapterId = "playwright-ts", projectId } = (req.query as any) || {};
+      const { adapterId = DEFAULT_FRAMEWORK_ID, projectId } = (req.query as any) || {};
       const root = resolveGeneratedSource(adapterId, userId, projectId);
       if (!root || !fs.existsSync(root)) {
         return reply.code(404).send({ error: "Generated bundle not found" });
@@ -1007,7 +1009,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { id } = req.params as { id: string };
       const body = (req.body as any) || {};
-      const adapterId = (body.adapterId || "playwright-ts").trim();
+      const adapterId = (body.adapterId || DEFAULT_FRAMEWORK_ID).trim();
       const mode = (body.mode || "replaceSuite") as "replaceSuite" | "overwriteMatches" | "addMissing";
 
       const suite = await prisma.curatedSuite.findUnique({
@@ -1145,7 +1147,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!relativePath) {
         return reply.code(400).send({ error: "path is required" });
       }
-      const sourceProjectId = (body.sourceProjectId || "playwright-ts").trim();
+      const sourceProjectId = (body.sourceProjectId || DEFAULT_FRAMEWORK_ID).trim();
 
       const sourceRoot = await resolveProjectRoot(sourceProjectId);
       const destRoot = path.resolve(CURATED_ROOT, destSuite.rootRel);
@@ -1630,7 +1632,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
   // ----------------------------------------------------------------------------
   app.get('/health', async (req, reply) => {
     const repoDefault = path.resolve(process.cwd(), '../../');
-    const adapterId = (req.query as any)?.adapterId || 'playwright-ts';
+    const adapterId = (req.query as any)?.adapterId || DEFAULT_FRAMEWORK_ID;
     const outRoot = path.join(GENERATED_ROOT, adapterId);
     const exists = (p: string) => {
       try { return fs.existsSync(p) ? (fs.statSync(p).isDirectory() ? 'dir' : 'file') : 'missing'; }
