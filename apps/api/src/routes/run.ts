@@ -2041,6 +2041,17 @@ export default defineConfig({
           extraEnv.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
         }
         if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
+        const allureReportDir = path.join(outDir, "allure-report");
+        let hasAllureResults = false;
+        const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
+        let exec: {
+          exitCode?: number | null;
+          stdout?: string;
+          stderr?: string;
+          framework?: string;
+          resultsPath?: string;
+        };
+
         if (adapterId === "cucumber-js") {
           const cucumberLogLines: string[] = [];
           extraEnv.TM_CUCUMBER_FEATURES_ROOT = path.join(genDest, "features");
@@ -2064,7 +2075,7 @@ export default defineConfig({
               cucumberLogLines.push(line);
             },
           });
-          const exec = {
+          exec = {
             exitCode,
             stdout: cucumberLogLines.join(""),
             stderr: "",
@@ -2075,7 +2086,8 @@ export default defineConfig({
           const selectedFilesForLog = requestedFiles.filter(Boolean);
           await fs.writeFile(
             path.join(outDir, "stdout.txt"),
-            `[runner] framework=${adapterId} exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} durationMs=${Date.now() - tRunStart}\n`,
+            `[runner] framework=${adapterId} exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} durationMs=${Date.now() - tRunStart}
+`,
             { flag: "a" }
           );
           await fs.writeFile(path.join(outDir, "stdout.txt"), exec.stdout ?? "", { flag: "a" });
@@ -2084,154 +2096,121 @@ export default defineConfig({
           if (!exists) {
             await fs.writeFile(
               path.join(outDir, "stderr.txt"),
-              `[runner] expected Cucumber report was not written: ${resultsPath}\n`,
+              `[runner] expected Cucumber report was not written: ${resultsPath}
+`,
               { flag: "a" }
             );
           }
-
-          let parsedCount = 0;
-          let failed = 0;
-          let passed = 0;
-          let skipped = 0;
-          if (exists) {
-            const cases = await parseResults(resultsPath);
-            parsedCount = cases.length;
-            for (const c of cases) {
-              if (c.status === "failed" || c.status === "error") failed += 1;
-              else if (c.status === "passed") passed += 1;
-              else skipped += 1;
-            }
-          }
-
-          if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
-            await markRunCanceled(run.id);
-            return;
-          }
-
-          const ok = failed === 0 && ((exec.exitCode ?? 1) === 0);
-          await prisma.testRun.update({
-            where: { id: run.id },
-            data: {
-              status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
-              finishedAt: new Date(),
-              summary: JSON.stringify({
-                framework: exec.framework ?? adapterId,
-                baseUrl: effectiveBaseUrl,
-                parsedCount,
-                passed,
-                failed,
-                skipped,
-              }),
-              error: ok ? null : "Cucumber command failed",
-              artifactsJson: artifacts ?? undefined,
-            },
-          });
-          sendRunNotifications(run.id).catch((err) => {
-            console.error(`[notifications] run ${run.id} failed`, err);
-          });
-          return;
-        }
-        const allureReportDir = path.join(outDir, "allure-report");
-        let hasAllureResults = false;
-        const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
-
-        const tRunStart = Date.now();
-        let exec;
-        try {
-          exec = await runTests({
-            workdir: cwd,
-            jsonOutPath: resultsPath,
-            baseUrl: effectiveBaseUrl,
-            configPath: ciConfigPath,
-            // extraGlobs is no longer used by the runner; selection is via grep
-            extraGlobs,
-            extraEnv,
-            grep: normalizedGrep,
-            sourceRoot: work,
-            headed: headful,
-            abortSignal: abortController.signal,
-          });
-        } catch (err: any) {
-          if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
-            await markRunCanceled(run.id);
-            return;
-          }
-          throw err;
-        }
-        if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
-          await markRunCanceled(run.id);
-          return;
-        }
-
-
-        const selectedFilesForLog = requestedFiles.filter(Boolean);
-        await fs.writeFile(
-          path.join(outDir, "stdout.txt"),
-          `[runner] exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)} durationMs=${Date.now() - tRunStart}\n`,
-          { flag: "a" }
-        );
-
-
-
-
-
-        // Save raw logs (always)
-        await fs.writeFile(path.join(outDir, "stdout.txt"), exec.stdout ?? "", { flag: "a" });
-        await fs.writeFile(path.join(outDir, "stderr.txt"), exec.stderr ?? "");
-        const exists = await fs.stat(resultsPath).then(() => true).catch(() => false);
-        if (!exists) {
-          await fs.writeFile(
-            path.join(outDir, "stderr.txt"),
-            `\n[runner] report.json missing - Playwright likely did not execute. Check dependency install and webServer.\n`,
-            { flag: "a" }
-          );
-        }
-        if (!skipAllure) {
-          try {
-            const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
-            hasAllureResults = allureEntries.length > 0;
-            if (hasAllureResults) {
-              const normalizedAllureCount = await normalizeAllureBrokenStatuses(allureResultsDir);
-              if (normalizedAllureCount > 0) {
-                await fs.writeFile(
-                  path.join(outDir, "stdout.txt"),
-                  `[runner] normalized ${normalizedAllureCount} allure result(s): broken -> failed\n`,
-                  { flag: "a" }
-                );
-              }
-              const allureTimeoutMs = Number(process.env.TM_ALLURE_TIMEOUT_MS ?? "120000");
-              await fs.writeFile(
-                path.join(outDir, "stdout.txt"),
-                `[runner] allure generate queued (timeout ${allureTimeoutMs}ms)\n`,
-                { flag: "a" }
-              );
-              await enqueueAllureGenerate({
-                runId: run.id,
-                cwd,
-                allureResultsDir,
-                allureReportDir,
-                timeoutMs: allureTimeoutMs,
-                stdoutPath: path.join(outDir, "stdout.txt"),
-                stderrPath: path.join(outDir, "stderr.txt"),
-              });
-            }
-          } catch (err: any) {
+          if (!skipAllure) {
             await fs.writeFile(
-              path.join(outDir, "stderr.txt"),
-              `[runner] allure generate failed: ${err?.message || err}\n`,
+              path.join(outDir, "stdout.txt"),
+              "[runner] allure generate skipped (cucumber-js does not emit allure-results yet)\n",
+              { flag: "a" }
+            );
+          } else {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] allure generate skipped (TM_SKIP_ALLURE=1)\n",
               { flag: "a" }
             );
           }
         } else {
+          const tRunStart = Date.now();
+          try {
+            exec = await runTests({
+              workdir: cwd,
+              jsonOutPath: resultsPath,
+              baseUrl: effectiveBaseUrl,
+              configPath: ciConfigPath,
+              // extraGlobs is no longer used by the runner; selection is via grep
+              extraGlobs,
+              extraEnv,
+              grep: normalizedGrep,
+              sourceRoot: work,
+              headed: headful,
+              abortSignal: abortController.signal,
+            });
+          } catch (err: any) {
+            if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+              await markRunCanceled(run.id);
+              return;
+            }
+            throw err;
+          }
+          if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+            await markRunCanceled(run.id);
+            return;
+          }
+
+          const selectedFilesForLog = requestedFiles.filter(Boolean);
           await fs.writeFile(
             path.join(outDir, "stdout.txt"),
-            "[runner] allure generate skipped (TM_SKIP_ALLURE=1)\n",
+            `[runner] exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)} durationMs=${Date.now() - tRunStart}
+`,
             { flag: "a" }
           );
+
+          await fs.writeFile(path.join(outDir, "stdout.txt"), exec.stdout ?? "", { flag: "a" });
+          await fs.writeFile(path.join(outDir, "stderr.txt"), exec.stderr ?? "");
+          const exists = await fs.stat(resultsPath).then(() => true).catch(() => false);
+          if (!exists) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `
+[runner] report.json missing - Playwright likely did not execute. Check dependency install and webServer.
+`,
+              { flag: "a" }
+            );
+          }
+          if (!skipAllure) {
+            try {
+              const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
+              hasAllureResults = allureEntries.length > 0;
+              if (hasAllureResults) {
+                const normalizedAllureCount = await normalizeAllureBrokenStatuses(allureResultsDir);
+                if (normalizedAllureCount > 0) {
+                  await fs.writeFile(
+                    path.join(outDir, "stdout.txt"),
+                    `[runner] normalized ${normalizedAllureCount} allure result(s): broken -> failed
+`,
+                    { flag: "a" }
+                  );
+                }
+                const allureTimeoutMs = Number(process.env.TM_ALLURE_TIMEOUT_MS ?? "120000");
+                await fs.writeFile(
+                  path.join(outDir, "stdout.txt"),
+                  `[runner] allure generate queued (timeout ${allureTimeoutMs}ms)
+`,
+                  { flag: "a" }
+                );
+                await enqueueAllureGenerate({
+                  runId: run.id,
+                  cwd,
+                  allureResultsDir,
+                  allureReportDir,
+                  timeoutMs: allureTimeoutMs,
+                  stdoutPath: path.join(outDir, "stdout.txt"),
+                  stderrPath: path.join(outDir, "stderr.txt"),
+                });
+              }
+            } catch (err: any) {
+              await fs.writeFile(
+                path.join(outDir, "stderr.txt"),
+                `[runner] allure generate failed: ${err?.message || err}
+`,
+                { flag: "a" }
+              );
+            }
+          } else {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] allure generate skipped (TM_SKIP_ALLURE=1)\n",
+              { flag: "a" }
+            );
+          }
         }
 
-
-        // 4) Parse â†’ DB (single source: resultsPath)
+        // 4) Parse to DB (single source: resultsPath)
         let parsedCount = 0;
         let failed = 0;
         let passed = 0;
