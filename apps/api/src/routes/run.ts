@@ -534,7 +534,7 @@ type MissingLocatorItem = {
 
 function extractNavTargetFromTitle(title?: string | null): string | null {
   if (!title) return null;
-  const match = title.match(/Navigate\s+[^→-]+(?:→|->)\s+([^\s]+)/i);
+  const match = title.match(/Navigate\s+[^â†’-]+(?:â†’|->)\s+([^\s]+)/i);
   const target = match?.[1]?.trim() ?? "";
   if (!target || !target.startsWith("/")) return null;
   return target;
@@ -2966,7 +2966,7 @@ export default defineConfig({
         extras[`${c.file}#${c.fullName}`] = c;
       }
     } catch {
-      // ignore – enriched info optional
+      // ignore â€“ enriched info optional
     }
 
     const results = rows.map((r) => {
@@ -3160,7 +3160,3 @@ ${rows.map((r:any)=>`<tr><td>${r.status}</td><td>${r.duration ?? ""}</td><td>${r
 
 
 }
-
-
-
-

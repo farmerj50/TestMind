@@ -1,4 +1,4 @@
-﻿// src/pages/ProjectSuite.tsx
+// src/pages/ProjectSuite.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Button } from "../components/ui/button";
@@ -2297,5 +2297,3 @@ export default function ProjectSuite() {
     </>
   );
 }
-
-

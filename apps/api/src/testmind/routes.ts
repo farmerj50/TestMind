@@ -1,4 +1,4 @@
-﻿// apps/api/src/testmind/routes.ts
+// apps/api/src/testmind/routes.ts
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
@@ -1696,6 +1696,3 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 export async function discoverRoutesFromRepo(_repoPath: string) {
   return { routes: ["/", "/pricing", "/login", "/signup", "/case-type-selection"] };
 }
-
-
-
