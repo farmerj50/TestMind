@@ -2,14 +2,17 @@ import { useState, type ComponentProps } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/api";
 import { Play } from "lucide-react";
+import type { AdapterId } from "./AdapterDropdown";
 
 type RunNowButtonProps = {
   projectId: string;
+  adapterId?: AdapterId;
   onDone?: () => void;
 } & Omit<ComponentProps<typeof Button>, "onClick" | "children">;
 
 export default function RunNowButton({
   projectId,
+  adapterId,
   onDone,
   className,
   size = "sm",
@@ -24,7 +27,10 @@ export default function RunNowButton({
     try {
       await apiFetch<{ id: string }>("/runner/run", {
         method: "POST",
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({
+          projectId,
+          ...(adapterId ? { adapterId } : {}),
+        }),
       });
       onDone?.();
     } catch (e) {

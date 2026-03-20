@@ -5,6 +5,7 @@ import { redis } from './redis.js';
 // What the worker expects to receive:
 export type RunPayload = {
   projectId: string;
+  adapterId?: string;
   mode?: "regular" | "ai";
   genDir?: string;
   browser?: 'chromium' | 'firefox' | 'webkit' | 'all';
@@ -27,6 +28,7 @@ export type SelfHealPayload = {
   testCaseId: string;
   attemptId: string;
   projectId: string;
+  adapterId?: string;
   totalFailed: number;
   testTitle?: string | null;
   headed?: boolean;

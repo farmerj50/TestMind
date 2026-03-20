@@ -15,6 +15,8 @@ import { analyzeFailure } from './ai-analysis.js';
 import type { LocatorBucket } from '../testmind/runtime/locator-store.js';
 import { REPORT_ROOT } from '../lib/storageRoots.js';
 import { decryptSecret } from '../lib/crypto.js';
+import { runAdapter } from '../testmind/service.js';
+import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
@@ -55,6 +57,29 @@ function normalizeTitle(value: string): string {
 function buildLooseGrepFromTitle(title: string): string {
   if (!title.trim()) return "";
   return `(?:^|\\s)${escapeRegex(title)}(?:$|\\s)`;
+}
+
+function resolveGeneratedDir(
+  generatedRoot: string,
+  adapterId: string,
+  ownerId?: string | null,
+  projectId?: string | null
+) {
+  const candidates = [
+    ownerId && projectId ? path.join(generatedRoot, `${adapterId}-${ownerId}`, projectId) : null,
+    ownerId ? path.join(generatedRoot, `${adapterId}-${ownerId}`) : null,
+    projectId ? path.join(generatedRoot, adapterId, projectId) : null,
+    path.join(generatedRoot, adapterId),
+    generatedRoot,
+  ].filter((value): value is string => Boolean(value));
+
+  return candidates.find((candidate) => fsSync.existsSync(candidate));
+}
+
+function stripToFeaturePath(value: string) {
+  const normalized = value.replace(/\\/g, "/");
+  const idx = normalized.toLowerCase().indexOf("features/");
+  return idx >= 0 ? normalized.slice(idx) : normalized;
 }
 
 function extractListTitles(stdout?: string | null): string[] {
@@ -340,6 +365,12 @@ export const worker = new Worker(
 
     const project = run.project;
     const runParams = (run.paramsJson as Record<string, any> | undefined) ?? undefined;
+    const adapterId =
+      typeof payload?.adapterId === "string"
+        ? payload.adapterId
+        : typeof runParams?.adapterId === "string"
+        ? runParams.adapterId
+        : DEFAULT_FRAMEWORK_ID;
     const mode = payload?.mode ?? runParams?.mode ?? "regular";
     let aiMode = mode === "ai";
     const isLikelyGitRepo = (url?: string | null) => {
@@ -508,6 +539,8 @@ export const worker = new Worker(
       const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const extraEnv: Record<string, string> = {};
+      extraEnv.PW_BASE_URL = jobBaseUrl;
+      extraEnv.TM_BASE_URL = jobBaseUrl;
       if (aiMode) {
         extraEnv.TM_AI_MODE = "1";
         extraEnv.TM_AI_ACTION_SHOTS = process.env.TM_AI_ACTION_SHOTS ?? "1";
@@ -557,12 +590,16 @@ export const worker = new Worker(
           extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
         }
       } else {
-      const generatedRoot = process.env.TM_GENERATED_ROOT
-        ? path.resolve(process.env.TM_GENERATED_ROOT)
-        : path.join(work, "testmind-generated");
-      if (fsSync.existsSync(generatedRoot)) {
-        extraEnv.TM_GENERATED_ROOT = generatedRoot;
-      }
+        const generatedRoot = process.env.TM_GENERATED_ROOT
+          ? path.resolve(process.env.TM_GENERATED_ROOT)
+          : path.join(work, "testmind-generated");
+        const generatedDir = resolveGeneratedDir(generatedRoot, adapterId, project.ownerId, project.id);
+        if (generatedDir) {
+          extraEnv.TM_GEN_DIR = generatedDir;
+          extraEnv.TM_GENERATED_ROOT = generatedRoot;
+        } else if (fsSync.existsSync(generatedRoot)) {
+          extraEnv.TM_GENERATED_ROOT = generatedRoot;
+        }
       }
       const livePreviewEnabled =
         payload?.livePreview ?? Boolean((runParams as any)?.livePreview);
@@ -578,18 +615,59 @@ export const worker = new Worker(
       }
       let exec;
       try {
-        exec = await runTests({
-        workdir: runWorkdir,
-        jsonOutPath: resultsPath,
-        headed: payload?.headed,
-        grep,
-        extraGlobs,
-        baseUrl: jobBaseUrl,
-        runTimeout: timeoutMs,
-        abortSignal: abortController.signal,
-        extraEnv,
-        configPath: aiMode ? path.join(work, "tm-ai.playwright.config.mjs") : undefined,
-        });
+        if (!aiMode && adapterId === "cucumber-js") {
+          const cucumberLogLines: string[] = [];
+          const generatedRoot = process.env.TM_GENERATED_ROOT
+            ? path.resolve(process.env.TM_GENERATED_ROOT)
+            : path.join(work, "testmind-generated");
+          const genDest = resolveGeneratedDir(generatedRoot, adapterId, project.ownerId, project.id);
+          if (!genDest) {
+            throw new Error(`No generated specs found for ${adapterId}`);
+          }
+
+          extraEnv.TM_CUCUMBER_FEATURES_ROOT = path.join(genDest, "features");
+          extraEnv.TM_CUCUMBER_REPORT_PATH = resultsPath;
+          const requestedFiles = [absSpecPath ?? specPath ?? fileTarget]
+            .filter((value): value is string => Boolean(value))
+            .map((value) => stripToFeaturePath(value))
+            .filter((value) => value.toLowerCase().endsWith(".feature"));
+          if (requestedFiles.length) {
+            extraEnv.TM_CUCUMBER_FILES = JSON.stringify(requestedFiles);
+          }
+          if (grep) {
+            extraEnv.TM_CUCUMBER_GREP = grep;
+          }
+
+          const exitCode = await runAdapter({
+            outRoot: genDest,
+            adapterId,
+            env: extraEnv,
+            onLine: (line) => {
+              cucumberLogLines.push(line);
+            },
+          });
+          exec = {
+            ok: exitCode === 0,
+            exitCode,
+            stdout: cucumberLogLines.join(""),
+            stderr: "",
+            resultsPath,
+            framework: "none" as const,
+          };
+        } else {
+          exec = await runTests({
+            workdir: runWorkdir,
+            jsonOutPath: resultsPath,
+            headed: payload?.headed,
+            grep,
+            extraGlobs,
+            baseUrl: jobBaseUrl,
+            runTimeout: timeoutMs,
+            abortSignal: abortController.signal,
+            extraEnv,
+            configPath: aiMode ? path.join(work, "tm-ai.playwright.config.mjs") : undefined,
+          });
+        }
       } catch (err: any) {
         if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
           await prisma.testRun.update({

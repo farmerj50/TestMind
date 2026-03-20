@@ -31,6 +31,7 @@ import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoo
 import { generateAndWrite } from "./testmind/service.js";
 import { validateAndNormalizeRepoUrl } from "./lib/git-url.js";
 import { safeFetch } from "./lib/safe-fetch.js";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import {
   scoreSelectorConfidence,
   type ConfidenceBreakdownItem,
@@ -78,7 +79,8 @@ const scheduleSpecRegeneration = (params: {
   if (!trimmedBaseUrl) return;
   setImmediate(async () => {
     try {
-      const adapterId = "playwright-ts";
+      // Shared locator/nav regeneration still targets the stable Playwright layer.
+      const adapterId = DEFAULT_FRAMEWORK_ID;
       const repoRoot = resolveRepoRoot();
       const outRoot = path.join(GENERATED_ROOT, `${adapterId}-${userId}`, projectId);
       await generateAndWrite({

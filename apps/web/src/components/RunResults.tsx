@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiUrl, useApi } from "../lib/api";
 import { CheckCircle2, XCircle, CircleAlert, RotateCcw, ChevronRight, Copy } from "lucide-react";
 import { Button } from "./ui/button";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
+import { hasFrameworkCapability, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 
 type Result = {
   id: string;
@@ -30,11 +32,13 @@ export default function RunResults({
   active,
   projectId,
   suiteId,
+  adapterId,
 }: {
   runId: string;
   active: boolean;
   projectId?: string;
   suiteId?: string;
+  adapterId?: string;
 }) {
   const { apiFetch } = useApi();
   const navigate = useNavigate();
@@ -48,6 +52,8 @@ export default function RunResults({
   const [sortBy, setSortBy] = useState<"default" | "duration" | "status">("default");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [artifactMeta, setArtifactMeta] = useState<RunArtifactMeta | null>(null);
+  const frameworkId = matchFrameworkIdFromValue(adapterId) ?? DEFAULT_FRAMEWORK_ID;
+  const supportsTraceView = hasFrameworkCapability(frameworkId, "supportsAllure");
 
   const escapeRegex = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -232,7 +238,7 @@ export default function RunResults({
       const grep = testTitle ? buildLooseGrep(testTitle) : undefined;
       await apiFetch(`/runner/test-runs/${runId}/rerun`, {
         method: "POST",
-        body: JSON.stringify({ specFile: specPath, grep }),
+        body: JSON.stringify({ specFile: specPath, grep, adapterId: frameworkId }),
       });
     } catch (e: any) {
       alert(e?.message ?? "Failed to trigger rerun");
@@ -253,6 +259,7 @@ export default function RunResults({
           grep,
           mode: "ai",
           livePreview: true,
+          adapterId: frameworkId,
         }),
       });
       if (res?.runId) {
@@ -344,7 +351,7 @@ export default function RunResults({
     artifactMeta?.publicArtifacts?.reportJsonUrl ??
     buildStaticUrl(artifactMeta?.artifactsJson?.reportJson) ??
     null;
-  const openTraceHref = allureTraceHref ?? reportJsonHref ?? null;
+  const openTraceHref = supportsTraceView ? allureTraceHref ?? reportJsonHref ?? null : null;
   const inferStepState = (stepIndex: number, totalSteps: number, status: Result["status"]) => {
     const normalized = normalizeStatus(status);
     if (normalized === "passed") return "passed";
@@ -526,15 +533,15 @@ export default function RunResults({
                         ? "AI analyze"
                         : "AI analyze (needs failed spec)"}
                   </Button>
-                  {openTraceHref ? (
+                  {supportsTraceView && openTraceHref ? (
                     <Button asChild size="sm" variant="outline">
                       <a href={openTraceHref} target="_blank" rel="noreferrer">
                         Open trace
                       </a>
                     </Button>
-                  ) : (
+                  ) : supportsTraceView ? (
                     <Button size="sm" variant="outline" disabled>Open trace</Button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 

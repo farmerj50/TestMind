@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { generateAndWrite } from "../../src/testmind/service.js";
 import path from "node:path";
 import { GENERATED_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 
 const exec = promisify(cpExec);
 
@@ -58,7 +59,9 @@ async function main() {
   } = process.env;
 
   const localMode = LOCAL_RUN === "1";
-  const genRoot = path.join(GENERATED_ROOT, "playwright-ts");
+  // This bot path remains Playwright-only until the CI/bot flow is moved under the framework layer.
+  const adapterId = DEFAULT_FRAMEWORK_ID;
+  const genRoot = path.join(GENERATED_ROOT, adapterId);
 
   if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing");
 
@@ -73,7 +76,7 @@ async function main() {
       repoPath: process.cwd(),
       outRoot: path.resolve(genRoot),
       baseUrl: process.env.TEST_BASE_URL ?? "http://localhost:3000",
-      adapterId: "playwright-ts",
+      adapterId,
       options: {
         maxRoutes: 25,
         sharedSteps,
@@ -144,7 +147,7 @@ await generateAndWrite({
   repoPath: process.cwd(),
   outRoot: path.resolve(genRoot),
   baseUrl: process.env.TEST_BASE_URL ?? "http://localhost:3000",
-  adapterId: "playwright-ts",
+  adapterId,
   options: {
     maxRoutes: 25,        // << move it here
     // add other knobs if you have them, e.g. includeAuthFlows: true

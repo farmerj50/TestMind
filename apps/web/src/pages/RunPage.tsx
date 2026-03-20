@@ -11,6 +11,12 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 
 
 import { apiUrl, useApi } from "../lib/api";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
+import {
+  getFrameworkDefinition,
+  hasFrameworkCapability,
+  matchFrameworkIdFromValue,
+} from "@testmind/core/framework-registry";
 
 
 
@@ -161,6 +167,7 @@ type Run = {
     grep?: string | null;
 
     suiteId?: string | null;
+    adapterId?: string | null;
     livePreview?: boolean;
 
 
@@ -523,6 +530,17 @@ const parsedSummary = useMemo(() => {
 
   const params = run?.paramsJson ?? null;
   const isAiAnalyzeRun = (params as any)?.mode === "ai";
+  const runFrameworkId =
+    matchFrameworkIdFromValue((params as any)?.adapterId) ??
+    matchFrameworkIdFromValue((parsedSummary as any)?.framework) ??
+    DEFAULT_FRAMEWORK_ID;
+  const runFramework = getFrameworkDefinition(runFrameworkId);
+  const supportsAllure = hasFrameworkCapability(runFrameworkId, "supportsAllure");
+  const supportsLocatorHealth = hasFrameworkCapability(runFrameworkId, "supportsLocatorHealth");
+  const supportsNavSuggestions = hasFrameworkCapability(runFrameworkId, "supportsNavSuggestions");
+  const supportsSelfHeal = hasFrameworkCapability(runFrameworkId, "supportsSelfHeal");
+  const supportsLivePreview = hasFrameworkCapability(runFrameworkId, "supportsLivePreview");
+  const canUseLivePreview = supportsLivePreview && isAiAnalyzeRun;
 
   useEffect(() => {
     liveAiModeRef.current = isAiAnalyzeRun;
@@ -546,7 +564,7 @@ const parsedSummary = useMemo(() => {
   }, [revokeLiveFrameUrl]);
 
   useEffect(() => {
-    if (!resolvedRunId || !livePreviewEnabled || !isAiAnalyzeRun) {
+    if (!resolvedRunId || !livePreviewEnabled || !canUseLivePreview) {
       if (liveStreamRef.current) {
         liveStreamRef.current.close();
         liveStreamRef.current = null;
@@ -597,22 +615,22 @@ const parsedSummary = useMemo(() => {
       es.close();
       liveStreamRef.current = null;
     };
-  }, [resolvedRunId, livePreviewEnabled, isAiAnalyzeRun, attemptLiveFrame, revokeLiveFrameUrl]);
+  }, [resolvedRunId, livePreviewEnabled, canUseLivePreview, attemptLiveFrame, revokeLiveFrameUrl]);
 
   useEffect(() => {
-    if (!resolvedRunId || !livePreviewEnabled || !isAiAnalyzeRun) return;
+    if (!resolvedRunId || !livePreviewEnabled || !canUseLivePreview) return;
     startLivePolling(30000, 1000);
-  }, [resolvedRunId, livePreviewEnabled, isAiAnalyzeRun, startLivePolling]);
+  }, [resolvedRunId, livePreviewEnabled, canUseLivePreview, startLivePolling]);
 
   useEffect(() => {
     if (livePreviewTouchedRef.current) return;
-    if (isAiAnalyzeRun && run?.paramsJson && (run.paramsJson as any).livePreview) {
+    if (canUseLivePreview && run?.paramsJson && (run.paramsJson as any).livePreview) {
       setLivePreviewEnabled(true);
     }
-  }, [run?.paramsJson, isAiAnalyzeRun]);
+  }, [run?.paramsJson, canUseLivePreview]);
 
   useEffect(() => {
-    if (!livePreviewEnabled || !isAiAnalyzeRun) return;
+    if (!livePreviewEnabled || !canUseLivePreview) return;
     const onKeyDown = (evt: KeyboardEvent) => {
       if (evt.key !== "Escape") return;
       livePreviewTouchedRef.current = true;
@@ -620,7 +638,7 @@ const parsedSummary = useMemo(() => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [livePreviewEnabled, isAiAnalyzeRun]);
+  }, [livePreviewEnabled, canUseLivePreview]);
 
   useEffect(() => {
     if (!routeRunId) return;
@@ -688,9 +706,11 @@ const parsedSummary = useMemo(() => {
   };
 
   const allureReportHref =
-    publicArtifacts?.allureReportUrl ??
-    buildStaticUrl(artifacts?.["allure-report"], { index: true }) ??
-    null;
+    supportsAllure
+      ? publicArtifacts?.allureReportUrl ??
+        buildStaticUrl(artifacts?.["allure-report"], { index: true }) ??
+        null
+      : null;
   const reportJsonHref =
     publicArtifacts?.reportJsonUrl ??
     buildStaticUrl(artifacts?.reportJson) ??
@@ -1638,7 +1658,11 @@ const fetchMissingLocators = useCallback(
 
         {
           method: "POST",
-          body: JSON.stringify({ livePreview: livePreviewEnabled, runAll: true }),
+          body: JSON.stringify({
+            livePreview: livePreviewEnabled,
+            runAll: true,
+            adapterId: runFrameworkId,
+          }),
         }
 
 
@@ -1822,7 +1846,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                <div>Framework: {parsedSummary.framework ?? "—"}</div>
+                <div>Framework: {runFramework.label}</div>
 
 
 
@@ -2050,7 +2074,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-            {run && (
+            {run && supportsSelfHeal && (
 
 
 
@@ -2207,7 +2231,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                {allureReportHref && (
+                {supportsAllure && allureReportHref && (
 
 
 
@@ -2279,7 +2303,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-              {artifacts && !allureReportHref && (
+              {supportsAllure && artifacts && !allureReportHref && (
 
 
 
@@ -2323,6 +2347,7 @@ const fetchMissingLocators = useCallback(
 
 
 
+            {supportsNavSuggestions && (
             <section>
 
 
@@ -2769,9 +2794,11 @@ const fetchMissingLocators = useCallback(
 
 
             </section>
+            )}
 
 
 
+{supportsLocatorHealth && (
 <section>
 
 
@@ -3247,6 +3274,7 @@ const fetchMissingLocators = useCallback(
 
 
             </section>
+)}
 
 
 
@@ -3269,6 +3297,7 @@ const fetchMissingLocators = useCallback(
                   >
                     {triggeringRerun ? "Starting rerun..." : "Rerun this suite"}
                   </Button>
+                  {supportsLivePreview && (
                   <div className="flex items-center gap-2 text-xs text-slate-600">
                     <input
                       id="live-preview-toggle"
@@ -3281,9 +3310,16 @@ const fetchMissingLocators = useCallback(
                     />
                     <label htmlFor="live-preview-toggle">Live preview</label>
                   </div>
+                  )}
                 </div>
               </div>
-              <RunResults runId={run.id} active={!done} projectId={run.project.id} suiteId={suiteIdFromRun} />
+              <RunResults
+                runId={run.id}
+                active={!done}
+                projectId={run.project.id}
+                suiteId={suiteIdFromRun}
+                adapterId={runFrameworkId}
+              />
             </section>
 
             <section>
@@ -3321,9 +3357,11 @@ const fetchMissingLocators = useCallback(
                   </button>
                 </div>
               </div>
+              {supportsLivePreview && (
               <div className="mb-3 text-xs text-slate-500">
                 Live preview opens in a floating window during AI runs.
               </div>
+              )}
               <div className="max-h-[360px] overflow-auto rounded-md border border-slate-200 bg-white p-3">
                 {visibleTelemetry.length === 0 ? (
                   <div className="text-xs text-slate-500">Waiting for telemetry...</div>
@@ -3372,7 +3410,7 @@ const fetchMissingLocators = useCallback(
               </div>
             </section>
 
-            {livePreviewEnabled && isAiAnalyzeRun && (
+            {livePreviewEnabled && canUseLivePreview && (
               <div className="fixed inset-x-2 bottom-4 top-20 z-50 sm:inset-x-auto sm:right-4 sm:w-[520px] sm:max-w-[90vw]">
                 <div className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">

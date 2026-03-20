@@ -20,6 +20,8 @@ import SpecActionsMenu from "../components/spec-tree/SpecActionsMenu";
 import FolderActionsMenu from "../components/spec-tree/FolderActionsMenu";
 import SpecPickerModal, { NEW_FOLDER_VALUE } from "../components/spec-tree/SpecPickerModal";
 import FolderDeleteModal from "../components/spec-tree/FolderDeleteModal";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
+import { getFrameworkDefinition, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 
 type SpecFile = { path: string };
 type CaseItem = { title: string; line: number; specPath?: string };
@@ -519,13 +521,14 @@ export default function ProjectSuite() {
     [specProjects]
   );
   const activeSuite = specProjects.find((proj) => proj.id === pid);
-  const activeFrameworkLabel = useMemo(() => {
-    const source = `${activeSuite?.name || ""} ${pid}`.toLowerCase();
-    if (source.includes("cypress")) return "Cypress";
-    if (source.includes("cucumber")) return "Cucumber";
-    if (source.includes("playwright")) return "Playwright";
-    return "Custom";
-  }, [activeSuite?.name, pid]);
+  const activeAdapterId = useMemo(
+    () => matchFrameworkIdFromValue(activeSuite?.name) || matchFrameworkIdFromValue(pid) || DEFAULT_FRAMEWORK_ID,
+    [activeSuite?.name, pid]
+  );
+  const activeFrameworkLabel = useMemo(
+    () => getFrameworkDefinition(activeAdapterId).label,
+    [activeAdapterId]
+  );
   const isActiveCurated = activeSuite?.type === "curated";
   const activeSpecLocked = useMemo(() => {
     if (!activeSuite || !activeSpec || !isActiveCurated) return false;
@@ -1278,7 +1281,7 @@ export default function ProjectSuite() {
       const res = await apiFetchRaw(apiUrl(`/tm/suite/projects/${suite.id}/sync-from-generated`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adapterId: "playwright-ts", mode }),
+        body: JSON.stringify({ adapterId: activeAdapterId, mode }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to sync suite");
@@ -1731,6 +1734,7 @@ export default function ProjectSuite() {
             method: "POST",
             body: JSON.stringify({
               projectId: runProjectId,
+              adapterId: activeAdapterId,
               suiteId: pid,
               files,
               grep,
@@ -1752,6 +1756,7 @@ export default function ProjectSuite() {
             method: "POST",
             body: JSON.stringify({
               projectId: runProjectId,
+              adapterId: activeAdapterId,
               suiteId: pid,
               file: activeSpec.path,
               grep,
@@ -1796,6 +1801,7 @@ export default function ProjectSuite() {
           method: "POST",
           body: JSON.stringify({
             projectId: runProjectId,
+            adapterId: activeAdapterId,
             suiteId: pid,
             files,
             mode,

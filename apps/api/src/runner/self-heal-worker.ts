@@ -2,7 +2,6 @@ import "dotenv/config";
 import { Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs/promises';
-import { existsSync } from 'node:fs';
 import { createTwoFilesPatch } from 'diff';
 import ts from "typescript";
 import { redis } from './redis.js';
@@ -10,9 +9,16 @@ import { prisma } from '../prisma.js';
 import type { SelfHealPayload, RunPayload } from './queue.js';
 import { enqueueRun } from './queue.js';
 import { requestSpecHeal, requestSpecPatchOps, HealPrompt, type HealOperation } from './llm.js';
-import { CURATED_ROOT } from "../testmind/curated-store.js";
-import { GENERATED_ROOT, REPORT_ROOT } from "../lib/storageRoots.js";
-import { extractTestTitle } from './test-title.js';
+import { GENERATED_ROOT } from "../lib/storageRoots.js";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
+import { executeAutonomousRepair } from "../ai/core/executor.js";
+import {
+  buildSpecCandidates,
+  findExistingPath,
+  guessRepoRoot,
+  toPosix,
+} from "../ai/core/context.js";
+import type { AiExecutionContext } from "../ai/core/types.js";
 
 const TestRunStatus = {
   queued: "queued",
@@ -28,88 +34,10 @@ const HealingStatus = {
   failed: "failed",
 } as const;
 
-const toPosix = (value: string) => value.replace(/\\/g, "/");
-
-function guessRepoRoot() {
-  const explicit = process.env.TM_LOCAL_REPO_ROOT;
-  if (explicit) return path.resolve(explicit);
-  const candidates = [
-    path.resolve(process.cwd(), "..", ".."),
-    path.resolve(process.cwd(), ".."),
-    process.cwd(),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(path.join(candidate, "apps", "api"))) {
-      return candidate;
-    }
-  }
-  return candidates[0];
-}
-
-function buildSpecCandidates(repoRoot: string, normalizedSpecPath: string, rawPath: string) {
-  const fallback = normalizedSpecPath || "unknown-spec";
-  const candidates = new Set<string>();
-  if (path.isAbsolute(rawPath)) {
-    candidates.add(rawPath);
-  }
-  if (normalizedSpecPath && !normalizedSpecPath.startsWith("apps/")) {
-    candidates.add(path.join(repoRoot, "apps", "web", normalizedSpecPath));
-    candidates.add(path.join(repoRoot, "apps", "api", normalizedSpecPath));
-  }
-  if (normalizedSpecPath) {
-    candidates.add(path.join(repoRoot, normalizedSpecPath));
-  }
-  const generatedRoot = path.resolve(GENERATED_ROOT);
-  if (normalizedSpecPath) {
-    const strippedGenerated = normalizedSpecPath.replace(/^testmind-generated[\\/]/, "");
-    candidates.add(path.join(generatedRoot, strippedGenerated));
-  }
-  candidates.add(path.join(generatedRoot, path.basename(fallback)));
-  candidates.add(
-    path.join(
-      repoRoot,
-      "apps",
-      "web",
-      "testmind-generated",
-      "playwright-ts",
-      path.basename(fallback)
-    )
-  );
-  candidates.add(
-    path.join(
-      repoRoot,
-      "apps",
-      "api",
-      "testmind-generated",
-      "playwright-ts",
-      path.basename(fallback)
-    )
-  );
-  if (process.env.TM_LOCAL_SPECS) {
-    const localSpecsRoot = path.resolve(process.env.TM_LOCAL_SPECS);
-    if (normalizedSpecPath) {
-      candidates.add(path.join(localSpecsRoot, normalizedSpecPath));
-    }
-    candidates.add(path.join(localSpecsRoot, path.basename(fallback)));
-  }
-  return Array.from(candidates);
-}
-
-async function findExistingPath(paths: string[]): Promise<string | null> {
-  for (const candidate of paths) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {
-      // ignore missing paths
-    }
-  }
-  return null;
-}
-
 async function triggerRerun(
   projectId: string,
   rerunOfId: string,
+  adapterId?: string,
   grep?: string,
   headed?: boolean,
   baseUrl?: string,
@@ -123,8 +51,10 @@ async function triggerRerun(
   });
   const sharedSteps = projectRecord?.sharedSteps;
   const params: Record<string, any> = {};
+  const effectiveAdapterId = adapterId || DEFAULT_FRAMEWORK_ID;
   if (headed !== undefined) params.headful = headed;
   if (baseUrl) params.baseUrl = baseUrl;
+  params.adapterId = effectiveAdapterId;
   if (sharedSteps !== undefined) params.sharedSteps = sharedSteps;
   if (localRepoRoot) params.localRepoRoot = localRepoRoot;
   if (targetSpec) params.targetSpec = targetSpec;
@@ -169,7 +99,7 @@ async function triggerRerun(
         (await findExistingPath([preferred, generatedCandidate])) ??
         path.join(repoRoot, normalizedSpecPath);
     } else {
-      const candidates = buildSpecCandidates(repoRoot, normalizedSpecPath, targetSpec);
+      const candidates = buildSpecCandidates(repoRoot, normalizedSpecPath, targetSpec, effectiveAdapterId);
       resolvedSpec = (await findExistingPath(candidates)) ?? path.join(repoRoot, normalizedSpecPath);
     }
   }
@@ -188,6 +118,7 @@ async function triggerRerun(
 
   const payload: RunPayload = {
     projectId,
+    adapterId: effectiveAdapterId,
     localRepoRoot,
     file: resolvedSpec,
   };
@@ -217,18 +148,6 @@ async function triggerRerun(
   }
 }
 
-type FailureContext = {
-  repoRelativePath: string;
-  repoAbsolutePath: string;
-  repoRoot: string;
-  runSpecPath?: string;
-  specContent?: string;
-  stdout?: string;
-  stderr?: string;
-  message?: string | null;
-  testTitle?: string | null;
-};
-
 function containsNavTimeout(msg?: string | null) {
   if (!msg) return false;
   const lower = msg.toLowerCase();
@@ -248,80 +167,6 @@ function containsStrictMode(msg?: string | null) {
 function isInfraError(msg?: string | null) {
   if (!msg) return false;
   return INFRA_ERROR_PATTERNS.some((pattern) => pattern.test(msg));
-}
-
-async function collectFailureContext(job: SelfHealPayload): Promise<FailureContext> {
-  const logRoots = [
-    REPORT_ROOT,
-    path.join(process.cwd(), "runner-logs"),
-    path.join(process.cwd(), "apps", "api", "runner-logs"),
-  ];
-  const runLogDir =
-    logRoots.find((root) => existsSync(path.join(root, job.runId))) ??
-    path.join(REPORT_ROOT, job.runId);
-  const stdoutPath = path.join(runLogDir, 'stdout.txt');
-  const stderrPath = path.join(runLogDir, 'stderr.txt');
-
-  const [stdout, stderr, result, fallbackCase] = await Promise.all([
-    fs.readFile(stdoutPath, 'utf8').catch(() => ''),
-    fs.readFile(stderrPath, 'utf8').catch(() => ''),
-    prisma.testResult.findUnique({
-      where: { id: job.testResultId },
-      select: { message: true, testCase: { select: { key: true, title: true } } },
-    }),
-    prisma.testCase.findUnique({
-      where: { id: job.testCaseId },
-      select: { key: true, title: true },
-    }),
-  ]);
-
-  const key = result?.testCase?.key ?? fallbackCase?.key ?? 'unknown-spec';
-  const runSpecPathRaw = key.split("#")[0] || key;
-  const runSpecPath = runSpecPathRaw.replace(/\\/g, "/");
-  const normalizedSpecPath = runSpecPath.replace(/^\.?\/+/, "").replace(/^\/+/, "") || "unknown-spec";
-  const repoRoot = guessRepoRoot();
-
-  let preferredAbsolutePath: string | null = null;
-  if (runSpecPath.includes("__agent/agent-")) {
-    const match = runSpecPath.match(/__agent\/(agent-[^/]+)(\/.*)?$/);
-    if (match) {
-      const suiteId = match[1];
-      const remainder = match[2]?.replace(/^\/+/, "") ?? "";
-      const candidate = path.join(CURATED_ROOT, suiteId, remainder);
-      if (existsSync(candidate)) {
-        preferredAbsolutePath = candidate;
-      }
-    }
-  }
-
-  if (!preferredAbsolutePath) {
-    const candidates = buildSpecCandidates(repoRoot, normalizedSpecPath, runSpecPathRaw);
-    preferredAbsolutePath = await findExistingPath(candidates);
-  }
-
-  const repoAbsolutePath =
-    preferredAbsolutePath ?? path.join(repoRoot, normalizedSpecPath);
-  const relativeForDiff = preferredAbsolutePath
-    ? toPosix(path.relative(repoRoot, preferredAbsolutePath))
-    : toPosix(normalizedSpecPath);
-
-  const repoSpecContent = await fs.readFile(repoAbsolutePath, "utf8").catch(() => undefined);
-  const runSpecContent = await fs.readFile(runSpecPathRaw, "utf8").catch(() => undefined);
-  const specContent = repoSpecContent ?? runSpecContent;
-  const rawTitle = result?.testCase?.title ?? fallbackCase?.title ?? job.testTitle ?? null;
-  const testTitle = extractTestTitle(rawTitle);
-
-  return {
-    repoRelativePath: relativeForDiff,
-    repoAbsolutePath,
-    repoRoot,
-    runSpecPath: runSpecContent ? runSpecPathRaw : undefined,
-    specContent,
-    stdout,
-    stderr,
-    message: result?.message,
-    testTitle,
-  };
 }
 
 const SELF_HEAL_CONCURRENCY = Number(process.env.SELF_HEAL_CONCURRENCY ?? '1');
@@ -437,10 +282,90 @@ function redactSecrets(value: string): string {
   return redactions.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
 }
 
-function validatePatchedSpec(before: string, after: string): string | null {
-  if (!after.trim()) return "Patched spec is empty.";
+function stripMarkdownCodeFence(content: string): string {
+  const fenced = content.match(/^\s*```[A-Za-z0-9_-]*\s*\r?\n([\s\S]*?)\r?\n```\s*$/);
+  if (!fenced) return content;
+  return `${fenced[1].trimEnd()}\n`;
+}
 
-  const syntax = ts.transpileModule(after, {
+function validatePatchedFeature(after: string): string | null {
+  if (after.includes("```")) return "Patched feature contains Markdown code fences.";
+  const lines = after.split(/\r?\n/);
+  let sawFeature = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!sawFeature) {
+      if (trimmed.startsWith("@")) continue;
+      if (!trimmed.startsWith("Feature:")) {
+        return `Patched feature must start with Feature:, got '${trimmed.slice(0, 60)}'.`;
+      }
+      sawFeature = true;
+      continue;
+    }
+    if (
+      trimmed.startsWith("@") ||
+      trimmed.startsWith("Rule:") ||
+      trimmed.startsWith("Background:") ||
+      trimmed.startsWith("Scenario:") ||
+      trimmed.startsWith("Scenario Outline:") ||
+      trimmed.startsWith("Examples:") ||
+      trimmed.startsWith("As a ") ||
+      trimmed.startsWith("I want to ") ||
+      trimmed.startsWith("So that ")
+    ) {
+      continue;
+    }
+    if (/^(Given|When|Then|And|But)\s+/.test(trimmed)) {
+      if (/\bwithin\s+\d+ms\b/i.test(trimmed)) {
+        return `Patched feature added unsupported timeout syntax: '${trimmed}'.`;
+      }
+      const supportedPrefixes = [
+        "I navigate to ",
+        "I click ",
+        "I fill ",
+        "I upload ",
+        "I should see text ",
+        "I should see element ",
+      ];
+      const remainder = trimmed.replace(/^(Given|When|Then|And|But)\s+/, "");
+      if (!supportedPrefixes.some((prefix) => remainder.startsWith(prefix))) {
+        return `Patched feature added unsupported step text: '${trimmed}'.`;
+      }
+      continue;
+    }
+    if (trimmed === '"""' || trimmed.startsWith("|")) continue;
+    return `Patched feature contains unsupported Gherkin line: '${trimmed}'.`;
+  }
+
+  if (!sawFeature) return "Patched feature is missing a Feature: header.";
+  return null;
+}
+
+function validatePatchedSpec(
+  before: string,
+  after: string,
+  adapterId: string = DEFAULT_FRAMEWORK_ID
+): string | null {
+  const cleaned = stripMarkdownCodeFence(after);
+  if (!cleaned.trim()) return "Patched spec is empty.";
+
+  const byteDelta = Math.abs(Buffer.byteLength(cleaned, "utf8") - Buffer.byteLength(before, "utf8"));
+  if (byteDelta > HEAL_MAX_BYTES_DELTA) {
+    return `Patched spec changed too much content (${byteDelta} bytes).`;
+  }
+
+  const changedLines = changedLineCount(before, cleaned);
+  if (changedLines > HEAL_MAX_CHANGED_LINES) {
+    return `Patched spec changed too many lines (${changedLines}).`;
+  }
+
+  if (adapterId === "cucumber-js") {
+    return validatePatchedFeature(cleaned);
+  }
+
+  const syntax = ts.transpileModule(cleaned, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.ESNext,
@@ -452,26 +377,16 @@ function validatePatchedSpec(before: string, after: string): string | null {
     const first = syntax.diagnostics[0];
     return `Patched spec has TypeScript syntax errors: ${ts.flattenDiagnosticMessageText(first.messageText, "\n")}`;
   }
-  const parsed = ts.createSourceFile("patched.spec.ts", after, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-
-  const byteDelta = Math.abs(Buffer.byteLength(after, "utf8") - Buffer.byteLength(before, "utf8"));
-  if (byteDelta > HEAL_MAX_BYTES_DELTA) {
-    return `Patched spec changed too much content (${byteDelta} bytes).`;
-  }
-
-  const changedLines = changedLineCount(before, after);
-  if (changedLines > HEAL_MAX_CHANGED_LINES) {
-    return `Patched spec changed too many lines (${changedLines}).`;
-  }
+  const parsed = ts.createSourceFile("patched.spec.ts", cleaned, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 
   const beforeTitles = extractInlineTestTitles(before);
-  const afterTitles = extractInlineTestTitles(after);
+  const afterTitles = extractInlineTestTitles(cleaned);
   if (beforeTitles.join("\n") !== afterTitles.join("\n")) {
     return "Patched spec changed test titles, which is not allowed.";
   }
 
   const beforeImports = new Set(parseImportModules(before));
-  const afterImports = new Set(parseImportModules(after));
+  const afterImports = new Set(parseImportModules(cleaned));
   for (const moduleName of afterImports) {
     if (FORBIDDEN_IMPORT_MODULES.includes(moduleName)) {
       return `Patched spec imports forbidden module: ${moduleName}`;
@@ -482,7 +397,7 @@ function validatePatchedSpec(before: string, after: string): string | null {
   }
 
   for (const pattern of FORBIDDEN_RUNTIME_PATTERNS) {
-    if (pattern.test(after)) {
+    if (pattern.test(cleaned)) {
       return `Patched spec contains forbidden runtime pattern: ${pattern}`;
     }
   }
@@ -614,7 +529,9 @@ export const selfHealWorker = new Worker(
     });
 
     try {
-      const context = await collectFailureContext(job.data);
+      await executeAutonomousRepair({
+        job: job.data,
+        run: async (context: AiExecutionContext) => {
       if (!context.specContent) {
         throw new Error(`Spec file not found for ${context.repoRelativePath}`);
       }
@@ -651,7 +568,8 @@ export const selfHealWorker = new Worker(
         await triggerRerun(
           job.data.projectId,
           job.data.runId,
-          context.testTitle ?? undefined,
+          job.data.adapterId,
+          context.failure.testTitle ?? undefined,
           job.data.headed,
           job.data.baseUrl,
           context.repoRoot,
@@ -707,7 +625,7 @@ export const selfHealWorker = new Worker(
       }
 
       // Rule: bump nav timeout/waitUntil on navigation timeouts
-      if (containsNavTimeout(context.message)) {
+      if (containsNavTimeout(context.failure.message)) {
         const gotoWithOpts = /page\.goto\(\s*([^,]+)\s*,\s*{[^}]*timeout\s*:\s*(\d+)/m;
           const gotoSimple = /page\.goto\(\s*([A-Za-z0-9_.$]+)\s*\)/m;
         let patched = context.specContent;
@@ -744,8 +662,8 @@ export const selfHealWorker = new Worker(
       }
 
       // Rule: handle strict-mode locator errors
-      if (containsStrictMode(context.message)) {
-        const hrefMatch = context.message?.match(/href="([^"]+)"/);
+      if (containsStrictMode(context.failure.message)) {
+        const hrefMatch = context.failure.message?.match(/href="([^"]+)"/);
         if (hrefMatch) {
           const href = hrefMatch[1];
           const locatorLinePattern =
@@ -786,9 +704,9 @@ export const selfHealWorker = new Worker(
       const promptPayload: HealPrompt = {
         projectId: job.data.projectId,
         specPath: context.repoRelativePath,
-        failureMessage: redactSecrets(context.message ?? ""),
-        stdout: redactSecrets((context.stdout || '').slice(0, 4000)),
-        stderr: redactSecrets((context.stderr || '').slice(0, 4000)),
+        failureMessage: redactSecrets(context.failure.message ?? ""),
+        stdout: redactSecrets((context.failure.stdout || '').slice(0, 4000)),
+        stderr: redactSecrets((context.failure.stderr || '').slice(0, 4000)),
         specContent: context.specContent,
       };
 
@@ -843,7 +761,12 @@ export const selfHealWorker = new Worker(
         healedRaw = healResult.raw;
       }
 
-      const validationError = validatePatchedSpec(context.specContent, patchedSpec);
+      patchedSpec = stripMarkdownCodeFence(patchedSpec);
+      const validationError = validatePatchedSpec(
+        context.specContent,
+        patchedSpec,
+        job.data.adapterId || DEFAULT_FRAMEWORK_ID
+      );
       if (validationError) {
         throw new Error(`Self-heal patch validation failed: ${validationError}`);
       }
@@ -884,7 +807,7 @@ export const selfHealWorker = new Worker(
         `[self-heal] finished attempt ${attemptId} for run ${job.data.runId} (status=succeeded)`
       );
 
-      if (isInfraError(context.message)) {
+      if (isInfraError(context.failure.message)) {
         console.log(
           `[self-heal] detected infra-like failure for run ${job.data.runId}; skipping rerun`
         );
@@ -895,7 +818,8 @@ export const selfHealWorker = new Worker(
         await triggerRerun(
           job.data.projectId,
           job.data.runId,
-          context.testTitle ?? undefined,
+          job.data.adapterId,
+          context.failure.testTitle ?? undefined,
           job.data.headed,
           job.data.baseUrl,
           context.repoRoot,
@@ -910,6 +834,7 @@ export const selfHealWorker = new Worker(
           await triggerRerun(
             job.data.projectId,
             job.data.runId,
+            job.data.adapterId,
             undefined,
             job.data.headed,
             job.data.baseUrl,
@@ -919,6 +844,8 @@ export const selfHealWorker = new Worker(
           );
         }
       }
+        },
+      });
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       const rejectedByPolicy =

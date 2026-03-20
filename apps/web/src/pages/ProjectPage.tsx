@@ -6,6 +6,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
+import { matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 
 type TestRunStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -341,8 +343,13 @@ export default function ProjectPage() {
     if (!id) return;
     try {
       setGenBusy(true);
+      const adapterId =
+        typeof window === "undefined"
+          ? DEFAULT_FRAMEWORK_ID
+          : matchFrameworkIdFromValue(window.localStorage.getItem("tm-adapterId")) ?? DEFAULT_FRAMEWORK_ID;
       const { run } = await apiFetch<{ run: TestRun }>(`/projects/${id}/test-runs`, {
         method: "POST",
+        body: JSON.stringify({ adapterId }),
       });
       setRuns((prev) => [run, ...prev]);
       toast("Test run started");

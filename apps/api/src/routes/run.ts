@@ -2790,12 +2790,19 @@ export default defineConfig({
     if (!run) return reply.code(404).send({ error: "Run not found" });
 
     const params = (run.paramsJson as any) ?? {};
+    const parsedBody = RerunBody.safeParse(req.body ?? {});
     const headful = Boolean((params as any)?.headful);
     const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
+    const adapterId =
+      parsedBody.success && parsedBody.data.adapterId
+        ? parsedBody.data.adapterId
+        : typeof (params as any)?.adapterId === "string"
+        ? (params as any).adapterId
+        : DEFAULT_FRAMEWORK_ID;
     const rerunParams: Record<string, any> = { headful, suiteId };
+    rerunParams.adapterId = adapterId;
     if ((params as any)?.mode) rerunParams.mode = (params as any).mode;
     if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
-    const parsedBody = RerunBody.safeParse(req.body ?? {});
     const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
     const grepRaw = parsedBody.success ? parsedBody.data.grep : undefined;
     const livePreview =
@@ -2827,6 +2834,7 @@ export default defineConfig({
 
     await enqueueRun(rerun.id, {
       projectId: run.projectId,
+      adapterId,
       headed: headful,
       baseUrl: (params as any)?.baseUrl,
       file: specFile,

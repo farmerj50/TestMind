@@ -417,7 +417,10 @@ export default function DashboardPage() {
       for (const project of projects) {
         await apiFetch<{ id: string }>("/runner/run", {
           method: "POST",
-          body: JSON.stringify({ projectId: project.id }),
+          body: JSON.stringify({
+            projectId: project.id,
+            adapterId,
+          }),
         });
       }
       setRefreshKey((value) => value + 1);
@@ -874,6 +877,7 @@ export default function DashboardPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <RunNowButton
                           projectId={project.id}
+                          adapterId={adapterId}
                           onDone={() => setRefreshKey((value) => value + 1)}
                           size="sm"
                         />

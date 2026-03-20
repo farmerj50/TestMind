@@ -4,6 +4,8 @@ import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "sonner";
+import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
+import { matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 
 type LocatorBucket = "fields" | "buttons" | "links" | "locators";
 
@@ -71,6 +73,11 @@ function normalizeSharedSteps(sharedSteps: SharedSteps | null): Record<string, L
     );
   }
   return {};
+}
+
+function getActiveFrameworkId() {
+  if (typeof window === "undefined") return DEFAULT_FRAMEWORK_ID;
+  return matchFrameworkIdFromValue(window.localStorage.getItem("tm-adapterId")) ?? DEFAULT_FRAMEWORK_ID;
 }
 
 export default function LocatorLibraryPage() {
@@ -367,11 +374,13 @@ export default function LocatorLibraryPage() {
     setRerunning(true);
     setError(null);
     try {
+      const adapterId = getActiveFrameworkId();
       const res = await apiFetch<{ id: string }>("/runner/run", {
         method: "POST",
         body: JSON.stringify({
           projectId,
           mode: "regular",
+          adapterId,
         }),
       });
       if (res?.id) {

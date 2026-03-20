@@ -16,6 +16,8 @@ import { sendRunNotifications } from "../notifications/runNotifications.js";
 import type { Step } from "../testmind/core/plan.js";
 import { slugify, ensureCuratedProjectEntry, ensureWithin } from "../testmind/curated-store.js";
 import { decryptSecret } from "../lib/crypto.js";
+import { enqueueRun } from "../runner/queue.js";
+import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "@testmind/core/framework";
 
 type IdParams = { id: string };
 type RunLifecycleStatus = "queued" | "running" | "completed" | "failed";
@@ -318,7 +320,8 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         select: { sharedSteps: true, ownerId: true, repoUrl: true },
       });
       const projectSharedSteps = projectRecord?.sharedSteps;
-      const adapterId = "playwright-ts";
+      // This legacy generated-run helper remains the stable Playwright path.
+      const adapterId = DEFAULT_FRAMEWORK_ID;
   // Kick off background work (no blocking)
   (async () => {
     try {
@@ -758,7 +761,13 @@ export async function testRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (!userId) return;
 
+    const Body = z.object({
+      adapterId: z.enum(FRAMEWORK_IDS).optional(),
+    });
+    const parsed = Body.safeParse(req.body ?? {});
+
   const projectId = req.params.id;
+    const adapterId = parsed.success ? parsed.data.adapterId ?? DEFAULT_FRAMEWORK_ID : DEFAULT_FRAMEWORK_ID;
 
     // ensure the project belongs to the signed-in user
     const project = await prisma.project.findFirst({
@@ -773,15 +782,31 @@ export async function testRoutes(app: FastifyInstance) {
         projectId,
         status: "queued",
         trigger: "user",
-        paramsJson: project?.sharedSteps ? { sharedSteps: project.sharedSteps } : undefined,
+        paramsJson: {
+          ...(project?.sharedSteps ? { sharedSteps: project.sharedSteps } : {}),
+          adapterId,
+        },
       },
     });
     const updatedRun = await prisma.testRun.update({
       where: { id: run.id },
-      data: { summary: `Generate tests (run ${run.id})` },
+      data: {
+        summary:
+          adapterId === DEFAULT_FRAMEWORK_ID
+            ? `Generate tests (run ${run.id})`
+            : `Queued ${adapterId} run (${run.id})`,
+      },
     });
 
-    await startGeneratedRun(updatedRun.id, projectId, userId);
+    if (adapterId === DEFAULT_FRAMEWORK_ID) {
+      await startGeneratedRun(updatedRun.id, projectId, userId);
+    } else {
+      await enqueueRun(updatedRun.id, {
+        projectId,
+        adapterId,
+        mode: "regular",
+      });
+    }
 
     return reply.send({ run: withRunContract(req, updatedRun) });
   });
@@ -1385,8 +1410,8 @@ export async function testRoutes(app: FastifyInstance) {
       await fs.mkdir(path.dirname(destAbs), { recursive: true });
       await fs.writeFile(destAbs, content, "utf8");
 
-      // Mirror AI-generated spec into generated storage so it appears under Generated (playwright-ts) suites.
-      const generatedProjectRoot = path.join(GENERATED_ROOT, `playwright-ts-${userId}`, project.id);
+      // Mirror AI-generated spec into generated storage so it appears under Generated Playwright suites.
+      const generatedProjectRoot = path.join(GENERATED_ROOT, `${DEFAULT_FRAMEWORK_ID}-${userId}`, project.id);
       const generatedAbs = path.join(generatedProjectRoot, fileName);
       ensureWithin(generatedProjectRoot, generatedAbs);
       await fs.mkdir(generatedProjectRoot, { recursive: true });
@@ -1399,7 +1424,7 @@ export async function testRoutes(app: FastifyInstance) {
       );
       const generatedPath = path.posix.join(
         "testmind-generated",
-        `playwright-ts-${userId}`,
+        `${DEFAULT_FRAMEWORK_ID}-${userId}`,
         project.id,
         fileName
       );

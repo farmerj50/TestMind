@@ -40,6 +40,10 @@ export async function scheduleSelfHealingForRun(runId: string) {
   if (!run) return;
   const headful = Boolean((run.paramsJson as any)?.headful);
   const baseUrl: string | undefined = (run.paramsJson as any)?.baseUrl;
+  const adapterId: string | undefined =
+    typeof (run.paramsJson as any)?.adapterId === "string"
+      ? (run.paramsJson as any).adapterId
+      : undefined;
 
   if (!SELF_HEAL_ENABLED) return;
 
@@ -101,6 +105,7 @@ export async function scheduleSelfHealingForRun(runId: string) {
     testCaseId: nextFailure.testCaseId,
     attemptId: healingAttempt.id,
     projectId: run.projectId,
+    adapterId,
     totalFailed: failedResultsCount,
     testTitle: extractTestTitle(nextFailure.testCase?.title ?? null),
     headed: headful,
