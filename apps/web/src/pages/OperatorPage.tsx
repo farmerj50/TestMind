@@ -55,6 +55,7 @@ export default function OperatorPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [objective, setObjective] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [job, setJob] = useState<OperatorJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -108,7 +109,7 @@ export default function OperatorPage() {
           projectId,
           type: "qa",
           objective: objective.trim() || undefined,
-          context: {},
+          context: baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {},
         }),
       });
       setJob(res.job);
@@ -166,6 +167,15 @@ export default function OperatorPage() {
                 className="bg-white"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Base URL (optional)</label>
+            <Input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="e.g. https://www.justicepath.com"
+              className="bg-white"
+            />
           </div>
           <Button
             onClick={startJob}
