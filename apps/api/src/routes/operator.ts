@@ -13,6 +13,22 @@ const CreateJobBody = z.object({
 });
 
 export default async function operatorRoutes(app: FastifyInstance) {
+  // GET /operator/jobs — list jobs for the requesting user (most recent first)
+  app.get('/operator/jobs', async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const { limit = '20', offset = '0' } = req.query as { limit?: string; offset?: string };
+    const jobs = await prisma.operatorJob.findMany({
+      where: { requestedBy: userId },
+      include: { tasks: { select: { id: true, type: true, status: true, testRunId: true, error: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Number(limit) || 20, 100),
+      skip: Number(offset) || 0,
+    });
+    return reply.send({ jobs });
+  });
+
   // POST /operator/jobs — create and enqueue an operator job
   app.post('/operator/jobs', async (req, reply) => {
     const { userId } = getAuth(req);
@@ -59,9 +75,9 @@ export default async function operatorRoutes(app: FastifyInstance) {
 
     const { status = 'pending' } = req.query as { status?: string };
     const approvals = await prisma.operatorApproval.findMany({
-      where: { status: status as any },
+      where: { status: status as any, job: { requestedBy: userId } },
       include: {
-        job: { select: { projectId: true, type: true, objective: true } },
+        job: { select: { id: true, projectId: true, type: true, objective: true } },
       },
       orderBy: { requestedAt: 'asc' },
     });

@@ -125,6 +125,48 @@ async function runQaJob(opJob: {
   await waitForRun(run.id, task.id);
 }
 
+/**
+ * Creates a pending OperatorApproval, sets the job status to 'blocked',
+ * and polls until the approval is resolved or times out.
+ * Returns 'approved' or throws if denied/timed-out.
+ */
+async function requestApproval(
+  jobId: string,
+  taskId: string,
+  prompt: string,
+  timeoutMs = 30 * 60 * 1000,
+): Promise<'approved'> {
+  const approval = await prisma.operatorApproval.create({
+    data: { jobId, taskId, prompt, status: 'pending' },
+  });
+
+  await prisma.operatorJob.update({
+    where: { id: jobId },
+    data: { status: 'blocked' },
+  });
+  await prisma.operatorTask.update({
+    where: { id: taskId },
+    data: { status: 'blocked' },
+  });
+
+  const interval = 4000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const current = await prisma.operatorApproval.findUnique({
+      where: { id: approval.id },
+      select: { status: true },
+    });
+    if (current?.status === 'approved') return 'approved';
+    if (current?.status === 'denied') {
+      throw new Error(`Approval denied for job ${jobId}: "${prompt}"`);
+    }
+    await new Promise((r) => setTimeout(r, interval));
+  }
+
+  throw new Error(`Approval timed out for job ${jobId}: "${prompt}"`);
+}
+
 async function waitForRun(runId: string, taskId: string, timeoutMs = 10 * 60 * 1000) {
   const interval = 3000;
   const deadline = Date.now() + timeoutMs;
