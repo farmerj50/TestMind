@@ -22,6 +22,7 @@ import agentRoutes from "./routes/agent.js";
 import jiraRoutes from "./routes/jira.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import qaAgentRoutes from "./routes/qaAgent.js";
+import operatorRoutes from "./routes/operator.js";
 import securityRoutes from "./routes/security.js";
 import testBuilderRoutes from "./routes/testBuilder.js";
 import { prisma } from "./prisma.js";
@@ -292,6 +293,7 @@ await registerWithLog("agentRoutes", () => app.register(agentRoutes, { prefix: "
 await registerWithLog("jiraRoutes", () => app.register(jiraRoutes, { prefix: "/" }));
 await registerWithLog("secretsRoutes", () => app.register(secretsRoutes, { prefix: "/" }));
 await registerWithLog("qaAgentRoutes", () => app.register(qaAgentRoutes, { prefix: "/" }));
+await registerWithLog("operatorRoutes", () => app.register(operatorRoutes, { prefix: "/" }));
 await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
 await registerWithLog("testBuilderRoutes", () => app.register(testBuilderRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
@@ -2069,6 +2071,7 @@ const startWorkersOnce = () => {
   start(import("./runner/self-heal-worker.js"), "self-heal");
   start(import("./runner/security-worker.js"), "security-scan");
   start(import("./runner/allure-worker.js"), "allure-generate");
+  start(import("./runner/operator-worker.js"), "operator-jobs");
 };
 
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch

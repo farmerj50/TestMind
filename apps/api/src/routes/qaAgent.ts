@@ -1,24 +1,7 @@
 import type { FastifyInstance } from "fastify";
+import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
-
-type QaJobStatus = "queued" | "running" | "succeeded" | "failed";
-
-type QaJob = {
-  id: string;
-  projectId: string;
-  suiteId?: string;
-  baseUrl?: string;
-  parallel?: boolean;
-  includeApi?: boolean;
-  status: QaJobStatus;
-  createdAt: string;
-  updatedAt: string;
-  runId?: string;
-  apiRunId?: string;
-  error?: string;
-};
-
-const jobs = new Map<string, QaJob>();
+import { prisma } from "../prisma.js";
 
 export default async function qaAgentRoutes(app: FastifyInstance) {
   const StartBody = z.object({
@@ -26,136 +9,117 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
     suiteId: z.string().min(1, "suiteId is required"),
     baseUrl: z.string().url().optional(),
     parallel: z.boolean().optional(),
-    includeApi: z.boolean().optional(),
+    // includeApi removed — was broken (sent identical payload twice)
   });
 
   app.post("/qa-agent/start", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
     const parsed = StartBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(422).send({ error: parsed.error.flatten() });
     }
 
-    // capture auth header so internal injections carry user context
+    const { projectId, suiteId, baseUrl } = parsed.data;
+
+    // Delegate to /runner/run so suiteId → spec file resolution happens correctly.
+    // run.ts looks up curatedSuite, resolves the file path, creates the TestRun, and
+    // enqueues it — we reuse all of that rather than duplicating it here.
     const authHeader =
       (req.headers.authorization as string | undefined) ||
       (req.headers.Authorization as string | undefined);
 
-    const id = typeof crypto !== "undefined" && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const now = new Date().toISOString();
-    const job: QaJob = {
-      id,
-      projectId: parsed.data.projectId,
-      suiteId: parsed.data.suiteId,
-      baseUrl: parsed.data.baseUrl,
-      parallel: parsed.data.parallel ?? false,
-      includeApi: parsed.data.includeApi ?? false,
-      status: "queued",
-      createdAt: now,
-      updatedAt: now,
-    };
-    jobs.set(id, job);
+    const res = await app.inject({
+      method: "POST",
+      url: "/runner/run",
+      payload: { projectId, suiteId, baseUrl },
+      headers: authHeader ? { authorization: authHeader } : undefined,
+    });
 
-    // Fire-and-forget: mark running, invoke runner(s), store runId(s), then mark done.
-    setTimeout(async () => {
-      const originalWorkers = process.env.TM_WORKERS;
-      try {
-        const running = jobs.get(id);
-        if (!running) return;
-        running.status = "running";
-        running.updatedAt = new Date().toISOString();
-        jobs.set(id, running);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      return reply.code(res.statusCode).send({ error: res.body?.toString() ?? "Runner failed" });
+    }
 
-        // optional: set workers based on parallel flag (global env tweak)
-        if (job.parallel) process.env.TM_WORKERS = "4";
-        else process.env.TM_WORKERS = "1";
+    let runId: string | undefined;
+    try {
+      runId = (res.json() as any)?.id;
+    } catch {
+      // ignore parse errors
+    }
 
-        // call internal runner API directly
-        const res = await app.inject({
-          method: "POST",
-          url: "/runner/run",
-          payload: {
-            projectId: job.projectId,
-            suiteId: job.suiteId,
-            baseUrl: job.baseUrl,
-          },
-          headers: authHeader ? { authorization: authHeader } : undefined,
-        });
-        let runId: string | undefined;
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const body = res.json() as any;
-            runId = body?.id;
-          } catch {
-            // ignore parse errors
-          }
-        }
+    if (!runId) {
+      return reply.code(502).send({ error: "Runner did not return a run ID" });
+    }
 
-        // optional API run
-        let apiRunId: string | undefined;
-        if (job.includeApi) {
-          const resApi = await app.inject({
-            method: "POST",
-            url: "/runner/run",
-            payload: {
-              projectId: job.projectId,
-              suiteId: job.suiteId,
-              baseUrl: job.baseUrl,
-            },
-            headers: authHeader ? { authorization: authHeader } : undefined,
-          });
-          if (resApi.statusCode >= 200 && resApi.statusCode < 300) {
-            try {
-              const body = resApi.json() as any;
-              apiRunId = body?.id;
-            } catch {
-              // ignore parse errors
-            }
-          }
-          if (!apiRunId) {
-            runId = runId; // keep ui runId even if api fails
-          }
-        }
+    // Stamp trigger so qa-agent jobs are queryable separately from user-initiated runs.
+    await prisma.testRun.update({ where: { id: runId }, data: { trigger: 'qa-agent' } });
 
-        const done = jobs.get(id);
-        if (!done) return;
-        done.runId = runId;
-        done.apiRunId = apiRunId;
-        const okPrimary = !!runId;
-        const okApi = !job.includeApi || !!apiRunId;
-        done.status = okPrimary && okApi ? "succeeded" : "failed";
-        if (!okPrimary) {
-          done.error = res.body?.toString() ?? `Runner failed (${res.statusCode})`;
-        } else if (!okApi) {
-          done.error = done.error ?? "API run failed";
-        } else {
-          done.error = undefined;
-        }
-        done.updatedAt = new Date().toISOString();
-        jobs.set(id, done);
+    // Read the freshly-created TestRun from DB and return it as the job.
+    // From here on, job.id === runId so polling /qa-agent/jobs/:id reads directly from DB.
+    const run = await prisma.testRun.findUnique({
+      where: { id: runId },
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        error: true,
+        createdAt: true,
+        startedAt: true,
+        finishedAt: true,
+        paramsJson: true,
+      },
+    });
 
-        // restore env
-        if (originalWorkers === undefined) delete process.env.TM_WORKERS;
-        else process.env.TM_WORKERS = originalWorkers;
-      } catch (err: any) {
-        const fail = jobs.get(id);
-        if (!fail) return;
-        fail.status = "failed";
-        fail.error = err?.message ?? String(err);
-        fail.updatedAt = new Date().toISOString();
-        jobs.set(id, fail);
-        // restore env
-        if (originalWorkers === undefined) delete process.env.TM_WORKERS;
-        else process.env.TM_WORKERS = originalWorkers;
-      }
-    }, 10);
-
-    return reply.send({ job });
+    return reply.send({ job: toJobShape(run ?? { id: runId, projectId, status: "queued", error: null, createdAt: new Date(), startedAt: null, finishedAt: null, paramsJson: null }) });
   });
 
   app.get("/qa-agent/jobs/:id", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
     const { id } = req.params as { id: string };
-    const job = jobs.get(id);
-    if (!job) return reply.code(404).send({ error: "Job not found" });
-    return reply.send({ job });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        error: true,
+        createdAt: true,
+        startedAt: true,
+        finishedAt: true,
+        paramsJson: true,
+      },
+    });
+
+    if (!run) return reply.code(404).send({ error: "Job not found" });
+    return reply.send({ job: toJobShape(run) });
   });
+}
+
+function toJobShape(run: {
+  id: string;
+  projectId: string;
+  status: string;
+  error?: string | null;
+  createdAt: Date;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+  paramsJson?: unknown;
+}) {
+  const params = (run.paramsJson ?? {}) as Record<string, any>;
+  return {
+    id: run.id,
+    projectId: run.projectId,
+    status: run.status,
+    // runId === id so the UI "View report" link (/test-runs/:runId) resolves correctly
+    runId: run.id,
+    baseUrl: params.baseUrl ?? undefined,
+    parallel: params.parallel ?? false,
+    error: run.error ?? undefined,
+    createdAt: run.createdAt.toISOString(),
+    // synthesized from the most recent state change timestamp
+    updatedAt: (run.finishedAt ?? run.startedAt ?? run.createdAt).toISOString(),
+  };
 }

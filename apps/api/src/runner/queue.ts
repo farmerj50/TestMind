@@ -49,6 +49,25 @@ export const runQueue = new Queue('test-runs', { connection: redis });
 export const healingQueue = new Queue('self-heal', { connection: redis });
 export const securityQueue = new Queue('security-scan', { connection: redis });
 export const allureQueue = new Queue('allure-generate', { connection: redis });
+export const operatorQueue = new Queue('operator-jobs', { connection: redis });
+
+export type OperatorJobPayload = {
+  operatorJobId: string;
+};
+
+export async function enqueueOperatorJob(operatorJobId: string) {
+  return operatorQueue.add(
+    'execute',
+    { operatorJobId } satisfies OperatorJobPayload,
+    {
+      jobId: operatorJobId,
+      removeOnComplete: true,
+      removeOnFail: false,
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 15_000 },
+    }
+  );
+}
 
 // helper the route will call:
 export async function enqueueRun(runId: string, payload: RunPayload) {
