@@ -62,12 +62,26 @@ export const operatorWorker = new Worker(
   { connection: redis }
 );
 
+const isLikelyGitRepo = (url?: string | null) => {
+  if (!url) return false;
+  const t = url.trim();
+  return t.endsWith('.git') || t.startsWith('git@') || /github\.com|gitlab\.com|bitbucket\.org/.test(t);
+};
+
 async function runQaJob(opJob: {
   id: string;
   projectId: string;
   contextJson: unknown;
 }) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
+
+  // Infer mode the same way worker.ts does — if no valid git repo URL, use ai mode
+  const project = await prisma.project.findUnique({
+    where: { id: opJob.projectId },
+    select: { repoUrl: true },
+  });
+  const explicitMode = ctx.mode as string | undefined;
+  const inferredMode = explicitMode ?? (isLikelyGitRepo(project?.repoUrl) ? 'regular' : 'ai');
 
   const task = await prisma.operatorTask.create({
     data: {
@@ -84,7 +98,7 @@ async function runQaJob(opJob: {
       projectId: opJob.projectId,
       status: 'queued',
       trigger: 'operator',
-      paramsJson: ctx,
+      paramsJson: { ...ctx, mode: inferredMode },
     },
   });
 
@@ -96,7 +110,7 @@ async function runQaJob(opJob: {
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
     baseUrl: ctx.baseUrl,
-    mode: ctx.mode ?? 'regular',
+    mode: inferredMode as 'regular' | 'ai',
     file: ctx.file,
     grep: ctx.grep,
   });

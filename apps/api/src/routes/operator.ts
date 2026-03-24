@@ -35,7 +35,7 @@ export default async function operatorRoutes(app: FastifyInstance) {
 
     await enqueueOperatorJob(job.id);
 
-    return reply.send({ job });
+    return reply.send({ job: { ...job, tasks: [] } });
   });
 
   // GET /operator/jobs/:id — fetch job + tasks
