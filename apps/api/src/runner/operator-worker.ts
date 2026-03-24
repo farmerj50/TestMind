@@ -83,6 +83,13 @@ async function runQaJob(opJob: {
   const explicitMode = ctx.mode as string | undefined;
   const inferredMode = explicitMode ?? (isLikelyGitRepo(project?.repoUrl) ? 'regular' : 'ai');
 
+  // Use the project's repoUrl as the base URL when it's an app URL (not a git repo)
+  // and no explicit baseUrl was passed in the job context.
+  const repoUrl = project?.repoUrl?.trim() ?? '';
+  const inferredBaseUrl: string | undefined =
+    ctx.baseUrl ||
+    (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
+
   const task = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
@@ -98,7 +105,7 @@ async function runQaJob(opJob: {
       projectId: opJob.projectId,
       status: 'queued',
       trigger: 'operator',
-      paramsJson: { ...ctx, mode: inferredMode },
+      paramsJson: { ...ctx, mode: inferredMode, baseUrl: inferredBaseUrl },
     },
   });
 
@@ -109,7 +116,7 @@ async function runQaJob(opJob: {
 
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
-    baseUrl: ctx.baseUrl,
+    baseUrl: inferredBaseUrl,
     mode: inferredMode as 'regular' | 'ai',
     file: ctx.file,
     grep: ctx.grep,
