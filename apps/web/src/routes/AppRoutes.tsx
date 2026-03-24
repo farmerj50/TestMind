@@ -26,6 +26,7 @@ import BareLayout from "../components/layout/BareLayout";
 import MarketingLayout from "../components/layout/MarketingLayout";
 import ProjectSuite from "../pages/ProjectSuite";
 import QaAgentPage from "../pages/QaAgentPage";
+import OperatorPage from "../pages/OperatorPage";
 import SecurityScanPage from "../pages/SecurityScanPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import LocatorLibraryPage from "../pages/LocatorLibraryPage";
@@ -168,6 +169,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <QaAgentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/operator"
+          element={
+            <ProtectedRoute>
+              <OperatorPage />
             </ProtectedRoute>
           }
         />
