@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiUrl, useApi } from "../lib/api";
 import { CheckCircle2, XCircle, CircleAlert, RotateCcw, ChevronRight, Copy } from "lucide-react";
 import { Button } from "./ui/button";
+import AiCommandPanel from "./AiCommandPanel";
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { hasFrameworkCapability, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 
@@ -27,18 +28,111 @@ type RunArtifactMeta = {
   } | null;
 };
 
+type AiActionSnapshot = {
+  framework?: string | null;
+  specPath: string;
+  testTitle?: string | null;
+  failureMessage?: string | null;
+  stdoutSnippet: string;
+  stderrSnippet: string;
+  specSnippet: string;
+  artifactCount?: number;
+  failureClasses?: string[];
+} | null;
+
+type RunAiAction = {
+  actionId?: string | null;
+  attemptId?: string | null;
+  kind: "analyze" | "repair";
+  mode: "analyze" | "repair";
+  status: "allowed" | "blocked";
+  allowed: boolean;
+  reasons: string[];
+  frameworkId?: string | null;
+  targetScope: "run" | "spec" | "testcase";
+  rerunIntent?: "ai-rerun" | null;
+  snapshot: AiActionSnapshot;
+  queueStatus?: "queued" | "blocked" | null;
+  queueReason?: string | null;
+  capabilities?: {
+    canAutonomouslyRepair?: boolean;
+    canUseStructuredPatch?: boolean;
+    evidenceArtifactCount?: number;
+  } | null;
+  summary?: string | null;
+  cause?: string | null;
+  suggestion?: string | null;
+  model?: string | null;
+};
+
+type Analysis = {
+  summary: string;
+  cause: string;
+  suggestion: string;
+  model?: string;
+} | null;
+
+type HealingAttempt = {
+  id: string;
+  testResultId?: string | null;
+  testCaseId?: string | null;
+  status: "queued" | "running" | "succeeded" | "failed" | "skipped";
+  attempt?: number;
+  summary?: string | null;
+  error?: string | null;
+  diff?: string | null;
+  mode?: "structured" | "full-rewrite" | null;
+  structuredFallbackReason?: string | null;
+  operationCount?: number | null;
+  operationTypes?: string[];
+  fixType?: "fallback" | "rule_fixed" | "llm_patch_fixed" | "llm_rejected_policy" | "none" | null;
+  fixDetails?: Record<string, unknown> | null;
+};
+
+type ChildRun = {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+};
+
+type TelemetryEntry = {
+  id: string;
+  label: string;
+  detail: string;
+  tone: "default" | "warn" | "error" | "success";
+};
+
 export default function RunResults({
   runId,
   active,
   projectId,
   suiteId,
   adapterId,
+  onAnalyzeAction,
+  analyzeAction,
+  analysis,
+  healingAttempts,
+  reruns,
+  livePreviewEnabled,
+  liveFrameUrl,
+  liveFrameCount,
+  telemetryEventCount,
+  telemetryEntries,
 }: {
   runId: string;
   active: boolean;
   projectId?: string;
   suiteId?: string;
   adapterId?: string;
+  onAnalyzeAction?: (action: RunAiAction | null) => void;
+  analyzeAction?: RunAiAction | null;
+  analysis?: Analysis;
+  healingAttempts?: HealingAttempt[];
+  reruns?: ChildRun[];
+  livePreviewEnabled?: boolean;
+  liveFrameUrl?: string | null;
+  liveFrameCount?: number;
+  telemetryEventCount?: number;
+  telemetryEntries?: TelemetryEntry[];
 }) {
   const { apiFetch } = useApi();
   const navigate = useNavigate();
@@ -90,7 +184,7 @@ export default function RunResults({
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch<{ run: RunArtifactMeta }>(`/test-runs/${runId}`);
+        const res = await apiFetch<{ run: RunArtifactMeta }>(`/runner/test-runs/${runId}`);
         if (!cancelled) setArtifactMeta(res.run ?? null);
       } catch {
         if (!cancelled) setArtifactMeta(null);
@@ -247,28 +341,81 @@ export default function RunResults({
     }
   };
 
-  const handleAnalyze = async (specPath?: string | null, title?: string | null) => {
+  const handleAnalyze = async (
+    specPath?: string | null,
+    title?: string | null,
+    testResultId?: string,
+    testCaseId?: string,
+    failureMessage?: string | null
+  ) => {
     try {
       setAnalyzeLoadingId(specPath || "run");
-      const testTitle = title ?? undefined;
-      const grep = specPath && testTitle ? buildLooseGrep(testTitle) : undefined;
-      const res = await apiFetch<{ runId: string }>(`/runner/test-runs/${runId}/rerun`, {
-        method: "POST",
-        body: JSON.stringify({
-          specFile: specPath ?? undefined,
-          grep,
-          mode: "ai",
-          livePreview: true,
-          adapterId: frameworkId,
-        }),
-      });
-      if (res?.runId) {
-        navigate(`/test-runs/${res.runId}`);
-      } else {
-        alert("Rerun queued. Open the latest run to view analysis.");
+      if (!specPath) {
+        throw new Error("No failed spec available for AI analyze");
       }
+      const testTitle = title ?? undefined;
+      const grep = testTitle ? buildLooseGrep(testTitle) : undefined;
+      const res = await apiFetch<{
+        runId: string;
+        actionId?: string | null;
+        kind?: "analyze" | "repair" | null;
+        mode?: "analyze" | "repair" | null;
+        status?: "allowed" | "blocked" | null;
+        allowed?: boolean | null;
+        reasons?: string[];
+        frameworkId?: string | null;
+        targetScope?: "run" | "spec" | "testcase" | null;
+        rerunIntent?: "ai-rerun" | null;
+        snapshot?: AiActionSnapshot;
+        capabilities?: RunAiAction["capabilities"];
+        summary?: string | null;
+      }>(
+        `/runner/test-runs/${runId}/rerun`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            specFile: specPath,
+            grep,
+            adapterId: frameworkId,
+            mode: "ai",
+            livePreview: true,
+          }),
+        }
+      );
+      if (res?.runId) {
+        onAnalyzeAction?.({
+          actionId: res.actionId ?? null,
+          kind: (res.kind ?? "repair") as "analyze" | "repair",
+          mode: (res.mode ?? "repair") as "analyze" | "repair",
+          status: (res.status ?? "allowed") as "allowed" | "blocked",
+          allowed: res.allowed ?? true,
+          reasons: res.reasons ?? [],
+          frameworkId: res.frameworkId ?? frameworkId,
+          targetScope: (res.targetScope ?? "testcase") as "run" | "spec" | "testcase",
+          rerunIntent: res.rerunIntent ?? "ai-rerun",
+          snapshot:
+            res.snapshot ??
+            {
+              framework: frameworkId,
+              specPath,
+              testTitle: title ?? null,
+              failureMessage: failureMessage ?? null,
+              stdoutSnippet: "",
+              stderrSnippet: "",
+              specSnippet: "",
+            },
+          capabilities: res.capabilities ?? null,
+          summary: res.summary ?? "AI repair run queued",
+          cause: "Starting an AI rerun with live preview and repair flow from the new layer.",
+          suggestion: "Watch the new AI rerun for screenshots, telemetry, and repair attempts.",
+          model: null,
+        });
+        navigate(`/test-runs/${res.runId}`);
+        return;
+      }
+      throw new Error("AI rerun could not be queued");
     } catch (e: any) {
-      alert(e?.message ?? "Failed to trigger AI analyze rerun");
+      alert(e?.message ?? "Failed to trigger AI analyze");
     } finally {
       setAnalyzeLoadingId(null);
     }
@@ -337,6 +484,13 @@ export default function RunResults({
     ? selected.steps
     : deriveFallbackSteps(selectedDisplayTitle);
   const selectedIsFailed = !!selected && normalizeStatus(selected.status) === "failed";
+  const selectedHealingAttempts = selected
+    ? (healingAttempts ?? []).filter((attempt) => {
+        if (attempt.testResultId && attempt.testResultId === selected.id) return true;
+        if (attempt.testCaseId && attempt.testCaseId === selected.case.id) return true;
+        return false;
+      })
+    : [];
   const buildStaticUrl = (rel?: string | null, opts: { index?: boolean } = {}) => {
     if (!rel) return null;
     const clean = rel.replace(/^[/\\]+/, "").replace(/\\/g, "/");
@@ -524,7 +678,13 @@ export default function RunResults({
                     disabled={!selectedIsFailed || !selectedHasValidPath || analyzeLoadingId === (selectedPath || "run")}
                     onClick={() => {
                       if (!selectedIsFailed || !selectedHasValidPath) return;
-                      handleAnalyze(selectedHasValidPath ? selectedPath : null, selected.case.title);
+                      handleAnalyze(
+                        selectedHasValidPath ? selectedPath : null,
+                        selected.case.title,
+                        selected.id,
+                        selected.case.id,
+                        selected.message
+                      );
                     }}
                   >
                     {analyzeLoadingId === (selectedPath || "run")
@@ -544,6 +704,27 @@ export default function RunResults({
                   ) : null}
                 </div>
               </div>
+
+              {(analyzeAction || analysis || selectedHealingAttempts.length > 0) && (
+                <AiCommandPanel
+                  action={analyzeAction ?? null}
+                  analysis={analysis ?? null}
+                  healingAttempts={selectedHealingAttempts}
+                  reruns={reruns ?? []}
+                  livePreviewEnabled={Boolean(livePreviewEnabled)}
+                  liveFrameUrl={liveFrameUrl ?? null}
+                  liveFrameCount={liveFrameCount ?? 0}
+                  telemetryEventCount={telemetryEventCount ?? 0}
+                  telemetryEntries={telemetryEntries ?? []}
+                  selectedTarget={{
+                    title: selectedDisplayTitle || selected.case.title,
+                    specPath: selectedPath,
+                    status: selected.status,
+                    message: selected.message,
+                    frameworkId,
+                  }}
+                />
+              )}
 
               {selectedIsFailed && (
                 <div className="rounded-md border border-rose-200 bg-rose-50 p-3">

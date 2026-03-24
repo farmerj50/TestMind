@@ -132,12 +132,15 @@ type Run = {
 
   healingAttempts: {
     id: string;
+    testResultId?: string | null;
+    testCaseId?: string | null;
     status: "queued" | "running" | "succeeded" | "failed" | "skipped";
     attempt?: number;
-    summary?: string | null;
-    error?: string | null;
-    createdAt?: string;
-    updatedAt?: string;
+  summary?: string | null;
+  error?: string | null;
+  diff?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
     mode?: "structured" | "full-rewrite" | null;
     structuredFallbackReason?: string | null;
     operationCount?: number | null;
@@ -244,6 +247,43 @@ type Analysis = {
 
 } | null;
 
+type AiActionSnapshot = {
+  framework?: string | null;
+  specPath: string;
+  testTitle?: string | null;
+  failureMessage?: string | null;
+  stdoutSnippet: string;
+  stderrSnippet: string;
+  specSnippet: string;
+  artifactCount?: number;
+  failureClasses?: string[];
+} | null;
+
+type RunAiAction = {
+  actionId?: string | null;
+  attemptId?: string | null;
+  kind: "analyze" | "repair";
+  mode: "analyze" | "repair";
+  status: "allowed" | "blocked";
+  allowed: boolean;
+  reasons: string[];
+  frameworkId?: string | null;
+  targetScope: "run" | "spec" | "testcase";
+  rerunIntent?: "ai-rerun" | null;
+  snapshot: AiActionSnapshot;
+  queueStatus?: "queued" | "blocked" | null;
+  queueReason?: string | null;
+  capabilities?: {
+    canAutonomouslyRepair?: boolean;
+    canUseStructuredPatch?: boolean;
+    evidenceArtifactCount?: number;
+  } | null;
+  summary?: string | null;
+  cause?: string | null;
+  suggestion?: string | null;
+  model?: string | null;
+} | null;
+
 
 
 
@@ -331,6 +371,7 @@ export default function RunPage() {
 
 
   const [analysis, setAnalysis] = useState<Analysis>(null);
+  const [analyzeAction, setAnalyzeAction] = useState<RunAiAction>(null);
 
 
 
@@ -517,6 +558,58 @@ const parsedSummary = useMemo(() => {
       return false;
     });
   }, [telemetryEvents, telemetryFilter]);
+
+  const telemetryEntries = useMemo(
+    () =>
+      visibleTelemetry.slice(-8).map((event, index) => {
+        if (event.type === "console") {
+          return {
+            id: `${event.ts ?? "na"}-console-${index}`,
+            label: event.text || "console",
+            detail: event.level || "",
+            tone:
+              event.level === "error"
+                ? ("error" as const)
+                : event.level === "warning"
+                ? ("warn" as const)
+                : ("default" as const),
+          };
+        }
+        if (event.type === "pageerror") {
+          return {
+            id: `${event.ts ?? "na"}-pageerror-${index}`,
+            label: event.message || "page error",
+            detail: "pageerror",
+            tone: "error" as const,
+          };
+        }
+        if (event.type === "requestfailed") {
+          return {
+            id: `${event.ts ?? "na"}-requestfailed-${index}`,
+            label: `${event.method || "request"} ${event.url || ""}`.trim(),
+            detail: event.failure || "request failed",
+            tone: "error" as const,
+          };
+        }
+        return {
+          id: `${event.ts ?? "na"}-${event.type}-${index}`,
+          label: event.type,
+          detail:
+            event.type === "telemetry_hooked"
+              ? "stream attached"
+              : event.type === "runner_start"
+              ? "runner started"
+              : event.type === "runner_end"
+              ? "runner completed"
+              : "",
+          tone:
+            event.type === "telemetry_hooked" || event.type === "runner_end"
+              ? ("success" as const)
+              : ("default" as const),
+        };
+      }),
+    [visibleTelemetry]
+  );
 
   useTelemetryStream(resolvedRunId ?? null, handleTelemetryEvent);
 
@@ -1390,6 +1483,27 @@ const fetchMissingLocators = useCallback(
 
   // Load AI analysis once the run finishes (best effort)
 
+  useEffect(() => {
+    setAnalyzeAction(null);
+  }, [routeRunId]);
+
+  useEffect(() => {
+    if (!analyzeAction || analyzeAction.kind !== "analyze") return;
+    if (
+      analyzeAction.summary !== undefined ||
+      analyzeAction.cause !== undefined ||
+      analyzeAction.suggestion !== undefined ||
+      analyzeAction.model !== undefined
+    ) {
+      setAnalysis({
+        summary: analyzeAction.summary ?? "",
+        cause: analyzeAction.cause ?? "",
+        suggestion: analyzeAction.suggestion ?? "",
+        model: analyzeAction.model ?? undefined,
+      });
+    }
+  }, [analyzeAction]);
+
 
 
   useEffect(() => {
@@ -1951,110 +2065,6 @@ const fetchMissingLocators = useCallback(
 
 
             <div>Error: {run.error || "-"}</div>
-
-
-
-            {analysis && (
-
-
-
-              <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-
-
-
-                <div className="mb-1 text-sm font-semibold text-slate-800">AI analysis</div>
-
-
-
-                <dl className="space-y-1 text-sm text-slate-700">
-
-
-
-                  <div>
-
-
-
-                    <dt className="font-medium text-slate-800">Summary</dt>
-
-
-
-                    <dd>{analysis.summary || "-"}</dd>
-
-
-
-                  </div>
-
-
-
-                  {analysis.cause && (
-
-
-
-                    <div>
-
-
-
-                      <dt className="font-medium text-slate-800">Likely cause</dt>
-
-
-
-                      <dd>{analysis.cause}</dd>
-
-
-
-                    </div>
-
-
-
-                  )}
-
-
-
-                  {analysis.suggestion && (
-
-
-
-                    <div>
-
-
-
-                      <dt className="font-medium text-slate-800">Suggested fix</dt>
-
-
-
-                      <dd>{analysis.suggestion}</dd>
-
-
-
-                    </div>
-
-
-
-                  )}
-
-
-
-                  {analysis.model && (
-
-
-
-                    <div className="text-xs text-slate-500">Model: {analysis.model}</div>
-
-
-
-                  )}
-
-
-
-                </dl>
-
-
-
-              </div>
-
-
-
-            )}
 
 
 
@@ -3319,6 +3329,16 @@ const fetchMissingLocators = useCallback(
                 projectId={run.project.id}
                 suiteId={suiteIdFromRun}
                 adapterId={runFrameworkId}
+                onAnalyzeAction={setAnalyzeAction}
+                analyzeAction={analyzeAction}
+                analysis={analysis}
+                healingAttempts={healingAttempts}
+                reruns={reruns}
+                livePreviewEnabled={livePreviewEnabled}
+                liveFrameUrl={liveFrameUrl}
+                liveFrameCount={liveFrames.length}
+                telemetryEventCount={telemetryEvents.length}
+                telemetryEntries={telemetryEntries}
               />
             </section>
 

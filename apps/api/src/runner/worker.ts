@@ -59,6 +59,120 @@ function buildLooseGrepFromTitle(title: string): string {
   return `(?:^|\\s)${escapeRegex(title)}(?:$|\\s)`;
 }
 
+const AI_LIVE_PREVIEW_MARKER = "const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';";
+
+function injectLivePreviewHooks(specContent: string): string {
+  if (specContent.includes(AI_LIVE_PREVIEW_MARKER)) {
+    return specContent;
+  }
+
+  let next = specContent;
+  const extraImports: string[] = [];
+  if (!/import\s+fs\s+from\s+['"]node:fs\/promises['"]/.test(next)) {
+    extraImports.push("import fs from 'node:fs/promises';");
+  }
+  if (!/import\s+path\s+from\s+['"]node:path['"]/.test(next)) {
+    extraImports.push("import path from 'node:path';");
+  }
+
+  if (extraImports.length) {
+    const importMatches = [...next.matchAll(/^import .*;$/gm)];
+    if (importMatches.length) {
+      const last = importMatches[importMatches.length - 1];
+      const insertAt = (last.index ?? 0) + last[0].length;
+      next = `${next.slice(0, insertAt)}\n${extraImports.join("\n")}${next.slice(insertAt)}`;
+    } else {
+      next = `${extraImports.join("\n")}\n${next}`;
+    }
+  }
+
+  const helperBlock = [
+    "",
+    "const RUN_LOG_DIR = process.env.TM_RUN_LOG_DIR || process.env.PW_OUTPUT_DIR;",
+    "const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';",
+    "const __TM_LIVE_PREVIEW_STOP = new WeakMap<any, () => void>();",
+    "",
+    "function __tmStartLivePreview(page: any) {",
+    "  if (!LIVE_PREVIEW_ENABLED || !RUN_LOG_DIR) return;",
+    "  const liveDir = path.join(RUN_LOG_DIR, 'live');",
+    "  let stopped = false;",
+    "  const capture = async () => {",
+    "    if (stopped) return;",
+    "    try {",
+    "      await fs.mkdir(liveDir, { recursive: true });",
+    "      await page.screenshot({ path: path.join(liveDir, 'latest.png'), fullPage: true });",
+    "    } catch {",
+    "      // ignore live preview capture failures",
+    "    }",
+    "  };",
+    "  void capture();",
+    "  const interval = setInterval(capture, 1500);",
+    "  __TM_LIVE_PREVIEW_STOP.set(page, () => {",
+    "    stopped = true;",
+    "    clearInterval(interval);",
+    "  });",
+    "}",
+    "",
+    "test.beforeEach(async ({ page }: any) => {",
+    "  __tmStartLivePreview(page);",
+    "});",
+    "",
+    "test.afterEach(async ({ page }: any) => {",
+    "  const stopLive = __TM_LIVE_PREVIEW_STOP.get(page);",
+    "  if (stopLive) stopLive();",
+    "});",
+    "",
+  ].join("\n");
+
+  const importMatches = [...next.matchAll(/^import .*;$/gm)];
+  if (importMatches.length) {
+    const last = importMatches[importMatches.length - 1];
+    const insertAt = (last.index ?? 0) + last[0].length;
+    return `${next.slice(0, insertAt)}\n${helperBlock}${next.slice(insertAt)}`;
+  }
+  return `${helperBlock}${next}`;
+}
+
+async function ensureAiLivePreviewInstrumentation(specPath?: string | null) {
+  if (!specPath) return;
+  if (!/\.(ts|js|mts|cts|mjs|cjs)$/i.test(specPath)) return;
+  let current = "";
+  try {
+    current = await fs.readFile(specPath, "utf8");
+  } catch {
+    return;
+  }
+  const patched = injectLivePreviewHooks(current);
+  if (patched === current) return;
+  await fs.writeFile(specPath, patched, "utf8");
+}
+
+async function syncAiSpecBackToRequestedTarget(input: {
+  aiSpecPath?: string | null;
+  requestedSpecPath?: string | null;
+  repoRoot: string;
+}) {
+  const { aiSpecPath, requestedSpecPath, repoRoot } = input;
+  if (!aiSpecPath || !requestedSpecPath) return;
+  const requestedNormalized = requestedSpecPath.replace(/\\/g, "/").replace(/^\.?\/+/, "");
+  const requestedAbs = path.isAbsolute(requestedNormalized)
+    ? requestedNormalized
+    : path.join(repoRoot, requestedNormalized);
+  const aiAbs = path.resolve(aiSpecPath);
+  const targetAbs = path.resolve(requestedAbs);
+  if (aiAbs === targetAbs) return;
+  try {
+    const patched = await fs.readFile(aiAbs, "utf8");
+    await fs.mkdir(path.dirname(targetAbs), { recursive: true });
+    await fs.writeFile(targetAbs, patched, "utf8");
+    console.log(
+      `[worker] synced ai-spec back to requested target: ${aiAbs.replace(/\\/g, "/")} -> ${targetAbs.replace(/\\/g, "/")}`
+    );
+  } catch (err) {
+    console.warn("[worker] failed to sync ai-spec back to requested target", err);
+  }
+}
+
 function resolveGeneratedDir(
   generatedRoot: string,
   adapterId: string,
@@ -74,6 +188,38 @@ function resolveGeneratedDir(
   ].filter((value): value is string => Boolean(value));
 
   return candidates.find((candidate) => fsSync.existsSync(candidate));
+}
+
+function findAiSpecCandidate(
+  work: string,
+  userFolder: string,
+  relInsideGen: string,
+  projectId?: string | null
+) {
+  const userRoot = path.join(work, "testmind-generated", userFolder);
+  const exact = projectId ? path.join(userRoot, projectId, relInsideGen) : null;
+  if (exact && fsSync.existsSync(exact)) {
+    return exact;
+  }
+  const direct = path.join(userRoot, relInsideGen);
+  if (fsSync.existsSync(direct)) {
+    return direct;
+  }
+  try {
+    const entries = fsSync.readdirSync(userRoot, { withFileTypes: true });
+    const candidates = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(userRoot, entry.name, relInsideGen))
+      .filter((candidate) => fsSync.existsSync(candidate))
+      .map((candidate) => ({
+        candidate,
+        mtimeMs: fsSync.statSync(candidate).mtimeMs,
+      }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return candidates[0]?.candidate;
+  } catch {
+    return undefined;
+  }
 }
 
 function stripToFeaturePath(value: string) {
@@ -495,6 +641,7 @@ export const worker = new Worker(
       const normalizedFileTarget = fileTarget?.replace(/\\/g, "/");
       let specPath = normalizedFileTarget;
       let absSpecPath: string | undefined;
+      let aiGenDirOverride: string | undefined;
       if (specPath?.startsWith("apps/web/")) {
         specPath = specPath.slice("apps/web/".length);
       }
@@ -526,7 +673,47 @@ export const worker = new Worker(
           }
         }
         absSpecPath = abs;
-        const rel = path.relative(runWorkdir, abs).replace(/\\/g, "/");
+        if (aiMode && adapterId === "playwright-ts") {
+          const posix = specPath.replace(/\\/g, "/");
+          const marker = "testmind-generated/";
+          const markerIdx = posix.indexOf(marker);
+          if (markerIdx !== -1) {
+            const tail = posix.slice(markerIdx + marker.length);
+            const [userFolder, ...rest] = tail.split("/");
+            const relInsideGen = rest.join("/");
+            const explicitRepoRootCandidate =
+              userFolder && relInsideGen
+                ? findAiSpecCandidate(work, userFolder, relInsideGen, project.id)
+                : null;
+            const envGeneratedRoot = process.env.TM_GENERATED_ROOT
+              ? path.resolve(process.env.TM_GENERATED_ROOT)
+              : path.join(work, "testmind-generated");
+            const resolvedGeneratedDir = resolveGeneratedDir(
+              envGeneratedRoot,
+              adapterId,
+              project.ownerId,
+              project.id
+            );
+            const resolvedCandidate =
+              resolvedGeneratedDir && relInsideGen
+                ? path.join(resolvedGeneratedDir, relInsideGen)
+                : null;
+            const aiSpecCandidate = [explicitRepoRootCandidate, resolvedCandidate].find(
+              (candidate): candidate is string => Boolean(candidate && fsSync.existsSync(candidate))
+            );
+            if (aiSpecCandidate) {
+              absSpecPath = aiSpecCandidate;
+              aiGenDirOverride = path.dirname(aiSpecCandidate);
+              if (relInsideGen) {
+                aiGenDirOverride = aiSpecCandidate.slice(0, -relInsideGen.length).replace(/[\\/]+$/, "");
+              }
+              console.log(
+                `[worker] ai-spec remap: ${abs.replace(/\\/g, "/")} -> ${aiSpecCandidate.replace(/\\/g, "/")}`
+              );
+            }
+          }
+        }
+        const rel = path.relative(runWorkdir, absSpecPath).replace(/\\/g, "/");
         if (!rel.startsWith("..")) {
           extraGlobs.push(rel);
         } else if (!aiMode) {
@@ -565,6 +752,9 @@ export const worker = new Worker(
         }
         if (genDir && !path.isAbsolute(genDir)) {
           genDir = path.resolve(work, genDir);
+        }
+        if (aiGenDirOverride) {
+          genDir = aiGenDirOverride;
         }
         extraEnv.TM_TEST_DIR = genDir;
         extraEnv.TM_GENERATED_ROOT = path.dirname(genDir);
@@ -612,6 +802,9 @@ export const worker = new Worker(
       }
       if (!extraEnv.TM_RUN_LOG_DIR) {
         extraEnv.TM_RUN_LOG_DIR = outDir;
+      }
+      if (aiMode && livePreviewEnabled && adapterId === "playwright-ts" && absSpecPath) {
+        await ensureAiLivePreviewInstrumentation(absSpecPath);
       }
       let exec;
       try {
@@ -877,6 +1070,13 @@ export const worker = new Worker(
       }
 
       const ok = failed === 0 && exec.ok;
+      if (ok && aiMode && adapterId === "playwright-ts" && absSpecPath && fileTarget) {
+        await syncAiSpecBackToRequestedTarget({
+          aiSpecPath: absSpecPath,
+          requestedSpecPath: fileTarget,
+          repoRoot: work,
+        });
+      }
       if (!ok) {
         await analyzeFailure({
           runId,
@@ -887,6 +1087,7 @@ export const worker = new Worker(
           grep,
           file: payload?.file,
           baseUrl: jobBaseUrl,
+          requireEnabledFlag: !aiMode,
         });
       }
       await prisma.testRun.update({

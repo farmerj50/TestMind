@@ -60,10 +60,24 @@ async function getClient(projectId?: string) {
 export type HealPrompt = {
   projectId?: string;
   specPath: string;
+  testTitle?: string | null;
+  selectedTestSnippet?: string;
+  structuredEvidenceSummary?: string;
   failureMessage?: string | null;
   stdout?: string;
   stderr?: string;
   specContent: string;
+  failureClasses?: string[];
+  reportSnippet?: string;
+  pageSignalsSnippet?: string;
+  errorContextSnippet?: string;
+  artifacts?: Array<{
+    type: string;
+    path: string;
+    label?: string | null;
+    excerpt?: string | null;
+  }>;
+  previousAttemptRejectedReason?: string | null;
 };
 
 export type HealResponse = {
@@ -89,6 +103,15 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
   const system = [
     "You are TestMind, an autonomous QA engineer.",
     "You receive a failing Playwright test spec and must provide deterministic patch operations.",
+    "Your job is to repair the selected test, not diagnose the application or recommend product changes.",
+    "Prefer local edits inside the selected failing test block over broad file rewrites.",
+    "For tests titled like Navigate X -> Y or Navigate X → Y, final assertions must validate the destination route Y, not the source route X.",
+    "When page signals or screenshots reveal the visible heading/title, prefer updating stale text or heading assertions to match that live evidence.",
+    "If direct page.goto navigation is what fails due to redirects or pathname mismatch, prefer switching the selected test to the shared clickNavLink/page navigation helper for that target route.",
+    "If the selected test contains a generated missing-locator comment for a navigation step, prefer replacing that comment with the shared clickNavLink plus URL/identity assertions for the destination route.",
+    "If identity checks fail before locator resolution, prefer replacing stale ensurePageIdentity assumptions with live heading/title evidence from page signals.",
+    "For login/auth failures, prefer repairing sharedLogin selectors with label, placeholder, role, and autocomplete fallbacks.",
+    "For malformed selector parse errors, prefer sanitizing or replacing invalid CSS fragments with stable attribute, label, role, or testid selectors.",
     "Return JSON with keys `summary` and `operations` only.",
     "Allowed operation types:",
     "replace_literal {type, find, replace}",
@@ -99,6 +122,7 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
 
   const failureDetails = [
     `Spec path: ${prompt.specPath}`,
+    prompt.testTitle ? `Selected test: ${prompt.testTitle}` : "",
     prompt.failureMessage ? `Failure: ${prompt.failureMessage}` : "",
     prompt.stdout ? `stdout:\n${prompt.stdout}` : "",
     prompt.stderr ? `stderr:\n${prompt.stderr}` : "",
@@ -108,6 +132,22 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
 
   const userContent = [
     failureDetails,
+    prompt.failureClasses?.length ? `Failure classes: ${prompt.failureClasses.join(", ")}` : "",
+    prompt.structuredEvidenceSummary ? `Structured evidence:\n${prompt.structuredEvidenceSummary}` : "",
+    prompt.previousAttemptRejectedReason
+      ? `Previous repair attempt was rejected: ${prompt.previousAttemptRejectedReason}`
+      : "",
+    prompt.reportSnippet ? `report.json snippet:\n${prompt.reportSnippet}` : "",
+    prompt.pageSignalsSnippet ? `page-signals.json snippet:\n${prompt.pageSignalsSnippet}` : "",
+    prompt.errorContextSnippet ? `error-context snippet:\n${prompt.errorContextSnippet}` : "",
+    prompt.artifacts?.length
+      ? `Artifacts:\n${prompt.artifacts
+          .map((artifact) => `- [${artifact.type}] ${artifact.path}${artifact.excerpt ? `\n${artifact.excerpt}` : ""}`)
+          .join("\n\n")}`
+      : "",
+    prompt.selectedTestSnippet
+      ? `Selected failing test block:\n\`\`\`ts\n${prompt.selectedTestSnippet}\n\`\`\``
+      : "",
     "Current spec file:",
     "```ts",
     prompt.specContent,
@@ -147,12 +187,22 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
   const system = [
     "You are TestMind, an autonomous QA engineer.",
     "You receive a failing Playwright test spec and must rewrite it so the intent still holds but the failure is fixed.",
+    "Your job is to repair the selected test, not diagnose the application or recommend app-side changes.",
+    "Prefer the smallest test-local change that makes the selected test deterministic and correct.",
+    "For tests titled like Navigate X -> Y or Navigate X → Y, final assertions must validate the destination route Y.",
+    "Use pageSignals, error-context, screenshots, and trace/report snippets to replace stale headings, text assertions, or route expectations with live evidence.",
+    "If page.goto is being redirected or pathname checks are failing, prefer switching the selected navigation step to the shared clickNavLink/path-based navigation flow instead of changing app behavior assumptions.",
+    "If a selected test contains a generated missing-locator comment for navigation, replace that comment with the shared clickNavLink plus URL/identity verification for the destination route.",
+    "If ensurePageIdentity is stale and page signals reveal the real heading or title, use that live evidence to repair the selected test.",
+    "For login/auth failures, prefer strengthening sharedLogin selectors with stable label, placeholder, role, and autocomplete fallbacks.",
+    "For selector parse failures, remove malformed CSS fragments and replace them with stable label, role, testid, placeholder, or attribute selectors.",
     "Return JSON with keys `summary` (short sentence about fix) and `updatedSpec` (full updated TypeScript file).",
     "Do not change the test name or add new dependencies. Keep assertions deterministic.",
   ].join(" ");
 
   const failureDetails = [
     `Spec path: ${prompt.specPath}`,
+    prompt.testTitle ? `Selected test: ${prompt.testTitle}` : "",
     prompt.failureMessage ? `Failure: ${prompt.failureMessage}` : "",
     prompt.stdout ? `stdout:\n${prompt.stdout}` : "",
     prompt.stderr ? `stderr:\n${prompt.stderr}` : "",
@@ -162,6 +212,22 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
 
   const userContent = [
     failureDetails,
+    prompt.failureClasses?.length ? `Failure classes: ${prompt.failureClasses.join(", ")}` : "",
+    prompt.structuredEvidenceSummary ? `Structured evidence:\n${prompt.structuredEvidenceSummary}` : "",
+    prompt.previousAttemptRejectedReason
+      ? `Previous repair attempt was rejected: ${prompt.previousAttemptRejectedReason}`
+      : "",
+    prompt.reportSnippet ? `report.json snippet:\n${prompt.reportSnippet}` : "",
+    prompt.pageSignalsSnippet ? `page-signals.json snippet:\n${prompt.pageSignalsSnippet}` : "",
+    prompt.errorContextSnippet ? `error-context snippet:\n${prompt.errorContextSnippet}` : "",
+    prompt.artifacts?.length
+      ? `Artifacts:\n${prompt.artifacts
+          .map((artifact) => `- [${artifact.type}] ${artifact.path}${artifact.excerpt ? `\n${artifact.excerpt}` : ""}`)
+          .join("\n\n")}`
+      : "",
+    prompt.selectedTestSnippet
+      ? `Selected failing test block:\n\`\`\`ts\n${prompt.selectedTestSnippet}\n\`\`\``
+      : "",
     "Current spec file:",
     "```ts",
     prompt.specContent,

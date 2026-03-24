@@ -20,9 +20,14 @@ import { persistParsedRunResults } from "../runner/persist-run-results.js";
 
 import { parseResults, ParsedCase } from "../runner/result-parsers.js";
 import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
-import { scheduleSelfHealingForRun } from "../runner/self-heal.js";
+import { scheduleSelfHealingForRun, scheduleSelfHealingForTarget } from "../runner/self-heal.js";
 import { enqueueAllureGenerate, enqueueRun, runQueue } from "../runner/queue.js";
-import { analyzeFailure } from "../runner/ai-analysis.js";
+import {
+  analyzeFailure,
+  generateAnalyzeDocument,
+  prepareRunAssistAction,
+  prepareRunRepairAction,
+} from "../runner/ai-analysis.js";
 import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
 import { generateAndWrite, runAdapter } from "../testmind/service.js";
 import { regenerateAttachedSpecs } from "../agent/service.js";
@@ -1444,7 +1449,9 @@ const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://loca
 const GEN_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(DIR, 'testmind-generated');
-const GEN_DIR = ${genDir ? JSON.stringify(genDir) : "path.join(GEN_ROOT, '__GEN_DEST__')"};
+const GEN_DIR = process.env.TM_TEST_DIR
+  ? path.resolve(process.env.TM_TEST_DIR)
+  : ${genDir ? JSON.stringify(genDir) : "path.join(GEN_ROOT, '__GEN_DEST__')"};
 console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
@@ -2477,10 +2484,13 @@ export default defineConfig({
         TestHealingAttempt: {
           select: {
             id: true,
+            testResultId: true,
+            testCaseId: true,
             status: true,
             attempt: true,
             summary: true,
             error: true,
+            diff: true,
             createdAt: true,
             updatedAt: true,
             response: true,
@@ -2512,6 +2522,7 @@ export default defineConfig({
           : null;
       return {
         ...attempt,
+        diff: typeof attempt?.diff === "string" ? attempt.diff : null,
         mode,
         structuredFallbackReason,
         operationCount,
@@ -2779,6 +2790,204 @@ export default defineConfig({
   adapterId: z.enum(FRAMEWORK_IDS).optional(),
   });
 
+  const AiActionBody = z.object({
+    specFile: z.string().min(1).optional(),
+    grep: z.string().optional(),
+    adapterId: z.enum(FRAMEWORK_IDS).optional(),
+  });
+
+  const AiRepairBody = z.object({
+    testResultId: z.string().min(1),
+    testCaseId: z.string().min(1),
+    testTitle: z.string().optional(),
+    adapterId: z.enum(FRAMEWORK_IDS).optional(),
+    specFile: z.string().optional(),
+  });
+
+  app.post("/ai/runs/:id/analyze", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const parsedBody = AiActionBody.safeParse(req.body ?? {});
+    if (!parsedBody.success) return reply.code(400).send({ error: "Invalid request body" });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const params = (run.paramsJson as any) ?? {};
+    const analysis = await generateAnalyzeDocument({
+      runId: id,
+      file: parsedBody.data.specFile,
+      grep: parsedBody.data.grep,
+      baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
+      requireEnabledFlag: false,
+    });
+    return reply.send({
+      action: analysis
+        ? {
+            actionId: analysis.actionId ?? null,
+            kind: "analyze",
+            mode: "analyze",
+            status: analysis.status ?? "allowed",
+            allowed: analysis.allowed ?? true,
+            reasons: analysis.reasons ?? [],
+            frameworkId: analysis.frameworkId ?? null,
+            targetScope: analysis.targetScope ?? (parsedBody.data.specFile ? "spec" : "run"),
+            rerunIntent: analysis.rerunIntent ?? "ai-rerun",
+            snapshot: analysis.snapshot ?? null,
+            summary: analysis.summary,
+            cause: analysis.cause,
+            suggestion: analysis.suggestion,
+            model: analysis.model,
+          }
+        : {
+            kind: "analyze",
+            mode: "analyze",
+            status: "blocked",
+            allowed: false,
+            reasons: ["analysis_context_unavailable"],
+            frameworkId:
+              typeof params?.adapterId === "string" ? params.adapterId : DEFAULT_FRAMEWORK_ID,
+            targetScope: parsedBody.data.specFile ? "spec" : "run",
+            rerunIntent: "ai-rerun",
+            snapshot: null,
+            summary: "AI analysis unavailable",
+            cause: "Analysis context unavailable",
+            suggestion: "",
+            model: null,
+          },
+    });
+  });
+
+  app.post("/ai/runs/:id/assist", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const parsedBody = AiActionBody.safeParse(req.body ?? {});
+    if (!parsedBody.success) return reply.code(400).send({ error: "Invalid request body" });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const params = (run.paramsJson as any) ?? {};
+    const action = await prepareRunAssistAction({
+      runId: id,
+      file: parsedBody.data.specFile,
+      grep: parsedBody.data.grep,
+      baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
+      adapterId: parsedBody.data.adapterId,
+    });
+    return reply.send({
+      action: action
+        ? {
+            actionId: action.actionId,
+            kind: action.kind,
+            mode: action.mode,
+            status: action.status,
+            allowed: action.allowed,
+            reasons: action.reasons,
+            frameworkId: action.frameworkId ?? null,
+            targetScope: action.targetScope,
+            rerunIntent: action.rerunIntent ?? null,
+            snapshot: action.snapshot,
+            capabilities: action.capabilities,
+          }
+        : {
+            kind: "assist",
+            mode: "assist",
+            status: "blocked",
+            allowed: false,
+            reasons: ["assist_context_unavailable"],
+            frameworkId:
+              parsedBody.data.adapterId ??
+              (typeof params?.adapterId === "string" ? params.adapterId : DEFAULT_FRAMEWORK_ID),
+            targetScope: parsedBody.data.specFile ? "spec" : "run",
+            rerunIntent: "ai-rerun",
+            snapshot: null,
+            capabilities: {
+              canAutonomouslyRepair: false,
+              canUseStructuredPatch: false,
+            },
+          },
+    });
+  });
+
+  app.post("/ai/runs/:id/repair", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const parsedBody = AiRepairBody.safeParse(req.body ?? {});
+    if (!parsedBody.success) return reply.code(400).send({ error: "Invalid request body" });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const params = (run.paramsJson as any) ?? {};
+    const action = await prepareRunRepairAction({
+      runId: id,
+      testResultId: parsedBody.data.testResultId,
+      testCaseId: parsedBody.data.testCaseId,
+      testTitle: parsedBody.data.testTitle,
+      baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
+      adapterId: parsedBody.data.adapterId,
+    });
+    const result = await scheduleSelfHealingForTarget({
+      runId: id,
+      testResultId: parsedBody.data.testResultId,
+      testCaseId: parsedBody.data.testCaseId,
+      testTitle: parsedBody.data.testTitle,
+    });
+    const queueReason = result.status === "blocked" ? result.reason ?? null : null;
+    const queueAttemptId = result.status === "queued" ? result.attemptId : null;
+    return reply.send({
+      ...result,
+      action: action
+        ? {
+            actionId: action.actionId,
+            kind: action.kind,
+            mode: action.mode,
+            status: result.status === "blocked" ? "blocked" : action.status,
+            allowed: result.status === "blocked" ? false : action.allowed,
+            reasons:
+              result.status === "blocked"
+                ? [queueReason ?? "repair_queue_blocked"]
+                : action.reasons,
+            frameworkId: action.frameworkId ?? null,
+            targetScope: action.targetScope,
+            rerunIntent: action.rerunIntent ?? null,
+            snapshot: action.snapshot,
+            capabilities: action.capabilities,
+            queueStatus: result.status,
+            queueReason,
+            attemptId: queueAttemptId,
+          }
+        : {
+            kind: "repair",
+            mode: "repair",
+            status: "blocked",
+            allowed: false,
+            reasons: [queueReason ?? "repair_context_unavailable"],
+            frameworkId:
+              parsedBody.data.adapterId ??
+              (typeof params?.adapterId === "string" ? params.adapterId : DEFAULT_FRAMEWORK_ID),
+            targetScope: "testcase",
+            rerunIntent: "ai-rerun",
+            snapshot: null,
+            capabilities: {
+              canAutonomouslyRepair: false,
+              canUseStructuredPatch: false,
+              evidenceArtifactCount: 0,
+            },
+            queueStatus: result.status,
+            queueReason,
+            attemptId: queueAttemptId,
+          },
+    });
+  });
+
   app.post("/test-runs/:id/rerun", async (req, reply) => {
     const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
     if (!auth) return;
@@ -2790,6 +2999,17 @@ export default defineConfig({
     if (!run) return reply.code(404).send({ error: "Run not found" });
 
     const params = (run.paramsJson as any) ?? {};
+    const rerunProject = await prisma.project.findUnique({
+      where: { id: run.projectId },
+      select: { sharedSteps: true },
+    });
+    const inheritedBaseUrl =
+      typeof params?.baseUrl === "string" && params.baseUrl.trim()
+        ? params.baseUrl.trim()
+        : typeof (rerunProject?.sharedSteps as any)?.baseUrl === "string" &&
+          (rerunProject?.sharedSteps as any)?.baseUrl.trim()
+        ? (rerunProject?.sharedSteps as any).baseUrl.trim()
+        : undefined;
     const parsedBody = RerunBody.safeParse(req.body ?? {});
     const headful = Boolean((params as any)?.headful);
     const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
@@ -2802,7 +3022,7 @@ export default defineConfig({
     const rerunParams: Record<string, any> = { headful, suiteId };
     rerunParams.adapterId = adapterId;
     if ((params as any)?.mode) rerunParams.mode = (params as any).mode;
-    if ((params as any)?.baseUrl) rerunParams.baseUrl = (params as any).baseUrl;
+    if (inheritedBaseUrl) rerunParams.baseUrl = inheritedBaseUrl;
     const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
     const grepRaw = parsedBody.success ? parsedBody.data.grep : undefined;
     const livePreview =
@@ -2819,8 +3039,7 @@ export default defineConfig({
     if (specFile) rerunParams.file = specFile;
     if (grep) rerunParams.grep = grep ?? undefined;
     if (effectiveMode) rerunParams.mode = effectiveMode;
-    if (livePreview !== undefined) rerunParams.livePreview = livePreview;
-    else if (inheritedLivePreview) rerunParams.livePreview = true;
+    if (effectiveLivePreview) rerunParams.livePreview = true;
     const rerun = await prisma.testRun.create({
       data: {
         projectId: run.projectId,
@@ -2836,13 +3055,78 @@ export default defineConfig({
       projectId: run.projectId,
       adapterId,
       headed: headful,
-      baseUrl: (params as any)?.baseUrl,
+      baseUrl: inheritedBaseUrl,
       file: specFile,
       grep,
       mode: effectiveMode,
       livePreview: effectiveLivePreview,
     });
-    return reply.send({ runId: rerun.id });
+    const aiAction =
+      effectiveMode === "ai"
+        ? {
+            actionId: `repair:${run.id}:${specFile ?? "run"}`,
+            kind: "repair" as const,
+            mode: "repair" as const,
+            status: "allowed" as const,
+            allowed: true,
+            reasons: [] as string[],
+            frameworkId: adapterId,
+            targetScope: (grep ? "testcase" : specFile ? "spec" : "run") as
+              | "run"
+              | "spec"
+              | "testcase",
+            rerunIntent: "ai-rerun" as const,
+            snapshot: specFile
+              ? {
+                  framework: adapterId,
+                  specPath: specFile,
+                  testTitle: null,
+                  failureMessage: null,
+                  stdoutSnippet: "",
+                  stderrSnippet: "",
+                  specSnippet: "",
+                }
+              : null,
+            capabilities: {
+              canAutonomouslyRepair: true,
+              canUseStructuredPatch: true,
+              evidenceArtifactCount: 0,
+            },
+          }
+        : null;
+    return reply.send({
+      runId: rerun.id,
+      actionId: aiAction?.actionId ?? null,
+      kind: effectiveMode === "ai" ? aiAction?.kind ?? "repair" : null,
+      mode: effectiveMode === "ai" ? aiAction?.mode ?? "repair" : null,
+      status:
+        effectiveMode === "ai"
+          ? aiAction?.status ?? "blocked"
+          : null,
+      allowed:
+        effectiveMode === "ai"
+          ? aiAction?.allowed ?? false
+          : null,
+      reasons:
+        effectiveMode === "ai"
+          ? aiAction?.reasons ?? ["repair_context_unavailable"]
+          : [],
+      frameworkId:
+        effectiveMode === "ai"
+          ? aiAction?.frameworkId ?? adapterId
+          : null,
+      targetScope:
+        effectiveMode === "ai"
+          ? aiAction?.targetScope ?? (specFile ? "spec" : "run")
+          : null,
+      rerunIntent:
+        effectiveMode === "ai"
+          ? aiAction?.rerunIntent ?? "ai-rerun"
+          : null,
+      snapshot: effectiveMode === "ai" ? aiAction?.snapshot ?? null : null,
+      capabilities: effectiveMode === "ai" ? aiAction?.capabilities ?? null : null,
+      summary: null,
+    });
   });
 
   // GET /runner/test-runs/:id/logs?type=stdout|stderr
@@ -2946,10 +3230,25 @@ export default defineConfig({
       return reply.code(404).send({ error: "Run not found" });
     }
 
+    const runWithReruns = await prisma.testRun.findUnique({
+      where: { id },
+      select: {
+        reruns: {
+          where: { status: { in: [TestRunStatus.succeeded, TestRunStatus.failed] } },
+          orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
+          select: { id: true },
+        },
+      },
+    });
+
+    const rerunIds = (runWithReruns?.reruns ?? []).map((rerun) => rerun.id);
+    const runIds = [id, ...rerunIds];
+
     const rows = await prisma.testResult.findMany({
-      where: { runId: id },
+      where: { runId: { in: runIds } },
       orderBy: { createdAt: "asc" },
       select: {
+        runId: true,
         id: true,
         status: true,
         durationMs: true,
@@ -2958,35 +3257,53 @@ export default defineConfig({
       },
     });
 
-    const extras: Record<string, ParsedCase> = {};
+    const latestRerunByCase = new Map<string, (typeof rows)[number]>();
+    for (const rerunId of rerunIds) {
+      const rerunRows = rows.filter((row) => row.runId === rerunId);
+      for (const row of rerunRows) {
+        if (!latestRerunByCase.has(row.testCase.id)) {
+          latestRerunByCase.set(row.testCase.id, row);
+        }
+      }
+    }
+
+    const extrasByRunId: Record<string, Record<string, ParsedCase>> = {};
     const reportRoots = [
       RUNNER_LOGS_ROOT,
       path.join(process.cwd(), "runner-logs"),
       path.join(process.cwd(), "apps", "api", "runner-logs"),
     ];
-    const reportRoot =
-      reportRoots.find((root) => fsSync.existsSync(path.join(root, id, "report.json"))) ??
-      reportRoots[0];
-    const reportPath = path.join(reportRoot, id, "report.json");
-    try {
-      const parsed = await parseResults(reportPath);
-      for (const c of parsed) {
-        extras[`${c.file}#${c.fullName}`] = c;
+    for (const runIdForExtras of runIds) {
+      const reportRoot =
+        reportRoots.find((root) =>
+          fsSync.existsSync(path.join(root, runIdForExtras, "report.json")),
+        ) ?? reportRoots[0];
+      const reportPath = path.join(reportRoot, runIdForExtras, "report.json");
+      try {
+        const parsed = await parseResults(reportPath);
+        const extras: Record<string, ParsedCase> = {};
+        for (const c of parsed) {
+          extras[`${c.file}#${c.fullName}`] = c;
+        }
+        extrasByRunId[runIdForExtras] = extras;
+      } catch {
+        // ignore - enriched info optional
       }
-    } catch {
-      // ignore â€“ enriched info optional
     }
 
-    const results = rows.map((r) => {
-      const extra = extras[r.testCase.key];
+    const results = rows
+      .filter((row) => row.runId === id)
+      .map((r) => {
+        const effective = latestRerunByCase.get(r.testCase.id) ?? r;
+        const extra = extrasByRunId[effective.runId]?.[effective.testCase.key];
       return {
-        id: r.id,
-        status: r.status,
-        durationMs: r.durationMs,
-        message: r.message,
+        id: effective.id,
+        status: effective.status,
+        durationMs: effective.durationMs,
+        message: effective.message,
         case: {
-          ...r.testCase,
-          title: extra?.fullName ?? r.testCase.title,
+          ...effective.testCase,
+          title: extra?.fullName ?? effective.testCase.title,
         },
         steps: extra?.steps ?? [],
         stdout: extra?.stdout ?? [],
