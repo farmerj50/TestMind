@@ -32,9 +32,10 @@ type OperatorJob = {
 
 type OperatorApproval = {
   id: string;
-  prompt: string;
+  actionType: string;
   status: string;
   requestedAt: string;
+  contextJson?: { prompt?: string } | null;
   job: {
     id: string;
     projectId: string;
@@ -254,7 +255,7 @@ export default function OperatorPage() {
                 key={a.id}
                 className="rounded-md border border-orange-200 bg-white px-4 py-3 space-y-2"
               >
-                <p className="text-sm font-medium text-slate-800">{a.prompt}</p>
+                <p className="text-sm font-medium text-slate-800">{a.contextJson?.prompt ?? a.actionType}</p>
                 <p className="text-xs text-slate-500">
                   Job <span className="font-mono">{a.job.id.slice(0, 8)}…</span>
                   {a.job.objective && ` — ${a.job.objective}`}

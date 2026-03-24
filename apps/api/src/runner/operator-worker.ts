@@ -3,13 +3,16 @@ import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { enqueueRun } from './queue.js';
 import type { OperatorJobPayload } from './queue.js';
+import { createStepRunner } from './step-executor.js';
+
+export { createStepRunner };
 
 /**
  * Operator worker — orchestrates OperatorJob lifecycle.
  *
- * Sprint 1 scope: qa job type only.
- * Creates an OperatorTask, enqueues a TestRun, links them,
- * and polls for completion. All execution logic stays in worker.ts.
+ * Sprint 1: qa job type — creates OperatorTask, enqueues TestRun, polls for completion.
+ * Sprint 3: capability runtime wired in via createStepRunner / step-executor.ts.
+ *           Future job types (repair, discovery) can use steps directly.
  */
 export const operatorWorker = new Worker(
   'operator-jobs',
@@ -129,25 +132,37 @@ async function runQaJob(opJob: {
  * Creates a pending OperatorApproval, sets the job status to 'blocked',
  * and polls until the approval is resolved or times out.
  * Returns 'approved' or throws if denied/timed-out.
+ *
+ * @param actionType - The schema-defined action type (run_terminal, git_push, patch_code, security_active_test)
+ * @param description - Human-readable description shown to the approver (stored in contextJson.prompt)
  */
-async function requestApproval(
-  jobId: string,
-  taskId: string,
-  prompt: string,
-  timeoutMs = 30 * 60 * 1000,
-): Promise<'approved'> {
+async function requestApproval(opts: {
+  jobId: string;
+  taskId: string;
+  requestedBy: string;
+  actionType: 'run_terminal' | 'git_push' | 'patch_code' | 'security_active_test';
+  description: string;
+  context?: Record<string, unknown>;
+  timeoutMs?: number;
+}): Promise<'approved'> {
+  const { jobId, taskId, requestedBy, actionType, description, context = {}, timeoutMs = 30 * 60 * 1000 } = opts;
+
   const approval = await prisma.operatorApproval.create({
-    data: { jobId, taskId, prompt, status: 'pending' },
+    data: {
+      jobId,
+      taskId,
+      actionType,
+      requestedBy,
+      contextJson: { prompt: description, ...context } as any,
+      expiresAt: new Date(Date.now() + timeoutMs),
+    },
   });
 
   await prisma.operatorJob.update({
     where: { id: jobId },
     data: { status: 'blocked' },
   });
-  await prisma.operatorTask.update({
-    where: { id: taskId },
-    data: { status: 'blocked' },
-  });
+  // OperatorTask has no 'blocked' status — leave it as 'running' while waiting
 
   const interval = 4000;
   const deadline = Date.now() + timeoutMs;
@@ -157,15 +172,25 @@ async function requestApproval(
       where: { id: approval.id },
       select: { status: true },
     });
-    if (current?.status === 'approved') return 'approved';
+    if (current?.status === 'approved') {
+      // Unblock job so execution continues
+      await prisma.operatorJob.update({ where: { id: jobId }, data: { status: 'running' } });
+      return 'approved';
+    }
     if (current?.status === 'denied') {
-      throw new Error(`Approval denied for job ${jobId}: "${prompt}"`);
+      throw new Error(`Approval denied for job ${jobId}: "${description}"`);
     }
     await new Promise((r) => setTimeout(r, interval));
   }
 
-  throw new Error(`Approval timed out for job ${jobId}: "${prompt}"`);
+  await prisma.operatorApproval.update({
+    where: { id: approval.id },
+    data: { status: 'expired' },
+  });
+  throw new Error(`Approval timed out for job ${jobId}: "${description}"`);
 }
+
+export { requestApproval };
 
 async function waitForRun(runId: string, taskId: string, timeoutMs = 10 * 60 * 1000) {
   const interval = 3000;
