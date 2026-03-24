@@ -80,6 +80,7 @@ export default function OperatorPage() {
   // form state
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [jobType, setJobType] = useState<"qa" | "repair" | "discovery">("qa");
   const [objective, setObjective] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -185,7 +186,7 @@ export default function OperatorPage() {
         method: "POST",
         body: JSON.stringify({
           projectId,
-          type: "qa",
+          type: jobType,
           objective: objective.trim() || undefined,
           context: baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {},
         }),
@@ -293,7 +294,7 @@ export default function OperatorPage() {
           <CardTitle className="text-slate-800">Start a job</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Project</label>
               <Select value={projectId} onValueChange={setProjectId}>
@@ -304,6 +305,19 @@ export default function OperatorPage() {
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Job type</label>
+              <Select value={jobType} onValueChange={(v) => setJobType(v as typeof jobType)}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="qa">QA — run tests</SelectItem>
+                  <SelectItem value="repair">Repair — fix failing tests</SelectItem>
+                  <SelectItem value="discovery">Discovery — find uncovered routes</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -398,6 +412,47 @@ export default function OperatorPage() {
                 </div>
               </div>
             )}
+
+            {/* Discovery output */}
+            {job.type === "discovery" && job.status === "succeeded" && (() => {
+              const discoverTask = job.tasks.find((t) => t.type === "discover");
+              const output = (discoverTask as any)?.outputJson as {
+                discoveredRoutes?: Array<{ route: string; status: number; reachable: boolean }>;
+                uncoveredRoutes?: string[];
+                summary?: string;
+              } | undefined;
+              if (!output) return null;
+              return (
+                <div className="space-y-3">
+                  {output.summary && (
+                    <p className="text-sm text-slate-700 font-medium">{output.summary}</p>
+                  )}
+                  {(output.uncoveredRoutes?.length ?? 0) > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Uncovered routes</p>
+                      <div className="rounded-md border border-amber-200 bg-amber-50 divide-y divide-amber-100">
+                        {output.uncoveredRoutes!.map((r) => (
+                          <div key={r} className="px-3 py-1.5 text-sm font-mono text-amber-800">{r}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(output.discoveredRoutes?.length ?? 0) > 0 && (
+                    <details className="text-xs text-slate-500 cursor-pointer">
+                      <summary className="hover:text-slate-700">All discovered routes ({output.discoveredRoutes!.length})</summary>
+                      <div className="mt-1 rounded border border-slate-200 divide-y divide-slate-100">
+                        {output.discoveredRoutes!.map((r) => (
+                          <div key={r.route} className="flex items-center gap-2 px-3 py-1">
+                            <span className={r.reachable ? "text-emerald-600" : "text-rose-500"}>{r.status || "—"}</span>
+                            <span className="font-mono">{r.route}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              );
+            })()}
 
             {!isTerminal && (
               <p className="text-xs text-slate-400 animate-pulse">Polling for updates…</p>
