@@ -80,7 +80,8 @@ export default function OperatorPage() {
   // form state
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [jobType, setJobType] = useState<"qa" | "repair" | "discovery">("qa");
+  const [jobType, setJobType] = useState<"qa" | "repair" | "discovery" | "security">("qa");
+  const [enableActive, setEnableActive] = useState(false);
   const [objective, setObjective] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -188,7 +189,10 @@ export default function OperatorPage() {
           projectId,
           type: jobType,
           objective: objective.trim() || undefined,
-          context: baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {},
+          context: {
+            ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+            ...(jobType === "security" && enableActive ? { enableActive: true } : {}),
+          },
         }),
       });
       setJob(res.job);
@@ -318,6 +322,7 @@ export default function OperatorPage() {
                   <SelectItem value="qa">QA — run tests</SelectItem>
                   <SelectItem value="repair">Repair — fix failing tests</SelectItem>
                   <SelectItem value="discovery">Discovery — find uncovered routes</SelectItem>
+                  <SelectItem value="security">Security — scan for vulnerabilities</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -340,6 +345,22 @@ export default function OperatorPage() {
               className="bg-white"
             />
           </div>
+          {jobType === "security" && (
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={enableActive}
+                onChange={(e) => setEnableActive(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 accent-rose-600"
+              />
+              <span className="text-sm text-slate-700">
+                Enable active probes
+                <span className="ml-2 text-xs text-rose-600 font-medium">
+                  (XSS, SQLi, path traversal — requires approval)
+                </span>
+              </span>
+            </label>
+          )}
           <Button
             onClick={startJob}
             disabled={submitting || (!!job && !isTerminal)}
@@ -412,6 +433,45 @@ export default function OperatorPage() {
                 </div>
               </div>
             )}
+
+            {/* Security output */}
+            {job.type === "security" && job.status === "succeeded" && (() => {
+              const execTask = job.tasks.find((t) => t.type === "execute");
+              const output = (execTask as any)?.outputJson as {
+                scanId?: string;
+                findingCounts?: Record<string, number>;
+              } | undefined;
+              if (!output?.findingCounts) return null;
+              const counts = output.findingCounts;
+              const severityOrder = ["critical", "high", "medium", "low", "info"];
+              const severityColors: Record<string, string> = {
+                critical: "bg-red-100 text-red-800",
+                high: "bg-orange-100 text-orange-800",
+                medium: "bg-amber-100 text-amber-800",
+                low: "bg-yellow-100 text-yellow-800",
+                info: "bg-slate-100 text-slate-600",
+              };
+              return (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Security findings</p>
+                  <div className="flex flex-wrap gap-2">
+                    {severityOrder.filter((s) => counts[s]).map((s) => (
+                      <span key={s} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium capitalize ${severityColors[s]}`}>
+                        {s} <span className="font-bold">{counts[s]}</span>
+                      </span>
+                    ))}
+                  </div>
+                  {output.scanId && (
+                    <a
+                      href={`/security-scan`}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      View full report →
+                    </a>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Discovery output */}
             {job.type === "discovery" && job.status === "succeeded" && (() => {

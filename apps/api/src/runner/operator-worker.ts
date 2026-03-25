@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
-import { enqueueRun, enqueueSelfHeal } from './queue.js';
+import { enqueueRun, enqueueSelfHeal, enqueueSecurityScan } from './queue.js';
 import type { OperatorJobPayload } from './queue.js';
 import { createStepRunner } from './step-executor.js';
 import { runBrowserCapability } from './capabilities/browser-cap.js';
@@ -48,6 +48,8 @@ export const operatorWorker = new Worker(
         await runRepairJob(opJob);
       } else if (opJob.type === 'discovery') {
         await runDiscoveryJob(opJob);
+      } else if (opJob.type === 'security') {
+        await runSecurityJob(opJob);
       } else {
         throw new Error(`OperatorJob type '${opJob.type}' not yet implemented`);
       }
@@ -426,6 +428,133 @@ async function runDiscoveryJob(opJob: {
   console.log(
     `[operator-worker] discovery: ${checkedRoutes.length} routes found, ${uncovered.length} uncovered`
   );
+}
+
+// ── security job ─────────────────────────────────────────────────────────────
+
+/**
+ * Security job — creates a SecurityScanJob, enqueues it, and polls for completion.
+ * Active scanning (DAST probes that mutate state) requires user approval first.
+ *
+ * contextJson options:
+ *   baseUrl?             — override base URL (defaults to project.repoUrl)
+ *   allowedHosts?        — array of hosts in scope (default: derived from baseUrl)
+ *   allowedPorts?        — array of ports in scope (default: [80, 443])
+ *   maxDurationMinutes?  — max scan time (default 10)
+ *   enableActive?        — run active DAST probes (default false; requires approval)
+ */
+async function runSecurityJob(opJob: {
+  id: string;
+  projectId: string;
+  contextJson: unknown;
+  requestedBy: string | null;
+}) {
+  const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
+
+  const project = await prisma.project.findUnique({
+    where: { id: opJob.projectId },
+    select: { repoUrl: true },
+  });
+  const repoUrl = project?.repoUrl?.trim() ?? '';
+  const baseUrl: string =
+    ctx.baseUrl ||
+    (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : '');
+
+  if (!baseUrl) {
+    throw new Error('Security job requires a baseUrl in contextJson or a non-git project.repoUrl');
+  }
+
+  const allowedHosts: string[] = ctx.allowedHosts ?? [new URL(baseUrl).hostname];
+  const allowedPorts: number[] = ctx.allowedPorts ?? [80, 443];
+  const maxDurationMinutes: number = Number(ctx.maxDurationMinutes ?? 10);
+  const enableActive: boolean = Boolean(ctx.enableActive ?? false);
+
+  // Create a tracking OperatorTask
+  const task = await prisma.operatorTask.create({
+    data: {
+      jobId: opJob.id,
+      type: 'execute',
+      status: 'running',
+      startedAt: new Date(),
+      inputJson: { baseUrl, enableActive, allowedHosts, allowedPorts },
+    },
+  });
+
+  // Active probes mutate state — require approval before proceeding
+  if (enableActive && opJob.requestedBy) {
+    await requestApproval({
+      jobId: opJob.id,
+      taskId: task.id,
+      requestedBy: opJob.requestedBy,
+      actionType: 'security_active_test',
+      description: `Run active DAST probes (XSS, SQLi, path traversal, open redirect) against ${baseUrl}`,
+      context: { baseUrl, allowedHosts },
+    });
+  }
+
+  // Create and enqueue the SecurityScanJob
+  const scan = await prisma.securityScanJob.create({
+    data: {
+      projectId: opJob.projectId,
+      status: 'queued',
+      config: { baseUrl, allowedHosts, allowedPorts, maxDurationMinutes, enableActive } as any,
+    },
+  });
+
+  await enqueueSecurityScan({
+    jobId: scan.id,
+    projectId: opJob.projectId,
+    baseUrl,
+    allowedHosts,
+    allowedPorts,
+    maxDurationMinutes,
+    enableActive,
+  });
+
+  // Poll until scan completes
+  const deadline = Date.now() + maxDurationMinutes * 60 * 1000 + 60_000;
+  const interval = 5000;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval));
+    const current = await prisma.securityScanJob.findUnique({
+      where: { id: scan.id },
+      select: { status: true, summary: true, error: true, findings: { select: { severity: true } } },
+    });
+    if (!current) break;
+
+    if (current.status === 'completed' || current.status === 'failed') {
+      const counts = current.findings.reduce<Record<string, number>>((acc, f) => {
+        acc[f.severity] = (acc[f.severity] || 0) + 1;
+        return acc;
+      }, {});
+      await prisma.operatorTask.update({
+        where: { id: task.id },
+        data: {
+          status: current.status === 'completed' ? 'succeeded' : 'failed',
+          finishedAt: new Date(),
+          error: current.error ?? null,
+          outputJson: { scanId: scan.id, findingCounts: counts, summary: current.summary },
+        },
+      });
+      if (current.status === 'failed') {
+        throw new Error(`Security scan failed: ${current.error}`);
+      }
+      return;
+    }
+  }
+
+  // Timeout — mark task failed but don't throw (partial results may still be useful)
+  await prisma.operatorTask.update({
+    where: { id: task.id },
+    data: {
+      status: 'failed',
+      finishedAt: new Date(),
+      error: `Security scan timed out after ${maxDurationMinutes} minutes`,
+      outputJson: { scanId: scan.id },
+    },
+  });
+  throw new Error(`Security scan timed out (scanId=${scan.id})`);
 }
 
 /**

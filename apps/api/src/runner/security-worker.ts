@@ -374,9 +374,234 @@ async function runDeps(job: SecurityScanPayload): Promise<FindingInput[]> {
   return findings;
 }
 
+// ── DAST probes ──────────────────────────────────────────────────────────────
+
+/** Fire a single HTTP probe, return { status, body, headers } or null on error */
+async function probe(
+  url: string,
+  opts: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number } = {}
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
+  try {
+    const res = await request(url, {
+      method: opts.method ?? "GET",
+      headers: opts.headers,
+      body: opts.body,
+      signal: controller.signal as any,
+    });
+    const bodyText = await res.body.text().catch(() => "");
+    return { status: res.statusCode, body: bodyText, headers: res.headers };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Passive dynamic checks that do NOT mutate state — safe without approval.
+ * Tests: auth-required endpoints, open redirect indicators, CORS misconfiguration,
+ * error disclosure, clickjacking, HTTPS enforcement.
+ */
+async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
+  const findings: FindingInput[] = [];
+  const base = baseUrl.replace(/\/$/, "");
+
+  // 1. HTTPS enforcement
+  if (base.startsWith("http://")) {
+    findings.push({
+      type: "dynamic",
+      severity: "high",
+      title: "Non-HTTPS base URL",
+      description: "Application is served over HTTP. All traffic is unencrypted.",
+      location: base,
+      tool: "dast-passive",
+    });
+  }
+
+  // 2. CORS misconfiguration — send Origin: evil.example.com
+  const corsRes = await probe(base, { headers: { Origin: "https://evil.example.com" } });
+  if (corsRes) {
+    const acao = corsRes.headers["access-control-allow-origin"] as string | undefined;
+    if (acao === "*" || acao === "https://evil.example.com") {
+      findings.push({
+        type: "dynamic",
+        severity: "high",
+        title: "CORS misconfiguration — overly permissive Allow-Origin",
+        description: `Access-Control-Allow-Origin: ${acao}`,
+        location: base,
+        tool: "dast-cors",
+      });
+    }
+  }
+
+  // 3. Error disclosure — request a path that likely 404s and check for stack traces
+  const errRes = await probe(`${base}/__tm_dast_probe_404__`);
+  if (errRes) {
+    const body = errRes.body.toLowerCase();
+    const stackLeaks = ["traceback", "stack trace", "at node:", "error: ", "exception in"].some(
+      (s) => body.includes(s)
+    );
+    if (stackLeaks) {
+      findings.push({
+        type: "dynamic",
+        severity: "medium",
+        title: "Error disclosure — stack trace in 404 response",
+        description: "Server returns internal error details in error pages.",
+        location: `${base}/__tm_dast_probe_404__`,
+        tool: "dast-error",
+      });
+    }
+  }
+
+  // 4. Common sensitive paths exposed
+  const sensitivePaths = [
+    "/.env", "/.git/config", "/config.json", "/api-docs", "/swagger.json",
+    "/openapi.json", "/metrics", "/actuator/health", "/admin",
+  ];
+  for (const p of sensitivePaths) {
+    const r = await probe(`${base}${p}`);
+    if (r && r.status === 200) {
+      findings.push({
+        type: "dynamic",
+        severity: p.startsWith("/.") ? "critical" : "medium",
+        title: `Sensitive path exposed: ${p}`,
+        description: `GET ${base}${p} returned HTTP 200`,
+        location: `${base}${p}`,
+        tool: "dast-paths",
+      });
+    }
+  }
+
+  // 5. Clickjacking — check X-Frame-Options or CSP frame-ancestors (already in recon;
+  //    add here as dynamic confirmation with actual framing attempt indicator)
+  const frameRes = await probe(base);
+  if (frameRes) {
+    const xfo = frameRes.headers["x-frame-options"] as string | undefined;
+    const csp = frameRes.headers["content-security-policy"] as string | undefined;
+    const hasFrameProtection =
+      (xfo && ["deny", "sameorigin"].includes(xfo.toLowerCase())) ||
+      (csp && csp.includes("frame-ancestors"));
+    if (!hasFrameProtection) {
+      findings.push({
+        type: "dynamic",
+        severity: "medium",
+        title: "Clickjacking — no frame protection headers",
+        description: "Neither X-Frame-Options nor CSP frame-ancestors is set.",
+        location: base,
+        tool: "dast-clickjacking",
+      });
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Active dynamic checks — mutate state or inject payloads.
+ * Only run when enableActive=true (caller must ensure approval was obtained).
+ */
+async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
+  const findings: FindingInput[] = [];
+  const base = baseUrl.replace(/\/$/, "");
+
+  // 1. Open redirect probe
+  const redirectPayloads = [
+    `${base}/?next=https://evil.example.com`,
+    `${base}/?redirect=https://evil.example.com`,
+    `${base}/?url=https://evil.example.com`,
+    `${base}/?return=https://evil.example.com`,
+  ];
+  for (const url of redirectPayloads) {
+    const r = await probe(url);
+    if (r && r.status >= 301 && r.status <= 303) {
+      const loc = r.headers["location"] as string | undefined;
+      if (loc?.includes("evil.example.com")) {
+        findings.push({
+          type: "dynamic",
+          severity: "high",
+          title: "Open redirect",
+          description: `${url} redirected to ${loc}`,
+          location: url,
+          tool: "dast-open-redirect",
+        });
+      }
+    }
+  }
+
+  // 2. Reflected XSS probe (GET params)
+  const xssPayload = encodeURIComponent('<script>alert(1)</script>');
+  const xssUrls = [
+    `${base}/?q=${xssPayload}`,
+    `${base}/?search=${xssPayload}`,
+    `${base}/?query=${xssPayload}`,
+  ];
+  for (const url of xssUrls) {
+    const r = await probe(url);
+    if (r && r.body.includes('<script>alert(1)</script>')) {
+      findings.push({
+        type: "dynamic",
+        severity: "high",
+        title: "Reflected XSS",
+        description: `Payload reflected unescaped in response: ${url}`,
+        location: url,
+        tool: "dast-xss",
+      });
+    }
+  }
+
+  // 3. SQL injection error probe (GET params)
+  const sqliPayloads = ["'", "1' OR '1'='1", `" OR ""="`];
+  for (const payload of sqliPayloads) {
+    const url = `${base}/?id=${encodeURIComponent(payload)}`;
+    const r = await probe(url);
+    if (r) {
+      const body = r.body.toLowerCase();
+      const sqlErrors = ["sql", "syntax error", "unclosed quotation", "mysql", "pg_query", "ora-"];
+      if (sqlErrors.some((s) => body.includes(s))) {
+        findings.push({
+          type: "dynamic",
+          severity: "critical",
+          title: "SQL injection error disclosure",
+          description: `Database error exposed when sending payload: ${payload}`,
+          location: url,
+          tool: "dast-sqli",
+        });
+        break; // one finding per category is enough
+      }
+    }
+  }
+
+  // 4. Path traversal probe
+  const traversalPayload = encodeURIComponent("../../../etc/passwd");
+  const traversalUrls = [
+    `${base}/?file=${traversalPayload}`,
+    `${base}/?path=${traversalPayload}`,
+    `${base}/?page=${traversalPayload}`,
+  ];
+  for (const url of traversalUrls) {
+    const r = await probe(url);
+    if (r && r.body.includes("root:x:0:0")) {
+      findings.push({
+        type: "dynamic",
+        severity: "critical",
+        title: "Path traversal — /etc/passwd disclosed",
+        description: `File content leaked via ${url}`,
+        location: url,
+        tool: "dast-traversal",
+      });
+    }
+  }
+
+  return findings;
+}
+
 async function runDynamic(job: SecurityScanPayload): Promise<FindingInput[]> {
-  // For now reuse header checks as baseline dynamic output
-  return [];
+  const passive = await runPassiveDynamic(job.baseUrl);
+  if (!job.enableActive) return passive;
+  const active = await runActiveDynamic(job.baseUrl);
+  return [...passive, ...active];
 }
 
 export const securityWorker = new Worker(
