@@ -54,7 +54,7 @@ export default async function operatorRoutes(app: FastifyInstance) {
     return reply.send({ job: { ...job, tasks: [] } });
   });
 
-  // GET /operator/jobs/:id — fetch job + tasks
+  // GET /operator/jobs/:id — fetch job + tasks + artifacts (owner only)
   app.get('/operator/jobs/:id', async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -62,10 +62,17 @@ export default async function operatorRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const job = await prisma.operatorJob.findUnique({
       where: { id },
-      include: { tasks: true },
+      include: {
+        tasks: true,
+        artifacts: { select: { id: true, taskId: true, testRunId: true, type: true, path: true, metaJson: true, createdAt: true } },
+      },
     });
     if (!job) return reply.code(404).send({ error: 'Not found' });
-    return reply.send({ job });
+    if (job.requestedBy !== userId) return reply.code(403).send({ error: 'Forbidden' });
+
+    // Extract rollup from contextJson._rollup (written by finalizeJob)
+    const rollup = (job.contextJson as any)?._rollup ?? null;
+    return reply.send({ job, rollup });
   });
 
   // GET /operator/approvals?status=pending — UI polls this
@@ -90,6 +97,14 @@ export default async function operatorRoutes(app: FastifyInstance) {
     if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
     const { id } = req.params as { id: string };
+    const existing = await prisma.operatorApproval.findUnique({
+      where: { id },
+      include: { job: { select: { requestedBy: true } } },
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (existing.job.requestedBy !== userId) return reply.code(403).send({ error: 'Forbidden' });
+    if (existing.status !== 'pending') return reply.code(409).send({ error: `Approval already ${existing.status}` });
+
     const approval = await prisma.operatorApproval.update({
       where: { id },
       data: { status: 'approved', resolvedBy: userId, resolvedAt: new Date() },
@@ -103,6 +118,14 @@ export default async function operatorRoutes(app: FastifyInstance) {
     if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
     const { id } = req.params as { id: string };
+    const existing = await prisma.operatorApproval.findUnique({
+      where: { id },
+      include: { job: { select: { requestedBy: true } } },
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (existing.job.requestedBy !== userId) return reply.code(403).send({ error: 'Forbidden' });
+    if (existing.status !== 'pending') return reply.code(409).send({ error: `Approval already ${existing.status}` });
+
     const approval = await prisma.operatorApproval.update({
       where: { id },
       data: { status: 'denied', resolvedBy: userId, resolvedAt: new Date() },

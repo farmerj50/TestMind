@@ -1,77 +1,161 @@
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, DelayedError } from 'bullmq';
 import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { enqueueRun, enqueueSelfHeal, enqueueSecurityScan } from './queue.js';
-import type { OperatorJobPayload } from './queue.js';
+import type { OperatorJobPayload, ResumePhase, SecurityResumeCtx } from './queue.js';
 import { createStepRunner } from './step-executor.js';
 import { runBrowserCapability } from './capabilities/browser-cap.js';
 
 export { createStepRunner };
 
+// ── Poll intervals (ms) ───────────────────────────────────────────────────────
+const RUN_POLL_MS      = 3_000;
+const SCAN_POLL_MS     = 5_000;
+const REPAIR_POLL_MS   = 5_000;
+const APPROVAL_POLL_MS = 4_000;
+
+type ReDelayFn = (ms: number, phase: ResumePhase) => Promise<never>;
+
+type OpJobCtx = {
+  id: string;
+  projectId: string;
+  type: string;
+  contextJson: unknown;
+  requestedBy: string | null;
+};
+
 /**
  * Operator worker — orchestrates OperatorJob lifecycle.
  *
- * Sprint 1: qa   — creates OperatorTask, enqueues TestRun, polls for completion.
- * Sprint 3: capability runtime wired in via createStepRunner / step-executor.ts.
- * Sprint 4: repair  — finds failing tests in the most-recent run, enqueues self-heal per test.
- *           discovery — browses the app, extracts routes, reports coverage gaps.
+ * Uses BullMQ moveToDelayed + ResumePhase checkpoints so the worker thread
+ * is released while waiting for external state (test runs, approvals, scans,
+ * self-heal completions). On re-entry the job jumps straight to the correct
+ * phase rather than starting from scratch.
  */
 export const operatorWorker = new Worker(
   'operator-jobs',
-  async (job: Job) => {
-    const { operatorJobId } = job.data as OperatorJobPayload;
+  async (job: Job, token?: string) => {
+    const payload = job.data as OperatorJobPayload;
+    const { operatorJobId, resumePhase } = payload;
 
     const opJob = await prisma.operatorJob.findUnique({
       where: { id: operatorJobId },
-      select: {
-        id: true,
-        projectId: true,
-        type: true,
-        status: true,
-        contextJson: true,
-        requestedBy: true,
-      },
+      select: { id: true, projectId: true, type: true, status: true, contextJson: true, requestedBy: true },
     });
 
     if (!opJob) throw new Error(`OperatorJob ${operatorJobId} not found`);
     if (opJob.status === 'canceled') return;
 
-    await prisma.operatorJob.update({
-      where: { id: operatorJobId },
-      data: { status: 'running', startedAt: new Date() },
-    });
+    /** Release worker thread — re-queues the job with updated checkpoint after `ms`. */
+    const reDelay: ReDelayFn = async (ms, phase) => {
+      await job.updateData({ operatorJobId, resumePhase: phase } satisfies OperatorJobPayload);
+      await job.moveToDelayed(Date.now() + ms, token);
+      throw new DelayedError();
+    };
 
     try {
-      if (opJob.type === 'qa') {
-        await runQaJob(opJob);
-      } else if (opJob.type === 'repair') {
-        await runRepairJob(opJob);
-      } else if (opJob.type === 'discovery') {
-        await runDiscoveryJob(opJob);
-      } else if (opJob.type === 'security') {
-        await runSecurityJob(opJob);
+      if (resumePhase) {
+        // Resuming from checkpoint — dispatch to the right handler
+        await handleResume(opJob, resumePhase, reDelay);
       } else {
-        throw new Error(`OperatorJob type '${opJob.type}' not yet implemented`);
+        // Fresh start
+        await prisma.operatorJob.update({
+          where: { id: operatorJobId },
+          data: { status: 'running', startedAt: new Date() },
+        });
+
+        if (opJob.type === 'qa')        await runQaJob(opJob, reDelay);
+        else if (opJob.type === 'repair')    await runRepairJob(opJob, reDelay);
+        else if (opJob.type === 'discovery') await runDiscoveryJob(opJob);
+        else if (opJob.type === 'security')  await runSecurityJob(opJob, reDelay);
+        else throw new Error(`OperatorJob type '${opJob.type}' not yet implemented`);
       }
 
-      await prisma.operatorJob.update({
-        where: { id: operatorJobId },
-        data: { status: 'succeeded', finishedAt: new Date() },
-      });
+      await finalizeJob(operatorJobId, 'succeeded');
     } catch (err: any) {
-      await prisma.operatorJob.update({
-        where: { id: operatorJobId },
-        data: {
-          status: 'failed',
-          finishedAt: new Date(),
-          error: err?.message ?? String(err),
-        },
-      });
+      if (err instanceof DelayedError) throw err; // Not a failure — deliberate re-queue
+      await finalizeJob(operatorJobId, 'failed', err?.message ?? String(err));
       throw err;
     }
   },
   { connection: redis }
 );
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function finalizeJob(jobId: string, status: 'succeeded' | 'failed', error?: string) {
+  await prisma.operatorJob.update({
+    where: { id: jobId },
+    data: { status, finishedAt: new Date(), ...(error ? { error } : {}) },
+  });
+  // Rollup: count tasks by status and write summary into contextJson._rollup
+  await writeJobRollup(jobId);
+}
+
+async function writeJobRollup(jobId: string) {
+  const tasks = await prisma.operatorTask.findMany({
+    where: { jobId },
+    select: { status: true, type: true, outputJson: true, testRunId: true },
+  });
+
+  const counts = tasks.reduce<Record<string, number>>((acc, t) => {
+    acc[t.status] = (acc[t.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const linkedRunIds = tasks
+    .map((t) => t.testRunId)
+    .filter((id): id is string => !!id);
+
+  // Aggregate finding counts from security tasks
+  const findingCounts: Record<string, number> = {};
+  let repairCount = 0;
+
+  for (const t of tasks) {
+    const out = t.outputJson as any;
+    if (out?.findingCounts) {
+      for (const [sev, n] of Object.entries(out.findingCounts as Record<string, number>)) {
+        findingCounts[sev] = (findingCounts[sev] || 0) + n;
+      }
+    }
+    if (t.type === 'repair' && t.status === 'succeeded') repairCount++;
+  }
+
+  const rollup = {
+    taskCounts: counts,
+    linkedRunIds,
+    ...(Object.keys(findingCounts).length ? { findingCounts } : {}),
+    ...(repairCount ? { repairCount } : {}),
+  };
+
+  // Store rollup in contextJson so it's returned by the existing GET /jobs/:id route
+  const job = await prisma.operatorJob.findUnique({ where: { id: jobId }, select: { contextJson: true } });
+  const existing = (job?.contextJson ?? {}) as Record<string, unknown>;
+  await prisma.operatorJob.update({
+    where: { id: jobId },
+    data: { contextJson: { ...existing, _rollup: rollup } },
+  });
+}
+
+async function recordArtifact(opts: {
+  jobId: string;
+  taskId?: string;
+  testRunId?: string;
+  type: 'screenshot' | 'trace' | 'video' | 'har' | 'report' | 'patch' | 'dom' | 'console' | 'network';
+  path: string;
+  meta?: Record<string, unknown>;
+}) {
+  await prisma.operatorArtifact.create({
+    data: {
+      jobId: opts.jobId,
+      taskId: opts.taskId ?? null,
+      testRunId: opts.testRunId ?? null,
+      type: opts.type,
+      path: opts.path,
+      metaJson: (opts.meta ?? null) as any,
+    },
+  });
+}
 
 const isLikelyGitRepo = (url?: string | null) => {
   if (!url) return false;
@@ -79,23 +163,31 @@ const isLikelyGitRepo = (url?: string | null) => {
   return t.endsWith('.git') || t.startsWith('git@') || /github\.com|gitlab\.com|bitbucket\.org/.test(t);
 };
 
-async function runQaJob(opJob: {
-  id: string;
-  projectId: string;
-  contextJson: unknown;
-}) {
+// ── Resume dispatcher ─────────────────────────────────────────────────────────
+
+async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDelayFn) {
+  if (phase.kind === 'wait_run') {
+    await checkOrDelayRun(phase.runId, phase.taskId, opJob.id, phase.deadline, reDelay);
+  } else if (phase.kind === 'wait_repairs') {
+    await checkOrDelayRepairs(opJob.id, phase.remaining, phase.taskMap, phase.deadline, reDelay);
+  } else if (phase.kind === 'approval_security') {
+    await checkOrDelayApproval(opJob, phase, reDelay);
+  } else if (phase.kind === 'wait_scan') {
+    await checkOrDelayScan(phase.scanId, phase.taskId, opJob.id, phase.deadline, reDelay);
+  }
+}
+
+// ── QA job ────────────────────────────────────────────────────────────────────
+
+async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
 
-  // Infer mode the same way worker.ts does — if no valid git repo URL, use ai mode
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
     select: { repoUrl: true },
   });
   const explicitMode = ctx.mode as string | undefined;
   const inferredMode = explicitMode ?? (isLikelyGitRepo(project?.repoUrl) ? 'regular' : 'ai');
-
-  // Use the project's repoUrl as the base URL when it's an app URL (not a git repo)
-  // and no explicit baseUrl was passed in the job context.
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const inferredBaseUrl: string | undefined =
     ctx.baseUrl ||
@@ -120,10 +212,7 @@ async function runQaJob(opJob: {
     },
   });
 
-  await prisma.operatorTask.update({
-    where: { id: task.id },
-    data: { testRunId: run.id },
-  });
+  await prisma.operatorTask.update({ where: { id: task.id }, data: { testRunId: run.id } });
 
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
@@ -133,30 +222,63 @@ async function runQaJob(opJob: {
     grep: ctx.grep,
   });
 
-  await waitForRun(run.id, task.id);
+  const deadline = Date.now() + 10 * 60 * 1000;
+  await checkOrDelayRun(run.id, task.id, opJob.id, deadline, reDelay);
 }
 
-// ── repair job ───────────────────────────────────────────────────────────────
+async function checkOrDelayRun(
+  runId: string,
+  taskId: string,
+  jobId: string,
+  deadline: number,
+  reDelay: ReDelayFn
+) {
+  const run = await prisma.testRun.findUnique({
+    where: { id: runId },
+    select: { status: true, error: true },
+  });
 
-/**
- * Repair job — finds failing tests in the most-recent (or specified) test run,
- * enqueues a self-heal attempt per failing test, and tracks progress via OperatorTask.
- *
- * contextJson options:
- *   runId?    — specific TestRun to repair (defaults to most-recent failed run)
- *   baseUrl?  — override base URL for verification reruns
- *   maxTests? — cap how many tests to repair (default 10)
- */
-async function runRepairJob(opJob: {
-  id: string;
-  projectId: string;
-  contextJson: unknown;
-  requestedBy: string | null;
-}) {
+  if (!run) throw new Error(`TestRun ${runId} not found`);
+
+  if (run.status === 'succeeded' || run.status === 'failed') {
+    await prisma.operatorTask.update({
+      where: { id: taskId },
+      data: {
+        status: run.status === 'succeeded' ? 'succeeded' : 'failed',
+        finishedAt: new Date(),
+        error: run.error ?? null,
+        outputJson: { testRunId: runId, finalStatus: run.status },
+      },
+    });
+    // Record run report as an artifact
+    await recordArtifact({
+      jobId,
+      taskId,
+      testRunId: runId,
+      type: 'report',
+      path: `runs/${runId}/playwright-report.json`,
+      meta: { finalStatus: run.status },
+    });
+    return;
+  }
+
+  if (Date.now() > deadline) {
+    await prisma.operatorTask.update({
+      where: { id: taskId },
+      data: { status: 'failed', finishedAt: new Date(), error: `Timed out waiting for TestRun ${runId}` },
+    });
+    throw new Error(`waitForRun timeout for run ${runId}`);
+  }
+
+  await reDelay(RUN_POLL_MS, { kind: 'wait_run', runId, taskId, deadline });
+}
+
+// ── Repair job ────────────────────────────────────────────────────────────────
+
+async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
   const maxTests = Number(ctx.maxTests ?? 10);
 
-  // Resolve baseUrl the same way as the QA job
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
     select: { repoUrl: true },
@@ -166,7 +288,6 @@ async function runRepairJob(opJob: {
     ctx.baseUrl ||
     (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
-  // Find the run to repair
   let targetRunId = ctx.runId as string | undefined;
   if (!targetRunId) {
     const recent = await prisma.testRun.findFirst({
@@ -178,7 +299,6 @@ async function runRepairJob(opJob: {
     targetRunId = recent.id;
   }
 
-  // Triage task — identifies which tests need repair
   const triageTask = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
@@ -196,23 +316,20 @@ async function runRepairJob(opJob: {
     orderBy: { createdAt: 'asc' },
   });
 
-  const totalFailed = failingResults.length;
-
   await prisma.operatorTask.update({
     where: { id: triageTask.id },
     data: {
       status: 'succeeded',
       finishedAt: new Date(),
-      outputJson: { runId: targetRunId, failingCount: totalFailed },
+      outputJson: { runId: targetRunId, failingCount: failingResults.length },
     },
   });
 
-  if (totalFailed === 0) {
+  if (failingResults.length === 0) {
     console.log(`[operator-worker] repair: run ${targetRunId} has no failing tests`);
     return;
   }
 
-  // One repair OperatorTask per failing test
   const repairTasks = await Promise.all(
     failingResults.map((r) =>
       prisma.operatorTask.create({
@@ -227,7 +344,6 @@ async function runRepairJob(opJob: {
     )
   );
 
-  // Enqueue self-heal for each failing test
   const healAttemptBase = `operator:${opJob.id}`;
   await Promise.all(
     failingResults.map((r, i) =>
@@ -237,80 +353,95 @@ async function runRepairJob(opJob: {
         testCaseId: r.testCase?.id ?? r.id,
         attemptId: `${healAttemptBase}:${r.id}`,
         projectId: opJob.projectId,
-        totalFailed,
+        totalFailed: failingResults.length,
         testTitle: r.testCase?.title ?? undefined,
         baseUrl,
       }).then(() => {
         console.log(
-          `[operator-worker] repair: enqueued self-heal for test "${r.testCase?.title}" (task ${repairTasks[i].id})`
+          `[operator-worker] repair: enqueued self-heal for "${r.testCase?.title}" (task ${repairTasks[i].id})`
         );
       })
     )
   );
 
-  // Poll all repair tasks — mark them succeeded when the heal job finishes
-  // We use the self-heal pipeline's output: check if TestResult status flipped.
-  const pollInterval = 5000;
-  const deadline = Date.now() + 20 * 60 * 1000; // 20 min total
+  const taskMap: Record<string, string> = Object.fromEntries(
+    failingResults.map((r, i) => [r.id, repairTasks[i].id])
+  );
+  const deadline = Date.now() + 20 * 60 * 1000;
+  await checkOrDelayRepairs(opJob.id, [...failingResults.map((r) => r.id)], taskMap, deadline, reDelay);
+}
 
-  const remaining = new Set(failingResults.map((r) => r.id));
-  const taskByResultId = new Map(failingResults.map((r, i) => [r.id, repairTasks[i]]));
+async function checkOrDelayRepairs(
+  jobId: string,
+  remaining: string[],
+  taskMap: Record<string, string>,
+  deadline: number,
+  reDelay: ReDelayFn
+) {
+  const updated = await prisma.testResult.findMany({
+    where: { id: { in: remaining } },
+    select: { id: true, status: true, message: true },
+  });
 
-  while (remaining.size > 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, pollInterval));
-
-    const updated = await prisma.testResult.findMany({
-      where: { id: { in: [...remaining] } },
-      select: { id: true, status: true, message: true },
-    });
-
-    for (const res of updated) {
-      if (res.status === 'passed' || res.status === 'failed') {
-        const task = taskByResultId.get(res.id);
-        if (task) {
-          await prisma.operatorTask.update({
-            where: { id: task.id },
-            data: {
-              status: res.status === 'passed' ? 'succeeded' : 'failed',
-              finishedAt: new Date(),
-              error: res.status === 'failed' ? (res.message ?? 'Self-heal did not fix the test') : null,
-              outputJson: { testResultId: res.id, finalStatus: res.status },
-            },
+  const stillRemaining: string[] = [];
+  for (const res of updated) {
+    if (res.status === 'passed' || res.status === 'failed') {
+      const taskId = taskMap[res.id];
+      if (taskId) {
+        const healed = res.status === 'passed';
+        await prisma.operatorTask.update({
+          where: { id: taskId },
+          data: {
+            status: healed ? 'succeeded' : 'failed',
+            finishedAt: new Date(),
+            error: healed ? null : (res.message ?? 'Self-heal did not fix the test'),
+            outputJson: { testResultId: res.id, finalStatus: res.status },
+          },
+        });
+        if (healed) {
+          const result = await prisma.testResult.findUnique({
+            where: { id: res.id },
+            select: { runId: true },
           });
+          if (result) {
+            await recordArtifact({
+              jobId,
+              taskId,
+              testRunId: result.runId,
+              type: 'patch',
+              path: `runs/${result.runId}/self-heal-patch-${res.id}.diff`,
+              meta: { testResultId: res.id, outcome: 'healed' },
+            });
+          }
         }
-        remaining.delete(res.id);
       }
+    } else {
+      stillRemaining.push(res.id);
     }
   }
 
-  // Mark any still-pending tasks as failed (timeout)
-  await Promise.all(
-    [...remaining].map((resultId) => {
-      const task = taskByResultId.get(resultId);
-      if (!task) return;
-      return prisma.operatorTask.update({
-        where: { id: task.id },
-        data: { status: 'failed', finishedAt: new Date(), error: 'Self-heal did not complete in time' },
-      });
-    })
-  );
+  if (stillRemaining.length === 0) return;
+
+  if (Date.now() > deadline) {
+    await Promise.all(
+      stillRemaining.map((resultId) => {
+        const taskId = taskMap[resultId];
+        if (!taskId) return;
+        return prisma.operatorTask.update({
+          where: { id: taskId },
+          data: { status: 'failed', finishedAt: new Date(), error: 'Self-heal did not complete in time' },
+        });
+      })
+    );
+    return; // Timeout — partial results are still useful, don't throw
+  }
+
+  await reDelay(REPAIR_POLL_MS, { kind: 'wait_repairs', remaining: stillRemaining, taskMap, deadline });
 }
 
-// ── discovery job ─────────────────────────────────────────────────────────────
+// ── Discovery job ─────────────────────────────────────────────────────────────
 
-/**
- * Discovery job — browses the app to find routes and pages, then reports
- * which routes have no existing generated test coverage.
- *
- * contextJson options:
- *   baseUrl?   — app URL to crawl (defaults to project.repoUrl)
- *   maxPages?  — max links to follow from the home page (default 20)
- */
-async function runDiscoveryJob(opJob: {
-  id: string;
-  projectId: string;
-  contextJson: unknown;
-}) {
+async function runDiscoveryJob(opJob: OpJobCtx) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
   const maxPages = Number(ctx.maxPages ?? 20);
 
@@ -323,9 +454,7 @@ async function runDiscoveryJob(opJob: {
     ctx.baseUrl ||
     (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
-  if (!baseUrl) {
-    throw new Error('Discovery job requires a baseUrl in contextJson or a non-git project.repoUrl');
-  }
+  if (!baseUrl) throw new Error('Discovery job requires a baseUrl or a non-git project.repoUrl');
 
   const discoverTask = await prisma.operatorTask.create({
     data: {
@@ -339,24 +468,17 @@ async function runDiscoveryJob(opJob: {
 
   const ctx2 = { jobId: opJob.id, taskId: discoverTask.id, projectId: opJob.projectId, baseUrl };
 
-  // Step 1: navigate home page
   const homeResult = await runBrowserCapability({ action: 'navigate', target: baseUrl }, ctx2);
-  if (!homeResult.success) {
-    throw new Error(`Discovery: cannot reach ${baseUrl}: ${homeResult.error}`);
-  }
+  if (!homeResult.success) throw new Error(`Discovery: cannot reach ${baseUrl}: ${homeResult.error}`);
 
-  // Step 2: crawl links from home page HTML
   const visited = new Set<string>([baseUrl]);
   const discovered: string[] = ['/'];
 
-  // Re-fetch raw HTML to extract links
   let rawHtml = '';
   try {
     const res = await fetch(baseUrl, { headers: { 'User-Agent': 'TestMind-Operator/1.0' } });
     rawHtml = await res.text();
-  } catch {
-    rawHtml = '';
-  }
+  } catch { rawHtml = ''; }
 
   const hrefRe = /href="([^"#?]+)"/gi;
   const links: string[] = [];
@@ -366,36 +488,24 @@ async function runDiscoveryJob(opJob: {
     if (!href || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
     try {
       const abs = new URL(href, baseUrl).href;
-      if (abs.startsWith(baseUrl) && !visited.has(abs)) {
-        visited.add(abs);
-        links.push(abs);
-      }
+      if (abs.startsWith(baseUrl) && !visited.has(abs)) { visited.add(abs); links.push(abs); }
     } catch {
-      // relative path that URL failed to parse — use as-is
       const clean = '/' + href.replace(/^\/+/, '');
-      if (!visited.has(clean)) {
-        visited.add(clean);
-        links.push(baseUrl + clean);
-      }
+      if (!visited.has(clean)) { visited.add(clean); links.push(baseUrl + clean); }
     }
   }
 
-  // Step 3: health-check each discovered link (up to maxPages)
   const checkedRoutes: Array<{ route: string; status: number; reachable: boolean }> = [
     { route: '/', status: 200, reachable: homeResult.success },
   ];
 
   for (const link of links.slice(0, maxPages - 1)) {
     const checkResult = await runBrowserCapability({ action: 'check', target: link }, ctx2);
-    const routePath = (() => {
-      try { return new URL(link).pathname; } catch { return link; }
-    })();
-    const statusVal = (checkResult.data as any)?.status ?? 0;
-    checkedRoutes.push({ route: routePath, status: statusVal, reachable: checkResult.success });
+    const routePath = (() => { try { return new URL(link).pathname; } catch { return link; } })();
+    checkedRoutes.push({ route: routePath, status: (checkResult.data as any)?.status ?? 0, reachable: checkResult.success });
     discovered.push(routePath);
   }
 
-  // Step 4: compare against existing generated test files
   const generatedTests = await prisma.testCase.findMany({
     where: { projectId: opJob.projectId },
     select: { title: true },
@@ -405,50 +515,39 @@ async function runDiscoveryJob(opJob: {
   const uncovered = checkedRoutes
     .filter((r) => r.reachable)
     .filter((r) => {
-      const routeLower = r.route.toLowerCase();
-      return !coveredRouteHints.some((hint) => hint.includes(routeLower) || routeLower.includes(hint));
+      const rl = r.route.toLowerCase();
+      return !coveredRouteHints.some((h) => h.includes(rl) || rl.includes(h));
     })
     .map((r) => r.route);
 
+  const outputJson = {
+    baseUrl,
+    discoveredRoutes: checkedRoutes,
+    uncoveredRoutes: uncovered,
+    existingTestCount: generatedTests.length,
+    summary: `Discovered ${checkedRoutes.length} routes; ${uncovered.length} have no test coverage`,
+  };
+
   await prisma.operatorTask.update({
     where: { id: discoverTask.id },
-    data: {
-      status: 'succeeded',
-      finishedAt: new Date(),
-      outputJson: {
-        baseUrl,
-        discoveredRoutes: checkedRoutes,
-        uncoveredRoutes: uncovered,
-        existingTestCount: generatedTests.length,
-        summary: `Discovered ${checkedRoutes.length} routes; ${uncovered.length} have no test coverage`,
-      },
-    },
+    data: { status: 'succeeded', finishedAt: new Date(), outputJson },
   });
 
-  console.log(
-    `[operator-worker] discovery: ${checkedRoutes.length} routes found, ${uncovered.length} uncovered`
-  );
+  // Record discovery report as artifact
+  await recordArtifact({
+    jobId: opJob.id,
+    taskId: discoverTask.id,
+    type: 'report',
+    path: `jobs/${opJob.id}/discovery-routes.json`,
+    meta: { routeCount: checkedRoutes.length, uncoveredCount: uncovered.length },
+  });
+
+  console.log(`[operator-worker] discovery: ${checkedRoutes.length} routes found, ${uncovered.length} uncovered`);
 }
 
-// ── security job ─────────────────────────────────────────────────────────────
+// ── Security job ──────────────────────────────────────────────────────────────
 
-/**
- * Security job — creates a SecurityScanJob, enqueues it, and polls for completion.
- * Active scanning (DAST probes that mutate state) requires user approval first.
- *
- * contextJson options:
- *   baseUrl?             — override base URL (defaults to project.repoUrl)
- *   allowedHosts?        — array of hosts in scope (default: derived from baseUrl)
- *   allowedPorts?        — array of ports in scope (default: [80, 443])
- *   maxDurationMinutes?  — max scan time (default 10)
- *   enableActive?        — run active DAST probes (default false; requires approval)
- */
-async function runSecurityJob(opJob: {
-  id: string;
-  projectId: string;
-  contextJson: unknown;
-  requestedBy: string | null;
-}) {
+async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
 
   const project = await prisma.project.findUnique({
@@ -457,115 +556,175 @@ async function runSecurityJob(opJob: {
   });
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string =
-    ctx.baseUrl ||
-    (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : '');
+    ctx.baseUrl || (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : '');
 
-  if (!baseUrl) {
-    throw new Error('Security job requires a baseUrl in contextJson or a non-git project.repoUrl');
-  }
+  if (!baseUrl) throw new Error('Security job requires a baseUrl or a non-git project.repoUrl');
 
-  const allowedHosts: string[] = ctx.allowedHosts ?? [new URL(baseUrl).hostname];
-  const allowedPorts: number[] = ctx.allowedPorts ?? [80, 443];
-  const maxDurationMinutes: number = Number(ctx.maxDurationMinutes ?? 10);
-  const enableActive: boolean = Boolean(ctx.enableActive ?? false);
+  const securityCtx: SecurityResumeCtx = {
+    baseUrl,
+    allowedHosts: ctx.allowedHosts ?? [new URL(baseUrl).hostname],
+    allowedPorts: ctx.allowedPorts ?? [80, 443],
+    maxDurationMinutes: Number(ctx.maxDurationMinutes ?? 10),
+    enableActive: Boolean(ctx.enableActive ?? false),
+  };
 
-  // Create a tracking OperatorTask
   const task = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
       type: 'execute',
       status: 'running',
       startedAt: new Date(),
-      inputJson: { baseUrl, enableActive, allowedHosts, allowedPorts },
+      inputJson: securityCtx,
     },
   });
 
-  // Active probes mutate state — require approval before proceeding
-  if (enableActive && opJob.requestedBy) {
-    await requestApproval({
-      jobId: opJob.id,
+  if (securityCtx.enableActive && opJob.requestedBy) {
+    const approval = await prisma.operatorApproval.create({
+      data: {
+        jobId: opJob.id,
+        taskId: task.id,
+        actionType: 'security_active_test',
+        requestedBy: opJob.requestedBy,
+        contextJson: {
+          prompt: `Run active DAST probes (XSS, SQLi, path traversal, open redirect) against ${baseUrl}`,
+          ...securityCtx,
+        } as any,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      },
+    });
+    await prisma.operatorJob.update({ where: { id: opJob.id }, data: { status: 'blocked' } });
+    // Release worker — resume will create and enqueue the scan once approved
+    await reDelay(APPROVAL_POLL_MS, {
+      kind: 'approval_security',
+      approvalId: approval.id,
       taskId: task.id,
-      requestedBy: opJob.requestedBy,
-      actionType: 'security_active_test',
-      description: `Run active DAST probes (XSS, SQLi, path traversal, open redirect) against ${baseUrl}`,
-      context: { baseUrl, allowedHosts },
+      deadline: Date.now() + 30 * 60 * 1000,
+      securityCtx,
     });
   }
 
-  // Create and enqueue the SecurityScanJob
-  const scan = await prisma.securityScanJob.create({
-    data: {
-      projectId: opJob.projectId,
-      status: 'queued',
-      config: { baseUrl, allowedHosts, allowedPorts, maxDurationMinutes, enableActive } as any,
-    },
-  });
-
-  await enqueueSecurityScan({
-    jobId: scan.id,
-    projectId: opJob.projectId,
-    baseUrl,
-    allowedHosts,
-    allowedPorts,
-    maxDurationMinutes,
-    enableActive,
-  });
-
-  // Poll until scan completes
-  const deadline = Date.now() + maxDurationMinutes * 60 * 1000 + 60_000;
-  const interval = 5000;
-
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, interval));
-    const current = await prisma.securityScanJob.findUnique({
-      where: { id: scan.id },
-      select: { status: true, summary: true, error: true, findings: { select: { severity: true } } },
-    });
-    if (!current) break;
-
-    if (current.status === 'completed' || current.status === 'failed') {
-      const counts = current.findings.reduce<Record<string, number>>((acc, f) => {
-        acc[f.severity] = (acc[f.severity] || 0) + 1;
-        return acc;
-      }, {});
-      await prisma.operatorTask.update({
-        where: { id: task.id },
-        data: {
-          status: current.status === 'completed' ? 'succeeded' : 'failed',
-          finishedAt: new Date(),
-          error: current.error ?? null,
-          outputJson: { scanId: scan.id, findingCounts: counts, summary: current.summary },
-        },
-      });
-      if (current.status === 'failed') {
-        throw new Error(`Security scan failed: ${current.error}`);
-      }
-      return;
-    }
-  }
-
-  // Timeout — mark task failed but don't throw (partial results may still be useful)
-  await prisma.operatorTask.update({
-    where: { id: task.id },
-    data: {
-      status: 'failed',
-      finishedAt: new Date(),
-      error: `Security scan timed out after ${maxDurationMinutes} minutes`,
-      outputJson: { scanId: scan.id },
-    },
-  });
-  throw new Error(`Security scan timed out (scanId=${scan.id})`);
+  // No approval required — create and enqueue scan directly
+  await startSecurityScan(opJob.id, opJob.projectId, task.id, securityCtx, reDelay);
 }
 
+async function startSecurityScan(
+  jobId: string,
+  projectId: string,
+  taskId: string,
+  securityCtx: SecurityResumeCtx,
+  reDelay: ReDelayFn
+) {
+  const scan = await prisma.securityScanJob.create({
+    data: { projectId, status: 'queued', config: securityCtx as any },
+  });
+
+  await enqueueSecurityScan({ jobId: scan.id, projectId, ...securityCtx });
+
+  const deadline = Date.now() + securityCtx.maxDurationMinutes * 60 * 1000 + 60_000;
+  await checkOrDelayScan(scan.id, taskId, jobId, deadline, reDelay);
+}
+
+async function checkOrDelayApproval(
+  opJob: OpJobCtx,
+  phase: Extract<ResumePhase, { kind: 'approval_security' }>,
+  reDelay: ReDelayFn
+) {
+  const approval = await prisma.operatorApproval.findUnique({
+    where: { id: phase.approvalId },
+    select: { status: true },
+  });
+
+  if (approval?.status === 'approved') {
+    await prisma.operatorJob.update({ where: { id: opJob.id }, data: { status: 'running' } });
+    await startSecurityScan(opJob.id, opJob.projectId, phase.taskId, phase.securityCtx, reDelay);
+    return;
+  }
+
+  if (approval?.status === 'denied') {
+    await prisma.operatorTask.update({
+      where: { id: phase.taskId },
+      data: { status: 'failed', finishedAt: new Date(), error: 'Approval denied' },
+    });
+    throw new Error('Approval denied for security active scan');
+  }
+
+  if (!approval || Date.now() > phase.deadline) {
+    await prisma.operatorApproval.updateMany({
+      where: { id: phase.approvalId, status: 'pending' },
+      data: { status: 'expired' },
+    });
+    await prisma.operatorTask.update({
+      where: { id: phase.taskId },
+      data: { status: 'failed', finishedAt: new Date(), error: 'Approval timed out' },
+    });
+    throw new Error('Approval timed out for security active scan');
+  }
+
+  await reDelay(APPROVAL_POLL_MS, phase);
+}
+
+async function checkOrDelayScan(
+  scanId: string,
+  taskId: string,
+  jobId: string,
+  deadline: number,
+  reDelay: ReDelayFn
+) {
+  const current = await prisma.securityScanJob.findUnique({
+    where: { id: scanId },
+    select: { status: true, summary: true, error: true, findings: { select: { severity: true } } },
+  });
+
+  if (!current) throw new Error(`SecurityScanJob ${scanId} not found`);
+
+  if (current.status === 'completed' || current.status === 'failed') {
+    const counts = current.findings.reduce<Record<string, number>>((acc, f) => {
+      acc[f.severity] = (acc[f.severity] || 0) + 1;
+      return acc;
+    }, {});
+
+    await prisma.operatorTask.update({
+      where: { id: taskId },
+      data: {
+        status: current.status === 'completed' ? 'succeeded' : 'failed',
+        finishedAt: new Date(),
+        error: current.error ?? null,
+        outputJson: { scanId, findingCounts: counts, summary: current.summary },
+      },
+    });
+
+    // Record findings report as artifact
+    await recordArtifact({
+      jobId,
+      taskId,
+      type: 'report',
+      path: `scans/${scanId}/findings.json`,
+      meta: { findingCounts: counts, scanStatus: current.status },
+    });
+
+    if (current.status === 'failed') throw new Error(`Security scan failed: ${current.error}`);
+    return;
+  }
+
+  if (Date.now() > deadline) {
+    await prisma.operatorTask.update({
+      where: { id: taskId },
+      data: { status: 'failed', finishedAt: new Date(), error: `Security scan timed out`, outputJson: { scanId } },
+    });
+    throw new Error(`Security scan timed out (scanId=${scanId})`);
+  }
+
+  await reDelay(SCAN_POLL_MS, { kind: 'wait_scan', scanId, taskId, deadline });
+}
+
+// ── Legacy blocking approval (used by step-executor capabilities) ─────────────
+
 /**
- * Creates a pending OperatorApproval, sets the job status to 'blocked',
- * and polls until the approval is resolved or times out.
- * Returns 'approved' or throws if denied/timed-out.
- *
- * @param actionType - The schema-defined action type (run_terminal, git_push, patch_code, security_active_test)
- * @param description - Human-readable description shown to the approver (stored in contextJson.prompt)
+ * Creates a pending OperatorApproval and blocks until resolved or timed out.
+ * Used by step-executor for terminal/git capability gates — these run within
+ * a task's own execution window rather than holding the operator job thread.
  */
-async function requestApproval(opts: {
+export async function requestApproval(opts: {
   jobId: string;
   taskId: string;
   requestedBy: string;
@@ -587,11 +746,7 @@ async function requestApproval(opts: {
     },
   });
 
-  await prisma.operatorJob.update({
-    where: { id: jobId },
-    data: { status: 'blocked' },
-  });
-  // OperatorTask has no 'blocked' status — leave it as 'running' while waiting
+  await prisma.operatorJob.update({ where: { id: jobId }, data: { status: 'blocked' } });
 
   const interval = 4000;
   const deadline = Date.now() + timeoutMs;
@@ -602,7 +757,6 @@ async function requestApproval(opts: {
       select: { status: true },
     });
     if (current?.status === 'approved') {
-      // Unblock job so execution continues
       await prisma.operatorJob.update({ where: { id: jobId }, data: { status: 'running' } });
       return 'approved';
     }
@@ -612,53 +766,11 @@ async function requestApproval(opts: {
     await new Promise((r) => setTimeout(r, interval));
   }
 
-  await prisma.operatorApproval.update({
-    where: { id: approval.id },
-    data: { status: 'expired' },
-  });
+  await prisma.operatorApproval.update({ where: { id: approval.id }, data: { status: 'expired' } });
   throw new Error(`Approval timed out for job ${jobId}: "${description}"`);
 }
 
-export { requestApproval };
-
-async function waitForRun(runId: string, taskId: string, timeoutMs = 10 * 60 * 1000) {
-  const interval = 3000;
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    const run = await prisma.testRun.findUnique({
-      where: { id: runId },
-      select: { status: true, error: true },
-    });
-
-    if (!run) break;
-
-    if (run.status === 'succeeded' || run.status === 'failed') {
-      await prisma.operatorTask.update({
-        where: { id: taskId },
-        data: {
-          status: run.status === 'succeeded' ? 'succeeded' : 'failed',
-          finishedAt: new Date(),
-          error: run.error ?? null,
-          outputJson: { testRunId: runId, finalStatus: run.status },
-        },
-      });
-      return;
-    }
-
-    await new Promise((r) => setTimeout(r, interval));
-  }
-
-  await prisma.operatorTask.update({
-    where: { id: taskId },
-    data: {
-      status: 'failed',
-      finishedAt: new Date(),
-      error: `Timed out waiting for TestRun ${runId}`,
-    },
-  });
-  throw new Error(`waitForRun timeout for run ${runId}`);
-}
+// ── Worker event hooks ────────────────────────────────────────────────────────
 
 operatorWorker.on('failed', (job, err) => {
   console.error(`[operator-worker] job ${job?.id} failed:`, err);
