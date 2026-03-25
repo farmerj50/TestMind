@@ -838,6 +838,21 @@ export default async function runRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: "Forbidden" });
     }
 
+    // Fall back to the project's repoUrl when it's an app URL (not a git repo) and no
+    // explicit baseUrl was provided. For AI-only projects, repoUrl holds the target app URL.
+    const projectStoredBaseUrl = !requestedBaseUrl
+      ? (() => {
+          const stored = typeof (project.sharedSteps as any)?.baseUrl === "string"
+            ? (project.sharedSteps as any).baseUrl.trim()
+            : "";
+          if (stored) return stored;
+          const repo = project.repoUrl?.trim() ?? "";
+          if (repo && !isLikelyGitRepo(repo) && /^https?:\/\//i.test(repo)) return repo;
+          return undefined;
+        })()
+      : undefined;
+    if (projectStoredBaseUrl) effectiveBaseUrl = projectStoredBaseUrl;
+
     const curatedSuite =
       suiteId
         ? await prisma.curatedSuite.findUnique({
@@ -1420,7 +1435,7 @@ export default async function runRoutes(app: FastifyInstance) {
         );
         // Avoid deleting repo configs; we always pass --config explicitly.
         const serverPort = await findAvailablePort(Number(process.env.TM_PORT ?? 4173));
-        if (!requestedBaseUrl) {
+        if (!requestedBaseUrl && !projectStoredBaseUrl) {
           effectiveBaseUrl = `http://localhost:${serverPort}`;
         }
         const serverDirAbsolute = cwd;

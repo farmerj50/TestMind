@@ -723,7 +723,16 @@ export const worker = new Worker(
       }
       const loggedFile = specPath ?? normalizedFileTarget ?? fileTarget ?? "";
 
-      const jobBaseUrl = payload?.baseUrl ?? DEFAULT_BASE_URL;
+      // Prefer explicit payload baseUrl, then paramsJson.baseUrl, then project.repoUrl when
+      // it's an app URL (not a git repo), then the environment default.
+      const repoUrl = project?.repoUrl?.trim() ?? "";
+      const projectAppUrl =
+        !isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined;
+      const jobBaseUrl =
+        payload?.baseUrl ??
+        (runParams?.baseUrl as string | undefined) ??
+        projectAppUrl ??
+        DEFAULT_BASE_URL;
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const extraEnv: Record<string, string> = {};
       extraEnv.PW_BASE_URL = jobBaseUrl;

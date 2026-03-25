@@ -51,7 +51,7 @@ const parseIntEnv = (
 };
 
 export function readSelfHealPolicy(env: NodeJS.ProcessEnv = process.env): SelfHealPolicy {
-  const totalTimeoutMs = parseIntEnv(env.SELF_HEAL_TIMEOUT_MS, 120000, 5000);
+  const totalTimeoutMs = parseIntEnv(env.SELF_HEAL_TIMEOUT_MS, 240000, 5000);
   return {
     workerConcurrency: parseIntEnv(env.SELF_HEAL_CONCURRENCY, 1, 1),
     healOnly: parseBoolEnv(env.SELF_HEAL_HEAL_ONLY, false),

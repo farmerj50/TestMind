@@ -47,12 +47,19 @@ async function resolveOpenAiKey(projectId?: string) {
   }
 }
 
+// Per-call HTTP timeout — cancels the in-flight request at the network level.
+// Promise.race alone doesn't cancel the underlying fetch, so the OpenAI SDK
+// timeout option is the correct mechanism.
+const LLM_REQUEST_TIMEOUT_MS = Number(
+  process.env.HEALING_LLM_TIMEOUT_MS ?? 90_000
+);
+
 async function getClient(projectId?: string) {
   loadBackendEnv();
   const apiKey = await resolveOpenAiKey(projectId);
   if (!apiKey) throw new Error("OPENAI_API_KEY is required to run self-healing.");
   if (client && clientKey === apiKey) return client;
-  client = new OpenAI({ apiKey });
+  client = new OpenAI({ apiKey, timeout: LLM_REQUEST_TIMEOUT_MS });
   clientKey = apiKey;
   return client;
 }
