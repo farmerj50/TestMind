@@ -54,6 +54,10 @@ const LLM_REQUEST_TIMEOUT_MS = Number(
   process.env.HEALING_LLM_TIMEOUT_MS ?? 30_000
 );
 
+// Keep prompts tight — large stdout/stderr balloons token count and slows responses.
+const MAX_STDOUT_CHARS = 600;
+const MAX_STDERR_CHARS = 400;
+
 async function getClient(projectId?: string) {
   loadBackendEnv();
   const apiKey = await resolveOpenAiKey(projectId);
@@ -131,8 +135,8 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
     `Spec path: ${prompt.specPath}`,
     prompt.testTitle ? `Selected test: ${prompt.testTitle}` : "",
     prompt.failureMessage ? `Failure: ${prompt.failureMessage}` : "",
-    prompt.stdout ? `stdout:\n${prompt.stdout}` : "",
-    prompt.stderr ? `stderr:\n${prompt.stderr}` : "",
+    prompt.stdout?.trim() ? `stdout:\n${prompt.stdout.slice(0, MAX_STDOUT_CHARS)}` : "",
+    prompt.stderr?.trim() ? `stderr:\n${prompt.stderr.slice(0, MAX_STDERR_CHARS)}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -166,6 +170,7 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
   const completion = await openai.chat.completions.create({
     model: MODEL,
     response_format: { type: "json_object" },
+    max_tokens: 1200,
     messages: [
       { role: "system", content: system },
       { role: "user", content: userContent },
@@ -211,12 +216,13 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
     `Spec path: ${prompt.specPath}`,
     prompt.testTitle ? `Selected test: ${prompt.testTitle}` : "",
     prompt.failureMessage ? `Failure: ${prompt.failureMessage}` : "",
-    prompt.stdout ? `stdout:\n${prompt.stdout}` : "",
-    prompt.stderr ? `stderr:\n${prompt.stderr}` : "",
+    prompt.stdout?.trim() ? `stdout:\n${prompt.stdout.slice(0, MAX_STDOUT_CHARS)}` : "",
+    prompt.stderr?.trim() ? `stderr:\n${prompt.stderr.slice(0, MAX_STDERR_CHARS)}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
 
+  const specContent = prompt.specContent;
   const userContent = [
     failureDetails,
     prompt.failureClasses?.length ? `Failure classes: ${prompt.failureClasses.join(", ")}` : "",
@@ -237,7 +243,7 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
       : "",
     "Current spec file:",
     "```ts",
-    prompt.specContent,
+    specContent,
     "```",
     "Respond ONLY with JSON: {\"summary\": string, \"updatedSpec\": string}",
   ].join("\n\n");
@@ -245,6 +251,7 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
   const completion = await openai.chat.completions.create({
     model: MODEL,
     response_format: { type: "json_object" },
+    max_tokens: Math.min(4000, Math.ceil(specContent.length / 2) + 500),
     messages: [
       { role: "system", content: system },
       { role: "user", content: userContent },
