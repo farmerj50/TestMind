@@ -51,7 +51,7 @@ async function resolveOpenAiKey(projectId?: string) {
 // Promise.race alone doesn't cancel the underlying fetch, so the OpenAI SDK
 // timeout option is the correct mechanism.
 const LLM_REQUEST_TIMEOUT_MS = Number(
-  process.env.HEALING_LLM_TIMEOUT_MS ?? 90_000
+  process.env.HEALING_LLM_TIMEOUT_MS ?? 30_000
 );
 
 async function getClient(projectId?: string) {
