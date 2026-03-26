@@ -50,6 +50,10 @@ export async function requestPageAnalysis(opts: {
           "Return JSON with keys: summary (string), coverage (object with percentages), scenarios (array).",
           "Each scenario requires: title, coverageType, description, tags, risk (low|medium|high), steps (array of actions).",
           "Steps should be normalized objects: { kind, target, value, note }.",
+          "IMPORTANT: scenario titles MUST be specific to the site being tested.",
+          "Include the site name (derived from baseUrl) in every scenario title so titles are unique per site.",
+          "For example, for baseUrl 'https://etoro.com' prefer 'eToro — verify login form' over the generic 'Verify login form'.",
+          "Never generate titles that could apply to any website.",
         ].join(" "),
       },
       {

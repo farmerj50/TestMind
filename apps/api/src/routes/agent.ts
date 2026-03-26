@@ -499,9 +499,15 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!project) return reply.code(404).send({ error: "Project not found or not owned by user" });
 
     // Build a simple Playwright spec file for this scenario
+    // Domain-scope the path so scanning two different sites with the same page path
+    // (e.g. both have "/") doesn't produce identical file names that overwrite each other.
+    const domain = (() => {
+      try { return new URL(scenario.page.url).hostname.replace(/^www\./, "").replace(/[^a-z0-9]+/gi, "-").toLowerCase(); }
+      catch { return "site"; }
+    })();
     const slug = scenario.page.path === "/" ? "home" : scenario.page.path.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase() || "page";
     const fileName = `${scenario.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "scenario"}.spec.ts`;
-    const relPath = `scenarios/${slug}/${fileName}`;
+    const relPath = `${domain}/scenarios/${slug}/${fileName}`;
 
     const steps = (scenario.steps as any[]) || [];
     const content = emitSpecFile(scenario.page.path, [
@@ -530,7 +536,7 @@ export default async function agentRoutes(app: FastifyInstance) {
 
     await Promise.all(
       destRoots.map(async (dest) => {
-        const dir = path.join(dest, "scenarios", slug);
+        const dir = path.join(dest, domain, "scenarios", slug);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(path.join(dir, fileName), content, "utf8");
       })
