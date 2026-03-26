@@ -146,11 +146,11 @@ function Pie({
     <div className="flex items-center justify-center">
       <svg width={size} height={size} viewBox="0 0 46 46" className="shrink-0">
         {rings}
-        <text x="22" y="22" textAnchor="middle" dominantBaseline="middle" fontSize="7" fill="#0f172a">
+        <text x="22" y="22" textAnchor="middle" dominantBaseline="middle" fontSize="7" fill="currentColor">
           {total}
         </text>
         {label && (
-          <text x="22" y="28" textAnchor="middle" fontSize="3.5" fill="#94a3b8">
+          <text x="22" y="28" textAnchor="middle" fontSize="3.5" fill="currentColor" opacity="0.5">
             {label}
           </text>
         )}
@@ -620,10 +620,10 @@ export default function ReportsPage() {
               <Pie segments={statuses} label="runs" />
               <div className="space-y-2 text-sm text-slate-700">
                 {statuses.map((s) => (
-                  <div key={s.label} className="flex items-center justify-between gap-3">
-                    <span className="h-3 w-3 rounded-full" style={{ background: s.color }} />
-                    <span className="w-24 truncate">{s.label}</span>
-                    <span className="font-semibold tabular-nums">{s.value}</span>
+                  <div key={s.label} className="flex items-center gap-3">
+                    <span className="h-3 w-3 flex-none rounded-full" style={{ background: s.color }} />
+                    <span className="flex-1 truncate">{s.label}</span>
+                    <span className="min-w-[2.5rem] text-right font-semibold tabular-nums">{s.value}</span>
                   </div>
                 ))}
               </div>
