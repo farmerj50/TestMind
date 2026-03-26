@@ -306,6 +306,7 @@ const RunBody = z.object({
   livePreview: z.boolean().optional(),
   runAll: z.boolean().optional(), // if true, ignore file/files/grep and run full suite
   extraGlobs: z.array(z.string()).optional(), // legacy selector; populated internally
+  maxSpecs: z.number().int().positive().optional(), // cap spec count; excess files removed before run
 });
 
 function parseBool(val: unknown, fallback: boolean) {
@@ -819,6 +820,9 @@ export default async function runRoutes(app: FastifyInstance) {
     if (hasSelection && parsed.data.runAll === undefined) {
       runAll = false;
     }
+    const maxSpecs =
+      parsed.data.maxSpecs ??
+      (process.env.TM_MAX_SPECS ? Number(process.env.TM_MAX_SPECS) : undefined);
     const localRepoRoot = process.env.TM_LOCAL_REPO_ROOT?.trim() || null;
 
     // look up project
@@ -1493,6 +1497,8 @@ const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
 const MAX_FAILURES = process.env.TM_MAX_FAILURES
   ? Number(process.env.TM_MAX_FAILURES)
   : 0;
+const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS);
+const AUTH_STORAGE = process.env.TM_AUTH_STORAGE || path.resolve(DIR, '.auth', 'state.json');
 
 export default defineConfig({
   use: {
@@ -1517,12 +1523,16 @@ export default defineConfig({
     '**/build/**',
     '**/.*/**',
   ],
-  projects: [{
-    name: 'generated',
-    testDir: GEN_DIR,
-    testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
-    timeout: 30_000,
-  }],
+  projects: [
+    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\\.setup\\.(ts|js|mjs)/, testDir: DIR }] : []),
+    {
+      name: 'generated',
+      testDir: GEN_DIR,
+      testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
+      timeout: 30_000,
+      ...(HAS_AUTH ? { dependencies: ['auth-setup'], use: { storageState: AUTH_STORAGE } } : {}),
+    },
+  ],
 });`
           : `import { defineConfig } from '@playwright/test';
 import path from 'node:path';
@@ -1613,6 +1623,36 @@ export default defineConfig({
             .replace(new RegExp(PORT_PLACEHOLDER, "g"), String(serverPort))
             .replace("__GEN_DEST__", genDestName);
           await fs.writeFile(ciConfigPath, finalConfig, "utf8");
+          // Write auth.setup.ts alongside config so auth-setup project can find it
+          const authSetupPath = path.join(path.dirname(ciConfigPath), "auth.setup.ts");
+          const authSetupContent = `import { test as setup } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const DIR = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+export const AUTH_STORAGE = process.env.TM_AUTH_STORAGE
+  ? path.resolve(process.env.TM_AUTH_STORAGE)
+  : path.join(DIR, ".auth", "state.json");
+const email = process.env.E2E_EMAIL;
+const password = process.env.E2E_PASS;
+const loginPath = process.env.TM_LOGIN_PATH || "/login";
+setup("auth storage", async ({ page, baseURL }) => {
+  if (!email || !password) return;
+  const loginUrl = loginPath.startsWith("http") ? loginPath : \`\${baseURL}\${loginPath}\`;
+  await page.goto(loginUrl);
+  const cookieBtn = page.getByRole("button", { name: /accept|allow|agree|ok/i });
+  if (await cookieBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await cookieBtn.click().catch(() => {});
+  }
+  await page.getByLabel(/email|username|user/i).first().fill(email);
+  await page.getByLabel(/password/i).first().fill(password);
+  await page.getByRole("button", { name: /sign.?in|log.?in|submit|continue/i }).click();
+  await page.waitForURL(/dashboard|home|portfolio|feed|account|app/i, { timeout: 30_000 }).catch(() => {});
+  fs.mkdirSync(path.dirname(AUTH_STORAGE), { recursive: true });
+  await page.context().storageState({ path: AUTH_STORAGE });
+});
+`;
+          await fs.writeFile(authSetupPath, authSetupContent, "utf8");
         } else {
           // resolve source based on env
           const MODE = (process.env.TM_SPECS_MODE || 'auto').toLowerCase() as 'auto' | 'local' | 'repo';
@@ -1767,6 +1807,29 @@ export default defineConfig({
 
         if (fsSync.existsSync(genDest)) {
           await catalogSpecs(genDest, 'FINAL');
+        }
+
+        // Enforce maxSpecs limit when running all specs (not a targeted file run)
+        if (maxSpecs && Number.isFinite(maxSpecs) && maxSpecs > 0 && fsSync.existsSync(genDest) && runAll) {
+          const allSpecFiles: string[] = [];
+          const walkForLimit = async (p: string) => {
+            const entries = await fs.readdir(p, { withFileTypes: true }).catch(() => [] as any[]);
+            for (const e of entries) {
+              const f = path.join(p, e.name);
+              if (e.isDirectory()) await walkForLimit(f);
+              else if (/\.(spec|test)\.(t|j)sx?$/i.test(e.name)) allSpecFiles.push(f);
+            }
+          };
+          await walkForLimit(genDest);
+          if (allSpecFiles.length > maxSpecs) {
+            const toDelete = allSpecFiles.slice(maxSpecs);
+            for (const f of toDelete) await fs.unlink(f).catch(() => {});
+            await fs.writeFile(
+              path.join(outDir, 'stdout.txt'),
+              `[runner] maxSpecs=${maxSpecs}: trimmed ${toDelete.length} spec files (kept ${maxSpecs} of ${allSpecFiles.length})\n`,
+              { flag: 'a' }
+            );
+          }
         }
 
         async function logSpecs(root: string, label: string) {

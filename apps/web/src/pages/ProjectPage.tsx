@@ -47,6 +47,7 @@ type CaseRun = {
 
 type CaseDetail = CaseListItem & {
   preconditions?: string | null;
+  locators?: string | null;
   lastAiSyncAt?: string | null;
   steps: Step[];
   runs: CaseRun[];
@@ -289,6 +290,7 @@ export default function ProjectPage() {
         status: caseDetail.status,
         tags: caseDetail.tags,
         preconditions: caseDetail.preconditions,
+        locators: caseDetail.locators,
         steps: caseDetail.steps.map((s) => ({
           action: s.action,
           expected: s.expected,
@@ -623,6 +625,19 @@ export default function ProjectPage() {
                       rows={3}
                       value={caseDetail.preconditions ?? ""}
                       onChange={(e) => updateCaseField("preconditions", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-600">
+                      Locators <span className="text-slate-400">(optional — hints for AI spec generation)</span>
+                    </label>
+                    <Textarea
+                      className="w-full font-mono text-xs"
+                      rows={3}
+                      placeholder={'e.g. login-btn=[data-testid="login-button"], email=#email-input'}
+                      value={caseDetail.locators ?? ""}
+                      onChange={(e) => updateCaseField("locators", e.target.value)}
                     />
                   </div>
 

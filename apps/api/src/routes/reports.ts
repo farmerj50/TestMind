@@ -253,7 +253,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
       if (!projectIds.length) return reply.send({ runs: [], nextCursor: undefined, hasMore: false });
 
       // hard clamp to keep memory sane
-      const n = clamp(parseIntSafe(take, 100), 1, 200);
+      const n = clamp(parseIntSafe(take, 100), 1, 500);
 
       // build filters
       const where: any = projectId

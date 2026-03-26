@@ -354,14 +354,14 @@ export default function ProjectSuite() {
     suiteId: string;
     folderPath: string;
     folderName: string;
-    hasSubfolders: boolean;
   } | null>(null);
-  const [deleteSubfolders, setDeleteSubfolders] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
   const [baseUrl, setBaseUrl] = useState<string>(() => localStorage.getItem("tm:lastBaseUrl") || "");
   const [headful, setHeadful] = useState(false);
   const [reporter, setReporter] = useState<ReporterId>("json");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorContent, setEditorContent] = useState("");
+  const [editorMiddle, setEditorMiddle] = useState(""); // helpers/constants hidden between imports and tests
   const [editorPath, setEditorPath] = useState<string | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
@@ -709,32 +709,30 @@ export default function ProjectSuite() {
     }));
   };
 
-  const openDeleteFolderModal = (suiteId: string, folderPath: string, hasSubfolders: boolean) => {
+  const openDeleteFolderModal = (suiteId: string, folderPath: string, _hasSubfolders: boolean) => {
     const normalized = normalizeFolderPath(folderPath);
     if (!normalized) return;
-    setDeleteSubfolders(false);
+    setDeleteFiles(false);
     setFolderDeleteTarget({
       suiteId,
       folderPath: normalized,
       folderName: getFolderName(normalized),
-      hasSubfolders,
     });
   };
 
-  const deleteFolderInSuite = (suiteId: string, folderPath: string, options?: { deleteSubfolders?: boolean }) => {
+  const deleteFolderInSuite = (suiteId: string, folderPath: string) => {
     const normalized = normalizeFolderPath(folderPath);
     if (!normalized) return;
     const parentPath = getFolderParent(normalized);
     updateSuiteFolderState(suiteId, (state) => {
+      // Move all specs that were inside the deleted folder up to the parent
       const nextSpecFolders = { ...state.specFolders };
       if (suiteId === pid) {
         specs.forEach((spec) => {
           const displayFolder = getSpecDisplayFolder(spec, state);
           if (!displayFolder) return;
           if (displayFolder === normalized || displayFolder.startsWith(`${normalized}/`)) {
-            const nextFolder = options?.deleteSubfolders
-              ? parentPath
-              : replaceFolderPrefix(displayFolder, normalized, parentPath);
+            const nextFolder = replaceFolderPrefix(displayFolder, normalized, parentPath);
             if (nextFolder) {
               nextSpecFolders[spec.path] = nextFolder;
             } else {
@@ -744,6 +742,7 @@ export default function ProjectSuite() {
         });
       }
 
+      // Remove the deleted folder and collapse all its subfolders to parent
       const folderMoves = new Map<string, string>();
       const nextFolders = state.folders
         .map((folder) => normalizeFolderPath(folder))
@@ -751,7 +750,6 @@ export default function ProjectSuite() {
         .flatMap((folder) => {
           if (folder === normalized) return [];
           if (folder.startsWith(`${normalized}/`)) {
-            if (options?.deleteSubfolders) return [];
             const nextPath = replaceFolderPrefix(folder, normalized, parentPath);
             folderMoves.set(folder, nextPath);
             return [nextPath];
@@ -761,20 +759,13 @@ export default function ProjectSuite() {
       const uniqueFolders = Array.from(new Set(nextFolders));
       const nextFolderIds: Record<string, string> = {};
       const nextFolderSet = new Set(uniqueFolders);
-      Object.entries(state.folderIds || {}).forEach(([path, id]) => {
-        const normalizedPath = normalizeFolderPath(path);
+      Object.entries(state.folderIds || {}).forEach(([p, id]) => {
+        const normalizedPath = normalizeFolderPath(p);
         const nextPath = folderMoves.get(normalizedPath) || normalizedPath;
-        if (nextFolderSet.has(nextPath)) {
-          nextFolderIds[nextPath] = id;
-        }
+        if (nextFolderSet.has(nextPath)) nextFolderIds[nextPath] = id;
       });
 
-      return {
-        ...state,
-        folders: uniqueFolders,
-        folderIds: nextFolderIds,
-        specFolders: nextSpecFolders,
-      };
+      return { ...state, folders: uniqueFolders, folderIds: nextFolderIds, specFolders: nextSpecFolders };
     });
   };
 
@@ -1383,6 +1374,48 @@ export default function ProjectSuite() {
     }
   }
 
+  /** Split a full spec into { editorContent, editorMiddle }.
+   *  Editor shows: imports + test cases.
+   *  Middle (hidden): helpers/constants between last import and first test. */
+  function splitSpecForEditor(full: string): { content: string; middle: string } {
+    const lines = full.split("\n");
+    // Find the end of the import block at the top of the file
+    let lastImportIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (/^import[\s{]/.test(t)) { lastImportIdx = i; }
+      else if (t === "") { continue; }
+      else if (lastImportIdx >= 0) { break; }
+      else { break; }
+    }
+    // Find the first test()/it() declaration
+    const testStartIdx = lines.findIndex((l) =>
+      /^\s*(?:test|it)(?:\.(?:only|skip|each))?\s*\(/.test(l)
+    );
+    if (testStartIdx > 0 && lastImportIdx >= 0 && testStartIdx > lastImportIdx + 1) {
+      const importSection = lines.slice(0, lastImportIdx + 1).join("\n");
+      const middle = lines.slice(lastImportIdx + 1, testStartIdx).join("\n");
+      const testSection = lines.slice(testStartIdx).join("\n");
+      return { content: `${importSection}\n\n${testSection}`, middle };
+    }
+    return { content: full, middle: "" };
+  }
+
+  /** Reconstruct the full spec from editor content + hidden middle. */
+  function joinSpecFromEditor(editorContent: string, middle: string): string {
+    if (!middle) return editorContent;
+    const lines = editorContent.split("\n");
+    const testIdx = lines.findIndex((l) =>
+      /^\s*(?:test|it)(?:\.(?:only|skip|each))?\s*\(/.test(l)
+    );
+    if (testIdx > 0) {
+      const importPart = lines.slice(0, testIdx).join("\n").trimEnd();
+      const testPart = lines.slice(testIdx).join("\n");
+      return `${importPart}\n${middle}\n${testPart}`;
+    }
+    return `${middle}\n${editorContent}`;
+  }
+
   async function handleEditSpec(specPath?: string, suiteId?: string | null) {
     const suite = resolveSuite(suiteId);
     const spec = specPath ? { path: specPath } : activeSpec;
@@ -1415,7 +1448,9 @@ export default function ProjectSuite() {
         throw new Error(friendlyError(text, "Failed to load spec"));
       }
       const data = await res.json().catch(() => null);
-      setEditorContent(data?.content ?? "");
+      const { content, middle } = splitSpecForEditor(data?.content ?? "");
+      setEditorContent(content);
+      setEditorMiddle(middle);
       setEditorOpen(true);
       setSpecProjectErr(null);
     } catch (err) {
@@ -1435,7 +1470,11 @@ export default function ProjectSuite() {
       const res = await apiFetchRaw(apiUrl("/tm/suite/spec-content"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: activeSuite.id, path: editorPath, content: editorContent }),
+        body: JSON.stringify({
+          projectId: activeSuite.id,
+          path: editorPath,
+          content: joinSpecFromEditor(editorContent, editorMiddle),
+        }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "Failed to save spec");
@@ -1575,7 +1614,9 @@ export default function ProjectSuite() {
           throw new Error(text);
         }
         const data = await res.json().catch(() => null);
-        setEditorContent(data?.content ?? "");
+        const { content, middle } = splitSpecForEditor(data?.content ?? "");
+        setEditorContent(content);
+        setEditorMiddle(middle);
         setEditorOpen(true);
         setSpecProjectErr(null);
       } catch (err: any) {
@@ -2317,21 +2358,44 @@ export default function ProjectSuite() {
       <FolderDeleteModal
         open={!!folderDeleteTarget}
         folderName={folderDeleteTarget?.folderName || ""}
-        hasSubfolders={!!folderDeleteTarget?.hasSubfolders}
-        deleteSubfolders={deleteSubfolders}
-        onDeleteSubfoldersChange={setDeleteSubfolders}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
         onCancel={() => {
           setFolderDeleteTarget(null);
-          setDeleteSubfolders(false);
+          setDeleteFiles(false);
         }}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!folderDeleteTarget) return;
-          deleteFolderInSuite(folderDeleteTarget.suiteId, folderDeleteTarget.folderPath, {
-            deleteSubfolders,
-          });
+          const target = folderDeleteTarget;
           setFolderDeleteTarget(null);
-          setDeleteSubfolders(false);
-          toast.success(`Deleted folder ${folderDeleteTarget.folderName}`);
+          setDeleteFiles(false);
+          if (deleteFiles) {
+            try {
+              const qs = new URLSearchParams({ path: target.folderPath });
+              await apiFetchRaw(apiUrl(`/tm/suite/projects/${target.suiteId}/folder?${qs}`), {
+                method: "DELETE",
+              });
+              // Remove specs from UI state that lived in this folder
+              updateSuiteFolderState(target.suiteId, (state) => {
+                const normalized = normalizeFolderPath(target.folderPath);
+                const nextSpecFolders = { ...state.specFolders };
+                Object.keys(nextSpecFolders).forEach((p) => {
+                  const f = nextSpecFolders[p];
+                  if (f === normalized || f?.startsWith(`${normalized}/`)) delete nextSpecFolders[p];
+                });
+                const nextFolders = state.folders.filter(
+                  (f) => f !== normalized && !f?.startsWith(`${normalized}/`)
+                );
+                return { ...state, folders: nextFolders, specFolders: nextSpecFolders };
+              });
+              toast.success(`Deleted folder "${target.folderName}" and all its specs`);
+            } catch (err: any) {
+              toast.error(err?.message || "Failed to delete folder");
+            }
+          } else {
+            deleteFolderInSuite(target.suiteId, target.folderPath);
+            toast.success(`Removed folder "${target.folderName}"`);
+          }
         }}
       />
       {editorOpen && (
@@ -2340,7 +2404,10 @@ export default function ProjectSuite() {
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium">{editorPath}</div>
-                <div className="text-xs text-slate-500">Editing in {activeSuite?.name || pid}</div>
+                <div className="text-xs text-slate-500">
+                  Editing in {activeSuite?.name || pid}
+                  {editorMiddle ? " · helpers hidden" : ""}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={() => setEditorOpen(false)} disabled={editorSaving}>

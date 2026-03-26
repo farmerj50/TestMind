@@ -1023,6 +1023,7 @@ export async function testRoutes(app: FastifyInstance) {
         type: true,
         tags: true,
         preconditions: true,
+        locators: true,
         lastAiSyncAt: true,
         updatedAt: true,
         steps: {
@@ -1117,6 +1118,7 @@ export async function testRoutes(app: FastifyInstance) {
       type: z.enum(["functional", "regression", "security", "accessibility", "other"]).optional(),
       tags: tagsSchema,
       preconditions: z.string().optional().nullable(),
+      locators: z.string().optional().nullable(),
       steps: stepsSchema,
       lastAiSyncAt: z.coerce.date().optional(),
     });
@@ -1133,6 +1135,7 @@ export async function testRoutes(app: FastifyInstance) {
       if (casePayload.type) updateData.type = casePayload.type;
       if (casePayload.tags !== undefined) updateData.tags = casePayload.tags;
       if (casePayload.preconditions !== undefined) updateData.preconditions = casePayload.preconditions;
+      if (casePayload.locators !== undefined) updateData.locators = casePayload.locators;
       if (casePayload.suiteId !== undefined) {
         updateData.suite = casePayload.suiteId
           ? { connect: { id: casePayload.suiteId } }
@@ -1153,6 +1156,7 @@ export async function testRoutes(app: FastifyInstance) {
           updatedAt: true,
           tags: true,
           preconditions: true,
+          locators: true,
           lastAiSyncAt: true,
         },
       });
@@ -1306,6 +1310,7 @@ export async function testRoutes(app: FastifyInstance) {
           projectId: true,
           title: true,
           preconditions: true,
+          locators: true,
           steps: { orderBy: { idx: "asc" }, select: { action: true, expected: true, idx: true } },
         },
       });
@@ -1363,10 +1368,14 @@ export async function testRoutes(app: FastifyInstance) {
         `Base URL: ${baseUrl}`,
         "Steps (action + expected):",
         JSON.stringify(steps, null, 2),
+        ...(tc.locators?.trim()
+          ? ["", "Locator hints (use these selectors when they match the target element):", tc.locators.trim()]
+          : []),
         "",
         "Rules:",
         "- Use page.goto() for navigation.",
         "- If action contains a selector or HTML snippet, prefer a stable locator (href, data-testid, text).",
+        "- If locator hints are provided, use them directly instead of inferring selectors.",
         "- If expected is 'navigated' or similar, assert URL with expect(page).toHaveURL(...).",
         "- Keep it minimal and deterministic. No extra setup or shared steps.",
       ].join("\n");

@@ -185,6 +185,7 @@ export default function ReportsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState<Range>("all");
+  const [runLimit, setRunLimit] = useState(100);
   const [statusFilter, setStatusFilter] = useState<Array<Run["status"]>>(["succeeded", "failed", "running", "queued"]);
   const [showHealth, setShowHealth] = useState(true);
   const [showExit, setShowExit] = useState(true);
@@ -203,26 +204,28 @@ export default function ReportsPage() {
       const all: Run[] = [];
       let cursorId: string | undefined;
       let guard = 0;
+      const pageSize = Math.min(runLimit, 500); // backend max per page is 500
 
-      while (guard < 10) {
-        const params = new URLSearchParams({ take: "100" });
+      while (guard < 20) {
+        const params = new URLSearchParams({ take: String(pageSize) });
         if (projectId) params.set("projectId", projectId);
         if (cursorId) params.set("cursorId", cursorId);
-        const qs = `?${params.toString()}`;
-        const res = await apiFetch<{ runs?: Run[]; nextCursor?: string; hasMore?: boolean }>(`/reports/recent${qs}`);
+        const res = await apiFetch<{ runs?: Run[]; nextCursor?: string; hasMore?: boolean }>(
+          `/reports/recent?${params.toString()}`
+        );
         const page = res?.runs ?? [];
         all.push(...page);
         if (!res?.hasMore || !res?.nextCursor || page.length === 0) break;
         cursorId = res.nextCursor;
         guard += 1;
-        if (all.length >= 500) break;
+        if (all.length >= runLimit) break;
       }
 
-      setRuns(all.slice(0, 500));
+      setRuns(all.slice(0, runLimit));
     } catch {
       setRuns([]);
     }
-  }, [apiFetch, projectId]);
+  }, [apiFetch, projectId, runLimit]);
 
   const refreshTelemetry = useCallback(async () => {
     try {
@@ -503,6 +506,18 @@ export default function ReportsPage() {
               "Export CSV to share summaries with your team.",
             ]}
           />
+          <Select value={String(runLimit)} onValueChange={(val) => setRunLimit(Number(val))}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Show runs" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="50">Last 50 runs</SelectItem>
+              <SelectItem value="100">Last 100 runs</SelectItem>
+              <SelectItem value="250">Last 250 runs</SelectItem>
+              <SelectItem value="500">Last 500 runs</SelectItem>
+              <SelectItem value="1000">Last 1000 runs</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={range} onValueChange={(val) => setRange(val as Range)}>
             <SelectTrigger className="w-28">
               <SelectValue placeholder="Range" />

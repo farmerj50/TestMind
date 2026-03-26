@@ -7,7 +7,9 @@ const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || `http://local
 const GEN_ROOT = process.env.TM_GENERATED_ROOT
   ? path.resolve(process.env.TM_GENERATED_ROOT)
   : path.resolve(DIR, 'testmind-generated');
-const GEN_DIR = "D:\\Project\\testmind_fresh_main\\apps\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5";
+const GEN_DIR = process.env.TM_TEST_DIR
+  ? path.resolve(process.env.TM_TEST_DIR)
+  : path.join(GEN_ROOT, 'playwright-ts');
 console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
@@ -34,6 +36,8 @@ const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
 const MAX_FAILURES = process.env.TM_MAX_FAILURES
   ? Number(process.env.TM_MAX_FAILURES)
   : 0;
+const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS);
+const AUTH_STORAGE = process.env.TM_AUTH_STORAGE || path.resolve(DIR, '.auth', 'state.json');
 
 export default defineConfig({
   use: {
@@ -58,10 +62,14 @@ export default defineConfig({
     '**/build/**',
     '**/.*/**',
   ],
-  projects: [{
-    name: 'generated',
-    testDir: GEN_DIR,
-    testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
-    timeout: 30_000,
-  }],
+  projects: [
+    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\.setup\.(ts|js|mjs)/, testDir: DIR }] : []),
+    {
+      name: 'generated',
+      testDir: GEN_DIR,
+      testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
+      timeout: 30_000,
+      ...(HAS_AUTH ? { dependencies: ['auth-setup'], use: { storageState: AUTH_STORAGE } } : {}),
+    },
+  ],
 });

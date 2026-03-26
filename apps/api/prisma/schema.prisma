@@ -207,6 +207,7 @@ model TestCase {
   type          TestCaseType   @default(functional)
   tags          String[]       @default([])
   preconditions String?        @db.Text
+  locators      String?        @db.Text
   lastAiSyncAt  DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt

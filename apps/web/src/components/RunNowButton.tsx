@@ -7,12 +7,14 @@ import type { AdapterId } from "./AdapterDropdown";
 type RunNowButtonProps = {
   projectId: string;
   adapterId?: AdapterId;
+  maxSpecs?: number;
   onDone?: () => void;
 } & Omit<ComponentProps<typeof Button>, "onClick" | "children">;
 
 export default function RunNowButton({
   projectId,
   adapterId,
+  maxSpecs,
   onDone,
   className,
   size = "sm",
@@ -30,6 +32,7 @@ export default function RunNowButton({
         body: JSON.stringify({
           projectId,
           ...(adapterId ? { adapterId } : {}),
+          ...(maxSpecs ? { maxSpecs, runAll: true } : {}),
         }),
       });
       onDone?.();

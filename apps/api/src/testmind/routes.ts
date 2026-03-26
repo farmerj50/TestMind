@@ -1278,6 +1278,43 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
     }
   });
 
+  // DELETE /tm/suite/projects/:id/folder?path=<rel-folder-path>
+  // Recursively deletes a folder and all spec files inside it from disk.
+  app.delete("/suite/projects/:id/folder", async (req, reply) => {
+    try {
+      const { userId } = getAuth(req);
+      if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+      const { id } = req.params as { id: string };
+      const { path: relPath } = (req.query as any) || {};
+      const targetPath = (relPath || "").trim();
+      if (!targetPath) return reply.code(400).send({ error: "path is required" });
+
+      const suite = await prisma.curatedSuite.findUnique({
+        where: { id },
+        select: { rootRel: true, project: { select: { ownerId: true } } },
+      });
+
+      let root: string | null = null;
+      if (suite && suite.project.ownerId === userId) {
+        root = path.resolve(CURATED_ROOT, suite.rootRel);
+      } else if (id.endsWith(userId)) {
+        root = path.resolve(GENERATED_ROOT, id);
+      }
+
+      if (!root) return reply.code(404).send({ error: "Suite not found" });
+
+      const abs = path.resolve(root, targetPath);
+      ensureWithin(root, abs);
+      const exists = fs.existsSync(abs);
+      if (exists) {
+        await fs.promises.rm(abs, { recursive: true, force: true });
+      }
+      return reply.send({ ok: true, deleted: exists });
+    } catch (err) {
+      return sendError(app, reply, err);
+    }
+  });
+
   app.get("/suite/spec-content", async (req, reply) => {
     try {
       const { userId } = getAuth(req);

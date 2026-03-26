@@ -25,6 +25,7 @@ import {
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { validateProject } from "../lib/validation";
 import ConnectGitHubCard from "../components/ConnectGitHubCard";
 import RunNowButton from "../components/RunNowButton";
@@ -229,6 +230,7 @@ export default function DashboardPage() {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [projectSummaries, setProjectSummaries] = useState<Record<string, Summary | null>>({});
   const [runningAll, setRunningAll] = useState(false);
+  const [maxSpecsLimit, setMaxSpecsLimit] = useState<number | undefined>(undefined);
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [formErrors, setFormErrors] = useState<{ name?: string; repoUrl?: string }>({});
@@ -420,6 +422,8 @@ export default function DashboardPage() {
           body: JSON.stringify({
             projectId: project.id,
             adapterId,
+            runAll: true,
+            ...(maxSpecsLimit ? { maxSpecs: maxSpecsLimit } : {}),
           }),
         });
       }
@@ -646,18 +650,35 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <Button
-                  onClick={runAllTests}
-                  disabled={!hasProjects || runningAll}
-                  className="bg-slate-950 text-white hover:bg-slate-800"
-                >
-                  {runningAll ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Play className="mr-2 h-4 w-4" />
-                  )}
-                  {runningAll ? "Queueing runs..." : "Run All Tests"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={runAllTests}
+                    disabled={!hasProjects || runningAll}
+                    className="bg-slate-950 text-white hover:bg-slate-800"
+                  >
+                    {runningAll ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="mr-2 h-4 w-4" />
+                    )}
+                    {runningAll ? "Queueing runs..." : "Run All Tests"}
+                  </Button>
+                  <Select
+                    value={maxSpecsLimit ? String(maxSpecsLimit) : "all"}
+                    onValueChange={(v) => setMaxSpecsLimit(v === "all" ? undefined : Number(v))}
+                  >
+                    <SelectTrigger className="h-9 w-[110px] text-xs">
+                      <SelectValue placeholder="Specs limit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All specs</SelectItem>
+                      <SelectItem value="10">10 specs</SelectItem>
+                      <SelectItem value="25">25 specs</SelectItem>
+                      <SelectItem value="50">50 specs</SelectItem>
+                      <SelectItem value="100">100 specs</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button asChild variant="outline">
                   <Link to={primaryProjectId ? `/agent?projectId=${primaryProjectId}` : "/agent"}>
                     <Bot className="mr-2 h-4 w-4" />
@@ -878,6 +899,7 @@ export default function DashboardPage() {
                         <RunNowButton
                           projectId={project.id}
                           adapterId={adapterId}
+                          maxSpecs={maxSpecsLimit}
                           onDone={() => setRefreshKey((value) => value + 1)}
                           size="sm"
                         />
