@@ -822,7 +822,7 @@ export default async function runRoutes(app: FastifyInstance) {
     }
     const maxSpecs =
       parsed.data.maxSpecs ??
-      (process.env.TM_MAX_SPECS ? Number(process.env.TM_MAX_SPECS) : 50);
+      (process.env.TM_MAX_SPECS ? Number(process.env.TM_MAX_SPECS) : undefined);
     const localRepoRoot = process.env.TM_LOCAL_REPO_ROOT?.trim() || null;
 
     // look up project
@@ -1809,14 +1809,8 @@ setup("auth storage", async ({ page, baseURL }) => {
           await catalogSpecs(genDest, 'FINAL');
         }
 
-        // Enforce maxSpecs limit when no specific file/grep is selected (prevents slow full-suite runs).
-        // Applies to any generated-only run without a targeted file or test title filter.
-        const isUntargeted =
-          !parsed.data.grep &&
-          !parsed.data.file &&
-          !parsed.data.specPath &&
-          !(parsed.data.files?.length);
-        if (maxSpecs && Number.isFinite(maxSpecs) && maxSpecs > 0 && fsSync.existsSync(genDest) && isUntargeted) {
+        // Enforce maxSpecs limit when running all specs (not a targeted file run)
+        if (maxSpecs && Number.isFinite(maxSpecs) && maxSpecs > 0 && fsSync.existsSync(genDest) && runAll) {
           const allSpecFiles: string[] = [];
           const walkForLimit = async (p: string) => {
             const entries = await fs.readdir(p, { withFileTypes: true }).catch(() => [] as any[]);
