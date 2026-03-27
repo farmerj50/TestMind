@@ -1273,14 +1273,17 @@ export default async function runRoutes(app: FastifyInstance) {
             }
           };
           await syncLegacyRecordings();
-          const specFiles = listSpecFiles(genDir);
-          await fs.writeFile(
-            path.join(outDir, "stdout.txt"),
-            `[runner] spec files in genDir (${specFiles.length})\n` +
-              specFiles.map((f) => ` - ${f}`).join("\n") +
-              "\n",
-            { flag: "a" }
-          );
+          // Skip the full spec listing for targeted single-file runs — it adds scan overhead for no value
+          if (runAll || !hasSelection) {
+            const specFiles = listSpecFiles(genDir);
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] spec files in genDir (${specFiles.length})\n` +
+                specFiles.map((f) => ` - ${f}`).join("\n") +
+                "\n",
+              { flag: "a" }
+            );
+          }
         }
 
         // 3) Detect + run (object signature) and force JSON output to outDir/report.json
@@ -1805,7 +1808,13 @@ setup("auth storage", async ({ page, baseURL }) => {
           );
         }
 
-        if (fsSync.existsSync(genDest)) {
+        // Only catalog specs for suite/runAll runs — skip for targeted single-file runs to avoid scanning 197+ files
+        const isTargetedRun = !runAll && (
+          (parsed.data.files && parsed.data.files.length > 0) ||
+          !!parsed.data.file ||
+          !!parsed.data.specPath
+        );
+        if (!isTargetedRun && fsSync.existsSync(genDest)) {
           await catalogSpecs(genDest, 'FINAL');
         }
 
@@ -1838,10 +1847,13 @@ setup("auth storage", async ({ page, baseURL }) => {
           await walk(root);
           await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
         }
-        if (!aiMode) {
-          await logSpecs(cwd, "apps/web");
+        // Skip broad spec-discovery logs for targeted runs — they add scan overhead without value
+        if (!isTargetedRun) {
+          if (!aiMode) {
+            await logSpecs(cwd, "apps/web");
+          }
+          await logSpecs(genDest, "generated");
         }
-        await logSpecs(genDest, "generated");
 
         // If the caller provided specific files, restrict to those
         if (!runAll && parsed.data.files && parsed.data.files.length) {
