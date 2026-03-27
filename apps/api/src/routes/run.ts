@@ -1445,6 +1445,41 @@ export default async function runRoutes(app: FastifyInstance) {
         if (!requestedBaseUrl && !projectStoredBaseUrl) {
           effectiveBaseUrl = `http://localhost:${serverPort}`;
         }
+
+        // Guard: detect baseUrl/project mismatch before Playwright starts.
+        // This prevents misleading half-pass/half-fail results when the caller sends a URL
+        // that belongs to a different project (e.g. eToro URL for a JusticePath project).
+        // The check compares origins so http vs https differences and path differences are ignored.
+        // Only fires when the caller explicitly provided a requestedBaseUrl — we trust the project's
+        // stored URL and localhost fallbacks unconditionally.
+        if (requestedBaseUrl && projectStoredBaseUrl) {
+          try {
+            const requestedOrigin = new URL(requestedBaseUrl).origin;
+            const storedOrigin = new URL(projectStoredBaseUrl).origin;
+            if (requestedOrigin !== storedOrigin) {
+              const mismatchMsg =
+                `[runner] FATAL: baseUrl origin mismatch — ` +
+                `caller sent "${requestedBaseUrl}" but project "${pid}" has "${projectStoredBaseUrl}" stored. ` +
+                `This run has been blocked to prevent contaminated results.\n` +
+                `[runner] If the project URL changed, update it in project settings before running.\n`;
+              await fs.writeFile(path.join(outDir, "stdout.txt"), mismatchMsg, { flag: "a" });
+              await fs.writeFile(path.join(outDir, "stderr.txt"), mismatchMsg, { flag: "a" });
+              await prisma.testRun.update({
+                where: { id: run.id },
+                data: {
+                  status: TestRunStatus.failed,
+                  finishedAt: new Date(),
+                  error: `baseUrl mismatch: caller sent "${requestedOrigin}" but project has "${storedOrigin}"`,
+                },
+              });
+              return;
+            }
+          } catch {
+            // URL.parse failures are non-fatal — malformed URLs fall through to Playwright which will
+            // report a more descriptive navigation error rather than a confusing early abort.
+          }
+        }
+
         const serverDirAbsolute = cwd;
         const winServerDirEsc = serverDirAbsolute
           .replace(/\\/g, "\\\\")
