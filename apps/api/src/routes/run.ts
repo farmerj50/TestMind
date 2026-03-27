@@ -1811,7 +1811,11 @@ setup("auth storage", async ({ page, baseURL }) => {
 
         // Enforce maxSpecs limit when no specific file/grep is selected (prevents slow full-suite runs).
         // Applies to any generated-only run without a targeted file or test title filter.
-        const isUntargeted = requestedFiles.length === 0 && !grep;
+        const isUntargeted =
+          !grep &&
+          !parsed.data.file &&
+          !parsed.data.specPath &&
+          !(parsed.data.files?.length);
         if (maxSpecs && Number.isFinite(maxSpecs) && maxSpecs > 0 && fsSync.existsSync(genDest) && isUntargeted) {
           const allSpecFiles: string[] = [];
           const walkForLimit = async (p: string) => {
