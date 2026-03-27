@@ -1812,7 +1812,7 @@ setup("auth storage", async ({ page, baseURL }) => {
         // Enforce maxSpecs limit when no specific file/grep is selected (prevents slow full-suite runs).
         // Applies to any generated-only run without a targeted file or test title filter.
         const isUntargeted =
-          !grep &&
+          !parsed.data.grep &&
           !parsed.data.file &&
           !parsed.data.specPath &&
           !(parsed.data.files?.length);
