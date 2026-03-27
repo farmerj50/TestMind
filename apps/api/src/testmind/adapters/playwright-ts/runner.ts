@@ -68,26 +68,10 @@ function pickSpecSource(cwd: string, onLine: (s: string) => void) {
   return src;
 }
 
-function findOrWriteConfig(cwd: string, destTestDir: string, onLine: (s: string) => void) {
-  const candidates = [
-    'tm-ci.playwright.config.ts',
-    'tm-ci.playwright.config.mjs',
-    'tm-ci.playwright.config.js',
-    'playwright.config.ts',
-    'playwright.config.mjs',
-    'playwright.config.js',
-    'playwright.config.cjs',
-  ].map(f => path.join(cwd, f));
-
-  for (const c of candidates) {
-    if (exists(c)) {
-      onelineCopyLog(`[runner] using existing Playwright config: ${c}`, onLine);
-      return c;
-    }
-  }
-
-  // Write a minimal CI config that points to our dest test directory.
-  const cfgPath = path.join(cwd, 'tm-ci.playwright.config.ts');
+function writeIsolatedConfig(cwd: string, destTestDir: string, onLine: (s: string) => void) {
+  // Always write an isolated config locked to destTestDir — never reuse repo-wide configs
+  // that may have broad testDir settings (e.g. apps/web) causing spec discovery to escape the suite.
+  const cfgPath = path.join(cwd, '.tm-generated.playwright.config.ts');
   const testGlob = process.env.TM_TEST_GLOB || '**/*.spec.ts';
   const cfg = `
     import { defineConfig } from '@playwright/test';
@@ -105,7 +89,7 @@ function findOrWriteConfig(cwd: string, destTestDir: string, onLine: (s: string)
     });
   `.trim() + '\n';
   fs.writeFileSync(cfgPath, cfg, 'utf8');
-  onelineCopyLog(`[runner] wrote CI Playwright config: ${cfgPath}`, onLine);
+  onelineCopyLog(`[runner] wrote isolated Playwright config: ${cfgPath}`, onLine);
   return cfgPath;
 }
 
@@ -153,8 +137,8 @@ export const playwrightTSRunner = {
       for (const f of files) onelineCopyLog(` - ${f}`, onLine);
     }
 
-    // 2) Find or write a Playwright config pointing to our dest
-    const configPath = findOrWriteConfig(cwd, dest, onLine);
+    // 2) Write an isolated Playwright config locked to dest
+    const configPath = writeIsolatedConfig(cwd, dest, onLine);
 
     // 3) Kick off Playwright
     const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';

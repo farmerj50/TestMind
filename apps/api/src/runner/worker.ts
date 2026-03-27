@@ -746,10 +746,19 @@ export const worker = new Worker(
         let genDir = payload?.genDir;
         if (!genDir && specPath) {
           const normalized = specPath.replace(/\\/g, "/");
-          const marker = "/testmind-generated/";
-          const idx = normalized.indexOf(marker);
-          if (idx !== -1) {
-            const tail = normalized.slice(idx + marker.length);
+          // Handle both "/testmind-generated/..." and "testmind-generated/..." (relative paths)
+          const markerWithSlash = "/testmind-generated/";
+          const markerStart = "testmind-generated/";
+          let tail: string | null = null;
+          if (normalized.startsWith(markerStart)) {
+            tail = normalized.slice(markerStart.length);
+          } else {
+            const idx = normalized.indexOf(markerWithSlash);
+            if (idx !== -1) {
+              tail = normalized.slice(idx + markerWithSlash.length);
+            }
+          }
+          if (tail) {
             const first = tail.split("/")[0];
             if (first) {
               genDir = path.join(generatedRoot, first);

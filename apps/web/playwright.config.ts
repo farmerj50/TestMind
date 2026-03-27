@@ -26,11 +26,8 @@ export default defineConfig({
   reporter: [['json']],
   webServer: { command: 'vite dev --host 0.0.0.0 --port 4173', port: 4173, reuseExistingServer: true },
   use: { baseURL: 'http://localhost:4173' },
-  projects: [
-    { name: 'web', testDir: WEB, testMatch: ['**/*.spec.ts', '**/*.test.ts'], timeout: 30_000 },
-    ...(GEN
-      ? [{ name: 'generated', testDir: GEN, testMatch: ['**/*.spec.ts', '**/*.test.ts'], timeout: 30_000 }]
-      : []),
-  ],
+  projects: GEN
+    ? [{ name: 'generated', testDir: GEN, testMatch: ['**/*.spec.ts', '**/*.test.ts'], timeout: 30_000 }]
+    : [{ name: 'web', testDir: WEB, testMatch: ['**/*.spec.ts', '**/*.test.ts'], timeout: 30_000 }],
   
 });
