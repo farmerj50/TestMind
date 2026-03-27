@@ -1191,6 +1191,31 @@ export default async function runRoutes(app: FastifyInstance) {
             );
             return;
           }
+
+          // Narrow genDir from user-level to spec-specific subdirectory when possible.
+          // resolveGeneratedSpecsDir() falls back to userScoped when there is no directory matching
+          // project.id under the user suffix (e.g. JusticePath specs generated into a suite-id subdir).
+          // When a specific file is requested and its first path segment is a direct child of genDir,
+          // use that child as genDir so the Playwright testDir is scoped to just that project's specs.
+          // This prevents all mixed user-level specs from polluting the test discovery scope.
+          const firstRequestedFile = (
+            parsed.data.file ?? parsed.data.specPath ?? parsed.data.files?.[0]
+          );
+          if (firstRequestedFile) {
+            const relParts = firstRequestedFile.replace(/\\/g, "/").split("/");
+            // If the path has at least one segment, check if genDir/<segment> exists and is a directory
+            if (relParts.length >= 1) {
+              const firstSeg = relParts[0];
+              const narrowed = path.join(genDir, firstSeg);
+              if (firstSeg && !firstSeg.startsWith("..") && fsSync.existsSync(narrowed)) {
+                const stat = fsSync.statSync(narrowed).isDirectory();
+                if (stat) {
+                  genDir = narrowed; // narrowed to suite/project subdir
+                }
+              }
+            }
+          }
+
           await fs.writeFile(
             path.join(outDir, "stdout.txt"),
             `[runner] generated specs dir=${genDir}\n`,
@@ -2176,6 +2201,18 @@ setup("auth storage", async ({ page, baseURL }) => {
           extraEnv.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
         }
         if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
+
+        // For targeted single-file runs, cap Playwright workers at 2 (default is 6).
+        // Running 6 workers in parallel against a single external site causes all of them to
+        // compete for network/CPU simultaneously — on a slow or rate-limited site every test
+        // times out where only some would have timed out with fewer concurrent browsers.
+        // isTargetedRun is defined below but we re-derive it here at the extraEnv build point.
+        // We do NOT force workers=1 so that tests within the file can still run in mild parallelism.
+        // Callers can override via TM_WORKERS env var as usual.
+        if (!runAll && (requestedFiles.length > 0) && !process.env.TM_WORKERS) {
+          extraEnv.TM_WORKERS = "2";
+        }
+
         const allureReportDir = path.join(outDir, "allure-report");
         let hasAllureResults = false;
         const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
