@@ -11,8 +11,21 @@
   --tm-accent: #2563eb;
   --tm-accent-strong: #1d4ed8;
   --tm-accent-soft: #dbeafe;
-  --tm-shell: #e2e8f0;
+  --tm-shell: #ffffff;
   --tm-input-bg: rgba(168, 199, 255, 0.12);
+}
+
+html.dark {
+  color-scheme: dark;
+  --tm-bg: #0f172a;
+  --tm-surface: #111827;
+  --tm-surface-2: #1a2235;
+  --tm-border: #1f2937;
+  --tm-accent: #3b82f6;
+  --tm-accent-strong: #2563eb;
+  --tm-accent-soft: rgba(59, 130, 246, 0.18);
+  --tm-shell: #1e293b;
+  --tm-input-bg: rgba(148, 163, 184, 0.08);
 }
 
 html, body, #root {
@@ -20,6 +33,97 @@ html, body, #root {
   background-color: var(--tm-bg);
   min-height: 100%;
 }
+
+html.dark,
+html.dark body,
+html.dark #root {
+  color: #f1f5f9; /* slate-100 */
+}
+
+/* ── Nav item explicit colors (bypass Tailwind specificity issues) ──────── */
+.tm-nav-item { color: #1e293b; }
+.tm-nav-item.tm-active { color: #0f172a; font-weight: 600; }
+html.dark .tm-nav-item { color: #cbd5e1; }
+html.dark .tm-nav-item.tm-active { color: #ffffff; }
+.tm-nav-link { color: #374151; }
+.tm-nav-link.tm-active { color: #0f172a; font-weight: 600; }
+html.dark .tm-nav-link { color: #cbd5e1; }
+html.dark .tm-nav-link.tm-active { color: #ffffff; }
+.tm-nav-logo { color: #0f172a; font-weight: 600; }
+html.dark .tm-nav-logo { color: #ffffff; }
+.tm-nav-section { color: #64748b; }
+html.dark .tm-nav-section { color: #64748b; }
+
+/* ── Dark mode surface overrides ───────────────────────────────────────── */
+html.dark .bg-white { background-color: var(--tm-surface); }
+html.dark .bg-slate-50 { background-color: var(--tm-surface-2); }
+html.dark .hover\:bg-white:hover { background-color: #1e293b; }
+html.dark .hover\:bg-slate-50:hover { background-color: #1f2937; }
+
+/* ── Dark mode border overrides ────────────────────────────────────────── */
+html.dark .border-slate-200 { border-color: var(--tm-border); }
+html.dark .border-slate-300 { border-color: #374151; }
+html.dark .border-gray-300 { border-color: #374151; }
+
+/* ── Dark mode text overrides ──────────────────────────────────────────── */
+html.dark .text-slate-950 { color: #f1f5f9; }
+html.dark .text-slate-900 { color: #e2e8f0; }
+html.dark .text-slate-700 { color: #cbd5e1; }
+html.dark .text-slate-600 { color: #94a3b8; }
+
+/* ── Dark mode input / form ────────────────────────────────────────────── */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: var(--tm-surface-2);
+  color: #f1f5f9;
+  border-color: #374151;
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: #64748b; }
+
+/* ── Dark mode progress bar track ──────────────────────────────────────── */
+html.dark .bg-slate-200 { background-color: #374151; }
+
+/* ── Dark mode status badge overrides (terminal-grade) ─────────────────── */
+/* Emerald / Pass */
+html.dark .bg-emerald-50 { background-color: rgba(6, 78, 59, 0.25); }
+html.dark .border-emerald-200 { border-color: #065f46; }
+html.dark .text-emerald-700 { color: #34d399; }
+
+/* Rose / Fail */
+html.dark .bg-rose-50 { background-color: rgba(127, 29, 29, 0.25); }
+html.dark .border-rose-200 { border-color: #991b1b; }
+html.dark .text-rose-700 { color: #f87171; }
+html.dark .text-rose-600 { color: #f87171; }
+
+/* Blue / Running */
+html.dark .bg-blue-50 { background-color: rgba(30, 58, 138, 0.25); }
+html.dark .border-blue-200 { border-color: #1e3a8a; }
+html.dark .text-blue-700 { color: #60a5fa; }
+
+/* Amber / Queued / Warning */
+html.dark .bg-amber-50 { background-color: rgba(120, 53, 15, 0.25); }
+html.dark .border-amber-200 { border-color: #92400e; }
+html.dark .text-amber-700 { color: #fbbf24; }
+html.dark .text-amber-800 { color: #f59e0b; }
+
+/* ── Dark mode StatusBadge -100 shades ─────────────────────────────────── */
+html.dark .bg-slate-100 { background-color: #1f2937; }
+html.dark .text-slate-700 { color: #cbd5e1; }
+html.dark .bg-blue-100 { background-color: rgba(30, 58, 138, 0.3); }
+html.dark .text-blue-800 { color: #60a5fa; }
+html.dark .bg-emerald-100 { background-color: rgba(6, 78, 59, 0.3); }
+html.dark .text-emerald-800 { color: #34d399; }
+html.dark .bg-rose-100 { background-color: rgba(127, 29, 29, 0.3); }
+html.dark .text-rose-800 { color: #f87171; }
+html.dark .text-slate-800 { color: #e2e8f0; }
+html.dark .border-rose-300 { border-color: #991b1b; }
+html.dark .hover\:bg-rose-50:hover { background-color: rgba(127, 29, 29, 0.25); }
+html.dark .text-blue-600 { color: #60a5fa; }
+
+/* ── Dark mode table dividers ───────────────────────────────────────────── */
+html.dark .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: var(--tm-border); }
 
 body {
   position: relative;

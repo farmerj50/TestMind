@@ -1,5 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 import { SignedIn, SignedOut, UserButton, SignUpButton } from "@clerk/clerk-react";
+import { Moon, Sun } from "lucide-react";
+import { useDarkMode } from "../../lib/useDarkMode";
 
 type TopNavMode = "marketing" | "app" | "auth";
 
@@ -8,10 +10,7 @@ function NavA({ to, children }: { to: string; children: React.ReactNode }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        [
-          "px-3 py-2 text-sm transition-colors",
-          isActive ? "text-slate-950" : "text-slate-900 hover:text-slate-950",
-        ].join(" ")
+        ["px-3 py-2 text-sm transition-colors", isActive ? "tm-nav-link tm-active" : "tm-nav-link"].join(" ")
       }
       end
     >
@@ -37,11 +36,12 @@ function MarketingLinks() {
 }
 
 export default function TopNav({ mode = "app" }: { mode?: TopNavMode }) {
+  const { dark, toggle } = useDarkMode();
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-[color:var(--tm-border)] bg-[color:var(--tm-shell)]/90 backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b border-[color:var(--tm-border)] bg-[color:var(--tm-shell)] backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
-          <Link to="/" className="font-semibold tracking-tight">
+          <Link to="/" className="tracking-tight tm-nav-logo">
             TestMind AI
           </Link>
           {mode === "marketing" && <MarketingLinks />}
@@ -54,11 +54,19 @@ export default function TopNav({ mode = "app" }: { mode?: TopNavMode }) {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggle}
+            aria-label="Toggle dark mode"
+            className="rounded-md p-1.5 text-slate-600 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-white/10 transition-colors"
+          >
+            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+
           {mode !== "app" && (
             <SignedOut>
               <Link
                 to="/signin"
-                className="rounded-md border px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                className="rounded-md border px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-white/10"
               >
                 Sign in
               </Link>
@@ -74,7 +82,7 @@ export default function TopNav({ mode = "app" }: { mode?: TopNavMode }) {
           )}
 
           <SignedIn>
-            <UserButton afterSignOutUrl="/" />
+            <UserButton />
           </SignedIn>
         </div>
       </div>

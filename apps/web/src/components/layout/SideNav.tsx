@@ -18,8 +18,8 @@ function Item({
         [
           "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
           isActive
-            ? "bg-[color:var(--tm-accent-soft)] text-slate-950"
-            : "text-slate-900 hover:bg-white/70 hover:text-slate-950",
+            ? "bg-[color:var(--tm-accent-soft)] tm-nav-item tm-active"
+            : "tm-nav-item hover:bg-slate-100 dark:hover:bg-white/10",
         ].join(" ")
       }
     >
@@ -31,7 +31,7 @@ function Item({
 
 function Section({ label }: { label: string }) {
   return (
-    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide tm-nav-section">
       {label}
     </div>
   );
@@ -40,7 +40,7 @@ function Section({ label }: { label: string }) {
 export default function SideNav() {
   return (
     // fixed so it floats on top, doesn't constrain page width
-    <aside className="fixed left-0 top-14 hidden h-[calc(100vh-56px)] w-56 border-r border-[color:var(--tm-border)] bg-[color:var(--tm-surface-2)] md:block">
+    <aside className="fixed left-0 top-14 hidden h-[calc(100vh-56px)] w-56 border-r border-[color:var(--tm-border)] bg-white dark:bg-[color:var(--tm-surface-2)] md:block">
       <div className="flex h-full flex-col gap-1 overflow-y-auto p-2">
         <Section label="Build" />
         <Item to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
