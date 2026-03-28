@@ -21,7 +21,7 @@ export default async function operatorRoutes(app: FastifyInstance) {
     const { limit = '20', offset = '0' } = req.query as { limit?: string; offset?: string };
     const jobs = await prisma.operatorJob.findMany({
       where: { requestedBy: userId },
-      include: { tasks: { select: { id: true, type: true, status: true, testRunId: true, error: true } } },
+      include: { tasks: { select: { id: true, type: true, status: true, testRunId: true, error: true, outputJson: true } } },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Number(limit) || 20, 100),
       skip: Number(offset) || 0,

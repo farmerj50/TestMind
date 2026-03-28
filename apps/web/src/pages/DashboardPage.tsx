@@ -42,6 +42,14 @@ type Project = {
   createdAt: string;
 };
 
+type CaseHealth = {
+  passing: number;
+  failing: number;
+  healed: number;
+  neverRun: number;
+  total: number;
+};
+
 type Summary = {
   counts: {
     queued: number;
@@ -60,6 +68,7 @@ type Summary = {
     summary?: string | null;
     error?: string | null;
   } | null;
+  caseHealth?: CaseHealth | null;
 };
 
 type Run = {
@@ -755,6 +764,30 @@ export default function DashboardPage() {
                   : "Run a suite to start measuring pass rate."}
               </div>
             </div>
+
+            {dashboardSummary?.caseHealth && dashboardSummary.caseHealth.total > 0 && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 text-sm font-medium text-slate-700">Test Case Health</div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center">
+                    <div className="text-lg font-semibold text-emerald-700">{dashboardSummary.caseHealth.passing}</div>
+                    <div className="text-xs text-emerald-600">Passing</div>
+                  </div>
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-center">
+                    <div className="text-lg font-semibold text-rose-700">{dashboardSummary.caseHealth.failing}</div>
+                    <div className="text-xs text-rose-600">Failing</div>
+                  </div>
+                  <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-center">
+                    <div className="text-lg font-semibold text-teal-700">{dashboardSummary.caseHealth.healed}</div>
+                    <div className="text-xs text-teal-600">Auto-healed</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-center">
+                    <div className="text-lg font-semibold text-slate-600">{dashboardSummary.caseHealth.neverRun}</div>
+                    <div className="text-xs text-slate-500">Never run</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </DashboardSection>
 
           <DashboardSection

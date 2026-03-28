@@ -89,6 +89,8 @@ export type HealPrompt = {
     excerpt?: string | null;
   }>;
   previousAttemptRejectedReason?: string | null;
+  /** Per-request timeout in ms — overrides the client-level default when provided. */
+  timeoutMs?: number;
 };
 
 export type HealResponse = {
@@ -156,26 +158,29 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
           .map((artifact) => `- [${artifact.type}] ${artifact.path}${artifact.excerpt ? `\n${artifact.excerpt}` : ""}`)
           .join("\n\n")}`
       : "",
-    prompt.selectedTestSnippet
-      ? `Selected failing test block:\n\`\`\`ts\n${prompt.selectedTestSnippet}\n\`\`\``
-      : "",
-    "Current spec file:",
+    // For patch ops the LLM only needs the failing test block — not the full file.
+    // Sending the full spec balloons the prompt and causes slow/timeout responses.
+    // The operations are applied to the full spec server-side after the LLM responds.
+    "Failing test block to patch:",
     "```ts",
-    prompt.specContent,
+    prompt.selectedTestSnippet || prompt.specContent.slice(0, 6000),
     "```",
     "Respond ONLY with JSON:",
     '{"summary": string, "operations": Array<replace_literal|replace_regex_once|insert_after_literal>}',
   ].join("\n\n");
 
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    response_format: { type: "json_object" },
-    max_tokens: 1200,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent },
-    ],
-  });
+  const completion = await openai.chat.completions.create(
+    {
+      model: MODEL,
+      response_format: { type: "json_object" },
+      max_tokens: 1200,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+      ],
+    },
+    prompt.timeoutMs != null ? { timeout: prompt.timeoutMs } : undefined
+  );
 
   const raw = completion.choices[0]?.message?.content?.trim() || "{}";
   let parsed: any;
@@ -222,7 +227,12 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
     .filter(Boolean)
     .join("\n\n");
 
-  const specContent = prompt.specContent;
+  // Cap spec size sent to LLM — very large specs slow responses.
+  // The returned updatedSpec is re-validated against the original on the server side.
+  const MAX_SPEC_CHARS = 24_000;
+  const specContent = prompt.specContent.length > MAX_SPEC_CHARS
+    ? prompt.specContent.slice(0, MAX_SPEC_CHARS) + "\n// ... (truncated)"
+    : prompt.specContent;
   const userContent = [
     failureDetails,
     prompt.failureClasses?.length ? `Failure classes: ${prompt.failureClasses.join(", ")}` : "",
@@ -248,15 +258,18 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
     "Respond ONLY with JSON: {\"summary\": string, \"updatedSpec\": string}",
   ].join("\n\n");
 
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    response_format: { type: "json_object" },
-    max_tokens: Math.min(4000, Math.ceil(specContent.length / 2) + 500),
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent },
-    ],
-  });
+  const completion = await openai.chat.completions.create(
+    {
+      model: MODEL,
+      response_format: { type: "json_object" },
+      max_tokens: Math.min(4000, Math.ceil(specContent.length / 2) + 500),
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+      ],
+    },
+    prompt.timeoutMs != null ? { timeout: prompt.timeoutMs } : undefined
+  );
 
   const raw = completion.choices[0]?.message?.content?.trim() || "{}";
   let parsed: any;

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { enqueueOperatorJob } from "../runner/queue.js";
 
 export default async function qaAgentRoutes(app: FastifyInstance) {
   const StartBody = z.object({
@@ -9,9 +10,11 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
     suiteId: z.string().min(1, "suiteId is required"),
     baseUrl: z.string().url().optional(),
     parallel: z.boolean().optional(),
-    // includeApi removed — was broken (sent identical payload twice)
   });
 
+  // POST /qa-agent/start
+  // Creates an OperatorJob of type "qa" so the full triage/repair/verify
+  // lifecycle runs through the operator worker instead of a thin runner wrapper.
   app.post("/qa-agent/start", async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
@@ -23,103 +26,94 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
 
     const { projectId, suiteId, baseUrl } = parsed.data;
 
-    // Delegate to /runner/run so suiteId → spec file resolution happens correctly.
-    // run.ts looks up curatedSuite, resolves the file path, creates the TestRun, and
-    // enqueues it — we reuse all of that rather than duplicating it here.
-    const authHeader =
-      (req.headers.authorization as string | undefined) ||
-      (req.headers.Authorization as string | undefined);
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/runner/run",
-      payload: { projectId, suiteId, baseUrl },
-      headers: authHeader ? { authorization: authHeader } : undefined,
-    });
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      return reply.code(res.statusCode).send({ error: res.body?.toString() ?? "Runner failed" });
-    }
-
-    let runId: string | undefined;
-    try {
-      runId = (res.json() as any)?.id;
-    } catch {
-      // ignore parse errors
-    }
-
-    if (!runId) {
-      return reply.code(502).send({ error: "Runner did not return a run ID" });
-    }
-
-    // Stamp trigger so qa-agent jobs are queryable separately from user-initiated runs.
-    await prisma.testRun.update({ where: { id: runId }, data: { trigger: 'qa-agent' } });
-
-    // Read the freshly-created TestRun from DB and return it as the job.
-    // From here on, job.id === runId so polling /qa-agent/jobs/:id reads directly from DB.
-    const run = await prisma.testRun.findUnique({
-      where: { id: runId },
-      select: {
-        id: true,
-        projectId: true,
-        status: true,
-        error: true,
-        createdAt: true,
-        startedAt: true,
-        finishedAt: true,
-        paramsJson: true,
+    const job = await prisma.operatorJob.create({
+      data: {
+        projectId,
+        type: "qa",
+        requestedBy: userId,
+        objective: "Execute QA suite and manage failure lifecycle",
+        contextJson: {
+          suiteId,
+          baseUrl: baseUrl ?? null,
+          parallel: parsed.data.parallel ?? false,
+          source: "qa-agent",
+        },
       },
     });
 
-    return reply.send({ job: toJobShape(run ?? { id: runId, projectId, status: "queued", error: null, createdAt: new Date(), startedAt: null, finishedAt: null, paramsJson: null }) });
+    await enqueueOperatorJob(job.id);
+
+    return reply.send({ job: toJobShape(job, null) });
   });
 
+  // GET /qa-agent/jobs/:id
+  // Returns the OperatorJob plus its tasks. The UI can follow runId from
+  // the latest execute task to render the run report as before.
   app.get("/qa-agent/jobs/:id", async (req, reply) => {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     const { id } = req.params as { id: string };
-    const run = await prisma.testRun.findUnique({
+
+    const job = await prisma.operatorJob.findUnique({
       where: { id },
-      select: {
-        id: true,
-        projectId: true,
-        status: true,
-        error: true,
-        createdAt: true,
-        startedAt: true,
-        finishedAt: true,
-        paramsJson: true,
+      include: {
+        tasks: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            testRunId: true,
+            error: true,
+            createdAt: true,
+            startedAt: true,
+            finishedAt: true,
+            outputJson: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
-    if (!run) return reply.code(404).send({ error: "Job not found" });
-    return reply.send({ job: toJobShape(run) });
+    if (!job) return reply.code(404).send({ error: "Job not found" });
+    if (job.requestedBy !== userId) return reply.code(403).send({ error: "Forbidden" });
+
+    // Surface the most recent execute task's runId so the UI "View report"
+    // link (/test-runs/:runId) continues to work unchanged.
+    const latestRunTask = [...job.tasks].reverse().find((t) => !!t.testRunId);
+
+    return reply.send({
+      job: {
+        ...toJobShape(job, latestRunTask?.testRunId ?? null),
+        tasks: job.tasks,
+      },
+    });
   });
 }
 
-function toJobShape(run: {
-  id: string;
-  projectId: string;
-  status: string;
-  error?: string | null;
-  createdAt: Date;
-  startedAt?: Date | null;
-  finishedAt?: Date | null;
-  paramsJson?: unknown;
-}) {
-  const params = (run.paramsJson ?? {}) as Record<string, any>;
+function toJobShape(
+  job: {
+    id: string;
+    projectId: string;
+    status: string;
+    error?: string | null;
+    createdAt: Date;
+    startedAt?: Date | null;
+    finishedAt?: Date | null;
+    contextJson?: unknown;
+  },
+  runId: string | null
+) {
+  const ctx = (job.contextJson ?? {}) as Record<string, any>;
   return {
-    id: run.id,
-    projectId: run.projectId,
-    status: run.status,
-    // runId === id so the UI "View report" link (/test-runs/:runId) resolves correctly
-    runId: run.id,
-    baseUrl: params.baseUrl ?? undefined,
-    parallel: params.parallel ?? false,
-    error: run.error ?? undefined,
-    createdAt: run.createdAt.toISOString(),
-    // synthesized from the most recent state change timestamp
-    updatedAt: (run.finishedAt ?? run.startedAt ?? run.createdAt).toISOString(),
+    id: job.id,
+    projectId: job.projectId,
+    status: job.status,
+    runId,
+    baseUrl: ctx.baseUrl ?? undefined,
+    parallel: ctx.parallel ?? false,
+    error: job.error ?? undefined,
+    createdAt: job.createdAt.toISOString(),
+    updatedAt: (job.finishedAt ?? job.startedAt ?? job.createdAt).toISOString(),
   };
 }

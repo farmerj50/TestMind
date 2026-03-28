@@ -212,8 +212,28 @@ export default async function reportsRoutes(app: FastifyInstance) {
         },
       });
 
+      // canonical test-case health — derived from lastResultStatus written by finalizeLatestTestState
+      const caseWhere = projectId
+        ? { projectId, project: { ownerId: userId } }
+        : { projectId: { in: projectIds } };
+
+      const [casePassing, caseFailing, caseHealed, caseTotal] = await Promise.all([
+        prisma.testCase.count({ where: { ...caseWhere, lastResultStatus: "passed" } }),
+        prisma.testCase.count({ where: { ...caseWhere, lastResultStatus: { in: ["failed", "error"] } } }),
+        prisma.testCase.count({ where: { ...caseWhere, lastHealedAt: { not: null } } }),
+        prisma.testCase.count({ where: caseWhere }),
+      ]);
+
+      const caseHealth = {
+        passing: casePassing,
+        failing: caseFailing,
+        healed: caseHealed,
+        neverRun: caseTotal - casePassing - caseFailing,
+        total: caseTotal,
+      };
+
       reply.header("Cache-Control", "no-store");
-      return reply.send({ counts, lastRun });
+      return reply.send({ counts, lastRun, caseHealth });
     } catch (err: any) {
       req.log.error({ err }, "reports/summary failed");
       return reply.code(500).send({ statusCode: 500, error: "Internal Server Error" });

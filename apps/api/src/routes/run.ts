@@ -34,6 +34,7 @@ import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
 import { sendRunNotifications } from "../notifications/runNotifications.js";
+import { finalizeLatestTestState } from "../runner/finalize-latest-test-state.js";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -2496,6 +2497,12 @@ setup("auth storage", async ({ page, baseURL }) => {
             error: ok ? null : (filterRunnerError(exec.stderr) ?? "Test command failed"),
             artifactsJson: artifacts ?? undefined,
           },
+        });
+        finalizeLatestTestState({
+          runId: run.id,
+          source: run.trigger === "self-heal" ? "self-heal-rerun" : "run",
+        }).catch((err) => {
+          console.error(`[runner] finalizeLatestTestState failed for run ${run.id}`, err);
         });
         sendRunNotifications(run.id).catch((err) => {
           console.error(`[notifications] run ${run.id} failed`, err);

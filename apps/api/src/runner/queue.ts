@@ -64,7 +64,7 @@ export type ResumePhase =
   | { kind: 'wait_run'; runId: string; taskId: string; deadline: number }
   | { kind: 'approval_security'; approvalId: string; taskId: string; deadline: number; securityCtx: SecurityResumeCtx }
   | { kind: 'wait_scan'; scanId: string; taskId: string; deadline: number }
-  | { kind: 'wait_repairs'; remaining: string[]; taskMap: Record<string, string>; deadline: number };
+  | { kind: 'wait_repairs'; remainingAttempts: string[]; taskMap: Record<string, string>; deadline: number };
 
 export type OperatorJobPayload = {
   operatorJobId: string;

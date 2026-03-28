@@ -15,6 +15,7 @@ type OperatorTask = {
   error?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
+  outputJson?: Record<string, any> | null;
 };
 
 type OperatorJob = {
@@ -509,6 +510,57 @@ export default function OperatorPage() {
                         ))}
                       </div>
                     </details>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* QA output — triage + repair summary */}
+            {job.type === "qa" && (() => {
+              const triageTask = job.tasks.find((t) => t.type === "triage");
+              const repairTasks = job.tasks.filter((t) => t.type === "repair");
+              const out = triageTask?.outputJson;
+              if (!triageTask && repairTasks.length === 0) return null;
+              return (
+                <div className="space-y-3">
+                  {out && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Triage</p>
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        {(out.selfHealCount ?? 0) > 0 && (
+                          <span className="text-teal-700">{out.selfHealCount} self-healable</span>
+                        )}
+                        {(out.environmentCount ?? 0) > 0 && (
+                          <span className="text-amber-700">{out.environmentCount} infra noise</span>
+                        )}
+                        {(out.productDefectCount ?? 0) > 0 && (
+                          <span className="text-rose-700">{out.productDefectCount} product defect</span>
+                        )}
+                        {out.selfHealCount === 0 && out.environmentCount === 0 && out.productDefectCount === 0 && (
+                          <span className="text-emerald-700">All tests passed — nothing to triage</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {repairTasks.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Self-heal ({repairTasks.filter((t) => t.status === "succeeded").length}/{repairTasks.length} healed)
+                      </p>
+                      <div className="rounded-md border border-slate-200 divide-y divide-slate-100">
+                        {repairTasks.map((t) => (
+                          <div key={t.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                            <StatusBadge status={t.status} />
+                            <span className="text-slate-600 truncate">
+                              {(t.outputJson as any)?.testTitle ?? t.id.slice(0, 8)}
+                            </span>
+                            {t.error && (
+                              <span className="text-rose-500 truncate ml-auto" title={t.error}>{t.error}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               );

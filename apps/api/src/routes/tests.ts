@@ -1000,6 +1000,12 @@ export async function testRoutes(app: FastifyInstance) {
         suiteId: true,
         updatedAt: true,
         tags: true,
+        lastResultStatus: true,
+        lastRunId: true,
+        lastRunAt: true,
+        lastFailureMessage: true,
+        lastHealedAt: true,
+        lastSource: true,
       },
     });
 
@@ -1026,6 +1032,13 @@ export async function testRoutes(app: FastifyInstance) {
         locators: true,
         lastAiSyncAt: true,
         updatedAt: true,
+        lastResultStatus: true,
+        lastRunId: true,
+        lastRunAt: true,
+        lastFailureMessage: true,
+        lastHealedAt: true,
+        lastHealingAttemptId: true,
+        lastSource: true,
         steps: {
           orderBy: { idx: "asc" },
           select: { id: true, idx: true, action: true, expected: true },

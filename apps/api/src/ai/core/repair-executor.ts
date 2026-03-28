@@ -710,7 +710,7 @@ export async function executeRepairAttempt(input: {
     if (effectiveConfig.structuredPatch) {
       try {
         const structuredBudget = Math.max(5000, Math.min(effectiveConfig.structuredTimeoutMs, remainingBudgetMs()));
-        const patchResult = await withTimeout(requestSpecPatchOps(promptPayload), structuredBudget);
+        const patchResult = await withTimeout(requestSpecPatchOps({ ...promptPayload, timeoutMs: structuredBudget }), structuredBudget);
         const opValidation = validateHealOperations(patchResult.operations, {
           maxOps: effectiveConfig.maxPatchOps,
           maxText: effectiveConfig.maxPatchText,
@@ -738,7 +738,7 @@ export async function executeRepairAttempt(input: {
       if (budget <= 0) {
         throw new Error(`self-heal timeout after ${effectiveConfig.totalTimeoutMs}ms`);
       }
-      const healResult = await withTimeout(requestSpecHeal(promptPayload), budget);
+      const healResult = await withTimeout(requestSpecHeal({ ...promptPayload, timeoutMs: budget }), budget);
       patchedSpec = healResult.updatedSpec;
       healedSummary = healResult.summary;
       healedRaw = healResult.raw;

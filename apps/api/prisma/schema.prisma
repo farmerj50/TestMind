@@ -209,6 +209,16 @@ model TestCase {
   preconditions String?        @db.Text
   locators      String?        @db.Text
   lastAiSyncAt  DateTime?
+
+  // Canonical latest execution snapshot — updated after every run/rerun
+  lastResultStatus     TestResultStatus?
+  lastRunId            String?
+  lastRunAt            DateTime?
+  lastFailureMessage   String?           @db.Text
+  lastHealedAt         DateTime?
+  lastHealingAttemptId String?
+  lastSource           String?           // "run" | "self-heal-rerun" | "qa-verify"
+
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -219,6 +229,7 @@ model TestCase {
 
   @@unique([projectId, key])
   @@index([projectId, suiteId])
+  @@index([projectId, lastResultStatus])
 }
 
 model TestResult {

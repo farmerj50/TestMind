@@ -1,10 +1,14 @@
 import { Worker, Job, DelayedError } from 'bullmq';
+import fsSync from 'node:fs';
+import path from 'node:path';
 import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { enqueueRun, enqueueSelfHeal, enqueueSecurityScan } from './queue.js';
 import type { OperatorJobPayload, ResumePhase, SecurityResumeCtx } from './queue.js';
 import { createStepRunner } from './step-executor.js';
 import { runBrowserCapability } from './capabilities/browser-cap.js';
+import { finalizeLatestTestState } from './finalize-latest-test-state.js';
+import { CURATED_ROOT } from '../testmind/curated-store.js';
 
 export { createStepRunner };
 
@@ -169,7 +173,7 @@ async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDela
   if (phase.kind === 'wait_run') {
     await checkOrDelayRun(phase.runId, phase.taskId, opJob.id, phase.deadline, reDelay);
   } else if (phase.kind === 'wait_repairs') {
-    await checkOrDelayRepairs(opJob.id, phase.remaining, phase.taskMap, phase.deadline, reDelay);
+    await checkOrDelayRepairs(opJob.id, phase.remainingAttempts, phase.taskMap, phase.deadline, reDelay);
   } else if (phase.kind === 'approval_security') {
     await checkOrDelayApproval(opJob, phase, reDelay);
   } else if (phase.kind === 'wait_scan') {
@@ -214,16 +218,171 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
   await prisma.operatorTask.update({ where: { id: task.id }, data: { testRunId: run.id } });
 
+  // Resolve suiteId → genDir so the worker knows which curated spec folder to run
+  let genDir: string | undefined;
+  if (ctx.suiteId) {
+    const suite = await prisma.curatedSuite.findUnique({
+      where: { id: ctx.suiteId as string },
+      select: { rootRel: true },
+    });
+    const candidates = [
+      path.join(CURATED_ROOT, ctx.suiteId as string),
+      suite?.rootRel ? path.join(CURATED_ROOT, suite.rootRel) : null,
+    ].filter((p): p is string => Boolean(p));
+    genDir = candidates.find((p) => fsSync.existsSync(p));
+    if (!genDir) {
+      console.warn(`[operator-worker] QA job ${opJob.id}: curated suite dir not found for suiteId=${ctx.suiteId}; tried: ${candidates.join(', ')}`);
+    }
+  }
+
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
     baseUrl: inferredBaseUrl,
     mode: inferredMode as 'regular' | 'ai',
+    genDir,
     file: ctx.file,
     grep: ctx.grep,
   });
 
   const deadline = Date.now() + 10 * 60 * 1000;
   await checkOrDelayRun(run.id, task.id, opJob.id, deadline, reDelay);
+
+  // Run completed — write canonical latest-execution state onto each TestCase
+  finalizeLatestTestState({ runId: run.id, source: 'run' }).catch((err) =>
+    console.error(`[operator-worker] finalizeLatestTestState failed for run ${run.id}`, err)
+  );
+
+  // Only triage failures when the run didn't succeed
+  const finalRun = await prisma.testRun.findUnique({
+    where: { id: run.id },
+    select: { status: true },
+  });
+  if (finalRun?.status !== 'failed') return;
+
+  const maxRepairs = Number(ctx.maxRepairs ?? 10);
+  const classified = await classifyRunFailures(run.id, maxRepairs);
+
+  const triageTask = await prisma.operatorTask.create({
+    data: {
+      jobId: opJob.id,
+      type: 'triage',
+      status: 'succeeded',
+      startedAt: new Date(),
+      finishedAt: new Date(),
+      inputJson: { runId: run.id },
+      outputJson: {
+        runId: run.id,
+        selfHealCount: classified.selfHeal.length,
+        environmentCount: classified.environment.length,
+        productDefectCount: classified.productDefect.length,
+        classifications: [
+          ...classified.selfHeal.map((r) => ({ id: r.id, title: r.title, category: 'self-heal' })),
+          ...classified.environment.map((r) => ({ id: r.id, title: r.title, category: 'environment' })),
+          ...classified.productDefect.map((r) => ({ id: r.id, title: r.title, category: 'product-defect' })),
+        ],
+      },
+    },
+  });
+
+  if (classified.selfHeal.length === 0) return;
+
+  // Enqueue a repair task + self-heal job for each self-healable failure
+  const repairTasks = await Promise.all(
+    classified.selfHeal.map((r) =>
+      prisma.operatorTask.create({
+        data: {
+          jobId: opJob.id,
+          type: 'repair',
+          status: 'running',
+          startedAt: new Date(),
+          parentTaskId: triageTask.id,
+          inputJson: { testResultId: r.id, testTitle: r.title, classification: 'self-heal' },
+        },
+      })
+    )
+  );
+
+  // Create real testHealingAttempt records so the self-heal worker can update them
+  const healAttemptIds: string[] = [];
+  for (const r of classified.selfHeal) {
+    const count = await prisma.testHealingAttempt.count({ where: { testResultId: r.id } });
+    const attempt = await prisma.testHealingAttempt.create({
+      data: {
+        runId: run.id,
+        testResultId: r.id,
+        testCaseId: r.testCaseId,
+        attempt: count + 1,
+        status: 'queued',
+      },
+    });
+    healAttemptIds.push(attempt.id);
+  }
+
+  await Promise.all(
+    classified.selfHeal.map((r, i) =>
+      enqueueSelfHeal({
+        runId: run.id,
+        testResultId: r.id,
+        testCaseId: r.testCaseId,
+        attemptId: healAttemptIds[i],
+        projectId: opJob.projectId,
+        totalFailed: classified.selfHeal.length,
+        testTitle: r.title ?? undefined,
+        baseUrl: inferredBaseUrl,
+      }).then(() =>
+        console.log(`[operator-worker] qa: enqueued self-heal for "${r.title}" (task ${repairTasks[i].id})`)
+      )
+    )
+  );
+
+  // taskMap: attemptId → operatorTaskId
+  const taskMap: Record<string, string> = Object.fromEntries(
+    healAttemptIds.map((attemptId, i) => [attemptId, repairTasks[i].id])
+  );
+  const repairDeadline = Date.now() + 20 * 60 * 1000;
+  await checkOrDelayRepairs(opJob.id, healAttemptIds, taskMap, repairDeadline, reDelay);
+}
+
+type FailureClass = { id: string; testCaseId: string; title: string; message: string | null };
+
+async function classifyRunFailures(
+  runId: string,
+  maxTests = 10
+): Promise<{ selfHeal: FailureClass[]; environment: FailureClass[]; productDefect: FailureClass[] }> {
+  const failing = await prisma.testResult.findMany({
+    where: { runId, status: { in: ['failed', 'error'] } },
+    include: { testCase: { select: { id: true, title: true } } },
+    take: maxTests,
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Selector / locator churn — likely fixable by self-heal
+  const SELECTOR_RE = /locator|selector|getByRole|getByText|getByLabel|element.*not found|not visible|strict mode|timeout.*waiting/i;
+  // Infrastructure / network noise — not test-code bugs
+  const ENV_RE = /econnrefused|etimedout|econnreset|network|dns|502|503|certificate|ssl/i;
+
+  const selfHeal: FailureClass[] = [];
+  const environment: FailureClass[] = [];
+  const productDefect: FailureClass[] = [];
+
+  for (const r of failing) {
+    const item: FailureClass = {
+      id: r.id,
+      testCaseId: r.testCaseId,
+      title: r.testCase?.title ?? '',
+      message: r.message ?? null,
+    };
+    const msg = r.message ?? '';
+    if (ENV_RE.test(msg)) {
+      environment.push(item);
+    } else if (SELECTOR_RE.test(msg)) {
+      selfHeal.push(item);
+    } else {
+      productDefect.push(item);
+    }
+  }
+
+  return { selfHeal, environment, productDefect };
 }
 
 async function checkOrDelayRun(
@@ -344,14 +503,29 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     )
   );
 
-  const healAttemptBase = `operator:${opJob.id}`;
+  // Create real testHealingAttempt records so the self-heal worker can update them
+  const healAttemptIds: string[] = [];
+  for (const r of failingResults) {
+    const count = await prisma.testHealingAttempt.count({ where: { testResultId: r.id } });
+    const attempt = await prisma.testHealingAttempt.create({
+      data: {
+        runId: targetRunId!,
+        testResultId: r.id,
+        testCaseId: r.testCase?.id ?? r.id,
+        attempt: count + 1,
+        status: 'queued',
+      },
+    });
+    healAttemptIds.push(attempt.id);
+  }
+
   await Promise.all(
     failingResults.map((r, i) =>
       enqueueSelfHeal({
         runId: targetRunId!,
         testResultId: r.id,
         testCaseId: r.testCase?.id ?? r.id,
-        attemptId: `${healAttemptBase}:${r.id}`,
+        attemptId: healAttemptIds[i],
         projectId: opJob.projectId,
         totalFailed: failingResults.length,
         testTitle: r.testCase?.title ?? undefined,
@@ -364,59 +538,54 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     )
   );
 
+  // taskMap: attemptId → operatorTaskId
   const taskMap: Record<string, string> = Object.fromEntries(
-    failingResults.map((r, i) => [r.id, repairTasks[i].id])
+    healAttemptIds.map((attemptId, i) => [attemptId, repairTasks[i].id])
   );
   const deadline = Date.now() + 20 * 60 * 1000;
-  await checkOrDelayRepairs(opJob.id, [...failingResults.map((r) => r.id)], taskMap, deadline, reDelay);
+  await checkOrDelayRepairs(opJob.id, [...healAttemptIds], taskMap, deadline, reDelay);
 }
 
 async function checkOrDelayRepairs(
   jobId: string,
-  remaining: string[],
+  remainingAttempts: string[],
   taskMap: Record<string, string>,
   deadline: number,
   reDelay: ReDelayFn
 ) {
-  const updated = await prisma.testResult.findMany({
-    where: { id: { in: remaining } },
-    select: { id: true, status: true, message: true },
+  const attempts = await prisma.testHealingAttempt.findMany({
+    where: { id: { in: remainingAttempts } },
+    select: { id: true, status: true, error: true, testResultId: true, runId: true },
   });
 
   const stillRemaining: string[] = [];
-  for (const res of updated) {
-    if (res.status === 'passed' || res.status === 'failed') {
-      const taskId = taskMap[res.id];
+  for (const a of attempts) {
+    if (a.status === 'succeeded' || a.status === 'failed') {
+      const taskId = taskMap[a.id];
       if (taskId) {
-        const healed = res.status === 'passed';
+        const healed = a.status === 'succeeded';
         await prisma.operatorTask.update({
           where: { id: taskId },
           data: {
             status: healed ? 'succeeded' : 'failed',
             finishedAt: new Date(),
-            error: healed ? null : (res.message ?? 'Self-heal did not fix the test'),
-            outputJson: { testResultId: res.id, finalStatus: res.status },
+            error: healed ? null : (a.error ?? 'Self-heal did not fix the test'),
+            outputJson: { healingAttemptId: a.id, finalStatus: a.status },
           },
         });
         if (healed) {
-          const result = await prisma.testResult.findUnique({
-            where: { id: res.id },
-            select: { runId: true },
+          await recordArtifact({
+            jobId,
+            taskId,
+            testRunId: a.runId,
+            type: 'patch',
+            path: `runs/${a.runId}/self-heal-patch-${a.testResultId}.diff`,
+            meta: { testResultId: a.testResultId, healingAttemptId: a.id, outcome: 'healed' },
           });
-          if (result) {
-            await recordArtifact({
-              jobId,
-              taskId,
-              testRunId: result.runId,
-              type: 'patch',
-              path: `runs/${result.runId}/self-heal-patch-${res.id}.diff`,
-              meta: { testResultId: res.id, outcome: 'healed' },
-            });
-          }
         }
       }
     } else {
-      stillRemaining.push(res.id);
+      stillRemaining.push(a.id);
     }
   }
 
@@ -424,8 +593,8 @@ async function checkOrDelayRepairs(
 
   if (Date.now() > deadline) {
     await Promise.all(
-      stillRemaining.map((resultId) => {
-        const taskId = taskMap[resultId];
+      stillRemaining.map((attemptId) => {
+        const taskId = taskMap[attemptId];
         if (!taskId) return;
         return prisma.operatorTask.update({
           where: { id: taskId },
@@ -433,10 +602,10 @@ async function checkOrDelayRepairs(
         });
       })
     );
-    return; // Timeout — partial results are still useful, don't throw
+    return;
   }
 
-  await reDelay(REPAIR_POLL_MS, { kind: 'wait_repairs', remaining: stillRemaining, taskMap, deadline });
+  await reDelay(REPAIR_POLL_MS, { kind: 'wait_repairs', remainingAttempts: stillRemaining, taskMap, deadline });
 }
 
 // ── Discovery job ─────────────────────────────────────────────────────────────

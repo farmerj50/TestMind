@@ -34,6 +34,12 @@ type CaseListItem = {
   suiteId: string | null;
   tags: string[];
   updatedAt: string;
+  lastResultStatus?: "passed" | "failed" | "skipped" | "error" | null;
+  lastRunId?: string | null;
+  lastRunAt?: string | null;
+  lastFailureMessage?: string | null;
+  lastHealedAt?: string | null;
+  lastSource?: string | null;
 };
 
 type Step = { id?: string; idx?: number; action: string; expected: string };
@@ -49,6 +55,7 @@ type CaseDetail = CaseListItem & {
   preconditions?: string | null;
   locators?: string | null;
   lastAiSyncAt?: string | null;
+  lastHealingAttemptId?: string | null;
   steps: Step[];
   runs: CaseRun[];
 };
@@ -499,9 +506,21 @@ export default function ProjectPage() {
                     >
                       <span className="break-words">{formatCaseTitle(c.title)}</span>
                     </span>
-                    <span className="text-xs uppercase text-slate-500 shrink-0">
-                      {c.priority}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {c.lastResultStatus && (
+                        <span
+                          title={`Last run: ${c.lastResultStatus}${c.lastHealedAt ? " (healed)" : ""}`}
+                          className={`inline-block h-2 w-2 rounded-full ${
+                            c.lastResultStatus === "passed"
+                              ? c.lastHealedAt ? "bg-teal-400" : "bg-emerald-500"
+                              : c.lastResultStatus === "failed" || c.lastResultStatus === "error"
+                              ? "bg-rose-500"
+                              : "bg-slate-400"
+                          }`}
+                        />
+                      )}
+                      <span className="text-xs uppercase text-slate-500">{c.priority}</span>
+                    </div>
                   </div>
                   <div className="text-xs text-slate-500">
                     {suiteLookup.get(c.suiteId || "")?.name || "Unassigned"}
@@ -790,6 +809,35 @@ export default function ProjectPage() {
                       </ul>
                     )}
                   </div>
+
+                  {caseDetail.lastResultStatus && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          caseDetail.lastResultStatus === "passed"
+                            ? caseDetail.lastHealedAt ? "bg-teal-400" : "bg-emerald-500"
+                            : caseDetail.lastResultStatus === "failed" || caseDetail.lastResultStatus === "error"
+                            ? "bg-rose-500"
+                            : "bg-slate-400"
+                        }`}
+                      />
+                      <span>
+                        Last run:{" "}
+                        <span className="font-medium">{caseDetail.lastResultStatus}</span>
+                        {caseDetail.lastHealedAt && " (auto-healed)"}
+                        {caseDetail.lastRunAt && ` · ${new Date(caseDetail.lastRunAt).toLocaleString()}`}
+                        {caseDetail.lastSource === "self-heal-rerun" && !caseDetail.lastHealedAt && " · via self-heal"}
+                      </span>
+                      {caseDetail.lastRunId && (
+                        <a
+                          href={`/test-runs/${caseDetail.lastRunId}`}
+                          className="underline hover:text-slate-700"
+                        >
+                          View run
+                        </a>
+                      )}
+                    </div>
+                  )}
 
                   {caseDetail.lastAiSyncAt && (
                     <div className="text-xs text-slate-500">
