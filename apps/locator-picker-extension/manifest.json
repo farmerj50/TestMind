@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "TestMind Locator Picker",
+  "version": "0.1.0",
+  "description": "Pick page elements and save locators into TestMind.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "action": {
+    "default_title": "TestMind Picker",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}

@@ -1,0 +1,1187 @@
+import { Worker, Job } from 'bullmq';
+import path from 'path';
+import fs from 'fs/promises';
+import fsSync from 'fs';
+import { execa } from 'execa';
+import { prisma } from '../prisma.js';
+import { redis } from './redis.js';
+import { makeWorkdir, rmrf } from './workdir.js';
+import { cloneRepo } from './git.js';
+import { detectFramework, installDeps, runTests } from './node-test-exec.js';
+import { parseResults, type ParsedCase } from './result-parsers.js';
+import { scheduleSelfHealingForRun } from './self-heal.js';
+import { finalizeLatestTestState } from './finalize-latest-test-state.js';
+import type { RunPayload } from './queue.js';
+import { analyzeFailure } from './ai-analysis.js';
+import type { LocatorBucket } from '../testmind/runtime/locator-store.js';
+import { REPORT_ROOT } from '../lib/storageRoots.js';
+import { decryptSecret } from '../lib/crypto.js';
+import { runAdapter } from '../testmind/service.js';
+import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
+
+type RunStatus = "queued" | "running" | "succeeded" | "failed";
+type ResultStatus = "passed" | "failed" | "skipped" | "error";
+const TestRunStatus: Record<RunStatus, RunStatus> = {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+};
+const TestResultStatus: Record<ResultStatus, ResultStatus> = {
+  passed: "passed",
+  failed: "failed",
+  skipped: "skipped",
+  error: "error",
+};
+
+function mapStatus(s: string): ResultStatus {
+  if (s === 'passed') return TestResultStatus.passed;
+  if (s === 'failed' || s === 'error') return TestResultStatus.failed;
+  if (s === 'skipped') return TestResultStatus.skipped;
+  return TestResultStatus.error;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeTitle(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/[\u2192\u21D2]/g, "->")
+    .replace(/\u203A/g, ">")
+    .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildLooseGrepFromTitle(title: string): string {
+  if (!title.trim()) return "";
+  return `(?:^|\\s)${escapeRegex(title)}(?:$|\\s)`;
+}
+
+const AI_LIVE_PREVIEW_MARKER = "const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';";
+
+function injectLivePreviewHooks(specContent: string): string {
+  if (specContent.includes(AI_LIVE_PREVIEW_MARKER)) {
+    return specContent;
+  }
+
+  let next = specContent;
+  const extraImports: string[] = [];
+  if (!/import\s+fs\s+from\s+['"]node:fs\/promises['"]/.test(next)) {
+    extraImports.push("import fs from 'node:fs/promises';");
+  }
+  if (!/import\s+path\s+from\s+['"]node:path['"]/.test(next)) {
+    extraImports.push("import path from 'node:path';");
+  }
+
+  if (extraImports.length) {
+    const importMatches = [...next.matchAll(/^import .*;$/gm)];
+    if (importMatches.length) {
+      const last = importMatches[importMatches.length - 1];
+      const insertAt = (last.index ?? 0) + last[0].length;
+      next = `${next.slice(0, insertAt)}\n${extraImports.join("\n")}${next.slice(insertAt)}`;
+    } else {
+      next = `${extraImports.join("\n")}\n${next}`;
+    }
+  }
+
+  const helperBlock = [
+    "",
+    "const RUN_LOG_DIR = process.env.TM_RUN_LOG_DIR || process.env.PW_OUTPUT_DIR;",
+    "const LIVE_PREVIEW_ENABLED = process.env.TM_LIVE_PREVIEW === '1';",
+    "const __TM_LIVE_PREVIEW_STOP = new WeakMap<any, () => void>();",
+    "",
+    "function __tmStartLivePreview(page: any) {",
+    "  if (!LIVE_PREVIEW_ENABLED || !RUN_LOG_DIR) return;",
+    "  const liveDir = path.join(RUN_LOG_DIR, 'live');",
+    "  let stopped = false;",
+    "  const capture = async () => {",
+    "    if (stopped) return;",
+    "    try {",
+    "      await fs.mkdir(liveDir, { recursive: true });",
+    "      await page.screenshot({ path: path.join(liveDir, 'latest.png'), fullPage: true });",
+    "    } catch {",
+    "      // ignore live preview capture failures",
+    "    }",
+    "  };",
+    "  void capture();",
+    "  const interval = setInterval(capture, 1500);",
+    "  __TM_LIVE_PREVIEW_STOP.set(page, () => {",
+    "    stopped = true;",
+    "    clearInterval(interval);",
+    "  });",
+    "}",
+    "",
+    "test.beforeEach(async ({ page }: any) => {",
+    "  __tmStartLivePreview(page);",
+    "});",
+    "",
+    "test.afterEach(async ({ page }: any) => {",
+    "  const stopLive = __TM_LIVE_PREVIEW_STOP.get(page);",
+    "  if (stopLive) stopLive();",
+    "});",
+    "",
+  ].join("\n");
+
+  const importMatches = [...next.matchAll(/^import .*;$/gm)];
+  if (importMatches.length) {
+    const last = importMatches[importMatches.length - 1];
+    const insertAt = (last.index ?? 0) + last[0].length;
+    return `${next.slice(0, insertAt)}\n${helperBlock}${next.slice(insertAt)}`;
+  }
+  return `${helperBlock}${next}`;
+}
+
+async function ensureAiLivePreviewInstrumentation(specPath?: string | null) {
+  if (!specPath) return;
+  if (!/\.(ts|js|mts|cts|mjs|cjs)$/i.test(specPath)) return;
+  let current = "";
+  try {
+    current = await fs.readFile(specPath, "utf8");
+  } catch {
+    return;
+  }
+  const patched = injectLivePreviewHooks(current);
+  if (patched === current) return;
+  await fs.writeFile(specPath, patched, "utf8");
+}
+
+async function syncAiSpecBackToRequestedTarget(input: {
+  aiSpecPath?: string | null;
+  requestedSpecPath?: string | null;
+  repoRoot: string;
+}) {
+  const { aiSpecPath, requestedSpecPath, repoRoot } = input;
+  if (!aiSpecPath || !requestedSpecPath) return;
+  const requestedNormalized = requestedSpecPath.replace(/\\/g, "/").replace(/^\.?\/+/, "");
+  const requestedAbs = path.isAbsolute(requestedNormalized)
+    ? requestedNormalized
+    : path.join(repoRoot, requestedNormalized);
+  const aiAbs = path.resolve(aiSpecPath);
+  const targetAbs = path.resolve(requestedAbs);
+  if (aiAbs === targetAbs) return;
+  try {
+    const patched = await fs.readFile(aiAbs, "utf8");
+    await fs.mkdir(path.dirname(targetAbs), { recursive: true });
+    await fs.writeFile(targetAbs, patched, "utf8");
+    console.log(
+      `[worker] synced ai-spec back to requested target: ${aiAbs.replace(/\\/g, "/")} -> ${targetAbs.replace(/\\/g, "/")}`
+    );
+  } catch (err) {
+    console.warn("[worker] failed to sync ai-spec back to requested target", err);
+  }
+}
+
+function resolveGeneratedDir(
+  generatedRoot: string,
+  adapterId: string,
+  ownerId?: string | null,
+  projectId?: string | null
+) {
+  const candidates = [
+    ownerId && projectId ? path.join(generatedRoot, `${adapterId}-${ownerId}`, projectId) : null,
+    ownerId ? path.join(generatedRoot, `${adapterId}-${ownerId}`) : null,
+    projectId ? path.join(generatedRoot, adapterId, projectId) : null,
+    path.join(generatedRoot, adapterId),
+    generatedRoot,
+  ].filter((value): value is string => Boolean(value));
+
+  return candidates.find((candidate) => fsSync.existsSync(candidate));
+}
+
+function findAiSpecCandidate(
+  work: string,
+  userFolder: string,
+  relInsideGen: string,
+  projectId?: string | null
+) {
+  const userRoot = path.join(work, "testmind-generated", userFolder);
+  const exact = projectId ? path.join(userRoot, projectId, relInsideGen) : null;
+  if (exact && fsSync.existsSync(exact)) {
+    return exact;
+  }
+  const direct = path.join(userRoot, relInsideGen);
+  if (fsSync.existsSync(direct)) {
+    return direct;
+  }
+  try {
+    const entries = fsSync.readdirSync(userRoot, { withFileTypes: true });
+    const candidates = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(userRoot, entry.name, relInsideGen))
+      .filter((candidate) => fsSync.existsSync(candidate))
+      .map((candidate) => ({
+        candidate,
+        mtimeMs: fsSync.statSync(candidate).mtimeMs,
+      }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return candidates[0]?.candidate;
+  } catch {
+    return undefined;
+  }
+}
+
+function stripToFeaturePath(value: string) {
+  const normalized = value.replace(/\\/g, "/");
+  const idx = normalized.toLowerCase().indexOf("features/");
+  return idx >= 0 ? normalized.slice(idx) : normalized;
+}
+
+function extractListTitles(stdout?: string | null): string[] {
+  if (!stdout) return [];
+  const titles: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const cleaned = line
+      .replace(/\u001b\[[0-9;]*m/g, "")
+      .trim();
+    if (!cleaned) continue;
+    if (/^Listing tests\b/i.test(cleaned)) continue;
+    if (/^\d+\s+tests?\b/i.test(cleaned)) continue;
+    let title = "";
+    const idx = cleaned.lastIndexOf("\u203A");
+    if (idx !== -1) {
+      title = cleaned.slice(idx + 1).trim();
+    } else {
+      title = cleaned.replace(/^.*?\d+:\d+(?::\d+)?\s+/, "").trim();
+    }
+    if (!title) continue;
+    titles.push(title);
+  }
+  return Array.from(new Set(titles));
+}
+
+const stripAnsi = (value?: string | null) =>
+  typeof value === 'string' ? value.replace(/\u001b\[[0-9;]*m/g, '') : value ?? null;
+
+const filterRunnerError = (value?: string | null) => {
+  if (!value) return null;
+  const cleaned = stripAnsi(value)
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .filter((line) => !/^npm notice\b/i.test(line))
+    .filter((line) => !/New major version of npm available!/i.test(line))
+    .join("\n")
+    .trim();
+  return cleaned || null;
+};
+
+type MissingLocatorItem = {
+  pagePath: string;
+  bucket: LocatorBucket;
+  name: string;
+  stepText: string;
+  suggestions: string[];
+};
+
+function extractNavTargetFromTitle(title?: string | null): string | null {
+  if (!title) return null;
+  const match = title.match(/Navigate\s+[^→'"-]+(?:→|->)\s+([^\s]+)/i);
+  const target = match?.[1]?.trim() ?? "";
+  if (!target || !target.startsWith("/")) return null;
+  return target;
+}
+
+function navKeyFromPath(path: string): string {
+  if (path === "/") return "nav.home";
+  const cleaned = path.replace(/^\//, "");
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return kebab ? `nav.${kebab}` : "nav.home";
+}
+
+function navSuggestions(path: string): string[] {
+  const target = path || "/";
+  return Array.from(
+    new Set([`a[href="${target}"]`, `a[href^="${target}"]`])
+  );
+}
+
+function generateSelectorSuggestions(rawName: string): string[] {
+  const candidates: string[] = [];
+  const push = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    candidates.push(trimmed);
+  };
+
+  const safeText = rawName?.trim();
+  const looksLikeSelector = /[#.[\]=:]/.test(safeText || "");
+  if (looksLikeSelector) {
+    push(safeText);
+  }
+
+  if (safeText && safeText.length <= 80) {
+    push(`text=${safeText.replace(/"/g, '\\"')}`);
+  }
+
+  const normalized = rawName.replace(/[^a-z0-9]/gi, "");
+  if (normalized && normalized.length <= 32) {
+    push(`input[name="${normalized}"]`);
+    push(`input[placeholder*="${normalized}"]`);
+    push(`[data-testid*="${normalized}"]`);
+  }
+
+  push("input");
+  push("button");
+  return Array.from(new Set(candidates));
+}
+
+function cleanLocatorArg(value: string): string {
+  let raw = value.trim();
+  if (raw.startsWith('/') && raw.lastIndexOf('/') > 0) {
+    const lastSlash = raw.lastIndexOf('/');
+    raw = raw.slice(1, lastSlash);
+  }
+  if (
+    (raw.startsWith("'") && raw.endsWith("'")) ||
+    (raw.startsWith('"') && raw.endsWith('"'))
+  ) {
+    raw = raw.slice(1, -1);
+  }
+  return raw.trim();
+}
+
+function extractLocatorExpression(message?: string | null, steps?: string[]): string | null {
+  const raw = `${message ?? ''}\n${(steps ?? []).join('\n')}`;
+  const locatorLine = raw.match(/Locator:\s*(.+)$/im);
+  if (locatorLine?.[1]) return locatorLine[1].trim();
+  const waitLine = (steps ?? []).find((line) => /waiting for /i.test(line));
+  if (waitLine) {
+    const match = waitLine.match(/waiting for\s+(.+)$/i);
+    if (match?.[1]) return match[1].trim();
+  }
+  const exprMatch = raw.match(
+    /(getByText\([^)]+\)|getByRole\([^)]+\)|getByLabel\([^)]+\)|getByPlaceholder\([^)]+\)|getByTestId\([^)]+\)|locator\([^)]+\))/i
+  );
+  return exprMatch?.[1]?.trim() ?? null;
+}
+
+function extractLocatorName(expr: string): string {
+  const locatorMatch = expr.match(/locator\((.+)\)/i);
+  if (locatorMatch?.[1]) return cleanLocatorArg(locatorMatch[1]);
+  const textMatch = expr.match(/getByText\((.+)\)/i);
+  if (textMatch?.[1]) return cleanLocatorArg(textMatch[1]);
+  const roleMatch = expr.match(/getByRole\((.+)\)/i);
+  if (roleMatch?.[1]) return cleanLocatorArg(roleMatch[1]);
+  const labelMatch = expr.match(/getByLabel\((.+)\)/i);
+  if (labelMatch?.[1]) return cleanLocatorArg(labelMatch[1]);
+  const placeholderMatch = expr.match(/getByPlaceholder\((.+)\)/i);
+  if (placeholderMatch?.[1]) return cleanLocatorArg(placeholderMatch[1]);
+  const testIdMatch = expr.match(/getByTestId\((.+)\)/i);
+  if (testIdMatch?.[1]) return cleanLocatorArg(testIdMatch[1]);
+  return expr;
+}
+
+function pagePathFromTitle(title?: string | null): string {
+  if (!title) return '/';
+  const direct = title.match(/(?:Page loads:|Navigate)\s+([^ ]+)/i);
+  if (direct?.[1]) return direct[1].trim();
+  const pathMatch = title.match(/(\/[a-z0-9/_-]+)(?:\b|$)/i);
+  return pathMatch?.[1]?.trim() || '/';
+}
+
+function isPageLoadTitle(title?: string | null): boolean {
+  if (!title) return false;
+  return /Page loads:/i.test(title);
+}
+
+function isMissingLocatorFailure(message?: string | null, steps?: string[]): boolean {
+  const raw = `${message ?? ''}\n${(steps ?? []).join('\n')}`;
+  if (!raw.trim()) return false;
+  if (
+    !/toBeVisible/i.test(raw) &&
+    !/element\(s\) not found/i.test(raw) &&
+    !/waiting for /i.test(raw) &&
+    !/locator\.waitFor/i.test(raw)
+  ) {
+    return false;
+  }
+  return /getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator\(/i.test(raw);
+}
+
+type LocatorHealthUpdate = {
+  pagePath: string;
+  bucket: "locators";
+  name: string;
+  selector: string;
+  status: "passed" | "failed";
+  reason?: string | null;
+};
+
+function buildLocatorHealthUpdates(cases: ParsedCase[]): LocatorHealthUpdate[] {
+  const updates: LocatorHealthUpdate[] = [];
+  for (const c of cases) {
+    const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
+    if (!locatorExpr) continue;
+    const selector = locatorExpr.trim();
+    if (!selector) continue;
+    const name = extractLocatorName(selector).trim() || selector;
+    const status: "passed" | "failed" =
+      c.status === "failed" || c.status === "error" ? "failed" : "passed";
+    updates.push({
+      pagePath: pagePathFromTitle(c.fullName ?? null),
+      bucket: "locators",
+      name,
+      selector,
+      status,
+      reason: status === "failed" ? (c.message ?? null) : null,
+    });
+  }
+  return updates;
+}
+
+type NavSuggestionAuto = {
+  key: string;
+  selector: string;
+  sourcePath: string;
+  confidence: number;
+};
+
+function buildNavSuggestionUpdates(cases: ParsedCase[]): NavSuggestionAuto[] {
+  const out: NavSuggestionAuto[] = [];
+  const seen = new Set<string>();
+  for (const c of cases) {
+    const target = extractNavTargetFromTitle(c.fullName ?? null);
+    if (!target) continue;
+    const key = navKeyFromPath(target);
+    const selector = `a[href="${target}"]`;
+    const confidence = c.status === "passed" ? 88 : 64;
+    const dedupeKey = `${key}::${selector}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({
+      key,
+      selector,
+      sourcePath: target,
+      confidence,
+    });
+  }
+  return out;
+}
+
+async function appendMissingLocators(
+  filePath: string,
+  items: MissingLocatorItem[]
+): Promise<void> {
+  if (!items.length) return;
+  let payload: { items: MissingLocatorItem[] } = { items: [] };
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.items)) payload.items = parsed.items;
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.error('[missing-locators] failed to read', { filePath, error: err });
+    }
+  }
+  payload.items.push(...items);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
+}
+
+const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? process.env.BASE_URL ?? "http://localhost:4173";
+
+export const worker = new Worker(
+  'test-runs',
+  async (job: Job) => {
+    const { runId, payload } = job.data as { runId: string; payload?: RunPayload };
+
+    const run = await prisma.testRun.findUnique({
+      where: { id: runId },
+      select: {
+        project: { select: { id: true, ownerId: true, repoUrl: true, sharedSteps: true } },
+        paramsJson: true,
+      },
+    });
+    if (!run) {
+      throw new Error('Run not found');
+    }
+
+    await prisma.testRun.update({
+      where: { id: runId },
+      data: {
+        status: TestRunStatus.running,
+        startedAt: new Date(),
+      },
+    });
+
+    const project = run.project;
+    const runParams = (run.paramsJson as Record<string, any> | undefined) ?? undefined;
+    const adapterId =
+      typeof payload?.adapterId === "string"
+        ? payload.adapterId
+        : typeof runParams?.adapterId === "string"
+        ? runParams.adapterId
+        : DEFAULT_FRAMEWORK_ID;
+    const mode = payload?.mode ?? runParams?.mode ?? "regular";
+    let aiMode = mode === "ai";
+    const isLikelyGitRepo = (url?: string | null) => {
+      if (!url) return false;
+      const trimmed = url.trim();
+      if (!trimmed) return false;
+      return (
+        trimmed.endsWith(".git") ||
+        trimmed.startsWith("git@") ||
+        /github\.com|gitlab\.com|bitbucket\.org/.test(trimmed)
+      );
+    };
+    const targetSpec =
+      payload?.file ?? runParams?.targetSpec ?? runParams?.file ?? undefined;
+    const fileTarget = targetSpec;
+    const localRepoRoot =
+      payload?.localRepoRoot ?? runParams?.localRepoRoot ?? undefined;
+    const nonGitRepo = !isLikelyGitRepo(project?.repoUrl);
+    const hasAiInputs = Boolean(
+      payload?.genDir ||
+        payload?.file ||
+        runParams?.file ||
+        runParams?.targetSpec ||
+        payload?.localRepoRoot ||
+        runParams?.localRepoRoot
+    );
+    if (!aiMode && nonGitRepo && hasAiInputs) {
+      aiMode = true;
+      console.log("[worker] inferred ai mode from non-git repoUrl + file/genDir payload");
+    }
+    if (!aiMode && !project?.repoUrl) {
+      throw new Error('Project repoUrl not found');
+    }
+    if (!aiMode && nonGitRepo) {
+      throw new Error('Project repoUrl is not a git repository');
+    }
+    const prevLocalRepoRoot = process.env.TM_LOCAL_REPO_ROOT;
+    const localRootInjected = Boolean(localRepoRoot);
+    if (localRootInjected) {
+      process.env.TM_LOCAL_REPO_ROOT = localRepoRoot!;
+    }
+
+    const outDir = path.join(REPORT_ROOT, 'runner-logs', runId);
+    await fs.mkdir(outDir, { recursive: true });
+    const cancelKey = `cancel:run:${runId}`;
+    const abortController = new AbortController();
+    const cancelTimer = setInterval(() => {
+      redis
+        .get(cancelKey)
+        .then((value) => {
+          if (value === "1") abortController.abort();
+        })
+        .catch(() => {});
+    }, 2000);
+
+    const resolveRepoRoot = () => {
+      const cwd = process.cwd().replace(/\\/g, "/");
+      if (cwd.endsWith("/apps/api")) return path.resolve(process.cwd(), "../..");
+      if (cwd.endsWith("/apps")) return path.resolve(process.cwd(), "..");
+      return process.cwd();
+    };
+    let work = await makeWorkdir();
+    let cleanupWork = true;
+    if (aiMode) {
+      work = localRepoRoot ?? resolveRepoRoot();
+      cleanupWork = false;
+    }
+    try {
+      const canceledEarly = await redis.get(cancelKey).catch(() => null);
+      if (canceledEarly === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
+      // GitHub token if connected
+      const gitAcct = await prisma.gitAccount.findFirst({
+        where: { userId: project.ownerId, provider: 'github' },
+        select: { token: true },
+      });
+      let gitToken: string | undefined;
+      if (gitAcct?.token) {
+        try {
+          gitToken = decryptSecret(gitAcct.token);
+        } catch {
+          // Backward compatibility for legacy plaintext tokens.
+          gitToken = gitAcct.token;
+        }
+      }
+
+      // 1) Clone
+      if (aiMode) {
+        console.log("[worker] mode=ai; skipping clone");
+      } else {
+        await cloneRepo(project.repoUrl, work, gitToken);
+      }
+
+      // 2) Install deps
+      if (!aiMode) {
+        await installDeps(work);
+      }
+
+      // 3) Detect + run
+      const framework = await detectFramework(work);
+      const resultsPath = path.join(outDir, 'report.json');
+      const webDir = path.join(work, 'apps', 'web');
+      const runWorkdir = aiMode ? work : webDir;
+      const extraGlobs: string[] = [];
+      const rawGrep = payload?.grep;
+      const isRegexLike = (value: string) =>
+        value.startsWith("^") ||
+        value.endsWith("$") ||
+        value.includes("(?") ||
+        value.includes("|") ||
+        value.includes("\\");
+      let grep = rawGrep;
+      const normalizedFileTarget = fileTarget?.replace(/\\/g, "/");
+      let specPath = normalizedFileTarget;
+      let absSpecPath: string | undefined;
+      let aiGenDirOverride: string | undefined;
+      if (specPath?.startsWith("apps/web/")) {
+        specPath = specPath.slice("apps/web/".length);
+      }
+      if (specPath) {
+        const isAbs = path.isAbsolute(specPath);
+        const isWebGenerated = /[\\/]+apps[\\/]+web[\\/]+testmind-generated[\\/]+/i.test(specPath);
+        let abs = isAbs ? specPath : path.join(runWorkdir, specPath);
+        if (aiMode) {
+          const posix = specPath.replace(/\\/g, "/");
+          const marker = "testmind-generated/";
+          if (posix.includes(marker)) {
+            const tail = posix.split(marker)[1];
+            abs = path.join(work, "testmind-generated", tail);
+          } else {
+            abs = path.join(work, posix);
+          }
+        }
+        if (isAbs && isWebGenerated) {
+          const relativeFromWeb = path.relative(webDir, specPath);
+          const repoCandidate = path.join(work, relativeFromWeb);
+          if (fsSync.existsSync(repoCandidate)) {
+            abs = repoCandidate;
+          }
+        }
+        if (!isAbs && !fsSync.existsSync(abs)) {
+          const repoCandidate = path.join(work, specPath);
+          if (fsSync.existsSync(repoCandidate)) {
+            abs = repoCandidate;
+          }
+        }
+        absSpecPath = abs;
+        if (aiMode && adapterId === "playwright-ts") {
+          const posix = specPath.replace(/\\/g, "/");
+          const marker = "testmind-generated/";
+          const markerIdx = posix.indexOf(marker);
+          if (markerIdx !== -1) {
+            const tail = posix.slice(markerIdx + marker.length);
+            const [userFolder, ...rest] = tail.split("/");
+            const relInsideGen = rest.join("/");
+            const explicitRepoRootCandidate =
+              userFolder && relInsideGen
+                ? findAiSpecCandidate(work, userFolder, relInsideGen, project.id)
+                : null;
+            const envGeneratedRoot = process.env.TM_GENERATED_ROOT
+              ? path.resolve(process.env.TM_GENERATED_ROOT)
+              : path.join(work, "testmind-generated");
+            const resolvedGeneratedDir = resolveGeneratedDir(
+              envGeneratedRoot,
+              adapterId,
+              project.ownerId,
+              project.id
+            );
+            const resolvedCandidate =
+              resolvedGeneratedDir && relInsideGen
+                ? path.join(resolvedGeneratedDir, relInsideGen)
+                : null;
+            const aiSpecCandidate = [explicitRepoRootCandidate, resolvedCandidate].find(
+              (candidate): candidate is string => Boolean(candidate && fsSync.existsSync(candidate))
+            );
+            if (aiSpecCandidate) {
+              absSpecPath = aiSpecCandidate;
+              aiGenDirOverride = path.dirname(aiSpecCandidate);
+              if (relInsideGen) {
+                aiGenDirOverride = aiSpecCandidate.slice(0, -relInsideGen.length).replace(/[\\/]+$/, "");
+              }
+              console.log(
+                `[worker] ai-spec remap: ${abs.replace(/\\/g, "/")} -> ${aiSpecCandidate.replace(/\\/g, "/")}`
+              );
+            }
+          }
+        }
+        const rel = path.relative(runWorkdir, absSpecPath).replace(/\\/g, "/");
+        if (!rel.startsWith("..")) {
+          extraGlobs.push(rel);
+        } else if (!aiMode) {
+          // For regular runs, allow absolute paths outside apps/web.
+          extraGlobs.push(abs.replace(/\\/g, "/"));
+        }
+      }
+      const loggedFile = specPath ?? normalizedFileTarget ?? fileTarget ?? "";
+
+      // Prefer explicit payload baseUrl, then paramsJson.baseUrl, then project.repoUrl when
+      // it's an app URL (not a git repo), then the environment default.
+      const repoUrl = project?.repoUrl?.trim() ?? "";
+      const projectAppUrl =
+        !isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined;
+      const jobBaseUrl =
+        payload?.baseUrl ??
+        (runParams?.baseUrl as string | undefined) ??
+        projectAppUrl ??
+        DEFAULT_BASE_URL;
+      const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
+      const extraEnv: Record<string, string> = {};
+      extraEnv.PW_BASE_URL = jobBaseUrl;
+      extraEnv.TM_BASE_URL = jobBaseUrl;
+      if (aiMode) {
+        extraEnv.TM_AI_MODE = "1";
+        extraEnv.TM_AI_ACTION_SHOTS = process.env.TM_AI_ACTION_SHOTS ?? "1";
+        const generatedRoot = process.env.TM_GENERATED_ROOT
+          ? path.resolve(process.env.TM_GENERATED_ROOT)
+          : path.join(work, "testmind-generated");
+        let genDir = payload?.genDir;
+        if (!genDir && specPath) {
+          const normalized = specPath.replace(/\\/g, "/");
+          // Handle both "/testmind-generated/..." and "testmind-generated/..." (relative paths)
+          const markerWithSlash = "/testmind-generated/";
+          const markerStart = "testmind-generated/";
+          let tail: string | null = null;
+          if (normalized.startsWith(markerStart)) {
+            tail = normalized.slice(markerStart.length);
+          } else {
+            const idx = normalized.indexOf(markerWithSlash);
+            if (idx !== -1) {
+              tail = normalized.slice(idx + markerWithSlash.length);
+            }
+          }
+          if (tail) {
+            const first = tail.split("/")[0];
+            if (first) {
+              genDir = path.join(generatedRoot, first);
+            }
+          }
+        }
+        if (!genDir) {
+          genDir = generatedRoot;
+        }
+        if (genDir && !path.isAbsolute(genDir)) {
+          genDir = path.resolve(work, genDir);
+        }
+        if (aiGenDirOverride) {
+          genDir = aiGenDirOverride;
+        }
+        extraEnv.TM_TEST_DIR = genDir;
+        extraEnv.TM_GENERATED_ROOT = path.dirname(genDir);
+        if (absSpecPath && genDir) {
+          const relToGen = path.relative(genDir, absSpecPath).replace(/\\/g, "/");
+          if (!relToGen.startsWith("..") && relToGen.length > 0) {
+            extraGlobs.length = 0;
+            extraGlobs.push(relToGen);
+          }
+        }
+        if (rawGrep && genDir) {
+          // Keep AI selection behavior aligned with suite/test-run selection.
+          // If the grep isn't already regex-like, wrap it with loose word boundaries.
+          grep = isRegexLike(rawGrep) ? rawGrep : buildLooseGrepFromTitle(rawGrep);
+        }
+        if (!extraEnv.PW_JSON_OUTPUT) {
+          extraEnv.PW_JSON_OUTPUT = resultsPath;
+        }
+        if (!extraEnv.PW_ALLURE_RESULTS) {
+          extraEnv.PW_ALLURE_RESULTS = path.join(outDir, "allure-results");
+        }
+        if (!extraEnv.PW_OUTPUT_DIR) {
+          extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+        }
+      } else {
+        const generatedRoot = process.env.TM_GENERATED_ROOT
+          ? path.resolve(process.env.TM_GENERATED_ROOT)
+          : path.join(work, "testmind-generated");
+        const generatedDir = resolveGeneratedDir(generatedRoot, adapterId, project.ownerId, project.id);
+        if (generatedDir) {
+          extraEnv.TM_GEN_DIR = generatedDir;
+          extraEnv.TM_GENERATED_ROOT = generatedRoot;
+        } else if (fsSync.existsSync(generatedRoot)) {
+          extraEnv.TM_GENERATED_ROOT = generatedRoot;
+        }
+      }
+      const livePreviewEnabled =
+        payload?.livePreview ?? Boolean((runParams as any)?.livePreview);
+      if (livePreviewEnabled) {
+        extraEnv.TM_LIVE_PREVIEW = "1";
+        extraEnv.TM_RUN_LOG_DIR = outDir;
+        if (!extraEnv.PW_OUTPUT_DIR) {
+          extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+        }
+      }
+      if (!extraEnv.TM_RUN_LOG_DIR) {
+        extraEnv.TM_RUN_LOG_DIR = outDir;
+      }
+      if (aiMode && livePreviewEnabled && adapterId === "playwright-ts" && absSpecPath) {
+        await ensureAiLivePreviewInstrumentation(absSpecPath);
+      }
+      let exec;
+      try {
+        if (!aiMode && adapterId === "cucumber-js") {
+          const cucumberLogLines: string[] = [];
+          const generatedRoot = process.env.TM_GENERATED_ROOT
+            ? path.resolve(process.env.TM_GENERATED_ROOT)
+            : path.join(work, "testmind-generated");
+          const genDest = resolveGeneratedDir(generatedRoot, adapterId, project.ownerId, project.id);
+          if (!genDest) {
+            throw new Error(`No generated specs found for ${adapterId}`);
+          }
+
+          extraEnv.TM_CUCUMBER_FEATURES_ROOT = path.join(genDest, "features");
+          extraEnv.TM_CUCUMBER_REPORT_PATH = resultsPath;
+          const requestedFiles = [absSpecPath ?? specPath ?? fileTarget]
+            .filter((value): value is string => Boolean(value))
+            .map((value) => stripToFeaturePath(value))
+            .filter((value) => value.toLowerCase().endsWith(".feature"));
+          if (requestedFiles.length) {
+            extraEnv.TM_CUCUMBER_FILES = JSON.stringify(requestedFiles);
+          }
+          if (grep) {
+            extraEnv.TM_CUCUMBER_GREP = grep;
+          }
+
+          const exitCode = await runAdapter({
+            outRoot: genDest,
+            adapterId,
+            env: extraEnv,
+            onLine: (line) => {
+              cucumberLogLines.push(line);
+            },
+          });
+          exec = {
+            ok: exitCode === 0,
+            exitCode,
+            stdout: cucumberLogLines.join(""),
+            stderr: "",
+            resultsPath,
+            framework: "none" as const,
+          };
+        } else {
+          exec = await runTests({
+            workdir: runWorkdir,
+            jsonOutPath: resultsPath,
+            headed: payload?.headed,
+            grep,
+            extraGlobs,
+            baseUrl: jobBaseUrl,
+            runTimeout: timeoutMs,
+            abortSignal: abortController.signal,
+            extraEnv,
+            configPath: aiMode ? path.join(work, "tm-ai.playwright.config.mjs") : undefined,
+          });
+        }
+      } catch (err: any) {
+        if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+          await prisma.testRun.update({
+            where: { id: runId },
+            data: {
+              status: TestRunStatus.failed,
+              finishedAt: new Date(),
+              error: "Canceled by user",
+            },
+          });
+          return;
+        }
+        throw err;
+      }
+      if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
+
+      // write logs
+      await fs.writeFile(
+        path.join(outDir, "stdout.txt"),
+        `[worker] headful=${payload?.headed ? "true" : "false"} file=${loggedFile} grep=${grep || ""} baseUrl=${jobBaseUrl}\n${exec.stdout ?? ""}`,
+        { flag: "w" }
+      );
+      await fs.writeFile(path.join(outDir, 'stderr.txt'), exec.stderr ?? '');
+
+      // 4) Parse → DB
+      let parsedCount = 0;
+      let failed = 0;
+      let passed = 0;
+      let skipped = 0;
+
+      if (exec.resultsPath) {
+        const cases = await parseResults(exec.resultsPath);
+        const locatorHealthUpdates = buildLocatorHealthUpdates(cases);
+        const navSuggestionUpdates = buildNavSuggestionUpdates(cases);
+        const missingLocators: MissingLocatorItem[] = [];
+
+        for (const c of cases) {
+          if (c.status !== 'failed' && c.status !== 'error') continue;
+          if (/toHaveURL/i.test(c.message ?? "")) {
+            const navTarget = extractNavTargetFromTitle(c.fullName ?? null);
+            if (navTarget) {
+              missingLocators.push({
+                pagePath: "__global_nav__",
+                bucket: "locators",
+                name: navKeyFromPath(navTarget),
+                stepText: c.fullName ?? `Navigate to ${navTarget}`,
+                suggestions: navSuggestions(navTarget),
+              });
+            }
+          }
+          if (!isMissingLocatorFailure(c.message ?? null, c.steps ?? [])) continue;
+          if (isPageLoadTitle(c.fullName ?? null)) {
+            const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
+            if (locatorExpr) {
+              const locatorName = extractLocatorName(locatorExpr);
+              missingLocators.push({
+                pagePath: pagePathFromTitle(c.fullName ?? null),
+                bucket: 'locators',
+                name: 'pageIdentity',
+                stepText: c.fullName ?? 'Page loads',
+                suggestions: generateSelectorSuggestions(locatorName || 'pageIdentity'),
+              });
+              continue;
+            }
+          }
+          const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
+          if (!locatorExpr) continue;
+          const name = extractLocatorName(locatorExpr);
+          missingLocators.push({
+            pagePath: pagePathFromTitle(c.fullName ?? null),
+            bucket: 'locators',
+            name,
+            stepText: c.steps?.join('\n') || c.fullName || name,
+            suggestions: generateSelectorSuggestions(name),
+          });
+        }
+
+        await appendMissingLocators(path.join(outDir, 'missing-locators.json'), missingLocators);
+
+        await prisma.$transaction(async (db) => {
+          for (const c of cases) {
+            const key = `${c.file}#${c.fullName}`.slice(0, 255);
+
+            const testCase = await db.testCase.upsert({
+              where: { projectId_key: { projectId: project.id, key } },
+              update: { title: c.fullName },
+              create: { projectId: project.id, key, title: c.fullName },
+            });
+
+            await db.testResult.create({
+              data: {
+                run: { connect: { id: runId } },
+                testCase: { connect: { id: testCase.id } },
+                status: mapStatus(c.status),
+                durationMs: c.durationMs ?? null,
+                message: c.message ?? null,
+              },
+            });
+
+            parsedCount++;
+            if (c.status === 'passed') passed++;
+            else if (c.status === 'failed' || c.status === 'error') failed++;
+            else skipped++;
+          }
+
+          if (locatorHealthUpdates.length || navSuggestionUpdates.length) {
+            const projectRecord = await db.project.findUnique({
+              where: { id: project.id },
+              select: { sharedSteps: true },
+            });
+            const sharedSteps = (projectRecord?.sharedSteps ?? {}) as Record<string, any>;
+            const locatorHealth =
+              sharedSteps.locatorHealth && typeof sharedSteps.locatorHealth === "object"
+                ? ({ ...(sharedSteps.locatorHealth as Record<string, any>) } as Record<string, any>)
+                : ({} as Record<string, any>);
+            const navSuggestions =
+              sharedSteps.navSuggestions && typeof sharedSteps.navSuggestions === "object"
+                ? ({ ...(sharedSteps.navSuggestions as Record<string, any[]>) } as Record<string, any[]>)
+                : ({} as Record<string, any[]>);
+            const now = new Date().toISOString();
+            for (const item of locatorHealthUpdates) {
+              const key = `${item.pagePath}::${item.bucket}::${item.name}`;
+              const prev = locatorHealth[key] ?? {};
+              const next = {
+                pagePath: item.pagePath,
+                bucket: item.bucket,
+                name: item.name,
+                selector: item.selector || prev.selector,
+                successCount: Math.max(0, Number(prev.successCount ?? 0)),
+                failCount: Math.max(0, Number(prev.failCount ?? 0)),
+                lastPassedAt: prev.lastPassedAt,
+                lastFailedAt: prev.lastFailedAt,
+                lastFailureReason: prev.lastFailureReason,
+                updatedAt: now,
+                updatedBy: project.ownerId,
+              };
+              if (item.status === "passed") {
+                next.successCount += 1;
+                next.lastPassedAt = now;
+              } else {
+                next.failCount += 1;
+                next.lastFailedAt = now;
+                if (item.reason) next.lastFailureReason = item.reason.slice(0, 2000);
+              }
+              locatorHealth[key] = next;
+            }
+
+            for (const nav of navSuggestionUpdates) {
+              const existing = Array.isArray(navSuggestions[nav.key]) ? [...navSuggestions[nav.key]] : [];
+              const deduped = existing.filter((item) => item?.selector !== nav.selector);
+              const entry = {
+                selector: nav.selector,
+                confidence: nav.confidence,
+                confidenceBreakdown: [{ delta: 0, reason: "auto-captured from run title" }],
+                sourcePath: nav.sourcePath,
+                updatedAt: now,
+                updatedBy: project.ownerId,
+              };
+              navSuggestions[nav.key] = [entry, ...deduped]
+                .sort((a: any, b: any) => {
+                  const scoreA = typeof a.confidence === "number" ? a.confidence : -1;
+                  const scoreB = typeof b.confidence === "number" ? b.confidence : -1;
+                  if (scoreA !== scoreB) return scoreB - scoreA;
+                  return String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""));
+                })
+                .slice(0, 10);
+            }
+            await db.project.update({
+              where: { id: project.id },
+              data: {
+                sharedSteps: {
+                  ...sharedSteps,
+                  locatorHealth,
+                  navSuggestions,
+                  locatorMeta: {
+                    ...(sharedSteps.locatorMeta ?? {}),
+                    updatedAt: now,
+                    updatedBy: project.ownerId,
+                  },
+                },
+              },
+            });
+          }
+        });
+      }
+
+      if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
+
+      const ok = failed === 0 && exec.ok;
+      if (ok && aiMode && adapterId === "playwright-ts" && absSpecPath && fileTarget) {
+        await syncAiSpecBackToRequestedTarget({
+          aiSpecPath: absSpecPath,
+          requestedSpecPath: fileTarget,
+          repoRoot: work,
+        });
+      }
+      if (!ok) {
+        await analyzeFailure({
+          runId,
+          outDir,
+          stderr: exec.stderr ?? undefined,
+          stdout: exec.stdout ?? undefined,
+          reportPath: exec.resultsPath ?? resultsPath,
+          grep,
+          file: payload?.file,
+          baseUrl: jobBaseUrl,
+          requireEnabledFlag: !aiMode,
+        });
+      }
+      const runRecord = await prisma.testRun.findUnique({
+        where: { id: runId },
+        select: { trigger: true },
+      });
+      await prisma.testRun.update({
+        where: { id: runId },
+        data: {
+          status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
+          finishedAt: new Date(),
+          summary: JSON.stringify({ framework, parsedCount, passed, failed, skipped }),
+          error: ok ? null : (filterRunnerError(exec.stderr) || 'Test command failed'),
+        },
+      });
+
+      finalizeLatestTestState({
+        runId,
+        source: runRecord?.trigger === "self-heal" ? "self-heal-rerun" : "run",
+      }).catch((err) => {
+        console.error(`[worker] finalizeLatestTestState failed for run ${runId}`, err);
+      });
+
+      if (!ok && failed > 0) {
+        scheduleSelfHealingForRun(runId).catch((err) => {
+          console.error(`[worker] failed to schedule self-heal for run ${runId}`, err);
+        });
+      }
+    } catch (err: any) {
+      if (abortController.signal.aborted || (await redis.get(cancelKey).catch(() => null)) === "1") {
+        await prisma.testRun.update({
+          where: { id: runId },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: "Canceled by user",
+          },
+        });
+        return;
+      }
+      await prisma.testRun.update({
+        where: { id: runId },
+        data: {
+          status: TestRunStatus.failed,
+          finishedAt: new Date(),
+          error: stripAnsi(err?.message ?? String(err)),
+        },
+      });
+      throw err;
+    } finally {
+      if (cleanupWork) {
+        await rmrf(work).catch(() => {});
+      }
+      if (localRootInjected) {
+        if (prevLocalRepoRoot === undefined) {
+          delete process.env.TM_LOCAL_REPO_ROOT;
+        } else {
+          process.env.TM_LOCAL_REPO_ROOT = prevLocalRepoRoot;
+        }
+      }
+      clearInterval(cancelTimer);
+      await redis.del(cancelKey).catch(() => {});
+    }
+  },
+  { connection: redis }
+);
+
+worker.on('failed', (job, err) => {
+  const runId = job?.data?.runId;
+  console.error(`[worker] job ${job?.id} (run ${runId ?? 'unknown'}) failed:`, err);
+});
+
+worker.on('completed', (job) => {
+  const runId = job?.data?.runId;
+  console.log(`[worker] job ${job?.id} (run ${runId ?? 'unknown'}) completed`);
+});
+
+

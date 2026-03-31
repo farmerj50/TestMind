@@ -1,0 +1,85 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node
+node_modules
+**/node_modules
+.pnpm-store
+package-lock.json
+
+# Builds / caches
+dist
+dist-ssr
+build
+.out
+.next
+.cache
+coverage
+.tmp
+.turbo
+.vite
+playwright-report/
+testmind-reports/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+
+# Monorepo patterns
+apps/*/node_modules
+packages/*/node_modules
+runner-logs
+apps/api/testmind-curated/
+apps/api/testmind-generated/playwright-ts/recordings/
+test-results/
+apps/api/test-results/
+apps/web/test-results/
+**/test-results/.last-run.json
+apps/web/testmind-generated/
+testmind-generated/
+testmind-generated/**/recordings/
+apps/web/state.json
+
+tmp*.js
+temp*.js
+temp*.txt
+
+## Misc scratch
+_snippet.txt
+
+# Temp files created by Claude / scripts
+_tmp_*
+tmp_*.py
+script.py
+
+# Allure test artifacts
+allure-results/
+allure-report/
+**/allure-results/
+**/allure-report/
+
+# Auth state
+auth.setup.ts
+apps/web/state.json
+
+# Recorder artifacts
+recorder-desktop/
+recorder-helper.js
+recorder-helper-runner.js
+
+# Python scratch
+*.py

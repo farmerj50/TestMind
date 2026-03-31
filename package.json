@@ -1,0 +1,37 @@
+{
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter testmind-web dev",
+    "build": "tsc -b && vite build",
+    "build:with-browsers": "playwright install --with-deps && tsc -b && vite build",
+    "start": "node apps/api/dist/index.js",
+    "preview": "npm --prefix apps/web run preview",
+    "worker": "tsx apps/worker/src/index.ts",
+    "recorder:auto": "node recorder-helper-runner.js",
+    "first-run": "tsx scripts/first-run.ts"
+  },
+  "packageManager": "pnpm@9.12.2+sha512.22721b3a11f81661ae1ec68ce1a7b879425a1ca5b991c975b074ac220b187ce56c708fe5db69f4c962c989452eee76c82877f4ee80f474cebd61ee13461b6228",
+  "dependencies": {
+    "@octokit/auth-app": "^8.1.1",
+    "@octokit/rest": "^22.0.0",
+    "@openai/agents": "^0.1.10",
+    "@playwright/test": "1.58.2",
+    "@prisma/client": "^6.18.0",
+    "allure-commandline": "^2.36.0",
+    "allure-js-commons": "^3.4.3",
+    "allure-playwright": "^3.4.3",
+    "bullmq": "^5.55.0",
+    "execa": "^9.6.0",
+    "ioredis": "^5.8.2",
+    "nodemailer": "^6.9.16",
+    "openai": "^6.6.0",
+    "playwright": "1.58.2",
+    "prisma": "^6.18.0"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^12.7.0",
+    "@types/node": "^24.9.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

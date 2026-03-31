@@ -1,0 +1,20 @@
+{
+  "name": "@testmind/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./framework.js",
+  "types": "./framework.d.ts",
+  "exports": {
+    "./framework": {
+      "types": "./framework.d.ts",
+      "import": "./framework.js",
+      "default": "./framework.js"
+    },
+    "./framework-registry": {
+      "types": "./framework-registry.d.ts",
+      "import": "./framework-registry.js",
+      "default": "./framework-registry.js"
+    }
+  }
+}

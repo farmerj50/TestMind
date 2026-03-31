@@ -1,0 +1,688 @@
+// apps/api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TestPriority {
+  low
+  medium
+  high
+}
+
+enum TestCaseStatus {
+  draft
+  active
+  archived
+}
+
+enum TestCaseType {
+  functional
+  regression
+  security
+  accessibility
+  other
+}
+
+enum PlanTier {
+  free
+  starter
+  pro
+  team
+}
+
+enum TestResultStatus {
+  passed
+  failed
+  skipped
+  error
+}
+
+enum TestRunStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
+enum HealingStatus {
+  queued
+  running
+  succeeded
+  failed
+  skipped
+}
+
+enum AgentSessionStatus {
+  draft
+  running
+  ready
+  failed
+}
+
+enum AgentPageStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum AgentScenarioStatus {
+  suggested
+  accepted
+  rejected
+  completed
+}
+
+enum SecurityScanStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+enum SecurityFindingType {
+  recon
+  static_analysis
+  dependency
+  dynamic
+}
+
+enum SecuritySeverity {
+  info
+  low
+  medium
+  high
+  critical
+}
+
+model User {
+  id               String            @id
+  plan             PlanTier?
+  projects         Project[]
+  createdAt        DateTime          @default(now())
+  AgentSession     AgentSession[]
+  jiraIntegrations JiraIntegration[]
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  repoUrl   String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  plan      PlanTier @default(free)
+  createdAt DateTime @default(now())
+  sharedSteps Json?   @default("{}")
+
+  testRuns         TestRun[]
+  suites           TestSuite[]
+  cases            TestCase[]
+  AgentSession     AgentSession[]
+  AgentScenario    AgentScenario[]
+  jiraIntegrations JiraIntegration[]
+  integrations     Integration[]
+  secrets          ProjectSecret[]
+  securityScans    SecurityScanJob[]
+  curatedSuites    CuratedSuite[]
+  operatorJobs     OperatorJob[]
+}
+
+model GitAccount {
+  id        String   @id @default(cuid())
+  provider  String   @default("github")
+  userId    String
+  token     String
+  githubUserId Int?
+  githubLogin  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, userId])
+  @@index([userId])
+}
+
+model TestRun {
+  id         String        @id @default(cuid())
+  projectId  String
+  project    Project       @relation(fields: [projectId], references: [id])
+  status     TestRunStatus @default(queued)
+  summary    String?
+  error      String?
+  createdAt  DateTime      @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  issueUrl   String?
+
+  framework  String? // "playwright"
+  trigger    String? // "user" | "schedule" | "webhook"
+  envName    String?
+  paramsJson Json?
+
+  rerunOfId String?
+  rerunOf   TestRun?  @relation("RunReruns", fields: [rerunOfId], references: [id])
+  reruns    TestRun[] @relation("RunReruns")
+
+  reportPath    String?
+  artifactsJson Json?
+
+  results            TestResult[]
+  TestHealingAttempt TestHealingAttempt[]
+
+  @@index([rerunOfId])
+  @@index([projectId, createdAt])
+}
+
+model TestSuite {
+  id        String      @id @default(cuid())
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id])
+  name      String
+  parentId  String?
+  parent    TestSuite?  @relation("SuiteChildren", fields: [parentId], references: [id])
+  children  TestSuite[] @relation("SuiteChildren")
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  cases TestCase[]
+
+  @@index([projectId, parentId, order])
+}
+
+model TestCase {
+  id              String         @id @default(cuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id])
+  suiteId         String?
+  suite           TestSuite?     @relation(fields: [suiteId], references: [id])
+  curatedSuiteId  String?
+  curatedSuite    CuratedSuite?  @relation(fields: [curatedSuiteId], references: [id])
+  key             String         @default(cuid())
+  title         String
+  priority      TestPriority   @default(medium)
+  status        TestCaseStatus @default(active)
+  type          TestCaseType   @default(functional)
+  tags          String[]       @default([])
+  preconditions String?        @db.Text
+  locators      String?        @db.Text
+  lastAiSyncAt  DateTime?
+
+  // Journey 1 & 2: canonical latest execution snapshot — updated on every finalized run
+  lastResultStatus     TestResultStatus?
+  lastRunId            String?
+  lastRunAt            DateTime?
+  lastFailureMessage   String?           @db.Text
+  lastHealedAt         DateTime?
+  lastHealingAttemptId String?
+  lastSource           String?           // "run" | "self-heal-rerun" | "qa-verify"
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  results            TestResult[]
+  TestHealingAttempt TestHealingAttempt[]
+  steps             TestStep[]
+  runs              TestCaseRun[]
+
+  @@unique([projectId, key])
+  @@index([projectId, suiteId])
+  @@index([projectId, curatedSuiteId])
+  @@index([projectId, lastResultStatus])
+}
+
+model TestResult {
+  id    String  @id @default(cuid())
+  runId String
+  run   TestRun @relation(fields: [runId], references: [id])
+
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id])
+
+  status          TestResultStatus
+  durationMs      Int?
+  message         String?
+  createdAt       DateTime             @default(now())
+  healingAttempts TestHealingAttempt[]
+
+  @@index([runId, testCaseId])
+}
+
+model TestHealingAttempt {
+  id            String        @id @default(cuid())
+  runId         String
+  run           TestRun       @relation(fields: [runId], references: [id])
+  testResultId  String
+  testResult    TestResult    @relation(fields: [testResultId], references: [id])
+  testCaseId    String
+  testCase      TestCase      @relation(fields: [testCaseId], references: [id])
+  attempt       Int           @default(1)
+  status        HealingStatus @default(queued)
+  summary       String?
+  diff          String?
+  error         String?
+  prompt        Json?
+  response      Json?
+  artifactsPath String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([testResultId, attempt])
+  @@index([runId, testCaseId])
+  @@index([testResultId])
+}
+
+model TestStep {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      TestCase @relation(fields: [caseId], references: [id])
+  idx       Int
+  action    String   @db.Text
+  expected  String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caseId, idx])
+}
+
+model TestCaseRun {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      TestCase @relation(fields: [caseId], references: [id])
+  status    TestResultStatus
+  note      String?  @db.Text
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([caseId, createdAt])
+}
+
+model AgentSession {
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id])
+  projectId    String?
+  project      Project?           @relation(fields: [projectId], references: [id])
+  name         String?
+  baseUrl      String
+  instructions String?
+  status       AgentSessionStatus @default(draft)
+  meta         Json?
+  pages        AgentPage[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model AgentPage {
+  id           String          @id @default(cuid())
+  sessionId    String
+  session      AgentSession    @relation(fields: [sessionId], references: [id])
+  path         String
+  url          String
+  instructions String?
+  status       AgentPageStatus @default(pending)
+  summary      String?
+  coverage     Json?
+  error        String?
+  scenarios    AgentScenario[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([sessionId])
+}
+
+model AgentScenario {
+  id                String              @id @default(cuid())
+  pageId            String
+  page              AgentPage           @relation(fields: [pageId], references: [id])
+  title             String
+  coverageType      String
+  description       String?
+  tags              Json?
+  risk              String?
+  status            AgentScenarioStatus @default(suggested)
+  steps             Json?
+  specPath          String?
+  attachedProjectId String?
+  attachedProject   Project?            @relation(fields: [attachedProjectId], references: [id])
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([pageId])
+  @@index([attachedProjectId])
+}
+
+model JiraIntegration {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  projectId    String
+  project      Project           @relation(fields: [projectId], references: [id])
+  siteUrl      String
+  email        String
+  apiToken     String
+  projectKey   String
+  lastSyncedAt DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  requirements JiraRequirement[]
+
+  @@unique([userId, projectId])
+}
+
+model JiraRequirement {
+  id            String          @id @default(cuid())
+  integrationId String
+  integration   JiraIntegration @relation(fields: [integrationId], references: [id])
+  issueKey      String
+  summary       String
+  status        String
+  priority      String?
+  url           String?
+  syncedAt      DateTime        @default(now())
+
+  @@unique([integrationId, issueKey])
+}
+
+model Integration {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  provider  String
+  name      String?
+  config    Json     @default("{}")
+  secrets   Json?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, provider])
+}
+
+model SecurityScanJob {
+  id         String             @id @default(cuid())
+  projectId  String
+  project    Project            @relation(fields: [projectId], references: [id])
+  status     SecurityScanStatus @default(queued)
+  phase      String?
+  startedAt  DateTime?          @default(now())
+  finishedAt DateTime?
+  config     Json?
+  summary    Json?
+  error      String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  findings SecurityFinding[]
+
+  @@index([projectId, createdAt])
+}
+
+model SecurityFinding {
+  id          String              @id @default(cuid())
+  scanId      String
+  scan        SecurityScanJob     @relation(fields: [scanId], references: [id])
+  type        SecurityFindingType
+  severity    SecuritySeverity
+  title       String
+  description String?
+  location    String?
+  tool        String?
+  evidence    Json?
+  suggestion  String?
+  status      String?
+  createdAt   DateTime            @default(now())
+
+  @@index([scanId, severity])
+}
+
+model ProjectSecret {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  name      String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
+
+model CuratedSuite {
+  id        String     @id @default(cuid())
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  rootRel   String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  testCases TestCase[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+// ── Operator spine ────────────────────────────────────────────────────────────
+
+enum OperatorJobType {
+  qa
+  security
+  repair
+  discovery
+}
+
+enum OperatorJobStatus {
+  queued
+  running
+  blocked
+  succeeded
+  failed
+  canceled
+}
+
+enum OperatorTaskType {
+  discover
+  execute
+  triage
+  repair
+  retest
+  verify
+}
+
+enum OperatorTaskStatus {
+  pending
+  running
+  succeeded
+  failed
+  skipped
+}
+
+enum OperatorStepCapability {
+  browser
+  api
+  terminal
+  git
+  security
+  filesystem
+}
+
+enum OperatorStepStatus {
+  pending
+  running
+  succeeded
+  failed
+  skipped
+}
+
+enum OperatorArtifactType {
+  screenshot
+  trace
+  video
+  har
+  console
+  network
+  patch
+  report
+  dom
+}
+
+enum OperatorDecisionType {
+  retry
+  heal
+  abort
+  escalate
+  patch
+  request_approval
+}
+
+enum OperatorApprovalStatus {
+  pending
+  approved
+  denied
+  expired
+}
+
+enum OperatorApprovalAction {
+  patch_code
+  run_terminal
+  security_active_test
+  git_push
+}
+
+model OperatorJob {
+  id          String            @id @default(cuid())
+  projectId   String
+  project     Project           @relation(fields: [projectId], references: [id])
+  sessionId   String?
+  type        OperatorJobType
+  status      OperatorJobStatus @default(queued)
+  objective   String?           @db.Text
+  requestedBy String?
+  contextJson Json?
+  error       String?           @db.Text
+  createdAt   DateTime          @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  tasks     OperatorTask[]
+  artifacts OperatorArtifact[]
+  decisions OperatorDecision[]
+  approvals OperatorApproval[]
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+model OperatorTask {
+  id            String             @id @default(cuid())
+  jobId         String
+  job           OperatorJob        @relation(fields: [jobId], references: [id])
+  parentTaskId  String?
+  parent        OperatorTask?      @relation("TaskChildren", fields: [parentTaskId], references: [id])
+  children      OperatorTask[]     @relation("TaskChildren")
+  type          OperatorTaskType
+  status        OperatorTaskStatus @default(pending)
+  assignedAgent String?
+  priority      Int                @default(0)
+  inputJson     Json?
+  outputJson    Json?
+  error         String?            @db.Text
+  testRunId     String?
+  createdAt     DateTime           @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  steps     OperatorStep[]
+  artifacts OperatorArtifact[]
+  decisions OperatorDecision[]
+  approvals OperatorApproval[]
+
+  @@index([jobId])
+  @@index([parentTaskId])
+  @@index([testRunId])
+}
+
+model OperatorStep {
+  id         String                 @id @default(cuid())
+  taskId     String
+  task       OperatorTask           @relation(fields: [taskId], references: [id])
+  idx        Int
+  capability OperatorStepCapability
+  action     String
+  target     String?
+  inputJson  Json?
+  outputJson Json?
+  status     OperatorStepStatus     @default(pending)
+  error      String?                @db.Text
+  createdAt  DateTime               @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  artifacts OperatorArtifact[]
+
+  @@index([taskId, idx])
+}
+
+model OperatorArtifact {
+  id        String               @id @default(cuid())
+  jobId     String
+  job       OperatorJob          @relation(fields: [jobId], references: [id])
+  taskId    String?
+  task      OperatorTask?        @relation(fields: [taskId], references: [id])
+  stepId    String?
+  step      OperatorStep?        @relation(fields: [stepId], references: [id])
+  testRunId String?
+  type      OperatorArtifactType
+  path      String
+  metaJson  Json?
+  createdAt DateTime             @default(now())
+
+  @@index([jobId])
+  @@index([taskId])
+}
+
+model OperatorDecision {
+  id           String               @id @default(cuid())
+  jobId        String
+  job          OperatorJob          @relation(fields: [jobId], references: [id])
+  taskId       String?
+  task         OperatorTask?        @relation(fields: [taskId], references: [id])
+  decisionType OperatorDecisionType
+  rationale    String?              @db.Text
+  confidence   Float?
+  model        String?
+  evidenceJson Json?
+  createdAt    DateTime             @default(now())
+
+  @@index([jobId])
+  @@index([taskId])
+}
+
+model OperatorApproval {
+  id          String                 @id @default(cuid())
+  jobId       String
+  job         OperatorJob            @relation(fields: [jobId], references: [id])
+  taskId      String?
+  task        OperatorTask?          @relation(fields: [taskId], references: [id])
+  actionType  OperatorApprovalAction
+  status      OperatorApprovalStatus @default(pending)
+  requestedBy String
+  resolvedBy  String?
+  requestedAt DateTime               @default(now())
+  resolvedAt  DateTime?
+  expiresAt   DateTime?
+  contextJson Json?
+
+  @@index([jobId, status])
+  @@index([status, expiresAt])
+}

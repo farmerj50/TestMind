@@ -1,0 +1,21 @@
+// apps/api/tsconfig.worker.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/runner/**/*",
+    "src/prisma.ts",
+    "src/redis.ts"
+  ],
+  "exclude": ["node_modules"]
+}

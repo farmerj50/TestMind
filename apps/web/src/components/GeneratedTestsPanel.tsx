@@ -1,0 +1,275 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
+import Editor from "@monaco-editor/react";
+import { Button } from "../components/ui/button";
+import { useApi } from "../lib/api";
+
+type FileItem = { path: string; size: number };
+
+type GeneratedTestsPanelProps = {
+  compact?: boolean;
+};
+
+export default function GeneratedTestsPanel({ compact = false }: GeneratedTestsPanelProps) {
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+  const [content, setContent] = useState<string>("");
+  const [effectiveProjectId, setEffectiveProjectId] = useState<string>("");
+  const [expanded, setExpanded] = useState(() => !compact);
+  const { apiFetch } = useApi();
+  const { user } = useUser();
+  const [adapterId, setAdapterId] = useState<string>(
+    (localStorage.getItem("tm-adapterId") || "playwright-ts") as string
+  );
+  const [projectId, setProjectId] = useState<string>(
+    localStorage.getItem("tm:lastGeneratedProjectId") || ""
+  );
+  const userId = user?.id ?? "";
+  const lastUserId = typeof window !== "undefined" ? localStorage.getItem("tm:lastUserId") : null;
+
+  useEffect(() => {
+    setAdapterId((localStorage.getItem("tm-adapterId") || "playwright-ts") as string);
+    setProjectId(localStorage.getItem("tm:lastGeneratedProjectId") || "");
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (lastUserId !== userId) {
+      localStorage.setItem("tm:lastUserId", userId);
+      localStorage.removeItem("tm:lastGeneratedProjectId");
+      setProjectId("");
+      return;
+    }
+    setProjectId(localStorage.getItem("tm:lastGeneratedProjectId") || "");
+  }, [userId]);
+
+  const queryString = useMemo(
+    () =>
+      new URLSearchParams({
+        adapterId,
+        ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
+      }).toString(),
+    [adapterId, effectiveProjectId]
+  );
+
+  async function load() {
+    const scopedQuery = new URLSearchParams({
+      adapterId,
+      ...(projectId ? { projectId } : {}),
+    }).toString();
+    let usedProjectId = projectId;
+    let d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${scopedQuery}`);
+    let list = d.files || [];
+    if (projectId && list.length === 0) {
+      const unscopedQuery = new URLSearchParams({ adapterId }).toString();
+      d = await apiFetch<{ files: FileItem[] }>(`/tm/generated/list?${unscopedQuery}`);
+      list = d.files || [];
+      usedProjectId = "";
+    }
+    setEffectiveProjectId(usedProjectId);
+    setFiles(list);
+    const nextActive = list.some((item) => item.path === active) ? active : list[0]?.path ?? null;
+    setActive(nextActive);
+    if (!nextActive) setContent("");
+  }
+
+  async function openFile(p: string) {
+    setActive(p);
+    const qs = new URLSearchParams({
+      adapterId,
+      file: p,
+      ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
+    }).toString();
+    const text = await apiFetch<string>(`/tm/generated/file?${qs}`, {
+      // apiFetch treats non-JSON as text when content-type isn't JSON; force that here
+      headers: { Accept: "text/plain" } as any,
+    });
+    setContent(text);
+  }
+
+  useEffect(() => {
+    setFiles([]);
+    setActive(null);
+    setContent("");
+    load();
+  }, [adapterId, projectId, userId]);
+
+  useEffect(() => { if (active) openFile(active); }, [active]);
+
+  const lines = content ? content.split(/\r?\n/) : [];
+  const lineCount = lines.length || 0;
+  const preview = lines.slice(0, 12).join("\n");
+  const selectedFile = files.find((file) => file.path === active) ?? files[0] ?? null;
+
+  if (!files.length) {
+    return (
+      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.4)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Generated tests</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              No generated files yet. Click <b>Generate</b> on a project.
+            </p>
+          </div>
+          {compact ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/test-builder">Open in Editor</Link>
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  const explorer = (
+    <div className="grid grid-cols-12">
+      <aside className="col-span-4 max-h-[460px] overflow-auto border-r bg-[#252526] text-slate-200">
+        <div className="border-b border-[#2d2d2d] px-3 py-2 text-xs uppercase tracking-wide text-slate-400">
+          Explorer
+        </div>
+        <ul className="text-sm">
+          {files.map((f) => {
+            const isActive = active === f.path;
+            return (
+              <li key={f.path}>
+                <button
+                  onClick={() => openFile(f.path)}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left transition ${
+                    isActive ? "bg-[#094771] text-white" : "hover:bg-[#2d2d2d]"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+                    <span className="truncate">{f.path}</span>
+                  </span>
+                  <span className="text-xs text-slate-400">{f.size}b</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
+
+      <main className="col-span-8 max-h-[460px] overflow-auto bg-[#1e1e1e]">
+        <div className="flex items-center justify-between border-b border-[#2d2d2d] px-3 py-2 text-xs text-slate-300">
+          <span className="truncate">{active}</span>
+          <span className="text-[11px] text-slate-500">{lineCount} lines</span>
+        </div>
+        {(() => {
+          const lang = active?.endsWith(".feature")
+            ? "gherkin"
+            : active?.endsWith(".ts")
+            ? "typescript"
+            : "javascript";
+          return (
+            <Editor
+              height="430px"
+              language={lang}
+              theme="vs-dark"
+              value={content}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 13,
+                fontFamily: "Consolas, 'SFMono-Regular', Menlo, Monaco, monospace",
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                wordWrap: "on",
+                renderLineHighlight: "all",
+                occurrencesHighlight: "off",
+                contextmenu: false,
+              }}
+              wrapperProps={{ className: "border-t border-[#1b1b1b]" }}
+            />
+          );
+        })()}
+      </main>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_40px_-32px_rgba(15,23,42,0.4)]">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Generated tests</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Reduced to a preview so the dashboard stays focused on health and actions.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={load}>
+              Refresh
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/test-builder">Open Test Builder</Link>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setExpanded((value) => !value)}>
+              {expanded ? "Hide full code" : "View full code"}
+            </Button>
+            <a href={`/tm/generated/download?${queryString}`}>
+              <Button variant="secondary" size="sm">Download bundle</Button>
+            </a>
+          </div>
+        </div>
+
+        <div className="grid gap-4 px-5 py-4 lg:grid-cols-[0.8fr,1.2fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Last generated</div>
+            <div className="mt-2 truncate text-base font-semibold text-slate-950">
+              {selectedFile?.path ?? "Waiting for file selection"}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                {files.length} file{files.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                {lineCount} lines
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                {adapterId}
+              </span>
+              {effectiveProjectId ? (
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                  scoped to project
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[#0f172a]">
+            <div className="border-b border-slate-800 px-4 py-3 text-xs text-slate-400">
+              Preview
+            </div>
+            <pre className="max-h-[240px] overflow-auto px-4 py-3 font-mono text-xs leading-6 text-slate-200">
+              {preview || "// Loading generated preview..."}
+            </pre>
+          </div>
+        </div>
+
+        {expanded ? <div className="border-t border-slate-200">{explorer}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-300 bg-[var(--tm-bg)] p-0 md:col-span-2 xl:col-span-2">
+      <div className="flex items-center justify-between border-b border-slate-300 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Generated tests ({adapterId})</h2>
+          <p className="text-xs text-slate-500">VS Code-style preview with line numbers</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
+          <a
+            href={`/tm/generated/download?${queryString}`}
+          >
+            <Button variant="secondary" size="sm">Download bundle</Button>
+          </a>
+        </div>
+      </div>
+      {explorer}
+    </div>
+  );
+}

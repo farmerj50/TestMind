@@ -1,0 +1,3677 @@
+// apps/api/src/routes/run.ts
+import type { FastifyInstance } from "fastify";
+import { getAuth } from "@clerk/fastify";
+import fs from "fs/promises";
+import fsSync from "fs";
+import path from "path";
+import net from "net";
+import { z } from "zod";
+import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "@testmind/core/framework";
+import { getFrameworkDefinition, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
+import { prisma } from "../prisma.js";
+import { redis } from "../runner/redis.js";
+
+// runner pieces
+import { makeWorkdir, rmrf } from "../runner/workdir.js";
+import { cloneRepo } from "../runner/git.js";
+import { runTests } from "../runner/node-test-exec.js";
+import { execa } from "execa";
+import { persistParsedRunResults } from "../runner/persist-run-results.js";
+
+import { parseResults, ParsedCase } from "../runner/result-parsers.js";
+import type { LocatorBucket } from "../testmind/runtime/locator-store.js";
+import { scheduleSelfHealingForRun, scheduleSelfHealingForTarget } from "../runner/self-heal.js";
+import { enqueueAllureGenerate, enqueueRun, runQueue } from "../runner/queue.js";
+import {
+  analyzeFailure,
+  generateAnalyzeDocument,
+  prepareRunAssistAction,
+  prepareRunRepairAction,
+} from "../runner/ai-analysis.js";
+import { CURATED_ROOT, agentSuiteId } from "../testmind/curated-store.js";
+import { generateAndWrite, runAdapter } from "../testmind/service.js";
+import { regenerateAttachedSpecs } from "../agent/service.js";
+import { decryptSecret } from "../lib/crypto.js";
+import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
+import { sendRunNotifications } from "../notifications/runNotifications.js";
+import { finalizeLatestTestState } from "../runner/finalize-latest-test-state.js";
+
+// Minimal, workspace-aware dependency installer
+// replace your installDeps with this
+async function installDeps(repoRoot: string, workspaceCwd: string) {
+  const nodeModulesExists = fsSync.existsSync(path.join(repoRoot, "node_modules"));
+  const tStart = Date.now();
+
+  const has = (p: string) => fsSync.existsSync(path.join(repoRoot, p));
+  const isWorkspaceRoot =
+    path.resolve(repoRoot) === path.resolve(workspaceCwd) &&
+    fsSync.existsSync(path.join(repoRoot, "pnpm-workspace.yaml"));
+
+  // pick package manager from **repo root**
+  let pm: "pnpm" | "yarn" | "npm";
+  let installArgs: string[];
+  if (has("pnpm-lock.yaml")) {
+    pm = "pnpm"; installArgs = ["install", "--silent"];
+  } else if (has("yarn.lock")) {
+    pm = "yarn"; installArgs = ["install", "--silent", "--non-interactive"];
+  } else if (has("package-lock.json")) {
+    pm = "npm"; installArgs = ["ci", "--silent"];
+  } else {
+    pm = "npm"; installArgs = ["install", "--silent"];
+  }
+
+  const shouldRunFullInstall =
+    !(process.env.TM_SKIP_INSTALL === "1" && nodeModulesExists) &&
+    !(process.env.TM_REUSE_WORKSPACE === "1" && nodeModulesExists);
+
+  if (shouldRunFullInstall) {
+    if (process.env.TM_SKIP_INSTALL === "1") {
+      console.log("[runner] TM_SKIP_INSTALL=1 but node_modules missing; installing anyway");
+    }
+    if (process.env.TM_REUSE_WORKSPACE === "1" && nodeModulesExists) {
+      console.log("[runner] TM_REUSE_WORKSPACE=1 but running minimal install to refresh deps");
+    }
+    // install at the **repo root** so workspaces are wired correctly
+    await execa(pm, installArgs, { cwd: repoRoot, stdio: "pipe" });
+  } else {
+    console.log("[runner] Reusing workspace; skipping full install");
+  }
+
+  // ensure @playwright/test is resolvable from the **workspace cwd**
+  const canResolve = () => {
+    try { require.resolve("@playwright/test", { paths: [workspaceCwd] }); return true; }
+    catch { return false; }
+  };
+
+  if (!canResolve()) {
+    const addArgs =
+      pm === "pnpm" ? ["add", "-D", "@playwright/test", ...(isWorkspaceRoot ? ["-w"] : [])] :
+        pm === "yarn" ? ["add", "-D", "@playwright/test"] :
+          ["install", "-D", "@playwright/test"];
+
+    await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
+  }
+
+  const ensureDevDependency = async (pkg: string) => {
+    const canResolvePkg = () => {
+      try { require.resolve(pkg, { paths: [workspaceCwd] }); return true; }
+      catch { return false; }
+    };
+    if (canResolvePkg()) return;
+    const addArgs =
+      pm === "pnpm" ? ["add", "-D", pkg, ...(isWorkspaceRoot ? ["-w"] : [])] :
+        pm === "yarn" ? ["add", "-D", pkg] :
+          ["install", "-D", pkg];
+    await execa(pm, addArgs, { cwd: workspaceCwd, stdio: "pipe" });
+  };
+
+  await ensureDevDependency("allure-playwright");
+  await ensureDevDependency("allure-commandline");
+  await ensureDevDependency("allure-js-commons");
+
+  try {
+  const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+  await execa(npx, ["-y", "playwright", "install", "--with-deps"], {
+    cwd: workspaceCwd,
+    stdio: "pipe",
+  });
+} catch { /* non-fatal; Playwright may already be installed */ }
+
+  const tEnd = Date.now();
+  console.log(`[runner] installDeps completed in ${tEnd - tStart}ms (cwd=${workspaceCwd})`);
+}
+
+function isLikelyGitRepo(url?: string | null) {
+  if (!url) return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  return (
+    trimmed.endsWith(".git") ||
+    trimmed.startsWith("git@") ||
+    /github\.com|gitlab\.com|bitbucket\.org/.test(trimmed)
+  );
+}
+// If webServer uses `vite preview`, make sure the app is built first
+async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: string, configPath?: string }> {
+  // candidate folders (monorepo friendly)
+  const bases = ["apps", "packages"];
+  const candidates = new Set<string>(["."]);
+
+  for (const base of bases) {
+    const full = path.join(repoRoot, base);
+    try {
+      for (const d of await fs.readdir(full, { withFileTypes: true })) {
+        if (d.isDirectory()) candidates.add(path.join(base, d.name));
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Prefer apps/web, then other apps, then packages, then root.
+  const ordered = Array.from(candidates).sort((a, b) => {
+    const score = (v: string) => {
+      if (v === "apps/web") return 0;
+      if (v.startsWith("apps/")) return 1;
+      if (v.startsWith("packages/")) return 2;
+      if (v === ".") return 3;
+      return 4;
+    };
+    return score(a) - score(b);
+  });
+
+  // Prefer a folder that contains a Playwright config (CI config first).
+  const prefer = ["tm-ci.playwright.config.ts", "tm-ci.playwright.config.mjs", "tm-ci.playwright.config.js",
+    "playwright.config.ts", "playwright.config.mjs", "playwright.config.js", "playwright.config.cjs"];
+
+  for (const sub of ordered) {
+    const cwd = path.join(repoRoot, sub);
+    for (const fname of prefer) {
+      // Skip root-level tm-ci configs so we prefer real app workspaces (apps/web)
+      if (sub === "." && fname.startsWith("tm-ci.playwright.config")) continue;
+      if (fsSync.existsSync(path.join(cwd, fname))) {
+        return { subdir: sub, configPath: path.join(cwd, fname) };
+      }
+    }
+  }
+
+  // If no config found, pick any workspace that declares @playwright/test
+  for (const sub of ordered) {
+    const pkgPath = path.join(repoRoot, sub, "package.json");
+    try {
+      const pkg = JSON.parse(await fs.readFile(pkgPath, "utf8"));
+      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      if (deps["@playwright/test"]) return { subdir: sub, configPath: undefined };
+    } catch { /* ignore */ }
+  }
+
+  return { subdir: ".", configPath: undefined };
+}
+
+// Default base URL the runner will hand to Playwright (can be overridden by req or env)
+const DEFAULT_BASE_URL = process.env.TM_BASE_URL ?? "http://localhost:4173";
+const RUNNER_LOGS_ROOT = path.join(REPORT_ROOT, "runner-logs");
+const runAbortControllers = new Map<string, AbortController>();
+const cancelKeyForRun = (runId: string) => `cancel:run:${runId}`;
+const STALE_RUN_MINUTES = Number(process.env.TM_RUN_STALE_MINUTES ?? "60");
+
+async function isCancelRequested(runId: string) {
+  try {
+    return (await redis.get(cancelKeyForRun(runId))) === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function markRunCanceled(runId: string, error = "Canceled by user") {
+  await prisma.testRun.update({
+    where: { id: runId },
+    data: {
+      status: TestRunStatus.failed,
+      finishedAt: new Date(),
+      error,
+    },
+  });
+}
+
+async function clearStaleRuns(projectId: string) {
+  if (!Number.isFinite(STALE_RUN_MINUTES) || STALE_RUN_MINUTES <= 0) return;
+  const cutoff = new Date(Date.now() - STALE_RUN_MINUTES * 60 * 1000);
+  await prisma.testRun.updateMany({
+    where: {
+      projectId,
+      status: { in: [TestRunStatus.queued, TestRunStatus.running] },
+      OR: [
+        { startedAt: { lt: cutoff } },
+        { startedAt: null, createdAt: { lt: cutoff } },
+      ],
+    },
+    data: {
+      status: TestRunStatus.failed,
+      finishedAt: new Date(),
+      error: `Timed out after ${STALE_RUN_MINUTES} minutes`,
+    },
+  });
+}
+
+async function findAvailablePort(preferred: number): Promise<number> {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.unref();
+    const onError = () => {
+      const fallback = net.createServer();
+      fallback.unref();
+      fallback.listen(0, () => {
+        const addr = fallback.address();
+        const port = typeof addr === "object" && addr ? addr.port : preferred + 1;
+        fallback.close(() => resolve(port));
+      });
+      fallback.on("error", () => resolve(preferred + 1));
+    };
+    srv.on("error", onError);
+    srv.listen(preferred, () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : preferred;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+
+
+// ---------- helpers ----------
+function sendError(
+  reply: any,
+  code: string,
+  message: string,
+  statusCode = 400,
+  details?: any
+) {
+  return reply.code(statusCode).send({ error: { code, message, details } });
+}
+
+async function mergeAgentSpecs(projectId: string, destRoot: string, logPath: string) {
+  try {
+    const suiteId = agentSuiteId(projectId);
+    const src = path.join(CURATED_ROOT, suiteId);
+    if (!fsSync.existsSync(src)) return false;
+    const agentDest = path.join(destRoot, "__agent", suiteId);
+    await fs.rm(agentDest, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(path.dirname(agentDest), { recursive: true });
+    await fs.cp(src, agentDest, { recursive: true });
+    await fs.writeFile(
+      logPath,
+      `[runner] agent specs merged from ${src} -> ${agentDest}\n`,
+      { flag: "a" }
+    );
+    return true;
+  } catch (err: any) {
+    await fs.writeFile(
+      logPath,
+      `[runner] agent specs merge failed: ${err?.message ?? String(err)}\n`,
+      { flag: "a" }
+    );
+    return false;
+  }
+}
+
+const RunBody = z.object({
+  projectId: z.string().min(1, "projectId is required"),
+  mode: z.enum(["regular", "ai"]).optional(),
+  adapterId: z.enum(FRAMEWORK_IDS).optional(),
+  baseUrl: z.string().url().optional(), // optional override
+  suiteId: z.string().optional(), // spec suite to link edits back to
+  file: z.string().optional(),   // relative path to spec to run
+  specPath: z.string().optional(), // alias used by agent UI
+  files: z.array(z.string()).optional(), // multiple specs
+  grep: z.string().optional(),   // test title to match
+  headful: z.boolean().optional(),
+  livePreview: z.boolean().optional(),
+  runAll: z.boolean().optional(), // if true, ignore file/files/grep and run full suite
+  extraGlobs: z.array(z.string()).optional(), // legacy selector; populated internally
+  maxSpecs: z.number().int().positive().optional(), // cap spec count; excess files removed before run
+});
+
+function parseBool(val: unknown, fallback: boolean) {
+  if (val === undefined || val === null) return fallback;
+  const s = String(val).toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(s)) return true;
+  if (["0", "false", "no", "n", "off"].includes(s)) return false;
+  return fallback;
+}
+
+type RunStatus = "queued" | "running" | "succeeded" | "failed";
+type ResultStatus = "passed" | "failed" | "skipped" | "error";
+type RunLifecycleStatus = "queued" | "running" | "completed" | "failed";
+type ArtifactState = "none" | "partial" | "complete";
+const TestRunStatus: Record<RunStatus, RunStatus> = {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+};
+const TestResultStatus: Record<ResultStatus, ResultStatus> = {
+  passed: "passed",
+  failed: "failed",
+  skipped: "skipped",
+  error: "error",
+};
+
+function mapStatus(s: string): ResultStatus {
+  if (s === "passed") return TestResultStatus.passed;
+  if (s === "failed" || s === "error") return TestResultStatus.failed;
+  if (s === "skipped") return TestResultStatus.skipped;
+  return TestResultStatus.error;
+}
+
+const stripAnsi = (value?: string | null) =>
+  typeof value === "string" ? value.replace(/\u001b\[[0-9;]*m/g, "") : value ?? null;
+
+const filterRunnerError = (value?: string | null) => {
+  if (!value) return null;
+  const cleaned = stripAnsi(value)
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .filter((line) => !/^npm notice\b/i.test(line))
+    .filter((line) => !/New major version of npm available!/i.test(line))
+    .join("\n")
+    .trim();
+  return cleaned || null;
+};
+
+const firstHeaderValue = (value?: string | string[]) => {
+  if (Array.isArray(value)) return value[0]?.split(",")[0]?.trim() || "";
+  return value?.split(",")[0]?.trim() || "";
+};
+
+const resolvePublicBaseUrl = (req: any) => {
+  const configured = (process.env.TM_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  const xfProto = firstHeaderValue(req.headers?.["x-forwarded-proto"]);
+  const xfHost = firstHeaderValue(req.headers?.["x-forwarded-host"]);
+  if (xfProto && xfHost) return `${xfProto}://${xfHost}`;
+  const host = firstHeaderValue(req.headers?.host);
+  const proto = (typeof req.protocol === "string" && req.protocol) || (req.raw?.socket?.encrypted ? "https" : "http");
+  return host ? `${proto}://${host}` : "";
+};
+
+const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/^\/+/, "");
+
+const toAbsoluteUrl = (base: string, relOrAbs: string) => {
+  if (!relOrAbs) return "";
+  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
+  return base ? new URL(rel, `${base}/`).toString() : rel;
+};
+
+const toRunnerLogsRoutePath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let routePath = normalized;
+  if (routePath.startsWith("runner/runner-logs/")) {
+    routePath = `/${routePath}`;
+  } else if (routePath.startsWith("runner-logs/")) {
+    routePath = `/runner/${routePath}`;
+  } else if (routePath.startsWith("runner/")) {
+    routePath = `/${routePath}`;
+  } else {
+    routePath = `/runner/runner-logs/${runId}/${routePath}`;
+  }
+  if (options?.indexHtml && !routePath.endsWith("/index.html")) {
+    routePath = `${routePath.replace(/\/+$/, "")}/index.html`;
+  }
+  return routePath;
+};
+
+const toStaticArtifactPath = (runId: string, input: string, options?: { indexHtml?: boolean }) => {
+  const normalized = normalizePathLike(input);
+  let artifactPath = normalized;
+  if (artifactPath.startsWith("runner/runner-logs/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (artifactPath.startsWith("runner/")) {
+    artifactPath = artifactPath.slice("runner/".length);
+  } else if (!artifactPath.startsWith("runner-logs/")) {
+    artifactPath = `runner-logs/${runId}/${artifactPath}`;
+  }
+  let staticPath = `/_static/${artifactPath}`;
+  if (options?.indexHtml && !staticPath.endsWith("/index.html")) {
+    staticPath = `${staticPath.replace(/\/+$/, "")}/index.html`;
+  }
+  return staticPath;
+};
+
+const toLifecycleStatus = (status: string): RunLifecycleStatus => {
+  if (status === "succeeded") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "running") return "running";
+  return "queued";
+};
+
+const toArtifactsState = (artifactsJson: unknown): ArtifactState => {
+  if (!artifactsJson || typeof artifactsJson !== "object") return "none";
+  const artifacts = artifactsJson as Record<string, unknown>;
+  const keys = Object.keys(artifacts).filter((k) => typeof artifacts[k] === "string" && (artifacts[k] as string).trim());
+  if (!keys.length) return "none";
+  const hasReport = typeof artifacts.reportJson === "string";
+  const hasAllure = typeof artifacts["allure-report"] === "string";
+  return hasReport && hasAllure ? "complete" : "partial";
+};
+
+const toStructuredErrors = (run: { error?: string | null; summary?: string | null }) => {
+  const out: Array<{ code: string; message: string; source: "runner" | "summary" }> = [];
+  const seen = new Set<string>();
+  const pushUnique = (code: string, message: string, source: "runner" | "summary") => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const key = `${source}:${trimmed}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ code, message: trimmed, source });
+  };
+  if (run.error) pushUnique("RUN_ERROR", run.error, "runner");
+  if (run.summary) {
+    try {
+      const parsed = JSON.parse(run.summary);
+      const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+      for (const value of errors) {
+        if (typeof value === "string") pushUnique("SUMMARY_ERROR", value, "summary");
+      }
+    } catch {
+      // Ignore non-JSON summaries.
+    }
+  }
+  return out;
+};
+
+const toPublicArtifacts = (
+  req: any,
+  runId: string,
+  artifactsJson?: Record<string, unknown> | null
+) => {
+  const base = resolvePublicBaseUrl(req);
+  const artifacts = (artifactsJson ?? {}) as Record<string, unknown>;
+  const readString = (key: string) => (typeof artifacts[key] === "string" ? String(artifacts[key]) : "");
+  const reportPathRaw = readString("reportJson");
+  const allureReportRaw = readString("allure-report") || readString("allure");
+  const allureResultsRaw = readString("allure-results");
+
+  const reportPath = reportPathRaw
+    ? /^https?:\/\//i.test(reportPathRaw)
+      ? reportPathRaw
+      : toStaticArtifactPath(runId, reportPathRaw)
+    : `/runner/test-runs/${runId}/report.json`;
+  const allureReportPath = allureReportRaw
+    ? /^https?:\/\//i.test(allureReportRaw)
+      ? allureReportRaw
+      : toStaticArtifactPath(runId, allureReportRaw, { indexHtml: true })
+    : "";
+  const allureResultsPath = allureResultsRaw
+    ? /^https?:\/\//i.test(allureResultsRaw)
+      ? allureResultsRaw
+      : toStaticArtifactPath(runId, allureResultsRaw)
+    : "";
+
+  return {
+    reportJsonUrl: toAbsoluteUrl(base, reportPath),
+    allureReportUrl: allureReportPath ? toAbsoluteUrl(base, allureReportPath) : null,
+    allureResultsUrl: allureResultsPath ? toAbsoluteUrl(base, allureResultsPath) : null,
+    analysisUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/analysis`),
+    stdoutUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stdout`),
+    stderrUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/logs?type=stderr`),
+    liveEventsUrl: toAbsoluteUrl(base, `/runner/test-runs/${runId}/live`),
+    runViewUrl: toAbsoluteUrl(base, `/test-runs/${runId}`),
+  };
+};
+
+async function normalizeAllureBrokenStatuses(allureResultsDir: string) {
+  const entries = await fs.readdir(allureResultsDir, { withFileTypes: true }).catch(() => []);
+  let changed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith("-result.json")) continue;
+    const fullPath = path.join(allureResultsDir, entry.name);
+    try {
+      const raw = await fs.readFile(fullPath, "utf8");
+      const parsed = JSON.parse(raw) as { status?: string };
+      if (parsed?.status !== "broken") continue;
+      parsed.status = "failed";
+      await fs.writeFile(fullPath, JSON.stringify(parsed, null, 2), "utf8");
+      changed += 1;
+    } catch {
+      // Ignore malformed/unreadable result files and continue.
+    }
+  }
+  return changed;
+}
+
+const withRunContract = <T extends { id: string; status: string; error?: string | null; summary?: string | null; artifactsJson?: unknown }>(
+  req: any,
+  run: T
+) => ({
+  ...run,
+  lifecycleStatus: toLifecycleStatus(run.status),
+  artifactsState: toArtifactsState(run.artifactsJson),
+  errors: toStructuredErrors(run),
+  publicArtifacts: toPublicArtifacts(req, run.id, (run.artifactsJson ?? null) as Record<string, unknown> | null),
+});
+
+type MissingLocatorItem = {
+  pagePath: string;
+  bucket: LocatorBucket;
+  name: string;
+  stepText: string;
+  suggestions: string[];
+};
+
+function extractNavTargetFromTitle(title?: string | null): string | null {
+  if (!title) return null;
+  const match = title.match(/Navigate\s+[^â†’-]+(?:â†’|->)\s+([^\s]+)/i);
+  const target = match?.[1]?.trim() ?? "";
+  if (!target || !target.startsWith("/")) return null;
+  return target;
+}
+
+function navKeyFromPath(path: string): string {
+  if (path === "/") return "nav.home";
+  const cleaned = path.replace(/^\//, "");
+  const kebab = cleaned
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return kebab ? `nav.${kebab}` : "nav.home";
+}
+
+function navSuggestions(path: string): string[] {
+  const target = path || "/";
+  return Array.from(
+    new Set([`a[href="${target}"]`, `a[href^="${target}"]`])
+  );
+}
+
+function semanticKeyFromString(value?: string): string {
+  if (!value) return "default";
+  const cleaned = value
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "default";
+}
+
+function generateSelectorSuggestions(rawName: string): string[] {
+  const candidates: string[] = [];
+  const push = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    candidates.push(trimmed);
+  };
+
+  const safeText = rawName?.trim();
+  const looksLikeSelector = /[#.[\]=:]/.test(safeText || "");
+  if (looksLikeSelector) {
+    push(safeText);
+  }
+
+  if (safeText && safeText.length <= 80) {
+    push(`text=${safeText.replace(/"/g, '\\"')}`);
+  }
+
+  const normalized = rawName.replace(/[^a-z0-9]/gi, "");
+  if (normalized && normalized.length <= 32) {
+    push(`input[name="${normalized}"]`);
+    push(`input[placeholder*="${normalized}"]`);
+    push(`[data-testid*="${normalized}"]`);
+  }
+
+  push("input");
+  push("button");
+  return Array.from(new Set(candidates));
+}
+
+function cleanLocatorArg(value: string): string {
+  let raw = value.trim();
+  if (raw.startsWith("/") && raw.lastIndexOf("/") > 0) {
+    const lastSlash = raw.lastIndexOf("/");
+    raw = raw.slice(1, lastSlash);
+  }
+  if (
+    (raw.startsWith("'") && raw.endsWith("'")) ||
+    (raw.startsWith('"') && raw.endsWith('"'))
+  ) {
+    raw = raw.slice(1, -1);
+  }
+  return raw.trim();
+}
+
+function extractLocatorExpression(message?: string | null, steps?: string[]): string | null {
+  const raw = `${message ?? ""}\n${(steps ?? []).join("\n")}`;
+  const locatorLine = raw.match(/Locator:\s*(.+)$/im);
+  if (locatorLine?.[1]) return locatorLine[1].trim();
+  const waitLine = (steps ?? []).find((line) => /waiting for /i.test(line));
+  if (waitLine) {
+    const match = waitLine.match(/waiting for\s+(.+)$/i);
+    if (match?.[1]) return match[1].trim();
+  }
+  const exprMatch = raw.match(/(getByText\([^)]+\)|getByRole\([^)]+\)|getByLabel\([^)]+\)|getByPlaceholder\([^)]+\)|getByTestId\([^)]+\)|locator\([^)]+\))/i);
+  return exprMatch?.[1]?.trim() ?? null;
+}
+
+function extractLocatorName(expr: string): string {
+  const locatorMatch = expr.match(/locator\((.+)\)/i);
+  if (locatorMatch?.[1]) return cleanLocatorArg(locatorMatch[1]);
+  const textMatch = expr.match(/getByText\((.+)\)/i);
+  if (textMatch?.[1]) return cleanLocatorArg(textMatch[1]);
+  const roleMatch = expr.match(/getByRole\((.+)\)/i);
+  if (roleMatch?.[1]) return cleanLocatorArg(roleMatch[1]);
+  const labelMatch = expr.match(/getByLabel\((.+)\)/i);
+  if (labelMatch?.[1]) return cleanLocatorArg(labelMatch[1]);
+  const placeholderMatch = expr.match(/getByPlaceholder\((.+)\)/i);
+  if (placeholderMatch?.[1]) return cleanLocatorArg(placeholderMatch[1]);
+  const testIdMatch = expr.match(/getByTestId\((.+)\)/i);
+  if (testIdMatch?.[1]) return cleanLocatorArg(testIdMatch[1]);
+  return expr;
+}
+
+function pagePathFromTitle(title?: string | null): string {
+  if (!title) return "/";
+  const direct = title.match(/(?:Page loads:|Navigate)\s+([^ ]+)/i);
+  if (direct?.[1]) return direct[1].trim();
+  const pathMatch = title.match(/(\/[a-z0-9/_-]+)(?:\b|$)/i);
+  return pathMatch?.[1]?.trim() || "/";
+}
+
+function isPageLoadTitle(title?: string | null): boolean {
+  if (!title) return false;
+  return /Page loads:/i.test(title);
+}
+
+function isMissingLocatorFailure(message?: string | null, steps?: string[]): boolean {
+  const raw = `${message ?? ""}\n${(steps ?? []).join("\n")}`;
+  if (!raw.trim()) return false;
+  if (
+    !/toBeVisible/i.test(raw) &&
+    !/element\(s\) not found/i.test(raw) &&
+    !/waiting for /i.test(raw) &&
+    !/locator\.waitFor/i.test(raw)
+  ) {
+    return false;
+  }
+  return /getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator\(/i.test(raw);
+}
+
+type LocatorHealthUpdate = {
+  pagePath: string;
+  bucket: "locators";
+  name: string;
+  selector: string;
+  status: "passed" | "failed";
+  reason?: string | null;
+};
+
+function buildLocatorHealthUpdates(cases: ParsedCase[]): LocatorHealthUpdate[] {
+  const updates: LocatorHealthUpdate[] = [];
+  for (const c of cases) {
+    const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps ?? []);
+    if (!locatorExpr) continue;
+    const selector = locatorExpr.trim();
+    if (!selector) continue;
+    const name = extractLocatorName(selector).trim() || selector;
+    const status: "passed" | "failed" =
+      c.status === "failed" || c.status === "error" ? "failed" : "passed";
+    updates.push({
+      pagePath: pagePathFromTitle(c.fullName),
+      bucket: "locators",
+      name,
+      selector,
+      status,
+      reason: status === "failed" ? (c.message ?? null) : null,
+    });
+  }
+  return updates;
+}
+
+type NavSuggestionAuto = {
+  key: string;
+  selector: string;
+  sourcePath: string;
+  confidence: number;
+};
+
+function buildNavSuggestionUpdates(cases: ParsedCase[]): NavSuggestionAuto[] {
+  const out: NavSuggestionAuto[] = [];
+  const seen = new Set<string>();
+  for (const c of cases) {
+    const target = extractNavTargetFromTitle(c.fullName);
+    if (!target) continue;
+    const key = navKeyFromPath(target);
+    const selector = `a[href="${target}"]`;
+    const confidence = c.status === "passed" ? 88 : 64;
+    const dedupeKey = `${key}::${selector}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({
+      key,
+      selector,
+      sourcePath: target,
+      confidence,
+    });
+  }
+  return out;
+}
+
+async function appendMissingLocators(
+  filePath: string,
+  items: MissingLocatorItem[]
+): Promise<void> {
+  if (!items.length) return;
+  let payload: { items: MissingLocatorItem[] } = { items: [] };
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.items)) payload.items = parsed.items;
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") {
+      console.error("[missing-locators] failed to read", { filePath, error: err });
+    }
+  }
+  payload.items.push(...items);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
+}
+
+export default async function runRoutes(app: FastifyInstance) {
+  async function requireRunOwner(req: any, reply: any, runId: string) {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      reply.code(401).send({ error: "Unauthorized" });
+      return null;
+    }
+    const run = await prisma.testRun.findUnique({
+      where: { id: runId },
+      select: {
+        id: true,
+        projectId: true,
+        project: { select: { ownerId: true } },
+      },
+    });
+    if (!run || run.project.ownerId !== userId) {
+      reply.code(404).send({ error: "Run not found" });
+      return null;
+    }
+    return { runId: run.id, projectId: run.projectId, userId };
+  }
+
+  // POST /runner/run
+  app.post("/run", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+    const parsed = RunBody.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(
+        reply,
+        "INVALID_INPUT",
+        "Invalid request body",
+        400,
+        parsed.error.flatten()
+      );
+    }
+
+    const pid = parsed.data.projectId.trim();
+    const suiteId = parsed.data.suiteId?.trim() || undefined;
+    const adapterHintPaths = [
+      ...(parsed.data.files ?? []),
+      parsed.data.file,
+      parsed.data.specPath,
+    ].filter((value): value is string => typeof value === "string");
+    const suiteAdapterMatch = matchFrameworkIdFromValue(suiteId);
+    const adapterId =
+      parsed.data.adapterId ??
+      suiteAdapterMatch ??
+      (adapterHintPaths.some((value) => value.toLowerCase().endsWith(".feature")) ? "cucumber-js" : DEFAULT_FRAMEWORK_ID);
+    let mode = parsed.data.mode;
+    let aiMode = mode === "ai";
+    const headful = parsed.data.headful ?? parseBool(process.env.HEADFUL ?? process.env.TM_HEADFUL, false);
+    const LEGACY_CURATED_ROOT = path.resolve(process.cwd(), "..", "..", "apps", "api", "testmind-curated");
+    const requestedBaseUrl = parsed.data.baseUrl;
+    let effectiveBaseUrl = requestedBaseUrl ?? DEFAULT_BASE_URL;
+    // Default to honoring file/grep selection unless caller explicitly sets runAll.
+    // Honor explicit runAll, otherwise default from env, but if caller passed files/file/grep, prefer those.
+    const hasSelection =
+      (parsed.data.files && parsed.data.files.length > 0) ||
+      !!parsed.data.file ||
+      !!parsed.data.grep;
+    let runAll = parsed.data.runAll ?? parseBool(process.env.TM_RUN_ALL_DEFAULT ?? "0", false);
+    if (hasSelection && parsed.data.runAll === undefined) {
+      runAll = false;
+    }
+    const maxSpecs =
+      parsed.data.maxSpecs ??
+      (process.env.TM_MAX_SPECS ? Number(process.env.TM_MAX_SPECS) : undefined);
+    const localRepoRoot = process.env.TM_LOCAL_REPO_ROOT?.trim() || null;
+
+    // look up project
+    const project =
+      (await prisma.project.findUnique({ where: { id: pid } })) ??
+      (await prisma.project.findFirst({ where: { id: pid } }));
+
+    if (!project) {
+      return sendError(
+        reply,
+        "PROJECT_NOT_FOUND",
+        `Project ${pid} was not found. Create the project and configure its repoUrl before running.`,
+        404
+      );
+    }
+    if (project.ownerId !== userId) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+
+    // Fall back to the project's repoUrl when it's an app URL (not a git repo) and no
+    // explicit baseUrl was provided. For AI-only projects, repoUrl holds the target app URL.
+    const projectStoredBaseUrl = !requestedBaseUrl
+      ? (() => {
+          const stored = typeof (project.sharedSteps as any)?.baseUrl === "string"
+            ? (project.sharedSteps as any).baseUrl.trim()
+            : "";
+          if (stored) return stored;
+          const repo = project.repoUrl?.trim() ?? "";
+          if (repo && !isLikelyGitRepo(repo) && /^https?:\/\//i.test(repo)) return repo;
+          return undefined;
+        })()
+      : undefined;
+    if (projectStoredBaseUrl) effectiveBaseUrl = projectStoredBaseUrl;
+
+    const curatedSuite =
+      suiteId
+        ? await prisma.curatedSuite.findUnique({
+            where: { id: suiteId },
+            select: { rootRel: true, projectId: true },
+          })
+        : null;
+
+    if (!mode) {
+      const pathHints = [
+        ...(parsed.data.files ?? []),
+        parsed.data.file,
+        parsed.data.specPath,
+      ].filter((v): v is string => typeof v === "string");
+      const inferredAi =
+        pathHints.some((p) => p.replace(/\\/g, "/").includes("testmind-generated/")) ||
+        (!isLikelyGitRepo(project.repoUrl) &&
+          (parsed.data.file || parsed.data.specPath || (parsed.data.files?.length ?? 0) > 0));
+      mode = inferredAi ? "ai" : "regular";
+      aiMode = mode === "ai";
+    }
+
+    const rateLimit = Number(process.env.TM_RUN_RATE_LIMIT ?? "5");
+    const rateWindowSec = Number(process.env.TM_RUN_RATE_WINDOW_SEC ?? "60");
+    if (Number.isFinite(rateLimit) && rateLimit > 0 && Number.isFinite(rateWindowSec) && rateWindowSec > 0) {
+      const key = `rate:runner:${userId}`;
+      const count = await redis.incr(key);
+      if (count === 1) {
+        await redis.expire(key, rateWindowSec);
+      }
+      if (count > rateLimit) {
+        return reply.code(429).send({ error: "Rate limit exceeded" });
+      }
+    }
+
+    await clearStaleRuns(project.id);
+    const active = await prisma.testRun.findFirst({
+      where: { projectId: project.id, status: { in: [TestRunStatus.queued, TestRunStatus.running] } },
+      select: { id: true },
+    });
+    if (active) {
+      return reply.code(409).send({ error: "Another run is already active for this project" });
+    }
+    const locatorMeta = (project.sharedSteps as any)?.locatorMeta;
+    const locatorUpdatedAt =
+      locatorMeta?.updatedAt && typeof locatorMeta.updatedAt === "string"
+        ? locatorMeta.updatedAt
+        : null;
+    const lastGeneratedAt =
+      typeof (project.sharedSteps as any)?.lastGeneratedAt === "string"
+        ? (project.sharedSteps as any).lastGeneratedAt
+        : null;
+    const shouldRegenerate =
+      !!locatorUpdatedAt && (!lastGeneratedAt || locatorUpdatedAt > lastGeneratedAt);
+
+    if (shouldRegenerate && adapterId === DEFAULT_FRAMEWORK_ID) {
+      try {
+        const adapterId = DEFAULT_FRAMEWORK_ID;
+        const repoRoot = process.env.TM_LOCAL_REPO_ROOT
+          ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
+          : path.resolve(process.cwd(), "..", "..");
+        const baseUrlFromProject = (project.sharedSteps as any)?.baseUrl;
+        if (typeof baseUrlFromProject === "string" && baseUrlFromProject.trim()) {
+          const outRoot = path.join(GENERATED_ROOT, `${adapterId}-${project.ownerId}`, project.id);
+          await generateAndWrite({
+            repoPath: repoRoot,
+            outRoot,
+            baseUrl: baseUrlFromProject.trim(),
+            adapterId,
+            options: { sharedSteps: project.sharedSteps as any },
+          });
+          const webOutRoot = path.join(
+            repoRoot,
+            "apps",
+            "web",
+            "testmind-generated",
+            `${adapterId}-${project.ownerId}`,
+            project.id
+          );
+          await fs.rm(webOutRoot, { recursive: true, force: true }).catch(() => {});
+          await fs.mkdir(path.dirname(webOutRoot), { recursive: true });
+          await fs.cp(outRoot, webOutRoot, { recursive: true });
+          await prisma.project.update({
+            where: { id: project.id },
+            data: {
+              sharedSteps: {
+                ...(project.sharedSteps as any),
+                lastGeneratedAt: new Date().toISOString(),
+              },
+            },
+          });
+          await fs.writeFile(
+            path.join(RUNNER_LOGS_ROOT, "regen.log"),
+            `[runner] regenerated specs for ${project.id} at ${new Date().toISOString()}\n`,
+            { flag: "a" }
+          );
+        }
+      } catch (err) {
+        await fs.writeFile(
+          path.join(RUNNER_LOGS_ROOT, "regen.log"),
+          `[runner] regenerate failed for ${project.id}: ${err instanceof Error ? err.message : String(err)}\n`,
+          { flag: "a" }
+        );
+      }
+    }
+    // Ensure attached agent scenarios are materialized as specs in TM_LOCAL_SPECS before running
+    try {
+      await regenerateAttachedSpecs(project.ownerId, project.id);
+    } catch (err) {
+      app.log.warn({ err }, "[runner] regenerateAttachedSpecs failed (continuing)");
+    }
+    const allowLocalRepo = (process.env.TM_USE_LOCAL_REPO ?? "1") === "1"; // default: allow local fallback
+    const runFromRepo = !aiMode && (process.env.TM_RUN_FROM_REPO ?? "0") === "1"; // default: standalone generated-only
+    const hasRepoUrl = runFromRepo && isLikelyGitRepo(project.repoUrl);
+    if (runFromRepo && !hasRepoUrl && !allowLocalRepo) {
+      return sendError(
+        reply,
+        "MISSING_REPO_URL",
+        "Repository URL is not configured for this project. Set repoUrl and try again.",
+        400,
+        { projectId: pid }
+      );
+    }
+
+    // create run entry
+    const runParams: Record<string, any> = { headful, suiteId, mode, adapterId };
+    if (effectiveBaseUrl) runParams.baseUrl = effectiveBaseUrl;
+    if (parsed.data.livePreview !== undefined) runParams.livePreview = parsed.data.livePreview;
+    const run = await prisma.testRun.create({
+      data: {
+        projectId: pid,
+        status: TestRunStatus.running,
+        startedAt: new Date(),
+        trigger: "user",
+        paramsJson: runParams,
+      },
+    });
+    const cancelKey = cancelKeyForRun(run.id);
+    await redis.del(cancelKey).catch(() => {});
+    const abortController = new AbortController();
+    runAbortControllers.set(run.id, abortController);
+
+    await ensureStorageDirs();
+    const outDir = path.join(RUNNER_LOGS_ROOT, run.id);
+    await fs.mkdir(outDir, { recursive: true });
+    let artifacts: Record<string, string> | undefined;
+
+    // launch the real runner in background (no await)
+    (async () => {
+      let work: string;
+      let usingLocalRepo = false;
+
+      const reuseWorkspace = (process.env.TM_REUSE_WORKSPACE ?? "1") === "1";
+      const reusePathEnv = process.env.TM_WORKSPACE_PATH;
+
+      if (!runFromRepo) {
+        work = path.resolve(process.cwd());
+        usingLocalRepo = true;
+        await fs.writeFile(
+          path.join(outDir, "stdout.txt"),
+          `[runner] TM_RUN_FROM_REPO=0 using local runtime only (no clone/install/build)\n`,
+          { flag: "a" }
+        );
+      } else if (localRepoRoot) {
+        // Explicit local repo root takes priority
+        work = path.resolve(localRepoRoot);
+        usingLocalRepo = true;
+        await fs.writeFile(
+          path.join(outDir, "stdout.txt"),
+          `[runner] TM_LOCAL_REPO_ROOT=${work} -> using local workspace (skip clone/install/build/server)\n`,
+          { flag: "a" }
+        );
+      } else if (reuseWorkspace) {
+        // Reuse an existing checkout; force monorepo root (../../ from apps/api)
+        const fallbackRoot = path.resolve(process.cwd(), "../..");
+        const hasWorkspace =
+          fsSync.existsSync(path.join(fallbackRoot, "package.json")) ||
+          fsSync.existsSync(path.join(fallbackRoot, "pnpm-lock.yaml")) ||
+          fsSync.existsSync(path.join(fallbackRoot, "package-lock.json")) ||
+          fsSync.existsSync(path.join(fallbackRoot, "yarn.lock"));
+        if (hasWorkspace) {
+          work = fallbackRoot;
+          usingLocalRepo = true;
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] TM_REUSE_WORKSPACE=1 using workdir=${work}\n`,
+            { flag: "a" }
+          );
+        } else {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] TM_REUSE_WORKSPACE=1 but no repo root at ${fallbackRoot}; falling back to clone\n`,
+            { flag: "a" }
+          );
+          work = await makeWorkdir();
+        }
+      } else if (!hasRepoUrl && allowLocalRepo) {
+        // fall back to monorepo root (apps/api is one level below)
+        work = path.resolve(process.cwd(), "..");
+        usingLocalRepo = true;
+      } else {
+        work = await makeWorkdir(); // where we clone the repo
+      }
+      try {
+        if (await isCancelRequested(run.id)) {
+          await markRunCanceled(run.id);
+          return;
+        }
+        // Safety: if work accidentally points at apps/ or apps/api, lift to repo root
+        const workStat = work.replace(/\\/g, "/");
+        if (workStat.endsWith("/apps/api")) {
+          work = path.resolve(work, "../..");
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] corrected workdir up to repo root (was apps/api): ${work}\n`,
+            { flag: "a" }
+          );
+        } else if (workStat.endsWith("/apps")) {
+          work = path.resolve(work, "..");
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] corrected workdir up to repo root (was apps): ${work}\n`,
+            { flag: "a" }
+          );
+        }
+
+        // GitHub token if connected
+        const gitAcct = await prisma.gitAccount.findFirst({
+          where: { userId: project.ownerId, provider: "github" },
+          select: { token: true },
+        });
+        let gitToken: string | undefined;
+        if (gitAcct?.token) {
+          try {
+            gitToken = decryptSecret(gitAcct.token);
+          } catch {
+            // Backward compatibility for legacy plaintext tokens.
+            gitToken = gitAcct.token;
+          }
+        }
+
+        // 1) Clone (skip if using local/reuse workspace)
+        if (!usingLocalRepo && hasRepoUrl && project.repoUrl) {
+          await cloneRepo(project.repoUrl, work, gitToken);
+        } else if (usingLocalRepo) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] clone skipped (using local/reuse workspace)\n",
+            { flag: "a" }
+          );
+        } else if (!hasRepoUrl) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] repoUrl missing/non-git; skipping clone and running generated specs only\n",
+            { flag: "a" }
+          );
+        }
+
+        // 2) Install deps
+        // await installDeps(work);
+
+        const adapter = getFrameworkDefinition(adapterId).id;
+        const userSuffix = project.ownerId ? `${adapter}-${project.ownerId}` : adapter;
+        const generatedOnly = getFrameworkDefinition(adapterId).previewMode === "gherkin" || aiMode || !hasRepoUrl;
+
+        const resolveGeneratedSpecsDir = () => {
+          const cwdRoot = process.cwd();
+          const envRoot = process.env.TM_GENERATED_ROOT ? path.resolve(process.env.TM_GENERATED_ROOT) : null;
+          const configuredRoot = path.resolve(GENERATED_ROOT);
+          const candidates = [
+            envRoot,
+            configuredRoot,
+            path.join(cwdRoot, "testmind-generated"),
+            path.join(cwdRoot, "apps", "web", "testmind-generated"),
+            path.join(cwdRoot, "apps", "api", "testmind-generated"),
+            path.join(path.resolve(cwdRoot, ".."), "testmind-generated"),
+            path.join(path.resolve(cwdRoot, "..", ".."), "testmind-generated"),
+            path.join(path.resolve(cwdRoot, "..", ".."), "apps", "web", "testmind-generated"),
+            path.join(path.resolve(cwdRoot, "..", ".."), "apps", "api", "testmind-generated"),
+            path.join(path.sep, "testmind-generated"),
+          ].filter(Boolean) as string[];
+
+          const tried: string[] = [];
+          const found: {
+            projectScoped: string | null;
+            userScoped: string | null;
+            adapterProject: string | null;
+            adapterScoped: string | null;
+          } = {
+            projectScoped: null,
+            userScoped: null,
+            adapterProject: null,
+            adapterScoped: null,
+          };
+
+          for (const root of candidates) {
+            const projectScoped = path.join(root, userSuffix, project.id);
+            tried.push(projectScoped);
+            if (!found.projectScoped && fsSync.existsSync(projectScoped)) found.projectScoped = projectScoped;
+
+            const userScoped = path.join(root, userSuffix);
+            tried.push(userScoped);
+            if (!found.userScoped && fsSync.existsSync(userScoped)) found.userScoped = userScoped;
+
+            const adapterProject = path.join(root, adapter, project.id);
+            tried.push(adapterProject);
+            if (!found.adapterProject && fsSync.existsSync(adapterProject)) found.adapterProject = adapterProject;
+
+            const adapterScoped = path.join(root, adapter);
+            tried.push(adapterScoped);
+            if (!found.adapterScoped && fsSync.existsSync(adapterScoped)) found.adapterScoped = adapterScoped;
+          }
+
+          const dir =
+            found.projectScoped ??
+            found.userScoped ??
+            found.adapterProject ??
+            found.adapterScoped ??
+            null;
+          return { dir, tried };
+        };
+
+        let genDir: string | null = null;
+        if (generatedOnly) {
+          const resolved = resolveGeneratedSpecsDir();
+          genDir = resolved.dir;
+          if (!genDir) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] no generated specs found; set TM_GENERATED_ROOT or generate specs first\n[runner] tried:\n${resolved.tried.map((p) => ` - ${p}`).join("\n")}\n`,
+              { flag: "a" }
+            );
+            return;
+          }
+
+          // Narrow genDir from user-level to spec-specific subdirectory when possible.
+          // resolveGeneratedSpecsDir() falls back to userScoped when there is no directory matching
+          // project.id under the user suffix (e.g. JusticePath specs generated into a suite-id subdir).
+          // When a specific file is requested and its first path segment is a direct child of genDir,
+          // use that child as genDir so the Playwright testDir is scoped to just that project's specs.
+          // This prevents all mixed user-level specs from polluting the test discovery scope.
+          const firstRequestedFile = (
+            parsed.data.file ?? parsed.data.specPath ?? parsed.data.files?.[0]
+          );
+          if (firstRequestedFile) {
+            const relParts = firstRequestedFile.replace(/\\/g, "/").split("/");
+            // If the path has at least one segment, check if genDir/<segment> exists and is a directory
+            if (relParts.length >= 1) {
+              const firstSeg = relParts[0];
+              const narrowed = path.join(genDir, firstSeg);
+              if (firstSeg && !firstSeg.startsWith("..") && fsSync.existsSync(narrowed)) {
+                const stat = fsSync.statSync(narrowed).isDirectory();
+                if (stat) {
+                  genDir = narrowed; // narrowed to suite/project subdir
+                }
+              }
+            }
+          }
+
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] generated specs dir=${genDir}\n`,
+            { flag: "a" }
+          );
+          const listSpecFiles = (rootDir: string, max = 200) => {
+            const out: string[] = [];
+            const walk = (dir: string, relBase: string) => {
+              if (out.length >= max) return;
+              let entries: fsSync.Dirent[];
+              try {
+                entries = fsSync.readdirSync(dir, { withFileTypes: true });
+              } catch {
+                return;
+              }
+              for (const entry of entries) {
+                if (out.length >= max) return;
+                const abs = path.join(dir, entry.name);
+                const rel = path.posix.join(relBase, entry.name);
+                if (entry.isDirectory()) {
+                  walk(abs, rel);
+                } else if (entry.isFile()) {
+                  if (/\.(spec|test)\.(ts|js|mjs|cjs)$/i.test(entry.name)) {
+                    out.push(rel);
+                  }
+                }
+              }
+            };
+            walk(rootDir, "");
+            return out;
+          };
+          const syncLegacyRecordings = async () => {
+            if (!genDir || !genDir.includes(`${adapter}-${project.ownerId}`)) return;
+            const recordingsDest = path.join(genDir, "recordings", project.id);
+            const isPlaceholderSpec = async (filePath: string) => {
+              try {
+                const text = await fs.readFile(filePath, "utf8");
+                return text.includes("paste or write your Playwright spec here");
+              } catch {
+                return false;
+              }
+            };
+            try {
+              const existing = fsSync.existsSync(recordingsDest)
+                ? await fs.readdir(recordingsDest).catch(() => [])
+                : [];
+              if (existing.length > 0) {
+                let hasRealSpec = false;
+                for (const file of existing) {
+                  const full = path.join(recordingsDest, file);
+                  if (!(file.endsWith(".spec.ts") || file.endsWith(".spec.js"))) continue;
+                  if (!(await isPlaceholderSpec(full))) {
+                    hasRealSpec = true;
+                    break;
+                  }
+                }
+                if (hasRealSpec) return;
+              }
+            } catch {
+              // ignore; attempt copy
+            }
+            const repoRoot = work;
+            const legacyRoots = [
+              path.resolve(GENERATED_ROOT),
+              path.join(repoRoot, "testmind-generated"),
+              path.join(repoRoot, "apps", "api", "testmind-generated"),
+              path.join(repoRoot, "apps", "web", "testmind-generated"),
+            ];
+            for (const root of legacyRoots) {
+              const legacy = path.join(root, adapter, "recordings", project.id);
+              if (!fsSync.existsSync(legacy)) continue;
+              await fs.mkdir(recordingsDest, { recursive: true });
+              await fs.cp(legacy, recordingsDest, { recursive: true });
+              await fs.writeFile(
+                path.join(outDir, "stdout.txt"),
+                `[runner] synced legacy recordings from ${legacy} -> ${recordingsDest}\n`,
+                { flag: "a" }
+              );
+              break;
+            }
+          };
+          await syncLegacyRecordings();
+          // Skip the full spec listing for targeted single-file runs — it adds scan overhead for no value
+          if (runAll || !hasSelection) {
+            const specFiles = listSpecFiles(genDir);
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] spec files in genDir (${specFiles.length})\n` +
+                specFiles.map((f) => ` - ${f}`).join("\n") +
+                "\n",
+              { flag: "a" }
+            );
+          }
+        }
+
+        // 3) Detect + run (object signature) and force JSON output to outDir/report.json
+        // 3) Run tests (runner auto-finds the correct Playwright config) and write JSON to outDir/report.json
+        // 2) Detect the correct workspace that contains Playwright (e.g., apps/web)
+        // 2) Detect the correct workspace (e.g., apps/web) and switch cwd there
+        // 2) Detect the workspace that contains Playwright and switch cwd to it
+        let cwd: string;
+        if (generatedOnly) {
+          // Keep generated-only runs anchored at repo root so Playwright + tests
+          // resolve @playwright/test from the same node_modules.
+          cwd = work;
+        } else {
+          const { subdir: appSubdir } = await findPlaywrightWorkspace(work);
+          cwd = path.resolve(work, appSubdir);
+        }
+
+        // breadcrumbs for debugging
+        await fs.writeFile(
+          path.join(outDir, "stdout.txt"),
+          `[runner] repoRoot=${work}\n[runner] workdir=${cwd}\n`,
+          { flag: "a" }
+        );
+
+
+        // 3) Install deps in the workspace
+        // - for local/reuse workspaces, only install when @playwright/test is missing
+        const needsPlaywright = () => {
+          try {
+            require.resolve("@playwright/test", { paths: [cwd] });
+            return false;
+          } catch {
+            return true;
+          }
+        };
+        if (!generatedOnly) {
+          if (localRepoRoot || reuseWorkspace) {
+            if (needsPlaywright()) {
+              const t0 = Date.now();
+              await fs.writeFile(
+                path.join(outDir, "stdout.txt"),
+                "[runner] local/reuse workspace: @playwright/test missing, running installDeps\n",
+                { flag: "a" }
+              );
+              await installDeps(work, cwd);
+              await fs.writeFile(
+                path.join(outDir, "stdout.txt"),
+                `[runner] installDeps done in ${Date.now() - t0}ms\n`,
+                { flag: "a" }
+              );
+            } else {
+              await fs.writeFile(
+                path.join(outDir, "stdout.txt"),
+                "[runner] local/reuse workspace: skipping installDeps (deps already present)\n",
+                { flag: "a" }
+              );
+            }
+          } else {
+            const t0 = Date.now();
+            await installDeps(work, cwd);
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] installDeps done in ${Date.now() - t0}ms\n`,
+              { flag: "a" }
+            );
+          }
+        } else {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] generated-only mode: skipping installDeps\n",
+            { flag: "a" }
+          );
+        }
+        // If this workspace is a Vite app and Playwright's webServer uses "vite preview",
+        // do a build first so preview has static assets.
+        const isLocalhostBase =
+          effectiveBaseUrl?.includes("localhost") || effectiveBaseUrl?.includes("127.0.0.1");
+        const hasBuildOutput =
+          fsSync.existsSync(path.join(cwd, "dist")) ||
+          fsSync.existsSync(path.join(cwd, "build"));
+        const shouldBuildVite =
+          localRepoRoot
+            ? false
+            : process.env.TM_SKIP_BUILD === "1"
+              ? hasBuildOutput
+              : process.env.TM_VITE_BUILD !== "0" && !isLocalhostBase;
+
+        if (
+          !generatedOnly &&
+          shouldBuildVite &&
+          (fsSync.existsSync(path.join(cwd, "vite.config.ts")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.js")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.mts")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.mjs")) ||
+            fsSync.existsSync(path.join(cwd, "vite.config.cjs")))
+        ) {
+          try {
+            const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+            const t0 = Date.now();
+            await execa(npx, ["-y", "vite", "build"], { cwd, stdio: "pipe" });
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] vite build completed in ${Date.now() - t0}ms\n`,
+              { flag: "a" }
+            );
+          } catch (e: any) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] vite build failed: ${e?.stdout || e?.message}\n`,
+              { flag: "a" }
+            );
+            // don't throw; Playwright may still start the server for non-Vite apps
+          }
+        } else if (!generatedOnly && process.env.TM_SKIP_BUILD === "1" && hasBuildOutput) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] TM_SKIP_BUILD=1, skipping vite build (existing build output found)\n",
+            { flag: "a" }
+          );
+        } else if (!generatedOnly && process.env.TM_SKIP_BUILD === "1" && !hasBuildOutput) {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            "[runner] TM_SKIP_BUILD=1 requested but no build output found; running build\n",
+            { flag: "a" }
+          );
+          try {
+            const npx = process.platform.startsWith("win") ? "npx.cmd" : "npx";
+            const t0 = Date.now();
+            await execa(npx, ["-y", "vite", "build"], { cwd, stdio: "pipe" });
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] vite build completed after forced build in ${Date.now() - t0}ms\n`,
+              { flag: "a" }
+            );
+          } catch (e: any) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] vite build (forced) failed: ${e?.stdout || e?.message}\n`,
+              { flag: "a" }
+            );
+          }
+        }
+
+
+        // 4) Run tests and force JSON to outDir/report.json
+        const resultsPath = path.join(outDir, "report.json");
+        process.env.PW_BASE_URL = effectiveBaseUrl;
+        process.env.TM_BASE_URL = effectiveBaseUrl;
+
+
+        // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
+        const configDir = work;
+        const ciConfigPath = path.join(
+          configDir,
+          aiMode ? "tm-ai.playwright.config.mjs" : "tm-ci.playwright.config.mjs"
+        );
+        // Avoid deleting repo configs; we always pass --config explicitly.
+        const serverPort = await findAvailablePort(Number(process.env.TM_PORT ?? 4173));
+        if (!requestedBaseUrl && !projectStoredBaseUrl) {
+          effectiveBaseUrl = `http://localhost:${serverPort}`;
+        }
+
+        // Guard: detect baseUrl/project mismatch before Playwright starts.
+        // This prevents misleading half-pass/half-fail results when the caller sends a URL
+        // that belongs to a different project (e.g. eToro URL for a JusticePath project).
+        // The check compares origins so http vs https differences and path differences are ignored.
+        // Only fires when the caller explicitly provided a requestedBaseUrl — we trust the project's
+        // stored URL and localhost fallbacks unconditionally.
+        if (requestedBaseUrl && projectStoredBaseUrl) {
+          try {
+            const requestedOrigin = new URL(requestedBaseUrl).origin;
+            const storedOrigin = new URL(projectStoredBaseUrl).origin;
+            if (requestedOrigin !== storedOrigin) {
+              const mismatchMsg =
+                `[runner] FATAL: baseUrl origin mismatch — ` +
+                `caller sent "${requestedBaseUrl}" but project "${pid}" has "${projectStoredBaseUrl}" stored. ` +
+                `This run has been blocked to prevent contaminated results.\n` +
+                `[runner] If the project URL changed, update it in project settings before running.\n`;
+              await fs.writeFile(path.join(outDir, "stdout.txt"), mismatchMsg, { flag: "a" });
+              await fs.writeFile(path.join(outDir, "stderr.txt"), mismatchMsg, { flag: "a" });
+              await prisma.testRun.update({
+                where: { id: run.id },
+                data: {
+                  status: TestRunStatus.failed,
+                  finishedAt: new Date(),
+                  error: `baseUrl mismatch: caller sent "${requestedOrigin}" but project has "${storedOrigin}"`,
+                },
+              });
+              return;
+            }
+          } catch {
+            // URL.parse failures are non-fatal — malformed URLs fall through to Playwright which will
+            // report a more descriptive navigation error rather than a confusing early abort.
+          }
+        }
+
+        const serverDirAbsolute = cwd;
+        const winServerDirEsc = serverDirAbsolute
+          .replace(/\\/g, "\\\\")
+          .replace(/'/g, "''");
+        const unixServerDirEsc = serverDirAbsolute
+          .replace(/\\/g, "/")
+          .replace(/"/g, '\\"');
+        const genRoot = process.env.TM_GENERATED_ROOT
+          ? path.resolve(process.env.TM_GENERATED_ROOT)
+          : path.join(work, "testmind-generated");
+        const userGenDest = path.join(genRoot, userSuffix);
+        const sharedGenDest = path.join(genRoot, adapter);
+        let genDestName: string = adapter;
+        const PORT_PLACEHOLDER = "__TM_PORT__";
+        const winDevCommand = `powershell -NoProfile -Command "& {Set-Location -Path '${winServerDirEsc}'; pnpm install; pnpm dev --host localhost --port ${PORT_PLACEHOLDER} }"`;
+        const unixDevCommand = `bash -lc "cd \\"${unixServerDirEsc}\\" && pnpm install && pnpm dev --host 0.0.0.0 --port ${PORT_PLACEHOLDER}"`;
+        const ciConfig = generatedOnly
+          ? `import { defineConfig } from '@playwright/test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const DIR = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.TM_PORT ?? 4173);
+const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://localhost:\${PORT}\`;
+const GEN_ROOT = process.env.TM_GENERATED_ROOT
+  ? path.resolve(process.env.TM_GENERATED_ROOT)
+  : path.resolve(DIR, 'testmind-generated');
+const GEN_DIR = process.env.TM_TEST_DIR
+  ? path.resolve(process.env.TM_TEST_DIR)
+  : ${genDir ? JSON.stringify(genDir) : "path.join(GEN_ROOT, '__GEN_DEST__')"};
+console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
+const JSON_REPORT = process.env.PW_JSON_OUTPUT
+  ? path.resolve(process.env.PW_JSON_OUTPUT)
+  : path.resolve(DIR, 'playwright-report.json');
+const ALLURE_RESULTS = process.env.PW_ALLURE_RESULTS
+  ? path.resolve(process.env.PW_ALLURE_RESULTS)
+  : path.resolve(DIR, 'allure-results');
+const GREP = process.env.PW_GREP ? new RegExp(process.env.PW_GREP) : undefined;
+
+const reporters = [
+  ['list'],
+  ['json', { outputFile: JSON_REPORT }],
+  ['allure-playwright', { resultsDir: ALLURE_RESULTS }],
+];
+
+const FAST = (process.env.TM_FAST_MODE ?? "1") === "1";
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? (FAST ? "20000" : "20000"));
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? (FAST ? "20000" : "20000"));
+const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? (FAST ? "5000" : "8000"));
+const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? (FAST ? "30000" : "45000"));
+const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
+  ? Number(process.env.TM_WORKERS)
+  : 6;
+const MAX_FAILURES = process.env.TM_MAX_FAILURES
+  ? Number(process.env.TM_MAX_FAILURES)
+  : 0;
+const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS);
+const AUTH_STORAGE = process.env.TM_AUTH_STORAGE || path.resolve(DIR, '.auth', 'state.json');
+
+export default defineConfig({
+  use: {
+    baseURL: BASE,
+    navigationTimeout: NAV_TIMEOUT,
+    actionTimeout: ACTION_TIMEOUT,
+    trace: FAST ? 'off' : 'on-first-retry',
+    video: FAST ? 'off' : 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  timeout: TEST_TIMEOUT,
+  expect: { timeout: EXPECT_TIMEOUT },
+  workers: WORKERS,
+  fullyParallel: true,
+  maxFailures: MAX_FAILURES,
+  grep: GREP,
+  reporter: reporters,
+  webServer: undefined,
+  testIgnore: [
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/build/**',
+    '**/.*/**',
+  ],
+  projects: [
+    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\\.setup\\.(ts|js|mjs)/, testDir: DIR }] : []),
+    {
+      name: 'generated',
+      testDir: GEN_DIR,
+      testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
+      timeout: 30_000,
+      ...(HAS_AUTH ? { dependencies: ['auth-setup'], use: { storageState: AUTH_STORAGE } } : {}),
+    },
+  ],
+});`
+          : `import { defineConfig } from '@playwright/test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const DIR = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.TM_PORT ?? 4173);
+const BASE = process.env.PW_BASE_URL || process.env.TM_BASE_URL || \`http://localhost:\${PORT}\`;
+const GEN_ROOT = process.env.TM_GENERATED_ROOT
+  ? path.resolve(process.env.TM_GENERATED_ROOT)
+  : path.resolve(DIR, 'testmind-generated');
+const GEN_DIR = path.join(GEN_ROOT, '__GEN_DEST__');
+const JSON_REPORT = process.env.PW_JSON_OUTPUT
+  ? path.resolve(process.env.PW_JSON_OUTPUT)
+  : path.resolve(DIR, 'playwright-report.json');
+const ALLURE_RESULTS = process.env.PW_ALLURE_RESULTS
+  ? path.resolve(process.env.PW_ALLURE_RESULTS)
+  : path.resolve(DIR, 'allure-results');
+const GREP = process.env.PW_GREP ? new RegExp(process.env.PW_GREP) : undefined;
+
+const reporters = [
+  ['list'],
+  ['json', { outputFile: JSON_REPORT }],
+  ['allure-playwright', { resultsDir: ALLURE_RESULTS }],
+];
+
+const DEV_COMMAND =
+  process.platform === 'win32'
+    ? \`${winDevCommand}\`
+    : \`${unixDevCommand}\`;
+
+const NAV_TIMEOUT = Number(process.env.TM_NAV_TIMEOUT_MS ?? "30000");
+const ACTION_TIMEOUT = Number(process.env.TM_ACTION_TIMEOUT_MS ?? "20000");
+const EXPECT_TIMEOUT = Number(process.env.TM_EXPECT_TIMEOUT_MS ?? "10000");
+const TEST_TIMEOUT = Number(process.env.TM_TEST_TIMEOUT_MS ?? "60000");
+const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
+  ? Number(process.env.TM_WORKERS)
+  : 4;
+const MAX_FAILURES = process.env.TM_MAX_FAILURES ? Number(process.env.TM_MAX_FAILURES) : 0;
+
+export default defineConfig({
+  use: {
+    baseURL: BASE,
+    navigationTimeout: NAV_TIMEOUT,
+    actionTimeout: ACTION_TIMEOUT,
+    trace: 'on-first-retry',
+    video: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  timeout: TEST_TIMEOUT,
+  expect: { timeout: EXPECT_TIMEOUT },
+  workers: WORKERS,
+  maxFailures: MAX_FAILURES,
+  grep: GREP,
+  reporter: reporters,
+  webServer: process.env.TM_SKIP_SERVER
+    ? undefined
+    : {
+        command: DEV_COMMAND,
+        url: \`http://localhost:\${PORT}\`,
+        reuseExistingServer: true,
+        timeout: 120000,
+      },
+  testIgnore: [
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/build/**',
+    '**/.*/**',
+    '**/testmind-generated/appium-js/**', // skip appium stubs that require CommonJS
+  ],
+  projects: [{
+    name: 'generated',
+    testDir: GEN_DIR,
+    testMatch: ['**/*.spec.{ts,js}','**/*.test.{ts,js}'],
+    timeout: 30_000,
+  }],
+});`;
+
+
+
+        // --- bring generated specs into the temp workspace ---
+        // destination inside the workspace (user-scoped when available)
+        let genDest = sharedGenDest;
+
+        if (generatedOnly) {
+          genDest = genDir ?? sharedGenDest;
+          genDestName = path.basename(genDest);
+          const finalConfig = ciConfig
+            .replace(new RegExp(PORT_PLACEHOLDER, "g"), String(serverPort))
+            .replace("__GEN_DEST__", genDestName);
+          await fs.writeFile(ciConfigPath, finalConfig, "utf8");
+          // Write auth.setup.ts alongside config so auth-setup project can find it
+          const authSetupPath = path.join(path.dirname(ciConfigPath), "auth.setup.ts");
+          const authSetupContent = `import { test as setup } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const DIR = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+export const AUTH_STORAGE = process.env.TM_AUTH_STORAGE
+  ? path.resolve(process.env.TM_AUTH_STORAGE)
+  : path.join(DIR, ".auth", "state.json");
+const email = process.env.E2E_EMAIL;
+const password = process.env.E2E_PASS;
+const loginPath = process.env.TM_LOGIN_PATH || "/login";
+setup("auth storage", async ({ page, baseURL }) => {
+  if (!email || !password) return;
+  const loginUrl = loginPath.startsWith("http") ? loginPath : \`\${baseURL}\${loginPath}\`;
+  await page.goto(loginUrl);
+  const cookieBtn = page.getByRole("button", { name: /accept|allow|agree|ok/i });
+  if (await cookieBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await cookieBtn.click().catch(() => {});
+  }
+  await page.getByLabel(/email|username|user/i).first().fill(email);
+  await page.getByLabel(/password/i).first().fill(password);
+  await page.getByRole("button", { name: /sign.?in|log.?in|submit|continue/i }).click();
+  await page.waitForURL(/dashboard|home|portfolio|feed|account|app/i, { timeout: 30_000 }).catch(() => {});
+  fs.mkdirSync(path.dirname(AUTH_STORAGE), { recursive: true });
+  await page.context().storageState({ path: AUTH_STORAGE });
+});
+`;
+          await fs.writeFile(authSetupPath, authSetupContent, "utf8");
+        } else {
+          // resolve source based on env
+          const MODE = (process.env.TM_SPECS_MODE || 'auto').toLowerCase() as 'auto' | 'local' | 'repo';
+          const preferRepo = MODE === 'repo';
+          const localPath = process.env.TM_LOCAL_SPECS && fsSync.existsSync(process.env.TM_LOCAL_SPECS)
+            ? path.resolve(process.env.TM_LOCAL_SPECS)
+            : null;
+          const generatedRoot = process.env.TM_GENERATED_ROOT
+            ? path.resolve(process.env.TM_GENERATED_ROOT)
+            : null;
+          const generatedUser = generatedRoot ? path.join(generatedRoot, userSuffix) : null;
+          const generatedShared = generatedRoot ? path.join(generatedRoot, adapter) : null;
+          const repoPath = path.join(work, 'apps', 'api', 'testmind-generated', adapter);
+          const repoAlt = path.join(work, 'testmind-generated', adapter);
+          const repoPathUser = path.join(work, 'apps', 'api', 'testmind-generated', userSuffix);
+          const repoAltUser = path.join(work, 'testmind-generated', userSuffix);
+          const webPath  = path.join(work, 'apps', 'web', 'testmind-generated', adapter); // common dev location
+          const webPathUser = path.join(work, 'apps', 'web', 'testmind-generated', userSuffix);
+          const curatedSuitePath =
+            suiteId && fsSync.existsSync(path.join(CURATED_ROOT, suiteId))
+              ? path.join(CURATED_ROOT, suiteId)
+              : suiteId && fsSync.existsSync(path.join(LEGACY_CURATED_ROOT, suiteId))
+                ? path.join(LEGACY_CURATED_ROOT, suiteId)
+                : curatedSuite?.rootRel && fsSync.existsSync(path.join(CURATED_ROOT, curatedSuite.rootRel))
+                  ? path.join(CURATED_ROOT, curatedSuite.rootRel)
+                  : curatedSuite?.rootRel && fsSync.existsSync(path.join(LEGACY_CURATED_ROOT, curatedSuite.rootRel))
+                    ? path.join(LEGACY_CURATED_ROOT, curatedSuite.rootRel)
+                    : null;
+          const curatedPath =
+            curatedSuitePath ??
+            (curatedSuite?.projectId && fsSync.existsSync(path.join(CURATED_ROOT, `project-${curatedSuite.projectId}`))
+              ? path.join(CURATED_ROOT, `project-${curatedSuite.projectId}`)
+              : curatedSuite?.projectId && fsSync.existsSync(path.join(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`))
+                ? path.join(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`)
+                : path.join(CURATED_ROOT, project.id));
+
+          function pickSource(): string | null {
+            // Prefer curated edits when present so saved suite changes are run.
+            const curatedExists = fsSync.existsSync(curatedPath);
+            if (curatedExists) return curatedPath;
+
+            if (generatedUser && fsSync.existsSync(generatedUser)) return generatedUser;
+            if (generatedShared && fsSync.existsSync(generatedShared)) return generatedShared;
+
+            // Repo-first for repo mode or empty user folder
+            if (preferRepo) {
+              if (fsSync.existsSync(repoPathUser)) return repoPathUser;
+              if (fsSync.existsSync(repoAltUser)) return repoAltUser;
+              if (fsSync.existsSync(repoPath)) return repoPath;
+              if (fsSync.existsSync(repoAlt)) return repoAlt;
+              // if nothing repo-side, fall through to local/web
+            }
+
+            // Prefer user-specific generated specs when they exist (local cache)
+            if (fsSync.existsSync(webPathUser)) return webPathUser;
+
+            // If a dev build already produced specs under apps/web, use that next (auto/local only).
+            if (!preferRepo && fsSync.existsSync(webPath)) return webPath;
+
+            if (MODE === 'local') return localPath;
+            // auto fallback order: repo, then local
+            if (fsSync.existsSync(repoPathUser)) return repoPathUser;
+            if (fsSync.existsSync(repoAltUser)) return repoAltUser;
+            if (fsSync.existsSync(repoPath)) return repoPath;
+            if (fsSync.existsSync(repoAlt)) return repoAlt;
+            return localPath;
+          }
+
+          // always clean the repo-copy roots to avoid stale mixes
+          const repoRoot1 = path.join(work, 'apps', 'api', 'testmind-generated');
+          const repoRoot2 = path.join(work, 'testmind-generated');
+          try { await fs.rm(repoRoot1, { recursive: true, force: true }); } catch { }
+          try { await fs.rm(repoRoot2, { recursive: true, force: true }); } catch { }
+
+          // wipe destination if requested (but don't delete if source==dest)
+          const srcPicked = pickSource();
+          if (srcPicked && srcPicked.includes(userSuffix)) {
+            genDest = userGenDest;
+            genDestName = userSuffix;
+          } else {
+            genDest = sharedGenDest;
+            genDestName = adapter;
+          }
+          const samePath = srcPicked ? path.resolve(srcPicked) === path.resolve(genDest) : false;
+          const finalConfig = ciConfig
+            .replace(new RegExp(PORT_PLACEHOLDER, "g"), String(serverPort))
+            .replace("__GEN_DEST__", genDestName);
+          await fs.writeFile(ciConfigPath, finalConfig, "utf8");
+
+          if ((process.env.TM_CLEAN_DEST || '1') !== '0' && !samePath) {
+            try { await fs.rm(genDest, { recursive: true, force: true }); } catch { }
+          }
+
+          if (!srcPicked) {
+            await fs.writeFile(path.join(outDir, 'stderr.txt'),
+              `[runner] NO SPECS SOURCE FOUND. MODE=${MODE} local=${localPath || 'null'} repo=${repoPath} or ${repoAlt}\n`,
+              { flag: 'a' });
+          } else {
+            // If we're already inside apps/web, avoid copying onto itself.
+            if (!samePath) {
+              await fs.mkdir(genDest, { recursive: true });
+              // @ts-ignore Node 18+
+              await fs.cp(srcPicked, genDest, { recursive: true });
+            }
+            await fs.writeFile(path.join(outDir, 'stdout.txt'),
+              `[runner] specs source=${srcPicked} -> dest=${genDest}${samePath ? " (no copy needed)" : ""}\n`,
+              { flag: 'a' });
+          }
+        }
+
+        // For agent-triggered runs we used to merge curated agent specs into the temp workspace.
+        // That pulled in many extra specs and could hang runs. Default is now OFF.
+        // Set TM_AGENT_INCLUDE_CURATED=1 to re-enable the merge.
+        const includeCuratedAgents =
+          !aiMode && (process.env.TM_AGENT_INCLUDE_CURATED ?? "0") === "1";
+        if (includeCuratedAgents) {
+          await mergeAgentSpecs(project.id, genDest, path.join(outDir, "stdout.txt"));
+        } else {
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] agent curated specs merge skipped (TM_AGENT_INCLUDE_CURATED!=1)\n`,
+            { flag: "a" }
+          );
+        }
+
+        // log a short catalog so we can see exactly what's about to run
+        async function catalogSpecs(root: string, label: string) {
+          const lines: string[] = [];
+          const out: string[] = [];
+          async function walk(p: string) {
+            const entries = await fs.readdir(p, { withFileTypes: true }).catch(() => []);
+            for (const e of entries as any[]) {
+              const f = path.join(p, e.name);
+              if (e.isDirectory()) await walk(f);
+              else if (/\.(spec|test)\.(t|j)sx?$/i.test(e.name)) {
+                out.push(f);
+                try {
+                  const txt = await fs.readFile(f, 'utf8');
+                  const first = txt.split(/\r?\n/).slice(0, 2).join(' ');
+                  lines.push(` - ${f}\n     preview: ${first.slice(0, 180)}`);
+                } catch { }
+              }
+            }
+          }
+          await walk(root);
+          await fs.writeFile(
+            path.join(outDir, 'stdout.txt'),
+            `[runner] ${label} specs (${out.length})\n${lines.join('\n')}\n`,
+            { flag: 'a' }
+          );
+        }
+
+        // Only catalog specs for suite/runAll runs — skip for targeted single-file runs to avoid scanning 197+ files
+        const isTargetedRun = !runAll && (
+          (parsed.data.files && parsed.data.files.length > 0) ||
+          !!parsed.data.file ||
+          !!parsed.data.specPath
+        );
+        if (!isTargetedRun && fsSync.existsSync(genDest)) {
+          await catalogSpecs(genDest, 'FINAL');
+        }
+
+        // Enforce maxSpecs limit when running all specs (not a targeted file run)
+        if (maxSpecs && Number.isFinite(maxSpecs) && maxSpecs > 0 && fsSync.existsSync(genDest) && runAll) {
+          const allSpecFiles: string[] = [];
+          const walkForLimit = async (p: string) => {
+            const entries = await fs.readdir(p, { withFileTypes: true }).catch(() => [] as any[]);
+            for (const e of entries) {
+              const f = path.join(p, e.name);
+              if (e.isDirectory()) await walkForLimit(f);
+              else if (/\.(spec|test)\.(t|j)sx?$/i.test(e.name)) allSpecFiles.push(f);
+            }
+          };
+          await walkForLimit(genDest);
+          if (allSpecFiles.length > maxSpecs) {
+            const toDelete = allSpecFiles.slice(maxSpecs);
+            for (const f of toDelete) await fs.unlink(f).catch(() => {});
+            await fs.writeFile(
+              path.join(outDir, 'stdout.txt'),
+              `[runner] maxSpecs=${maxSpecs}: trimmed ${toDelete.length} spec files (kept ${maxSpecs} of ${allSpecFiles.length})\n`,
+              { flag: 'a' }
+            );
+          }
+        }
+
+        async function logSpecs(root: string, label: string) {
+          const out: string[] = [];
+          const walk = async (p: string) => { for (const e of await fs.readdir(p, { withFileTypes: true }).catch(() => [] as any)) { const f = path.join(p, e.name); if (e.isDirectory()) await walk(f); else if (/\.(spec|test)\.(t|j)sx?$/i.test(e.name)) out.push(f) } };
+          await walk(root);
+          await fs.writeFile(path.join(outDir, "stdout.txt"), `[runner] ${label} specs (${out.length})\n` + out.map(x => ` - ${x}`).join("\n") + "\n", { flag: "a" });
+        }
+        // Skip broad spec-discovery logs for targeted runs — they add scan overhead without value
+        if (!isTargetedRun) {
+          if (!aiMode) {
+            await logSpecs(cwd, "apps/web");
+          }
+          await logSpecs(genDest, "generated");
+        }
+
+        // If the caller provided specific files, restrict to those
+        if (!runAll && parsed.data.files && parsed.data.files.length) {
+          const requested = new Set(parsed.data.files.map((f: string) => path.resolve(cwd, f)));
+          // prune extraGlobs and force to requested (respect user-scoped generated dir)
+          const genBase = path.posix.join("testmind-generated", genDestName);
+          parsed.data.extraGlobs = parsed.data.files.map((f: string) =>
+            path.posix.join(genBase, f.replace(/\\/g, "/"))
+          );
+        }
+
+                  // --- build optional selectors (single-file + grep) ---
+        const extraGlobs: string[] = [];
+        // When runAll is true, ignore any file/grep filters from the UI.
+        const requestedFiles = runAll
+          ? []
+          : (parsed.data.files && parsed.data.files.length
+            ? parsed.data.files
+            : [parsed.data.file, parsed.data.specPath].filter(Boolean as any)) as string[];
+
+        const findByName = async (root: string, needle: string): Promise<string | null> => {
+          try {
+            const stack: string[] = [root];
+            while (stack.length) {
+              const dir = stack.pop() as string;
+              const entries = await fs.readdir(dir, { withFileTypes: true });
+              for (const e of entries) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) stack.push(full);
+                else if (e.isFile() && e.name === needle) return full;
+              }
+            }
+          } catch { /* ignore */ }
+          return null;
+        };
+
+        const legacyBases = [
+          path.join(GENERATED_ROOT, adapter),
+          path.join(work, "testmind-generated", adapter),
+          path.join(work, "apps", "api", "testmind-generated", adapter),
+          path.join(work, "apps", "web", "testmind-generated", adapter),
+        ];
+
+        const ensureFromLegacy = async (relPath: string) => {
+          for (const base of legacyBases) {
+            const candidate = path.join(base, relPath);
+            if (!fsSync.existsSync(candidate)) continue;
+            const dest = path.join(genDest, relPath);
+            await fs.mkdir(path.dirname(dest), { recursive: true }).catch(() => {});
+            await fs.copyFile(candidate, dest).catch(() => {});
+            return dest;
+          }
+          return null;
+        };
+
+        const stripToRel = (value: string) => {
+          const posix = value.replace(/\\/g, "/");
+          let stripped = posix;
+          const needles = [
+            `apps/web/testmind-generated/${genDestName}/`,
+            `apps/api/testmind-generated/${genDestName}/`,
+            `apps/testmind-generated/${genDestName}/`,
+            `testmind-generated/${genDestName}/`,
+          ];
+          for (const needle of needles) {
+            const idx = posix.indexOf(needle);
+            if (idx !== -1) {
+              stripped = posix.slice(idx + needle.length);
+              break;
+            }
+          }
+          return stripped;
+        };
+
+        const stripProjectPrefix = (value: string) => {
+          const normalized = value.replace(/^\/+/, "");
+          if (normalized.startsWith(`${project.id}/`)) {
+            return normalized.slice(project.id.length + 1);
+          }
+          return normalized;
+        };
+
+        const resolveSelectedPath = async (value: string) => {
+          const posix = value.replace(/\\/g, "/");
+          const candidates: string[] = [];
+          const curatedCandidates: string[] = [];
+          if (suiteId) {
+            const direct = path.join(CURATED_ROOT, suiteId);
+            const legacy = path.join(LEGACY_CURATED_ROOT, suiteId);
+            if (fsSync.existsSync(direct)) curatedCandidates.push(path.join(direct, posix));
+            if (fsSync.existsSync(legacy)) curatedCandidates.push(path.join(legacy, posix));
+            if (curatedSuite?.rootRel) {
+              const rootRel = curatedSuite.rootRel.replace(/\\/g, "/");
+              const absCur = path.join(CURATED_ROOT, rootRel, posix);
+              const absLegacy = path.join(LEGACY_CURATED_ROOT, rootRel, posix);
+              curatedCandidates.push(absCur, absLegacy);
+            }
+          }
+          if (path.isAbsolute(value)) candidates.push(value);
+          // Prefer curated paths when a suiteId is provided (edited suites should win).
+          if (curatedCandidates.length) candidates.push(...curatedCandidates);
+
+          const stripped = stripProjectPrefix(stripToRel(value));
+          candidates.push(path.join(genDest, stripped));
+          if (!generatedOnly) {
+            candidates.push(path.join(cwd, posix));
+            // Also try relative to repo root (handles apps/api/testmind-curated/... paths
+            // produced when context.ts resolves a curated spec to its full repo-relative path).
+            if (work !== cwd) {
+              candidates.push(path.join(work, posix));
+            }
+          }
+
+          for (const candidate of candidates) {
+            if (fsSync.existsSync(candidate)) return candidate;
+          }
+          const legacy = await ensureFromLegacy(stripped);
+          if (legacy) return legacy;
+          return null;
+        };
+
+        const missingRequested: string[] = [];
+        for (const selectedFile of requestedFiles) {
+          if (!selectedFile) continue;
+          let resolved = await resolveSelectedPath(selectedFile);
+          if (!resolved) {
+            const basename = path.basename(selectedFile);
+            if (basename) {
+              const foundInGen = await findByName(genDest, basename);
+              if (foundInGen) resolved = foundInGen;
+            }
+          }
+          if (!resolved) {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              `[runner] selected file not found; skipping glob: ${selectedFile}\n`,
+              { flag: "a" }
+            );
+            missingRequested.push(selectedFile);
+            continue;
+          }
+          let normalizedFile = path.relative(genDest, resolved).replace(/\\/g, "/");
+          let abs = resolved;
+          if (generatedOnly) {
+            const relFromInput = stripProjectPrefix(stripToRel(selectedFile));
+            const safeRel =
+              relFromInput && !relFromInput.startsWith("..") && !path.isAbsolute(relFromInput)
+                ? relFromInput
+                : path.basename(normalizedFile);
+            const dest = path.join(genDest, safeRel);
+            const insideGenDest = abs.replace(/\\/g, "/").startsWith(genDest.replace(/\\/g, "/"));
+            if (!insideGenDest) {
+              await fs.mkdir(path.dirname(dest), { recursive: true }).catch(() => {});
+              await fs.copyFile(abs, dest).catch(() => {});
+              abs = dest;
+              normalizedFile = safeRel.replace(/\\/g, "/");
+            }
+          }
+          const curatedSuiteDir = (() => {
+            if (suiteId) {
+              const candidates: string[] = [];
+              candidates.push(path.join(CURATED_ROOT, suiteId));
+              candidates.push(path.join(LEGACY_CURATED_ROOT, suiteId));
+              if (curatedSuite?.rootRel) {
+                candidates.push(path.join(CURATED_ROOT, curatedSuite.rootRel));
+                candidates.push(path.join(LEGACY_CURATED_ROOT, curatedSuite.rootRel));
+              }
+              if (curatedSuite?.projectId) {
+                candidates.push(path.join(CURATED_ROOT, `project-${curatedSuite.projectId}`));
+                candidates.push(path.join(LEGACY_CURATED_ROOT, `project-${curatedSuite.projectId}`));
+              }
+              const found = candidates.find((p) => fsSync.existsSync(p));
+              if (found) return found;
+            }
+            return path.join(CURATED_ROOT, agentSuiteId(project.id));
+          })();
+          const curatedCandidate = path.join(curatedSuiteDir, normalizedFile);
+          try {
+            const exists = await fs.stat(abs).then(() => true).catch(() => false);
+            if (!exists) {
+              if (fsSync.existsSync(curatedCandidate)) {
+                await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+                await fs.cp(curatedCandidate, abs, { recursive: false });
+              } else {
+                // search all curated suites for the relative path
+                const suites = fsSync.readdirSync(CURATED_ROOT, { withFileTypes: true }).filter((d) => d.isDirectory());
+                for (const s of suites) {
+                  const candidate = path.join(CURATED_ROOT, s.name, normalizedFile);
+                  if (fsSync.existsSync(candidate)) {
+                    await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+                    await fs.cp(candidate, abs, { recursive: false });
+                    break;
+                  }
+                }
+                // if still missing, try basename match anywhere under curated root
+                const basename = path.basename(normalizedFile);
+                const found = await findByName(CURATED_ROOT, basename);
+                if (found && !fsSync.existsSync(abs)) {
+                  await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+                  await fs.cp(found, abs, { recursive: false });
+                }
+              }
+            }
+          } catch {
+            // ignore copy failures
+          }
+          if (generatedOnly) {
+            // Generated-only runs use an explicit testDir; pass absolute file paths so Playwright runs only selected files.
+            extraGlobs.push(abs.replace(/\\/g, "/"));
+          } else if (aiMode) {
+            const relFromCwd = path.relative(cwd, abs).replace(/\\/g, "/");
+            if (!relFromCwd.startsWith("..") && !path.isAbsolute(relFromCwd)) {
+              extraGlobs.push(relFromCwd);
+            } else {
+              await fs.writeFile(
+                path.join(outDir, "stderr.txt"),
+                `[runner] AI mode: selected file is outside cwd; refusing to run: ${abs}\n`,
+                { flag: "a" }
+              );
+              missingRequested.push(selectedFile);
+            }
+          } else {
+            extraGlobs.push(abs.replace(/\\/g, "/"));
+          }
+        }
+        if (missingRequested.length) {
+          await fs.writeFile(
+            path.join(outDir, "stderr.txt"),
+            `[runner] requested files not found:\n${missingRequested.map((f) => ` - ${f}`).join("\n")}\n`,
+            { flag: "a" }
+          );
+          throw new Error(`Requested files not found: ${missingRequested.join(", ")}`);
+        }
+
+        // normalize grep: Playwright matches against "path spec.ts Test title",
+        // so a leading ^ breaks it. Strip ^ but keep the rest (including $).
+        const normalizedGrep = runAll
+          ? undefined
+          : parsed.data.grep
+            ? (aiMode
+                ? parsed.data.grep
+                : parsed.data.grep.replace(/^\^/, ""))
+            : undefined;
+
+        const allureResultsDir = path.join(outDir, "allure-results");
+        await fs.mkdir(allureResultsDir, { recursive: true });
+        const projectSecrets = await prisma.projectSecret.findMany({
+          where: { projectId: project.id },
+          select: { key: true, value: true, name: true, id: true },
+        });
+        const secretEnv: Record<string, string> = {};
+        for (const s of projectSecrets) {
+          try {
+            secretEnv[s.key] = decryptSecret(s.value);
+          } catch (err: any) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] failed to decrypt secret ${s.name} (${s.id}): ${err?.message ?? err}\n`,
+              { flag: "a" }
+            );
+          }
+        }
+
+        const extraEnv: Record<string, string> = {
+          TM_SOURCE_ROOT: work,
+          TM_GENERATED_ROOT: process.env.TM_GENERATED_ROOT
+            ? path.resolve(process.env.TM_GENERATED_ROOT)
+            : path.join(work, "testmind-generated"),
+          PW_JSON_OUTPUT: resultsPath,
+          PW_ALLURE_RESULTS: allureResultsDir,
+          ALLURE_RESULTS_DIR: allureResultsDir,
+          TM_PORT: String(serverPort),
+          ...secretEnv,
+        };
+        if (aiMode) {
+          extraEnv.TM_AI_MODE = "1";
+          extraEnv.TM_AI_ACTION_SHOTS = process.env.TM_AI_ACTION_SHOTS ?? "1";
+        }
+        if (parsed.data.livePreview) {
+          extraEnv.TM_LIVE_PREVIEW = "1";
+          extraEnv.TM_RUN_LOG_DIR = outDir;
+          if (!extraEnv.PW_OUTPUT_DIR) {
+            extraEnv.PW_OUTPUT_DIR = path.join(outDir, "test-results");
+          }
+        } else {
+          extraEnv.TM_RUN_LOG_DIR = outDir;
+        }
+        if (generatedOnly) {
+          const binDir = path.join(cwd, "node_modules", ".bin");
+          extraEnv.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+        }
+        if (normalizedGrep) extraEnv.PW_GREP = normalizedGrep;
+
+        // For targeted single-file runs, cap Playwright workers at 2 (default is 6).
+        // Running 6 workers in parallel against a single external site causes all of them to
+        // compete for network/CPU simultaneously — on a slow or rate-limited site every test
+        // times out where only some would have timed out with fewer concurrent browsers.
+        // isTargetedRun is defined below but we re-derive it here at the extraEnv build point.
+        // We do NOT force workers=1 so that tests within the file can still run in mild parallelism.
+        // Callers can override via TM_WORKERS env var as usual.
+        if (!runAll && (requestedFiles.length > 0) && !process.env.TM_WORKERS) {
+          extraEnv.TM_WORKERS = "2";
+        }
+
+        const allureReportDir = path.join(outDir, "allure-report");
+        let hasAllureResults = false;
+        const skipAllure = (process.env.TM_SKIP_ALLURE ?? "0") === "1";
+        let exec: {
+          exitCode?: number | null;
+          stdout?: string;
+          stderr?: string;
+          framework?: string;
+          resultsPath?: string;
+        };
+
+        if (adapterId === "cucumber-js") {
+          const cucumberLogLines: string[] = [];
+          extraEnv.TM_CUCUMBER_FEATURES_ROOT = path.join(genDest, "features");
+          extraEnv.TM_CUCUMBER_REPORT_PATH = resultsPath;
+          if (requestedFiles.length) {
+            extraEnv.TM_CUCUMBER_FILES = JSON.stringify(
+              requestedFiles
+                .map((file) => stripProjectPrefix(stripToRel(file)))
+                .filter((file) => file.toLowerCase().endsWith(".feature"))
+            );
+          }
+          if (normalizedGrep) {
+            extraEnv.TM_CUCUMBER_GREP = normalizedGrep;
+          }
+          const tRunStart = Date.now();
+          const exitCode = await runAdapter({
+            outRoot: genDest,
+            adapterId,
+            env: extraEnv,
+            onLine: (line) => {
+              cucumberLogLines.push(line);
+            },
+          });
+          exec = {
+            exitCode,
+            stdout: cucumberLogLines.join(""),
+            stderr: "",
+            framework: adapterId,
+            resultsPath,
+          };
+
+          const selectedFilesForLog = requestedFiles.filter(Boolean);
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] framework=${adapterId} exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} durationMs=${Date.now() - tRunStart}
+`,
+            { flag: "a" }
+          );
+          await fs.writeFile(path.join(outDir, "stdout.txt"), exec.stdout ?? "", { flag: "a" });
+          await fs.writeFile(path.join(outDir, "stderr.txt"), exec.stderr ?? "", { flag: "w" });
+          const exists = await fs.stat(resultsPath).then(() => true).catch(() => false);
+          if (!exists) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `[runner] expected Cucumber report was not written: ${resultsPath}
+`,
+              { flag: "a" }
+            );
+          }
+          if (!skipAllure) {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] allure generate skipped (cucumber-js does not emit allure-results yet)\n",
+              { flag: "a" }
+            );
+          } else {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] allure generate skipped (TM_SKIP_ALLURE=1)\n",
+              { flag: "a" }
+            );
+          }
+        } else {
+          const tRunStart = Date.now();
+          try {
+            exec = await runTests({
+              workdir: cwd,
+              jsonOutPath: resultsPath,
+              baseUrl: effectiveBaseUrl,
+              configPath: ciConfigPath,
+              // extraGlobs is no longer used by the runner; selection is via grep
+              extraGlobs,
+              extraEnv,
+              grep: normalizedGrep,
+              sourceRoot: work,
+              headed: headful,
+              abortSignal: abortController.signal,
+            });
+          } catch (err: any) {
+            if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+              await markRunCanceled(run.id);
+              return;
+            }
+            throw err;
+          }
+          if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+            await markRunCanceled(run.id);
+            return;
+          }
+
+          const selectedFilesForLog = requestedFiles.filter(Boolean);
+          await fs.writeFile(
+            path.join(outDir, "stdout.txt"),
+            `[runner] exitCode=${exec.exitCode} baseUrl=${effectiveBaseUrl} headful=${headful} runAll=${runAll} files=${JSON.stringify(selectedFilesForLog)} grep=${parsed.data.grep || ""} extraGlobs=${JSON.stringify(extraGlobs)} durationMs=${Date.now() - tRunStart}
+`,
+            { flag: "a" }
+          );
+
+          await fs.writeFile(path.join(outDir, "stdout.txt"), exec.stdout ?? "", { flag: "a" });
+          await fs.writeFile(path.join(outDir, "stderr.txt"), exec.stderr ?? "");
+          const exists = await fs.stat(resultsPath).then(() => true).catch(() => false);
+          if (!exists) {
+            await fs.writeFile(
+              path.join(outDir, "stderr.txt"),
+              `
+[runner] report.json missing - Playwright likely did not execute. Check dependency install and webServer.
+`,
+              { flag: "a" }
+            );
+          }
+          if (!skipAllure) {
+            try {
+              const allureEntries = await fs.readdir(allureResultsDir).catch(() => []);
+              hasAllureResults = allureEntries.length > 0;
+              if (hasAllureResults) {
+                const normalizedAllureCount = await normalizeAllureBrokenStatuses(allureResultsDir);
+                if (normalizedAllureCount > 0) {
+                  await fs.writeFile(
+                    path.join(outDir, "stdout.txt"),
+                    `[runner] normalized ${normalizedAllureCount} allure result(s): broken -> failed
+`,
+                    { flag: "a" }
+                  );
+                }
+                const allureTimeoutMs = Number(process.env.TM_ALLURE_TIMEOUT_MS ?? "120000");
+                await fs.writeFile(
+                  path.join(outDir, "stdout.txt"),
+                  `[runner] allure generate queued (timeout ${allureTimeoutMs}ms)
+`,
+                  { flag: "a" }
+                );
+                await enqueueAllureGenerate({
+                  runId: run.id,
+                  cwd,
+                  allureResultsDir,
+                  allureReportDir,
+                  timeoutMs: allureTimeoutMs,
+                  stdoutPath: path.join(outDir, "stdout.txt"),
+                  stderrPath: path.join(outDir, "stderr.txt"),
+                });
+              }
+            } catch (err: any) {
+              await fs.writeFile(
+                path.join(outDir, "stderr.txt"),
+                `[runner] allure generate failed: ${err?.message || err}
+`,
+                { flag: "a" }
+              );
+            }
+          } else {
+            await fs.writeFile(
+              path.join(outDir, "stdout.txt"),
+              "[runner] allure generate skipped (TM_SKIP_ALLURE=1)\n",
+              { flag: "a" }
+            );
+          }
+        }
+
+        // 4) Parse to DB (single source: resultsPath)
+        let parsedCount = 0;
+        let failed = 0;
+        let passed = 0;
+        let skipped = 0;
+
+        const hasReport = await fs.stat(resultsPath).then(() => true).catch(() => false);
+        if (hasReport) {
+          const cases = await parseResults(resultsPath);
+          const locatorHealthUpdates = buildLocatorHealthUpdates(cases);
+          const navSuggestionUpdates = buildNavSuggestionUpdates(cases);
+          const missingLocators: MissingLocatorItem[] = [];
+          for (const c of cases) {
+            if (c.status !== "failed" && c.status !== "error") continue;
+            if (/toHaveURL/i.test(c.message ?? "")) {
+              const navTarget = extractNavTargetFromTitle(c.fullName);
+              if (navTarget) {
+                missingLocators.push({
+                  pagePath: "__global_nav__",
+                  bucket: "locators",
+                  name: navKeyFromPath(navTarget),
+                  stepText: c.fullName ?? `Navigate to ${navTarget}`,
+                  suggestions: navSuggestions(navTarget),
+                });
+              }
+            }
+            if (!isMissingLocatorFailure(c.message ?? null, c.steps)) continue;
+            if (isPageLoadTitle(c.fullName)) {
+              const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
+              if (locatorExpr) {
+                const locatorName = extractLocatorName(locatorExpr);
+                missingLocators.push({
+                  pagePath: pagePathFromTitle(c.fullName),
+                  bucket: "locators",
+                  name: "pageIdentity",
+                  stepText: c.fullName ?? "Page loads",
+                  suggestions: generateSelectorSuggestions(locatorName || "pageIdentity"),
+                });
+                continue;
+              }
+            }
+            const locatorExpr = extractLocatorExpression(c.message ?? null, c.steps);
+            if (!locatorExpr) continue;
+            const locatorName = extractLocatorName(locatorExpr);
+            const name = semanticKeyFromString(locatorName);
+            missingLocators.push({
+              pagePath: pagePathFromTitle(c.fullName),
+              bucket: "locators",
+              name,
+              stepText: c.fullName,
+              suggestions: generateSelectorSuggestions(locatorName || name),
+            });
+          }
+          await appendMissingLocators(
+            path.join(outDir, "missing-locators.json"),
+            missingLocators
+          );
+
+          const persisted = await persistParsedRunResults({
+            runId: run.id,
+            projectId: pid,
+            userId,
+            cases,
+            curatedSuiteId: suiteId,
+            locatorHealthUpdates,
+            navSuggestionUpdates,
+          });
+          parsedCount = persisted.parsedCount;
+          passed = persisted.passed;
+          failed = persisted.failed;
+          skipped = persisted.skipped;
+        }
+        artifacts = {
+          "reportJson": path.join("runner-logs", run.id, "report.json"),
+        };
+        if (hasAllureResults) {
+          artifacts["allure-results"] = path.join("runner-logs", run.id, "allure-results");
+          artifacts["allure-report"] = path.join("runner-logs", run.id, "allure-report");
+        }
+
+        if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+          await markRunCanceled(run.id);
+          return;
+        }
+
+        // 5) Mark run finished
+        const ok = failed === 0 && ((exec.exitCode ?? 1) === 0);
+        if (!ok) {
+          await analyzeFailure({
+            runId: run.id,
+            outDir,
+            stderr: exec.stderr ?? undefined,
+            stdout: exec.stdout ?? undefined,
+            reportPath: resultsPath,
+            grep: parsed.data.grep ?? undefined,
+            file: parsed.data.file ?? parsed.data.specPath ?? undefined,
+            baseUrl: effectiveBaseUrl,
+          });
+        }
+        await prisma.testRun.update({
+          where: { id: run.id },
+          data: {
+            status: ok ? TestRunStatus.succeeded : TestRunStatus.failed,
+            finishedAt: new Date(),
+            summary: JSON.stringify({
+              framework: exec.framework ?? adapterId,
+              baseUrl: effectiveBaseUrl,
+              parsedCount,
+              passed,
+              failed,
+              skipped,
+            }),
+            error: ok ? null : (filterRunnerError(exec.stderr) ?? "Test command failed"),
+            artifactsJson: artifacts ?? undefined,
+          },
+        });
+        // Journey 1 & 2: persist canonical latest execution state per test case
+        finalizeLatestTestState({
+          runId: run.id,
+          source: run.trigger === "self-heal" ? "self-heal-rerun" : "run",
+        }).catch((err) => {
+          console.error(`[runner] finalizeLatestTestState failed for run ${run.id}`, err);
+        });
+        sendRunNotifications(run.id).catch((err) => {
+          console.error(`[notifications] run ${run.id} failed`, err);
+        });
+        if (!ok && failed > 0) {
+          scheduleSelfHealingForRun(run.id).catch((err) => {
+            console.error(`[runner] failed to schedule self heal for run ${run.id}`, err);
+          });
+        }
+      } catch (err: any) {
+        if (abortController.signal.aborted || (await isCancelRequested(run.id))) {
+          await markRunCanceled(run.id);
+          return;
+        }
+        await prisma.testRun.update({
+          where: { id: run.id },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: stripAnsi(err?.message ?? String(err)),
+            artifactsJson: artifacts ?? undefined,
+          },
+        });
+        sendRunNotifications(run.id).catch((notifyErr) => {
+          console.error(`[notifications] run ${run.id} failed`, notifyErr);
+        });
+      } finally {
+        if (!usingLocalRepo) {
+          await rmrf(work).catch(() => { });
+        }
+        runAbortControllers.delete(run.id);
+        await redis.del(cancelKey).catch(() => {});
+      }
+    })().catch((err) => {
+      // last safety net
+      prisma.testRun
+        .update({
+          where: { id: run.id },
+          data: {
+            status: TestRunStatus.failed,
+            finishedAt: new Date(),
+            error: stripAnsi(err?.message || "Unexpected error in background runner"),
+            artifactsJson: artifacts ?? undefined,
+          },
+        })
+        .catch(() => { });
+    });
+
+    return reply.code(201).send({ id: run.id });
+  });
+
+  // GET /runner/test-runs
+  app.get("/test-runs", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+    const { projectId, limit } = (req.query ?? {}) as { projectId?: string; limit?: string | number };
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 500)
+      : 200;
+    const allowedProjects = await prisma.project.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+    const projectIds = allowedProjects.map((p) => p.id);
+    if (!projectIds.length) return reply.send([]);
+
+    const runs = await prisma.testRun.findMany({
+      where: projectId
+        ? { projectId, project: { ownerId: userId } }
+        : { projectId: { in: projectIds } },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        createdAt: true,
+        startedAt: true,
+        finishedAt: true,
+        summary: true,
+        error: true,
+        artifactsJson: true,
+      },
+    });
+    return reply.send(runs.map((run) => withRunContract(req, run)));
+  });
+
+  // GET /runner/test-runs/:id
+  app.get("/test-runs/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const run = await loadRunById(id);
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    return reply.send({ run: withRunContract(req, run) });
+  });
+
+  // POST /runner/test-runs/:id/stop
+  app.post("/test-runs/:id/stop", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        project: { select: { ownerId: true } },
+      },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    if (run.status !== TestRunStatus.running && run.status !== TestRunStatus.queued) {
+      return reply.code(409).send({ error: "Run is not active" });
+    }
+
+    await redis.set(cancelKeyForRun(id), "1", "EX", 60 * 60).catch(() => {});
+    const controller = runAbortControllers.get(id);
+    if (controller) controller.abort();
+    try {
+      const job = await runQueue.getJob(id);
+      if (job) await job.remove();
+    } catch {
+      // ignore queue cancellation errors
+    }
+
+    await markRunCanceled(id);
+    return reply.send({ ok: true });
+  });
+
+  async function loadRunById(id: string) {
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      include: {
+        project: { select: { id: true, name: true } },
+        rerunOf: { select: { id: true, status: true } },
+        reruns: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+            startedAt: true,
+            finishedAt: true,
+          },
+        },
+        TestHealingAttempt: {
+          select: {
+            id: true,
+            testResultId: true,
+            testCaseId: true,
+            status: true,
+            attempt: true,
+            summary: true,
+            error: true,
+            diff: true,
+            createdAt: true,
+            updatedAt: true,
+            response: true,
+          },
+        },
+      },
+    });
+    if (!run) return null;
+    const { TestHealingAttempt, ...rest } = run;
+    const healingAttempts = (TestHealingAttempt ?? []).map((attempt: any) => {
+      const response =
+        attempt?.response && typeof attempt.response === "object"
+          ? (attempt.response as Record<string, unknown>)
+          : null;
+      const mode = typeof response?.mode === "string" ? response.mode : null;
+      const structuredFallbackReason =
+        typeof response?.structuredFallbackReason === "string"
+          ? response.structuredFallbackReason
+          : null;
+      const operationCount =
+        typeof response?.operationCount === "number" ? response.operationCount : null;
+      const operationTypes = Array.isArray(response?.operationTypes)
+        ? (response?.operationTypes.filter((v) => typeof v === "string") as string[])
+        : [];
+      const fixType = typeof response?.fixType === "string" ? response.fixType : null;
+      const fixDetails =
+        response?.fixDetails && typeof response.fixDetails === "object"
+          ? (response.fixDetails as Record<string, unknown>)
+          : null;
+      return {
+        ...attempt,
+        diff: typeof attempt?.diff === "string" ? attempt.diff : null,
+        mode,
+        structuredFallbackReason,
+        operationCount,
+        operationTypes,
+        fixType,
+        fixDetails,
+      };
+    });
+    return { ...rest, healingAttempts };
+  }
+
+  async function eventsHandler(req: any, reply: any) {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.setHeader("X-Accel-Buffering", "no");
+    if (typeof (reply.raw as any).flushHeaders === "function") {
+      (reply.raw as any).flushHeaders();
+    }
+
+    let closed = false;
+    let interval: NodeJS.Timeout | undefined;
+    const send = (payload: any) => {
+      if (closed) return;
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const isActive = (run: any) => {
+      if (!run) return false;
+      if (run.status === "queued" || run.status === "running") return true;
+      const reruns = run.reruns ?? [];
+      const healingAttempts = run.healingAttempts ?? [];
+      const rerunsInProgress = reruns.some(
+        (r: any) => r.status === "running" || r.status === "queued"
+      );
+      const healingInProgress = healingAttempts.some(
+        (a: any) => a.status === "running" || a.status === "queued"
+      );
+      return rerunsInProgress || healingInProgress;
+    };
+
+    const tick = async () => {
+      try {
+        const run = await loadRunById(id);
+        if (!run) {
+          send({ error: "Run not found" });
+          return false;
+        }
+        send({ run });
+        return isActive(run);
+      } catch (err: any) {
+        send({ error: err?.message ?? "Failed to load run" });
+        return false;
+      }
+    };
+
+    const active = await tick();
+    if (active) {
+      interval = setInterval(async () => {
+        const stillActive = await tick();
+        if (!stillActive) {
+          if (interval) clearInterval(interval);
+          if (!closed) reply.raw.end();
+          closed = true;
+        }
+      }, 2000);
+    } else {
+      reply.raw.end();
+      closed = true;
+    }
+
+    req.raw.on("close", () => {
+      closed = true;
+      if (interval) clearInterval(interval);
+    });
+  }
+
+  app.get("/runner/test-runs/:id/events", eventsHandler);
+  app.get("/test-runs/:id/events", eventsHandler);
+
+  app.get("/test-runs/:id/live", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const runMeta = await prisma.testRun.findUnique({
+      where: { id },
+      select: { paramsJson: true },
+    });
+    const aiMode = ((runMeta?.paramsJson as any)?.mode ?? "") === "ai";
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.setHeader("X-Accel-Buffering", "no");
+    if (typeof (reply.raw as any).flushHeaders === "function") {
+      (reply.raw as any).flushHeaders();
+    }
+
+    let closed = false;
+    let interval: NodeJS.Timeout | undefined;
+    let lastMtime = 0;
+    const sentArtifacts = new Map<string, number>();
+
+    const findLatestPng = async (rootDir: string) => {
+      try {
+        const stack: string[] = [rootDir];
+        let newest: { path: string; mtimeMs: number } | null = null;
+        while (stack.length) {
+          const current = stack.pop() as string;
+          const entries = await fs.readdir(current, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              stack.push(full);
+            } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".png")) {
+              const stat = await fs.stat(full);
+              if (!newest || stat.mtimeMs > newest.mtimeMs) {
+                newest = { path: full, mtimeMs: stat.mtimeMs };
+              }
+            }
+          }
+        }
+        return newest;
+      } catch {
+        return null;
+      }
+    };
+
+    const findLiveSnapshot = async () => {
+      const roots = [
+        RUNNER_LOGS_ROOT,
+        path.join(process.cwd(), "runner-logs"),
+        path.join(process.cwd(), "apps", "api", "runner-logs"),
+      ];
+      for (const root of roots) {
+        const livePath = path.join(root, id, "live", "latest.png");
+        try {
+          const st = await fs.stat(livePath);
+          return { livePath, mtimeMs: st.mtimeMs, root, isLive: true };
+        } catch {
+          // try next root
+        }
+        const fallbackDir = path.join(root, id, "test-results");
+        const latest = await findLatestPng(fallbackDir);
+        if (latest) {
+          return { livePath: latest.path, mtimeMs: latest.mtimeMs, root, isLive: false };
+        }
+      }
+      return null;
+    };
+
+    const ensureLiveSnapshot = async (found: {
+      livePath: string;
+      mtimeMs: number;
+      root: string;
+      isLive: boolean;
+    }) => {
+      if (found.isLive) return found;
+      const liveDir = path.join(found.root, id, "live");
+      const livePath = path.join(liveDir, "latest.png");
+      try {
+        await fs.mkdir(liveDir, { recursive: true });
+        await fs.copyFile(found.livePath, livePath);
+        const st = await fs.stat(livePath);
+        return { livePath, mtimeMs: st.mtimeMs, root: found.root, isLive: true };
+      } catch {
+        return found;
+      }
+    };
+
+    const sendArtifact = (relPath: string, mtimeMs: number) => {
+      if (closed) return;
+      const payload = { path: relPath, mtimeMs };
+      reply.raw.write(`event: artifact\n`);
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const tick = async () => {
+      if (aiMode) {
+        const roots = [
+          RUNNER_LOGS_ROOT,
+          path.join(process.cwd(), "runner-logs"),
+          path.join(process.cwd(), "apps", "api", "runner-logs"),
+        ];
+        const found = new Map<string, number>();
+
+        for (const root of roots) {
+          const runRoot = path.join(root, id);
+          try {
+            const stack: string[] = [runRoot];
+            while (stack.length) {
+              const current = stack.pop() as string;
+              const entries = await fs.readdir(current, { withFileTypes: true });
+              for (const entry of entries) {
+                const full = path.join(current, entry.name);
+                if (entry.isDirectory()) {
+                  stack.push(full);
+                  continue;
+                }
+                if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".png")) continue;
+                const stat = await fs.stat(full);
+                const suffix = path.relative(runRoot, full).replace(/\\/g, "/");
+                const rel = `/runner-logs/${id}/${suffix}`;
+                const prev = found.get(rel);
+                if (!prev || stat.mtimeMs > prev) {
+                  found.set(rel, stat.mtimeMs);
+                }
+              }
+            }
+          } catch {
+            // ignore missing roots
+          }
+        }
+
+        const ordered = Array.from(found.entries()).sort((a, b) => a[1] - b[1]);
+        for (const [rel, mtime] of ordered) {
+          const prevSent = sentArtifacts.get(rel) ?? 0;
+          if (mtime <= prevSent) continue;
+          sentArtifacts.set(rel, mtime);
+          sendArtifact(rel, mtime);
+        }
+        return;
+      }
+
+      const found = await findLiveSnapshot();
+      if (!found) return;
+      const resolved = await ensureLiveSnapshot(found);
+      if (resolved.mtimeMs <= lastMtime) return;
+      lastMtime = resolved.mtimeMs;
+      const rel = resolved.isLive
+        ? `/runner-logs/${id}/live/latest.png`
+        : (() => {
+            const roots = [
+              RUNNER_LOGS_ROOT,
+              path.join(process.cwd(), "runner-logs"),
+              path.join(process.cwd(), "apps", "api", "runner-logs"),
+            ];
+            for (const root of roots) {
+              if (resolved.livePath.startsWith(root)) {
+                const suffix = resolved.livePath.slice(root.length).replace(/\\/g, "/");
+                return `/runner-logs${suffix.startsWith("/") ? "" : "/"}${suffix}`;
+              }
+            }
+            return `/runner-logs/${id}/live/latest.png`;
+          })();
+      sendArtifact(rel, resolved.mtimeMs);
+    };
+
+    await tick();
+    interval = setInterval(tick, 1000);
+
+    req.raw.on("close", () => {
+      closed = true;
+      if (interval) clearInterval(interval);
+    });
+  });
+
+  const RerunBody = z.object({
+    specFile: z.string().min(1).optional(),
+    grep: z.string().optional(),
+    livePreview: z.boolean().optional(),
+    mode: z.enum(["regular", "ai"]).optional(),
+  adapterId: z.enum(FRAMEWORK_IDS).optional(),
+  });
+
+  const AiActionBody = z.object({
+    specFile: z.string().min(1).optional(),
+    grep: z.string().optional(),
+    adapterId: z.enum(FRAMEWORK_IDS).optional(),
+  });
+
+  const AiRepairBody = z.object({
+    testResultId: z.string().min(1),
+    testCaseId: z.string().min(1),
+    testTitle: z.string().optional(),
+    adapterId: z.enum(FRAMEWORK_IDS).optional(),
+    specFile: z.string().optional(),
+  });
+
+  app.post("/ai/runs/:id/analyze", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const parsedBody = AiActionBody.safeParse(req.body ?? {});
+    if (!parsedBody.success) return reply.code(400).send({ error: "Invalid request body" });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const params = (run.paramsJson as any) ?? {};
+    const analysis = await generateAnalyzeDocument({
+      runId: id,
+      file: parsedBody.data.specFile,
+      grep: parsedBody.data.grep,
+      baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
+      requireEnabledFlag: false,
+    });
+    return reply.send({
+      action: analysis
+        ? {
+            actionId: analysis.actionId ?? null,
+            kind: "analyze",
+            mode: "analyze",
+            status: analysis.status ?? "allowed",
+            allowed: analysis.allowed ?? true,
+            reasons: analysis.reasons ?? [],
+            frameworkId: analysis.frameworkId ?? null,
+            targetScope: analysis.targetScope ?? (parsedBody.data.specFile ? "spec" : "run"),
+            rerunIntent: analysis.rerunIntent ?? "ai-rerun",
+            snapshot: analysis.snapshot ?? null,
+            summary: analysis.summary,
+            cause: analysis.cause,
+            suggestion: analysis.suggestion,
+            model: analysis.model,
+          }
+        : {
+            kind: "analyze",
+            mode: "analyze",
+            status: "blocked",
+            allowed: false,
+            reasons: ["analysis_context_unavailable"],
+            frameworkId:
+              typeof params?.adapterId === "string" ? params.adapterId : DEFAULT_FRAMEWORK_ID,
+            targetScope: parsedBody.data.specFile ? "spec" : "run",
+            rerunIntent: "ai-rerun",
+            snapshot: null,
+            summary: "AI analysis unavailable",
+            cause: "Analysis context unavailable",
+            suggestion: "",
+            model: null,
+          },
+    });
+  });
+
+  app.post("/ai/runs/:id/assist", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const parsedBody = AiActionBody.safeParse(req.body ?? {});
+    if (!parsedBody.success) return reply.code(400).send({ error: "Invalid request body" });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const params = (run.paramsJson as any) ?? {};
+    const action = await prepareRunAssistAction({
+      runId: id,
+      file: parsedBody.data.specFile,
+      grep: parsedBody.data.grep,
+      baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
+      adapterId: parsedBody.data.adapterId,
+    });
+    return reply.send({
+      action: action
+        ? {
+            actionId: action.actionId,
+            kind: action.kind,
+            mode: action.mode,
+            status: action.status,
+            allowed: action.allowed,
+            reasons: action.reasons,
+            frameworkId: action.frameworkId ?? null,
+            targetScope: action.targetScope,
+            rerunIntent: action.rerunIntent ?? null,
+            snapshot: action.snapshot,
+            capabilities: action.capabilities,
+          }
+        : {
+            kind: "assist",
+            mode: "assist",
+            status: "blocked",
+            allowed: false,
+            reasons: ["assist_context_unavailable"],
+            frameworkId:
+              parsedBody.data.adapterId ??
+              (typeof params?.adapterId === "string" ? params.adapterId : DEFAULT_FRAMEWORK_ID),
+            targetScope: parsedBody.data.specFile ? "spec" : "run",
+            rerunIntent: "ai-rerun",
+            snapshot: null,
+            capabilities: {
+              canAutonomouslyRepair: false,
+              canUseStructuredPatch: false,
+            },
+          },
+    });
+  });
+
+  app.post("/ai/runs/:id/repair", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const parsedBody = AiRepairBody.safeParse(req.body ?? {});
+    if (!parsedBody.success) return reply.code(400).send({ error: "Invalid request body" });
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const params = (run.paramsJson as any) ?? {};
+    const action = await prepareRunRepairAction({
+      runId: id,
+      testResultId: parsedBody.data.testResultId,
+      testCaseId: parsedBody.data.testCaseId,
+      testTitle: parsedBody.data.testTitle,
+      baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
+      adapterId: parsedBody.data.adapterId,
+    });
+    const result = await scheduleSelfHealingForTarget({
+      runId: id,
+      testResultId: parsedBody.data.testResultId,
+      testCaseId: parsedBody.data.testCaseId,
+      testTitle: parsedBody.data.testTitle,
+    });
+    const queueReason = result.status === "blocked" ? result.reason ?? null : null;
+    const queueAttemptId = result.status === "queued" ? result.attemptId : null;
+    return reply.send({
+      ...result,
+      action: action
+        ? {
+            actionId: action.actionId,
+            kind: action.kind,
+            mode: action.mode,
+            status: result.status === "blocked" ? "blocked" : action.status,
+            allowed: result.status === "blocked" ? false : action.allowed,
+            reasons:
+              result.status === "blocked"
+                ? [queueReason ?? "repair_queue_blocked"]
+                : action.reasons,
+            frameworkId: action.frameworkId ?? null,
+            targetScope: action.targetScope,
+            rerunIntent: action.rerunIntent ?? null,
+            snapshot: action.snapshot,
+            capabilities: action.capabilities,
+            queueStatus: result.status,
+            queueReason,
+            attemptId: queueAttemptId,
+          }
+        : {
+            kind: "repair",
+            mode: "repair",
+            status: "blocked",
+            allowed: false,
+            reasons: [queueReason ?? "repair_context_unavailable"],
+            frameworkId:
+              parsedBody.data.adapterId ??
+              (typeof params?.adapterId === "string" ? params.adapterId : DEFAULT_FRAMEWORK_ID),
+            targetScope: "testcase",
+            rerunIntent: "ai-rerun",
+            snapshot: null,
+            capabilities: {
+              canAutonomouslyRepair: false,
+              canUseStructuredPatch: false,
+              evidenceArtifactCount: 0,
+            },
+            queueStatus: result.status,
+            queueReason,
+            attemptId: queueAttemptId,
+          },
+    });
+  });
+
+  app.post("/test-runs/:id/rerun", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const run = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true, projectId: true, paramsJson: true },
+    });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+
+    const params = (run.paramsJson as any) ?? {};
+    const rerunProject = await prisma.project.findUnique({
+      where: { id: run.projectId },
+      select: { sharedSteps: true },
+    });
+    const inheritedBaseUrl =
+      typeof params?.baseUrl === "string" && params.baseUrl.trim()
+        ? params.baseUrl.trim()
+        : typeof (rerunProject?.sharedSteps as any)?.baseUrl === "string" &&
+          (rerunProject?.sharedSteps as any)?.baseUrl.trim()
+        ? (rerunProject?.sharedSteps as any).baseUrl.trim()
+        : undefined;
+    const parsedBody = RerunBody.safeParse(req.body ?? {});
+    const headful = Boolean((params as any)?.headful);
+    const suiteId = typeof (params as any)?.suiteId === "string" ? (params as any).suiteId : undefined;
+    const adapterId =
+      parsedBody.success && parsedBody.data.adapterId
+        ? parsedBody.data.adapterId
+        : typeof (params as any)?.adapterId === "string"
+        ? (params as any).adapterId
+        : DEFAULT_FRAMEWORK_ID;
+    const rerunParams: Record<string, any> = { headful, suiteId };
+    rerunParams.adapterId = adapterId;
+    if ((params as any)?.mode) rerunParams.mode = (params as any).mode;
+    if (inheritedBaseUrl) rerunParams.baseUrl = inheritedBaseUrl;
+    const specFile = parsedBody.success ? parsedBody.data.specFile : undefined;
+    const grepRaw = parsedBody.success ? parsedBody.data.grep : undefined;
+    const livePreview =
+      parsedBody.success ? parsedBody.data.livePreview : undefined;
+    const mode = parsedBody.success ? parsedBody.data.mode : undefined;
+    const inheritedLivePreview = Boolean((params as any)?.livePreview);
+    const effectiveMode = mode ?? (params as any)?.mode;
+    const grep =
+      effectiveMode === "ai" && !specFile
+        ? undefined
+        : grepRaw;
+    const effectiveLivePreview =
+      livePreview ?? (effectiveMode === "ai" ? true : inheritedLivePreview);
+    if (specFile) rerunParams.file = specFile;
+    if (grep) rerunParams.grep = grep ?? undefined;
+    if (effectiveMode) rerunParams.mode = effectiveMode;
+    if (effectiveLivePreview) rerunParams.livePreview = true;
+    const rerun = await prisma.testRun.create({
+      data: {
+        projectId: run.projectId,
+        rerunOfId: run.id,
+        status: TestRunStatus.running,
+        startedAt: new Date(),
+        trigger: "manual",
+        paramsJson: rerunParams,
+      },
+    });
+
+    await enqueueRun(rerun.id, {
+      projectId: run.projectId,
+      adapterId,
+      headed: headful,
+      baseUrl: inheritedBaseUrl,
+      file: specFile,
+      grep,
+      mode: effectiveMode,
+      livePreview: effectiveLivePreview,
+    });
+    const aiAction =
+      effectiveMode === "ai"
+        ? {
+            actionId: `repair:${run.id}:${specFile ?? "run"}`,
+            kind: "repair" as const,
+            mode: "repair" as const,
+            status: "allowed" as const,
+            allowed: true,
+            reasons: [] as string[],
+            frameworkId: adapterId,
+            targetScope: (grep ? "testcase" : specFile ? "spec" : "run") as
+              | "run"
+              | "spec"
+              | "testcase",
+            rerunIntent: "ai-rerun" as const,
+            snapshot: specFile
+              ? {
+                  framework: adapterId,
+                  specPath: specFile,
+                  testTitle: null,
+                  failureMessage: null,
+                  stdoutSnippet: "",
+                  stderrSnippet: "",
+                  specSnippet: "",
+                }
+              : null,
+            capabilities: {
+              canAutonomouslyRepair: true,
+              canUseStructuredPatch: true,
+              evidenceArtifactCount: 0,
+            },
+          }
+        : null;
+    return reply.send({
+      runId: rerun.id,
+      actionId: aiAction?.actionId ?? null,
+      kind: effectiveMode === "ai" ? aiAction?.kind ?? "repair" : null,
+      mode: effectiveMode === "ai" ? aiAction?.mode ?? "repair" : null,
+      status:
+        effectiveMode === "ai"
+          ? aiAction?.status ?? "blocked"
+          : null,
+      allowed:
+        effectiveMode === "ai"
+          ? aiAction?.allowed ?? false
+          : null,
+      reasons:
+        effectiveMode === "ai"
+          ? aiAction?.reasons ?? ["repair_context_unavailable"]
+          : [],
+      frameworkId:
+        effectiveMode === "ai"
+          ? aiAction?.frameworkId ?? adapterId
+          : null,
+      targetScope:
+        effectiveMode === "ai"
+          ? aiAction?.targetScope ?? (specFile ? "spec" : "run")
+          : null,
+      rerunIntent:
+        effectiveMode === "ai"
+          ? aiAction?.rerunIntent ?? "ai-rerun"
+          : null,
+      snapshot: effectiveMode === "ai" ? aiAction?.snapshot ?? null : null,
+      capabilities: effectiveMode === "ai" ? aiAction?.capabilities ?? null : null,
+      summary: null,
+    });
+  });
+
+  // GET /runner/test-runs/:id/logs?type=stdout|stderr
+  app.get("/test-runs/:id/logs", async (req, reply) => {
+    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
+    if (!auth) return;
+    const { id } = req.params as { id: string };
+    const { type } = (req.query ?? {}) as { type?: "stdout" | "stderr" };
+    const run = await prisma.testRun.findUnique({ where: { id } });
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+
+    const t = type === "stderr" ? "stderr" : "stdout";
+    const candidateDirs = [
+      RUNNER_LOGS_ROOT,
+      path.join(process.cwd(), "runner-logs"),
+      path.join(process.cwd(), "apps", "api", "runner-logs"),
+    ];
+    for (const base of candidateDirs) {
+      const logPath = path.join(base, id, `${t}.txt`);
+      try {
+        const data = await fs.readFile(logPath, "utf8");
+        reply.header("Content-Type", "text/plain; charset=utf-8");
+        return reply.send(data);
+      } catch {
+        // try next location
+      }
+    }
+    reply.header("Content-Type", "text/plain; charset=utf-8");
+    return reply.send("");
+  });
+
+  // Serve runner artifacts (e.g., allure-report) directly from runner-logs
+  app.get("/runner-logs/*", async (req, reply) => {
+    const splat = (req.params as any)["*"] as string | undefined;
+    const parts = (splat || "").split("/").filter(Boolean);
+    const id = parts.shift();
+    if (!id) return reply.code(404).send("Not found");
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const rest = parts.join("/");
+    const roots = [
+      RUNNER_LOGS_ROOT,
+      path.join(process.cwd(), "runner-logs"),
+      path.join(process.cwd(), "apps", "api", "runner-logs"),
+    ];
+
+    for (const root of roots) {
+      const base = path.resolve(root, id);
+      const target = path.resolve(base, rest);
+
+      // Prevent path traversal
+      if (!target.startsWith(base)) continue;
+
+      let finalPath = target;
+      try {
+        const st = await fs.stat(finalPath);
+        if (st.isDirectory()) {
+          finalPath = path.join(finalPath, "index.html");
+        }
+      } catch {
+        continue;
+      }
+
+      try {
+        const data = await fs.readFile(finalPath);
+        const ext = path.extname(finalPath).toLowerCase();
+        const type =
+          ext === ".html"
+            ? "text/html"
+            : ext === ".js"
+            ? "application/javascript"
+            : ext === ".css"
+            ? "text/css"
+            : ext === ".json"
+            ? "application/json"
+            : ext === ".svg"
+            ? "image/svg+xml"
+            : "application/octet-stream";
+        reply.header("Content-Type", `${type}; charset=utf-8`);
+        return reply.send(data);
+      } catch {
+        // try next root
+      }
+    }
+
+    return reply.code(404).send("Not found");
+  });
+
+  // GET /runner/test-runs/:id/results
+  // shared results handler so both paths work
+  const resultsHandler = async (req: any, reply: any) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+
+    const exists = await prisma.testRun.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!exists) {
+      return reply.code(404).send({ error: "Run not found" });
+    }
+
+    const runWithReruns = await prisma.testRun.findUnique({
+      where: { id },
+      select: {
+        reruns: {
+          where: { status: { in: [TestRunStatus.succeeded, TestRunStatus.failed] } },
+          orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
+          select: { id: true },
+        },
+      },
+    });
+
+    const rerunIds = (runWithReruns?.reruns ?? []).map((rerun) => rerun.id);
+    const runIds = [id, ...rerunIds];
+
+    const rows = await prisma.testResult.findMany({
+      where: { runId: { in: runIds } },
+      orderBy: { createdAt: "asc" },
+      select: {
+        runId: true,
+        id: true,
+        status: true,
+        durationMs: true,
+        message: true,
+        testCase: {
+          select: {
+            id: true,
+            title: true,
+            key: true,
+            // Journey 1: canonical healed state for badge display
+            lastSource: true,
+            lastHealedAt: true,
+            lastResultStatus: true,
+          },
+        },
+      },
+    });
+
+    const latestRerunByCase = new Map<string, (typeof rows)[number]>();
+    for (const rerunId of rerunIds) {
+      const rerunRows = rows.filter((row) => row.runId === rerunId);
+      for (const row of rerunRows) {
+        if (!latestRerunByCase.has(row.testCase.id)) {
+          latestRerunByCase.set(row.testCase.id, row);
+        }
+      }
+    }
+
+    const extrasByRunId: Record<string, Record<string, ParsedCase>> = {};
+    const reportRoots = [
+      RUNNER_LOGS_ROOT,
+      path.join(process.cwd(), "runner-logs"),
+      path.join(process.cwd(), "apps", "api", "runner-logs"),
+    ];
+    for (const runIdForExtras of runIds) {
+      const reportRoot =
+        reportRoots.find((root) =>
+          fsSync.existsSync(path.join(root, runIdForExtras, "report.json")),
+        ) ?? reportRoots[0];
+      const reportPath = path.join(reportRoot, runIdForExtras, "report.json");
+      try {
+        const parsed = await parseResults(reportPath);
+        const extras: Record<string, ParsedCase> = {};
+        for (const c of parsed) {
+          extras[`${c.file}#${c.fullName}`] = c;
+        }
+        extrasByRunId[runIdForExtras] = extras;
+      } catch {
+        // ignore - enriched info optional
+      }
+    }
+
+    const results = rows
+      .filter((row) => row.runId === id)
+      .map((r) => {
+        const effective = latestRerunByCase.get(r.testCase.id) ?? r;
+        const extra = extrasByRunId[effective.runId]?.[effective.testCase.key];
+      return {
+        id: effective.id,
+        status: effective.status,
+        durationMs: effective.durationMs,
+        message: effective.message,
+        case: {
+          ...effective.testCase,
+          title: extra?.fullName ?? effective.testCase.title,
+          // Journey 1: healed state for badge display in RunResults
+          lastSource: effective.testCase.lastSource ?? null,
+          lastHealedAt: effective.testCase.lastHealedAt?.toISOString() ?? null,
+          lastResultStatus: effective.testCase.lastResultStatus ?? null,
+        },
+        steps: extra?.steps ?? [],
+        stdout: extra?.stdout ?? [],
+        stderr: extra?.stderr ?? [],
+      };
+    });
+
+    return reply.send({ results });
+  };
+  app.get("/runner/test-runs/:id/results", resultsHandler);
+  app.get("/test-runs/:id/results", resultsHandler);
+  app.get("/test-runs/:id/report.json", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const candidates = [
+      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
+      path.join(process.cwd(), "runner-logs", id, "report.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+    ];
+    for (const file of candidates) {
+      try {
+        const json = await fs.readFile(file, "utf8");
+        reply.header("Content-Type", "application/json; charset=utf-8");
+        return reply.send(json);
+      } catch {
+        // try next candidate
+      }
+    }
+    return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
+  });
+
+  app.get("/test-runs/:id/analysis", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const run = await loadRunById(id);
+    if (!run) return reply.code(404).send({ error: "Run not found" });
+    const paths = [
+      path.join(RUNNER_LOGS_ROOT, id, "analysis.json"),
+      path.join(process.cwd(), "runner-logs", id, "analysis.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "analysis.json"),
+    ];
+    for (const p of paths) {
+      try {
+        const raw = await fs.readFile(p, "utf8");
+        const analysis = JSON.parse(raw);
+        reply.header("Content-Type", "application/json; charset=utf-8");
+        return reply.send({ analysis });
+      } catch {
+        // try next
+      }
+    }
+    return reply.send({
+      analysis: null,
+      pending: run.status === TestRunStatus.queued || run.status === TestRunStatus.running,
+    });
+  });
+
+  // GET /projects/:id/specs  -> returns a tree of the generated specs
+  app.get("/projects/:id/specs", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    // We return the *logical* tree the runner uses: testmind-generated/playwright-ts
+    // in the project's repo. If LOCAL mode is set, we use TM_LOCAL_SPECS.
+    const tryPaths: string[] = [];
+    if (process.env.TM_LOCAL_SPECS && fsSync.existsSync(process.env.TM_LOCAL_SPECS)) {
+      tryPaths.push(path.resolve(process.env.TM_LOCAL_SPECS));
+    }
+    const userSuffix = project.ownerId ? `playwright-ts-${project.ownerId}` : "playwright-ts";
+    tryPaths.push(
+      path.join(GENERATED_ROOT, userSuffix),
+      path.join(GENERATED_ROOT, "playwright-ts"),
+      path.join(process.cwd(), "apps", "web", "testmind-generated", userSuffix),
+      path.join(process.cwd(), "apps", "web", "testmind-generated", "playwright-ts"),
+      path.join(process.cwd(), "apps", "api", "testmind-generated", "playwright-ts") // dev fallback
+    );
+
+    const root = tryPaths.find(p => fsSync.existsSync(p));
+    if (!root) return reply.send({ files: [] });
+
+    type Node = { name: string; path: string; type: "file" | "dir"; children?: Node[] };
+    const walk = (p: string): Node => {
+      const st = fsSync.statSync(p);
+      if (st.isDirectory()) {
+        const children = fsSync.readdirSync(p).map(n => walk(path.join(p, n)))
+          .filter(n => n.type === "dir" || /\.(spec|test)\.(t|j)sx?$/i.test(n.name));
+        return { name: path.basename(p), path: p, type: "dir", children };
+      }
+      return { name: path.basename(p), path: p, type: "file" };
+    };
+
+    const tree = walk(root);
+    return reply.send({ root: tree });
+  });
+
+
+  // optional: keep the old path working too
+  // app.get("/runner/test-runs/:id/report.json", async (req, reply) => {
+  //   const { id } = req.params as { id: string };
+  //   const file = path.join(process.cwd(), "runner-logs", id, "report.json");
+  //   try {
+  //     const json = await fs.readFile(file, "utf8");
+  //     reply.header("Content-Type", "application/json; charset=utf-8");
+  //     return reply.send(json);
+  //   } catch {
+  //     return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
+  //   }
+  // });
+
+// --- compat alias used by the current UI ---
+app.get("/tm/runs/:id/tests", async (req, reply) => {
+  const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const candidates = [
+      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
+      path.join(process.cwd(), "runner-logs", id, "report.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+  ];
+  for (const file of candidates) {
+    try {
+      const json = await fs.readFile(file, "utf8");
+      reply.header("Content-Type", "application/json; charset=utf-8");
+      return reply.send(json);
+    } catch {
+      // try next
+    }
+  }
+  return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
+});
+
+// Optional: simple human view to quickly eyeball failures
+app.get("/test-runs/:id/view", async (req, reply) => {
+  const { id } = req.params as { id: string };
+    const auth = await requireRunOwner(req, reply, id);
+    if (!auth) return;
+    const candidates = [
+      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
+      path.join(process.cwd(), "runner-logs", id, "report.json"),
+      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
+  ];
+  let raw: string | null = null;
+  for (const file of candidates) {
+    try {
+      raw = await fs.readFile(file, "utf8");
+      break;
+    } catch {
+      // try next
+    }
+  }
+  if (!raw) {
+    return reply.code(404).send("No report.json for this run");
+  }
+  try {
+    const data = JSON.parse(raw);
+    const rows = (data.suites ?? []).flatMap((s: any) =>
+      (s.specs ?? []).flatMap((sp: any) =>
+        (sp.tests ?? []).map((t: any) => ({
+          file: s.file, title: sp.title, status: t.results?.[0]?.status, duration: t.results?.[0]?.duration
+        }))
+      )
+    );
+    const html = `<!doctype html><meta charset="utf-8"><title>Run ${id}</title>
+<style>body{font:14px system-ui} table{border-collapse:collapse} td,th{padding:6px 10px;border:1px solid #ddd}</style>
+<h1>Run ${id}</h1>
+<table><thead><tr><th>Status</th><th>Duration</th><th>Title</th><th>File</th></tr></thead>
+<tbody>
+${rows.map((r:any)=>`<tr><td>${r.status}</td><td>${r.duration ?? ""}</td><td>${r.title}</td><td>${r.file}</td></tr>`).join("")}
+</tbody></table>`;
+    reply.header("Content-Type", "text/html; charset=utf-8");
+    return reply.send(html);
+  } catch {
+    return reply.code(404).send("No report.json for this run");
+  }
+});
+
+
+}
