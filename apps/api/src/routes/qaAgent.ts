@@ -28,7 +28,18 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() });
     }
 
-    const { projectId, suiteId, baseUrl } = parsed.data;
+    const { projectId: rawProjectId, suiteId, baseUrl } = parsed.data;
+
+    // Use the suite's projectId as authoritative — prevents cross-project mismatch
+    // when the UI's project dropdown doesn't match the selected suite's project.
+    const suite = await prisma.curatedSuite.findUnique({
+      where: { id: suiteId },
+      select: { projectId: true, project: { select: { ownerId: true } } },
+    });
+    if (!suite || suite.project.ownerId !== userId) {
+      return reply.code(404).send({ error: "Suite not found" });
+    }
+    const projectId = suite.projectId;
 
     const job = await prisma.operatorJob.create({
       data: {

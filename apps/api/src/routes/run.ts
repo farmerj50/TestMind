@@ -2451,7 +2451,7 @@ setup("auth storage", async ({ page, baseURL }) => {
             projectId: pid,
             userId,
             cases,
-            curatedSuiteId: suiteId,
+            curatedSuiteId: curatedSuite ? suiteId : undefined,
             locatorHealthUpdates,
             navSuggestionUpdates,
           });

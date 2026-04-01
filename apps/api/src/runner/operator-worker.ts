@@ -417,6 +417,11 @@ async function checkOrDelayRun(
       where: { id: taskId },
       data: { status: 'failed', finishedAt: new Date(), error: `Timed out waiting for TestRun ${runId}` },
     });
+    // Cancel the underlying run so it doesn't stay stuck in "running" forever
+    await prisma.testRun.updateMany({
+      where: { id: runId, status: { in: ['queued', 'running'] } },
+      data: { status: 'failed', finishedAt: new Date(), error: 'Cancelled: operator job deadline exceeded' },
+    });
     throw new Error(`waitForRun timeout for run ${runId}`);
   }
 

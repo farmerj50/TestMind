@@ -251,7 +251,11 @@ export default function QaAgentPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Suite</label>
-              <Select value={suiteId} onValueChange={setSuiteId}>
+              <Select value={suiteId} onValueChange={(id) => {
+                setSuiteId(id);
+                const suite = suites.find((s) => s.id === id);
+                if (suite?.projectId) setProjectId(suite.projectId);
+              }}>
                 <SelectTrigger className="bg-white">
                   <SelectValue placeholder="Select suite" />
                 </SelectTrigger>
