@@ -72,6 +72,10 @@ allure-report/
 **/allure-results/
 **/allure-report/
 
+# Journey test output
+journey-report/
+.auth/
+
 # Auth state
 auth.setup.ts
 apps/web/state.json

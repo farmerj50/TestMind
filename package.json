@@ -8,7 +8,11 @@
     "preview": "npm --prefix apps/web run preview",
     "worker": "tsx apps/worker/src/index.ts",
     "recorder:auto": "node recorder-helper-runner.js",
-    "first-run": "tsx scripts/first-run.ts"
+    "first-run": "tsx scripts/first-run.ts",
+    "test:journey": "playwright test --config tm-journey.playwright.config.mjs",
+    "test:journey:1": "playwright test --config tm-journey.playwright.config.mjs tests/journeys/journey-1-qa-execute.spec.ts",
+    "test:journey:2": "playwright test --config tm-journey.playwright.config.mjs tests/journeys/journey-2-classify-triage.spec.ts",
+    "test:journey:3": "playwright test --config tm-journey.playwright.config.mjs tests/journeys/journey-3-self-heal.spec.ts"
   },
   "packageManager": "pnpm@9.12.2+sha512.22721b3a11f81661ae1ec68ce1a7b879425a1ca5b991c975b074ac220b187ce56c708fe5db69f4c962c989452eee76c82877f4ee80f474cebd61ee13461b6228",
   "dependencies": {

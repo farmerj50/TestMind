@@ -217,18 +217,37 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
   await prisma.operatorTask.update({ where: { id: task.id }, data: { testRunId: run.id } });
 
-  const agentDir = path.join(CURATED_ROOT, agentSuiteId(opJob.projectId));
-  const agentDirExists = fsSync.existsSync(agentDir);
+  // Resolve the file scope for this run:
+  // 1. Explicit file from context (caller-specified)
+  // 2. Agent suite dir for this project (if it exists on disk)
+  // 3. CuratedSuite dir from contextJson.suiteId (the suite the job was started from)
+  // 4. Unscoped (discovers all specs — avoid if possible)
+  let resolvedFile: string | undefined = ctx.file;
+  if (!resolvedFile) {
+    const agentDir = path.join(CURATED_ROOT, agentSuiteId(opJob.projectId));
+    if (fsSync.existsSync(agentDir)) {
+      resolvedFile = agentDir;
+    } else if (ctx.suiteId) {
+      const curatedSuite = await prisma.curatedSuite.findUnique({
+        where: { id: ctx.suiteId },
+        select: { rootRel: true },
+      });
+      if (curatedSuite) {
+        const suiteDir = path.join(CURATED_ROOT, curatedSuite.rootRel);
+        if (fsSync.existsSync(suiteDir)) resolvedFile = suiteDir;
+      }
+    }
+  }
 
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
     baseUrl: inferredBaseUrl,
     mode: inferredMode as 'regular' | 'ai',
-    file: ctx.file ?? (agentDirExists ? agentDir : undefined),
+    file: resolvedFile,
     grep: ctx.grep,
   });
 
-  const deadline = Date.now() + 10 * 60 * 1000;
+  const deadline = Date.now() + 15 * 60 * 1000;
   await checkOrDelayRun(run.id, task.id, opJob.id, deadline, reDelay);
 
   // ── Journey 2: classify failures and branch into repair or defect ──────────
@@ -441,7 +460,12 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   });
 
   const failingResults = await prisma.testResult.findMany({
-    where: { runId: targetRunId, status: 'failed' },
+    where: {
+      runId: targetRunId,
+      status: 'failed',
+      // Skip archived test cases — they were intentionally removed and must not be resurrected
+      testCase: { status: { not: 'archived' } },
+    },
     include: { testCase: { select: { id: true, title: true } } },
     take: maxTests,
     orderBy: { createdAt: 'asc' },
