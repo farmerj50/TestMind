@@ -9,6 +9,7 @@ import { makeWorkdir, rmrf } from './workdir.js';
 import { cloneRepo } from './git.js';
 import { detectFramework, installDeps, runTests } from './node-test-exec.js';
 import { parseResults, type ParsedCase } from './result-parsers.js';
+import { normalizeSpecFileKey } from './persist-run-results.js';
 import { scheduleSelfHealingForRun } from './self-heal.js';
 import { finalizeLatestTestState } from './finalize-latest-test-state.js';
 import type { RunPayload } from './queue.js';
@@ -979,7 +980,8 @@ export const worker = new Worker(
 
         await prisma.$transaction(async (db) => {
           for (const c of cases) {
-            const key = `${c.file}#${c.fullName}`.slice(0, 255);
+            if (c.file === "unknown" || !c.file) continue;
+            const key = `${normalizeSpecFileKey(c.file)}#${c.fullName}`.slice(0, 255);
 
             const testCase = await db.testCase.upsert({
               where: { projectId_key: { projectId: project.id, key } },

@@ -1,6 +1,21 @@
 import { prisma } from "../prisma.js";
 import type { ParsedCase } from "./result-parsers.js";
 
+/**
+ * Normalize a spec file path to a stable, environment-independent key segment.
+ *
+ * Playwright reports absolute paths inside Docker (/data/testmind-curated/...)
+ * or relative paths from the config root (../data/testmind-curated/...).
+ * Either way, once the path passes through "testmind-curated/" we strip
+ * everything before it so the key is always "testmind-curated/project-X/...".
+ * Paths outside the curated tree are left unchanged.
+ */
+export function normalizeSpecFileKey(file: string): string {
+  const posix = file.replace(/\\/g, "/");
+  const idx = posix.indexOf("testmind-curated/");
+  return idx >= 0 ? posix.slice(idx) : posix;
+}
+
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
 
 type LocatorHealthUpdateInput = {
@@ -57,7 +72,11 @@ export async function persistParsedRunResults({
 
   await prisma.$transaction(async (db) => {
     for (const c of cases) {
-      const key = `${c.file}#${c.fullName}`.slice(0, 255);
+      // Skip synthetic error entries produced when no JSON report was generated.
+      // Storing them creates unresolvable TestCase records that trigger self-heal loops.
+      if (c.file === "unknown" || !c.file) continue;
+
+      const key = `${normalizeSpecFileKey(c.file)}#${c.fullName}`.slice(0, 255);
 
       const existing = await db.testCase.findUnique({
         where: { projectId_key: { projectId, key } },

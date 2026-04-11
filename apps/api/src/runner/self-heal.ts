@@ -84,9 +84,17 @@ async function queueHealingAttemptForTarget(input: {
       testCaseId: input.testCaseId,
       status: TestResultStatus.failed,
     },
-    select: { id: true, testCaseId: true, testCase: { select: { title: true } } },
+    select: { id: true, testCaseId: true, testCase: { select: { key: true, title: true } } },
   });
   if (!targetFailure) return { status: "blocked", reason: "target_not_failed" };
+
+  // Skip synthetic "no report" failures — their spec key starts with "unknown#" and
+  // there is no real spec file to heal. Attempting repair triggers an unresolvable loop.
+  const caseKey = targetFailure.testCase?.key ?? "";
+  if (!caseKey || caseKey.startsWith("unknown#") || caseKey.startsWith("unknown ")) {
+    console.log(`[self-heal] skipping synthetic failure testResult=${targetFailure.id} (key="${caseKey}")`);
+    return { status: "blocked", reason: "synthetic_failure" };
+  }
 
   const attemptsSoFar = await prisma.testHealingAttempt.count({
     where: { testResultId: targetFailure.id },
