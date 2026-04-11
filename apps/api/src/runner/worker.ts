@@ -980,7 +980,7 @@ export const worker = new Worker(
 
         await prisma.$transaction(async (db) => {
           for (const c of cases) {
-            if (c.file === "unknown" || !c.file) continue;
+            if (!c.file) continue;
             const key = `${normalizeSpecFileKey(c.file)}#${c.fullName}`.slice(0, 255);
 
             const testCase = await db.testCase.upsert({

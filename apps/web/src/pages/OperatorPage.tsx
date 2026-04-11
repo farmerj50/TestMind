@@ -5,7 +5,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; repoUrl?: string | null };
 
 type OperatorTask = {
   id: string;
@@ -159,6 +159,22 @@ export default function OperatorPage() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-populate baseUrl from the selected project's repoUrl (app URL only, not git repos)
+  useEffect(() => {
+    if (!projectId) return;
+    const project = projects.find((p) => p.id === projectId);
+    if (!project?.repoUrl) return;
+    const url = project.repoUrl.trim();
+    const isGitRepo = url.endsWith('.git') || url.startsWith('git@') || /github\.com|gitlab\.com|bitbucket\.org/.test(url);
+    if (!isGitRepo && /^https?:\/\//i.test(url)) {
+      setBaseUrl(url);
+    }
+    // Also reset suiteId to first suite for this project
+    const projectSuites = suites.filter((s) => s.projectId === projectId);
+    if (projectSuites.length) setSuiteId(projectSuites[0].id);
+    else setSuiteId("");
+  }, [projectId, projects, suites]);
 
   // ── active job polling ────────────────────────────────────────────────────
 
@@ -346,7 +362,7 @@ export default function OperatorPage() {
                     <SelectValue placeholder="Select suite (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    {suites.map((s) => (
+                    {suites.filter((s) => !s.projectId || s.projectId === projectId).map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
                   </SelectContent>
