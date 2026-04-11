@@ -116,11 +116,26 @@ export function buildSpecCandidates(
   // cross-project spec bleed. Handles cases where the TestCase key stores a path relative
   // to the suite root (e.g. "www-suite/caseId/spec.ts") but the file lives at
   // CURATED_ROOT/project-id/www-suite/caseId/spec.ts.
+  //
+  // Also handles container-absolute keys: when Playwright runs in Docker it records
+  // paths like /app/testmind-curated/project-X/suite/spec.ts. We strip everything up
+  // to and including "testmind-curated/" to get the repo-relative portion.
+  const curatedRoots = Array.from(new Set([
+    path.resolve(CURATED_ROOT),
+    path.join(repoRoot, "apps", "api", "testmind-curated"),
+  ]));
+
+  // Strip container-absolute curated prefix from rawPath (e.g. /app/testmind-curated/...)
+  const rawPosix = rawPath.replace(/\\/g, "/");
+  const curatedPrefixMatch = rawPosix.match(/testmind-curated\/(.+)$/);
+  if (curatedPrefixMatch) {
+    const curatedRelPath = curatedPrefixMatch[1]; // e.g. project-X/suite-Y/login.spec.ts
+    for (const curatedRoot of curatedRoots) {
+      candidates.add(path.join(curatedRoot, curatedRelPath));
+    }
+  }
+
   if (normalizedSpecPath && projectId) {
-    const curatedRoots = Array.from(new Set([
-      path.resolve(CURATED_ROOT),
-      path.join(repoRoot, "apps", "api", "testmind-curated"),
-    ]));
     const projectPrefixes = [`project-${projectId}`, `agent-${projectId}`];
     for (const curatedRoot of curatedRoots) {
       for (const prefix of projectPrefixes) {
@@ -372,7 +387,12 @@ export async function buildAiExecutionContext(
     }),
   ]);
 
-  const key = result?.testCase?.key ?? fallbackCase?.key ?? "unknown-spec";
+  const key = result?.testCase?.key ?? fallbackCase?.key ?? null;
+  if (!key) {
+    throw new Error(
+      `TestCase ${job.testCaseId} not found or has no spec key — self-heal cannot locate the spec file`
+    );
+  }
   const runSpecPathRaw = key.split("#")[0] || key;
   const runSpecPath = runSpecPathRaw.replace(/\\/g, "/");
   const effectiveAdapterId = job.adapterId || DEFAULT_FRAMEWORK_ID;
