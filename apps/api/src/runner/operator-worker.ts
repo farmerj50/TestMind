@@ -221,7 +221,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   // 1. Explicit file from context (caller-specified)
   // 2. Agent suite dir for this project (if it exists on disk)
   // 3. CuratedSuite dir from contextJson.suiteId (the suite the job was started from)
-  // 4. Unscoped (discovers all specs — avoid if possible)
+  // 4. First available curated suite for this project (avoid running all specs unscoped)
   let resolvedFile: string | undefined = ctx.file;
   if (!resolvedFile) {
     const agentDir = path.join(CURATED_ROOT, agentSuiteId(opJob.projectId));
@@ -235,6 +235,17 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
       if (curatedSuite) {
         const suiteDir = path.join(CURATED_ROOT, curatedSuite.rootRel);
         if (fsSync.existsSync(suiteDir)) resolvedFile = suiteDir;
+      }
+    }
+    if (!resolvedFile) {
+      const suites = await prisma.curatedSuite.findMany({
+        where: { projectId: opJob.projectId },
+        select: { rootRel: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      for (const suite of suites) {
+        const suiteDir = path.join(CURATED_ROOT, suite.rootRel);
+        if (fsSync.existsSync(suiteDir)) { resolvedFile = suiteDir; break; }
       }
     }
   }
@@ -504,63 +515,89 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     )
   );
 
-  const healAttemptBase = `operator:${opJob.id}`;
+  // Upsert healing attempt records — if a previous repair run already created
+  // attempt 1 for these results, reset it to queued rather than failing the unique constraint.
+  const healAttempts = await Promise.all(
+    failingResults.map((r) =>
+      prisma.testHealingAttempt.upsert({
+        where: {
+          testResultId_attempt: { testResultId: r.id, attempt: 1 },
+        },
+        create: {
+          run: { connect: { id: targetRunId! } },
+          testResult: { connect: { id: r.id } },
+          testCase: { connect: { id: r.testCase!.id } },
+          attempt: 1,
+          status: 'queued',
+        },
+        update: {
+          status: 'queued',
+          error: null,
+          summary: null,
+          diff: null,
+        },
+        select: { id: true },
+      })
+    )
+  );
+
   await Promise.all(
     failingResults.map((r, i) =>
       enqueueSelfHeal({
         runId: targetRunId!,
         testResultId: r.id,
-        testCaseId: r.testCase?.id ?? r.id,
-        attemptId: `${healAttemptBase}:${r.id}`,
+        testCaseId: r.testCase!.id,
+        attemptId: healAttempts[i].id,
         projectId: opJob.projectId,
         totalFailed: failingResults.length,
         testTitle: r.testCase?.title ?? undefined,
         baseUrl,
       }).then(() => {
         console.log(
-          `[operator-worker] repair: enqueued self-heal for "${r.testCase?.title}" (task ${repairTasks[i].id})`
+          `[operator-worker] repair: enqueued self-heal for "${r.testCase?.title}" (attempt ${healAttempts[i].id}, task ${repairTasks[i].id})`
         );
       })
     )
   );
 
+  // taskMap: healingAttemptId → operatorTaskId (poll attempt status, not testResult status)
   const taskMap: Record<string, string> = Object.fromEntries(
-    failingResults.map((r, i) => [r.id, repairTasks[i].id])
+    healAttempts.map((a, i) => [a.id, repairTasks[i].id])
   );
   const deadline = Date.now() + 20 * 60 * 1000;
-  await checkOrDelayRepairs(opJob.id, [...failingResults.map((r) => r.id)], taskMap, deadline, reDelay);
+  await checkOrDelayRepairs(opJob.id, [...healAttempts.map((a) => a.id)], taskMap, deadline, reDelay);
 }
 
 async function checkOrDelayRepairs(
   jobId: string,
-  remaining: string[],
-  taskMap: Record<string, string>,
+  remaining: string[],  // healingAttempt IDs
+  taskMap: Record<string, string>,  // healingAttemptId → operatorTaskId
   deadline: number,
   reDelay: ReDelayFn
 ) {
-  const updated = await prisma.testResult.findMany({
+  const attempts = await prisma.testHealingAttempt.findMany({
     where: { id: { in: remaining } },
-    select: { id: true, status: true, message: true },
+    select: { id: true, status: true, error: true, testResultId: true },
   });
 
   const stillRemaining: string[] = [];
-  for (const res of updated) {
-    if (res.status === 'passed' || res.status === 'failed') {
-      const taskId = taskMap[res.id];
+  for (const attempt of attempts) {
+    if (attempt.status === 'succeeded' || attempt.status === 'failed' || attempt.status === 'skipped') {
+      const taskId = taskMap[attempt.id];
       if (taskId) {
-        const healed = res.status === 'passed';
+        const healed = attempt.status === 'succeeded';
         await prisma.operatorTask.update({
           where: { id: taskId },
           data: {
             status: healed ? 'succeeded' : 'failed',
             finishedAt: new Date(),
-            error: healed ? null : (res.message ?? 'Self-heal did not fix the test'),
-            outputJson: { testResultId: res.id, finalStatus: res.status },
+            error: healed ? null : (attempt.error ?? 'Self-heal did not fix the test'),
+            outputJson: { healingAttemptId: attempt.id, finalStatus: attempt.status },
           },
         });
         if (healed) {
           const result = await prisma.testResult.findUnique({
-            where: { id: res.id },
+            where: { id: attempt.testResultId },
             select: { runId: true },
           });
           if (result) {
@@ -569,14 +606,14 @@ async function checkOrDelayRepairs(
               taskId,
               testRunId: result.runId,
               type: 'patch',
-              path: `runs/${result.runId}/self-heal-patch-${res.id}.diff`,
-              meta: { testResultId: res.id, outcome: 'healed' },
+              path: `runs/${result.runId}/self-heal-patch-${attempt.id}.diff`,
+              meta: { healingAttemptId: attempt.id, outcome: 'healed' },
             });
           }
         }
       }
     } else {
-      stillRemaining.push(res.id);
+      stillRemaining.push(attempt.id);
     }
   }
 

@@ -656,8 +656,16 @@ export const worker = new Worker(
           if (posix.includes(marker)) {
             const tail = posix.split(marker)[1];
             abs = path.join(work, "testmind-generated", tail);
-          } else {
+          } else if (!isAbs) {
+            // Only join with work for relative paths; absolute paths (e.g. curated suite dirs)
+            // are already fully resolved and must not be prepended with the work dir.
             abs = path.join(work, posix);
+          }
+          // isAbs && no testmind-generated marker → keep abs = specPath (already set above).
+          // If it's a directory (e.g. curated suite dir passed by operator-worker), use it as
+          // the Playwright testDir so discovery is scoped to just that dir.
+          if (isAbs && !posix.includes(marker) && fsSync.existsSync(abs) && fsSync.statSync(abs).isDirectory()) {
+            aiGenDirOverride = abs;
           }
         }
         if (isAbs && isWebGenerated) {

@@ -17,6 +17,7 @@ export type RunPayload = {
   trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
   grep?: string;
   file?: string;
+  suiteId?: string;
   baseUrl?: string;
   localRepoRoot?: string;
   timeoutMs?: number;

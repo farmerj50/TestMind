@@ -60,7 +60,8 @@ const MAX_STDOUT_CHARS = 600;
 const MAX_STDERR_CHARS = 400;
 // Cap full spec to avoid multi-hundred-KB generated files blowing out the context window.
 // The selectedTestSnippet already contains the failing test block; specContent is supplementary context.
-const MAX_SPEC_CHARS = 20_000;
+// Keeping this tight (8k) because json_object structured calls on gpt-4o-mini slow dramatically with large inputs.
+const MAX_SPEC_CHARS = 8_000;
 
 async function getClient(projectId?: string) {
   loadBackendEnv();
@@ -260,12 +261,12 @@ async function createStructuredChatCompletion(input: {
   maxTokens: number;
   jsonSchema: { name: string; strict: boolean; schema: Record<string, unknown> };
 }) {
+  // Use json_object instead of json_schema to avoid anyOf constraint engine overhead.
+  // json_schema with anyOf discriminated unions causes significant latency on gpt-4o-mini.
+  // Zod validation in parseModelJson handles schema compliance and the caller's catch block handles fallback.
   const completion = await input.openai.chat.completions.create({
     model: MODEL,
-    response_format: {
-      type: "json_schema",
-      json_schema: input.jsonSchema,
-    } as any,
+    response_format: { type: "json_object" },
     max_tokens: input.maxTokens,
     messages: [
       { role: "system", content: input.system },
