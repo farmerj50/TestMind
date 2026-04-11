@@ -1163,6 +1163,7 @@ export const worker = new Worker(
           status: TestRunStatus.failed,
           finishedAt: new Date(),
           error: stripAnsi(err?.message ?? String(err)),
+          summary: JSON.stringify({ framework: "unknown", parsedCount: 0, passed: 0, failed: 0, skipped: 0 }),
         },
       });
       throw err;
