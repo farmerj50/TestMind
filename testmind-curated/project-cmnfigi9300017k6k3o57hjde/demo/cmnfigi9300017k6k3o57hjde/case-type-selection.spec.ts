@@ -625,6 +625,7 @@ test("Navigate /case-type-selection → /login", async ({ page }, testInfo: Test
     try {
       await clickNavLink(page, "/login");
       await expect(page).toHaveTitle(/JusticePath — Accessible Legal Help/, { timeout: 10000 });
+      await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
     } finally {
       await captureStepArtifact(page, testInfo, "2. Navigate to /login");
     }
