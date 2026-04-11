@@ -2,11 +2,44 @@ import fs from "fs/promises";
 import path from "path";
 import { createTwoFilesPatch } from "diff";
 import { prisma } from "../../prisma.js";
+import { CURATED_ROOT, GENERATED_ROOT } from "../../lib/storageRoots.js";
 import type { AiExecutionContext } from "./types.js";
 import type { HealFixType } from "./repair-policy.js";
 import type { RepairExecutionResult } from "./repair-executor.js";
 
 const toJson = <T>(value: T): any => JSON.parse(JSON.stringify(value));
+
+/**
+ * When the spec lives in the generated folder, also patch its copy in the
+ * agent curated suite so the next operator/suite run picks up the fix.
+ *
+ * Generated layout: GENERATED_ROOT/{adapterId}-{userId}/{projectId}/path/to/spec.ts
+ * Agent suite layout: CURATED_ROOT/agent-{projectId}/path/to/spec.ts
+ */
+async function mirrorPatchedSpecToCuratedSuite(context: AiExecutionContext, patchedSpec: string) {
+  const repoAbs = path.resolve(context.repoAbsolutePath);
+  const curatedRootAbs = path.resolve(CURATED_ROOT);
+  const generatedRootAbs = path.resolve(GENERATED_ROOT);
+
+  // If the spec is already inside the curated root it was patched directly — nothing extra needed.
+  if (repoAbs.startsWith(curatedRootAbs)) return;
+
+  // Only attempt if the spec is inside the generated root.
+  if (!repoAbs.startsWith(generatedRootAbs)) return;
+
+  // Strip generated root + {adapterId}-{userId} + {projectId} → get spec-relative path.
+  const relToGen = path.relative(generatedRootAbs, repoAbs); // e.g. playwright-ts-uid/proj-id/path/spec.ts
+  const parts = relToGen.split(path.sep);
+  if (parts.length < 3) return; // unexpected layout
+
+  const specRel = parts.slice(2).join(path.sep); // path/spec.ts
+  const agentCopy = path.join(curatedRootAbs, `agent-${context.scope.projectId}`, specRel);
+
+  // Only write if the curated copy already exists (don't create new files).
+  await fs.access(agentCopy).then(async () => {
+    await fs.writeFile(agentCopy, patchedSpec, "utf8");
+  }).catch(() => { /* curated copy doesn't exist — skip */ });
+}
 
 async function mirrorPatchedSpecToRunTarget(context: AiExecutionContext, patchedSpec: string) {
   if (!context.runSpecPath) return;
@@ -33,6 +66,7 @@ export async function recordRuleRepairSuccess(input: {
   await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
   await fs.writeFile(context.repoAbsolutePath, patchedSpec, "utf8");
   await mirrorPatchedSpecToRunTarget(context, patchedSpec);
+  await mirrorPatchedSpecToCuratedSuite(context, patchedSpec);
   const diff = createTwoFilesPatch(
     context.repoRelativePath,
     context.repoRelativePath,
@@ -64,6 +98,7 @@ export async function recordLlmRepairSuccess(input: {
   await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
   await fs.writeFile(context.repoAbsolutePath, result.patchedSpec, "utf8");
   await mirrorPatchedSpecToRunTarget(context, result.patchedSpec);
+  await mirrorPatchedSpecToCuratedSuite(context, result.patchedSpec);
 
   const diff = createTwoFilesPatch(
     context.repoRelativePath,

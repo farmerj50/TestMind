@@ -79,7 +79,9 @@ export default function OperatorPage() {
 
   // form state
   const [projects, setProjects] = useState<Project[]>([]);
+  const [suites, setSuites] = useState<Array<{ id: string; name: string; projectId?: string }>>([]);
   const [projectId, setProjectId] = useState("");
+  const [suiteId, setSuiteId] = useState("");
   const [jobType, setJobType] = useState<"qa" | "repair" | "discovery" | "security">("qa");
   const [enableActive, setEnableActive] = useState(false);
   const [objective, setObjective] = useState("");
@@ -130,6 +132,15 @@ export default function OperatorPage() {
         if (!mounted) return;
         setProjects(res.projects ?? []);
         if (res.projects?.length && !projectId) setProjectId(res.projects[0].id);
+      })
+      .catch(() => {});
+
+    apiFetch<{ projects: Array<{ id: string; name: string; type: string; projectId?: string }> }>("/tm/suite/projects")
+      .then((res) => {
+        if (!mounted) return;
+        const curated = (res.projects ?? []).filter((p) => p.type === "curated");
+        setSuites(curated);
+        if (!suiteId && curated.length) setSuiteId(curated[0].id);
       })
       .catch(() => {});
 
@@ -191,6 +202,7 @@ export default function OperatorPage() {
           objective: objective.trim() || undefined,
           context: {
             ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+            ...(jobType === "qa" && suiteId ? { suiteId } : {}),
             ...(jobType === "security" && enableActive ? { enableActive: true } : {}),
           },
         }),
@@ -326,6 +338,21 @@ export default function OperatorPage() {
                 </SelectContent>
               </Select>
             </div>
+            {jobType === "qa" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Suite</label>
+                <Select value={suiteId} onValueChange={setSuiteId}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Select suite (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {suites.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Objective (optional)</label>
               <Input

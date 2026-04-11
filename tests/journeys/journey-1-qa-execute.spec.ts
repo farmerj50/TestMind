@@ -110,9 +110,25 @@ test.describe("Journey 1 — QA Execute", () => {
     const failed    = page.getByText("failed");
     await expect(succeeded.or(failed).first()).toBeVisible({ timeout: JOB_TIMEOUT });
 
-    // ── Verify the execute task completed (not still "running") ───────────────
+    // ── Execute task shows terminal status badge (not stuck running) ──────────
     const runSuiteTask = page.locator("div").filter({ hasText: /^Run suite/ }).first();
     await expect(runSuiteTask).not.toContainText("running");
+    await expect(runSuiteTask.getByText(/^(succeeded|failed)$/i)).toBeVisible({ timeout: 5_000 });
+
+    // ── "View run" link on the execute task — run was persisted ──────────────
+    const viewRunLink = runSuiteTask.getByRole("link", { name: "View run" });
+    await expect(viewRunLink).toBeVisible({ timeout: 5_000 });
+
+    // ── "View run report" link in job status card — job.runId is set ─────────
+    const viewRunReport = page.getByRole("link", { name: "View run report" });
+    await expect(viewRunReport).toBeVisible({ timeout: 5_000 });
+
+    // ── Navigate to run report and verify hero card (results persisted) ───────
+    const runHref = await viewRunReport.getAttribute("href");
+    await page.goto(runHref!);
+    await expect(page.getByText("Run Results")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Passed \d+/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Failed \d+/)).toBeVisible({ timeout: 10_000 });
   });
 
   test("job status reflects succeeded or failed — never stuck in queued", async ({ page }) => {
