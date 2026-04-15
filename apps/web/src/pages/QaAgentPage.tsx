@@ -5,7 +5,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; repoUrl?: string | null };
 
 type QaTask = {
   id: string;
@@ -180,6 +180,18 @@ export default function QaAgentPage() {
       if (pollRef.current) window.clearInterval(pollRef.current);
     };
   }, [apiFetch, projectId, suiteId]);
+
+  // Auto-populate baseUrl from project.repoUrl when it's an app URL (not a git repo)
+  useEffect(() => {
+    if (!projectId) return;
+    const project = projects.find((p) => p.id === projectId);
+    if (!project?.repoUrl) return;
+    const url = project.repoUrl.trim();
+    const isGitRepo = url.endsWith('.git') || url.startsWith('git@') || /github\.com|gitlab\.com|bitbucket\.org/.test(url);
+    if (!isGitRepo && /^https?:\/\//i.test(url)) {
+      setBaseUrl(url);
+    }
+  }, [projectId, projects]);
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId),

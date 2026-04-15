@@ -256,6 +256,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     mode: inferredMode as 'regular' | 'ai',
     file: resolvedFile,
     grep: ctx.grep,
+    timeoutMs: 12 * 60 * 1000, // QA agent runs need more time than the 30s worker default
   });
 
   const deadline = Date.now() + 15 * 60 * 1000;

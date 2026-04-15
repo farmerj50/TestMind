@@ -246,6 +246,9 @@ export function validatePatchedSpec(
 ): string | null {
   const cleaned = stripMarkdownCodeFence(after);
   if (!cleaned.trim()) return "Patched spec is empty.";
+  // Raw Markdown fences can still parse as tagged-template syntax in TS/JS and
+  // then fail only at runtime (`"" is not a function`). Reject them up front.
+  if (cleaned.includes("```")) return "Patched spec contains Markdown code fences.";
 
   const byteDelta = Math.abs(Buffer.byteLength(cleaned, "utf8") - Buffer.byteLength(before, "utf8"));
   if (byteDelta > limits.maxBytesDelta) {

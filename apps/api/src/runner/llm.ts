@@ -9,6 +9,40 @@ import { decryptSecret } from "../lib/crypto.js";
 
 const MODEL = process.env.HEALING_LLM_MODEL || "gpt-4o-mini";
 
+/**
+ * Normalize LLM operation type names to the exact discriminator values Zod expects.
+ * The model sometimes returns abbreviated variants (e.g. "replace" instead of
+ * "replace_literal"). We fix those before schema validation so a sloppy-but-correct
+ * response doesn't trigger a hard failure and skip the fallback rewrite.
+ */
+function normalizeOpTypes(raw: string): string {
+  const TYPE_MAP: Record<string, string> = {
+    replace: "replace_literal",
+    replace_regex: "replace_regex_once",
+    insert_after: "insert_after_literal",
+    insert: "insert_after_literal",
+  };
+  try {
+    const obj = JSON.parse(raw);
+    if (Array.isArray(obj?.operations)) {
+      for (const op of obj.operations) {
+        if (op?.type && TYPE_MAP[op.type]) op.type = TYPE_MAP[op.type];
+      }
+    }
+    return JSON.stringify(obj);
+  } catch {
+    return raw; // if parse fails, let parseModelJson handle the error
+  }
+}
+
+/** Strip a single outer markdown code fence (` ```ts ` / ` ``` `) if present. */
+function stripOuterCodeFence(content: string): string {
+  const trimmed = content.trim();
+  const match = trimmed.match(/^```[A-Za-z0-9_-]*\r?\n([\s\S]*?)\r?\n```\s*$/);
+  if (match) return `${match[1].trimEnd()}\n`;
+  return content;
+}
+
 let client: OpenAI | null = null;
 let clientKey: string | null = null;
 
@@ -344,7 +378,7 @@ export async function requestSpecPatchOps(prompt: HealPrompt): Promise<HealPatch
     jsonSchema: patchOpsJsonSchema,
   });
 
-  const parsed = parseModelJson(raw, healPatchResponseSchema);
+  const parsed = parseModelJson(normalizeOpTypes(raw), healPatchResponseSchema);
   return { summary: parsed.summary || "LLM patch operations", operations: parsed.operations, raw };
 }
 
@@ -432,7 +466,8 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
       });
 
       const parsed = parseModelJson(raw, healSelectedBlockResponseSchema);
-      const updatedTestBlock = parsed.updatedTestBlock;
+      // Strip outer markdown code fences the LLM may wrap around the block
+      const updatedTestBlock = stripOuterCodeFence(parsed.updatedTestBlock);
       const updatedSpec = prompt.specContent.replace(prompt.selectedTestSnippet!, updatedTestBlock);
       if (updatedSpec === prompt.specContent) {
         throw new Error("LLM returned updatedTestBlock, but the original selected test block could not be replaced.");
@@ -472,7 +507,7 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
   const parsed = parseModelJson(raw, healFileResponseSchema);
   return {
     summary: parsed.summary || "LLM updated spec",
-    updatedSpec: parsed.updatedSpec,
+    updatedSpec: stripOuterCodeFence(parsed.updatedSpec),
     raw,
   };
 }
