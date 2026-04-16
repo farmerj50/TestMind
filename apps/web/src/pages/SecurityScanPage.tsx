@@ -28,6 +28,24 @@ type SecurityFinding = {
   tool?: string | null;
 };
 
+type SecurityFindingDetail = {
+  title: string;
+  severity: string;
+  summary: string;
+  affectedAsset: string;
+  whyItMatters: string;
+  confidence: {
+    score: number;
+    label: string;
+    rationale: string;
+  };
+  evidence: string[];
+  safeVerificationSteps: string[];
+  recommendedFix: string[];
+  defensiveNote: string;
+  cve?: string | null;
+};
+
 // Keep only the newest job per page/baseUrl so duplicate scans don't pile up in the UI.
 function uniqByPage(jobs: SecurityJob[]) {
   const byKey = new Map<string, SecurityJob>();
@@ -63,7 +81,7 @@ export default function SecurityScanPage() {
   const pollRef = useRef<number | null>(null);
   const pollFailures = useRef<number>(0);
   const [selectedFinding, setSelectedFinding] = useState<SecurityFinding | null>(null);
-  const [findingExplain, setFindingExplain] = useState<string>("");
+  const [findingExplain, setFindingExplain] = useState<SecurityFindingDetail | null>(null);
   const [findingTest, setFindingTest] = useState<string>("");
   const [findingLoading, setFindingLoading] = useState<{ explain?: boolean; test?: boolean }>({});
   const stopPolling = () => {
@@ -310,7 +328,7 @@ export default function SecurityScanPage() {
                       className="rounded-md border border-slate-200 bg-white p-3 shadow-sm cursor-pointer hover:border-slate-300"
                       onClick={() => {
                         setSelectedFinding(f);
-                        setFindingExplain("");
+                        setFindingExplain(null);
                         setFindingTest("");
                       }}
                     >
@@ -392,22 +410,31 @@ export default function SecurityScanPage() {
               <Button
                 onClick={async () => {
                   setFindingLoading((s) => ({ ...s, explain: true }));
-                  setFindingExplain("");
+                  setFindingExplain(null);
                   try {
-                    const res = await apiFetch<{ detail: { repro: string; mitigation: string; cve?: string | null } }>(
+                    const res = await apiFetch<{ detail: SecurityFindingDetail }>(
                       `/security/findings/${selectedFinding.id}/explain`,
                       { method: "POST" }
                     );
-                    const lines = [
-                      res.detail.cve ? `CVE: ${res.detail.cve}` : "",
-                      `How to reproduce: ${res.detail.repro}`,
-                      `Mitigation: ${res.detail.mitigation}`,
-                    ]
-                      .filter(Boolean)
-                      .join("\n");
-                    setFindingExplain(lines);
+                    setFindingExplain(res.detail);
                   } catch (err: any) {
-                    setFindingExplain(err?.message ?? "Failed to load explanation.");
+                    setFindingExplain({
+                      title: selectedFinding.title,
+                      severity: selectedFinding.severity,
+                      summary: err?.message ?? "Failed to load explanation.",
+                      affectedAsset: selectedFinding.location || "Unknown asset",
+                      whyItMatters: "The finding detail could not be loaded.",
+                      confidence: {
+                        score: 0,
+                        label: "low",
+                        rationale: "No analysis was returned.",
+                      },
+                      evidence: [],
+                      safeVerificationSteps: [],
+                      recommendedFix: [],
+                      defensiveNote: "",
+                      cve: null,
+                    });
                   } finally {
                     setFindingLoading((s) => ({ ...s, explain: false }));
                   }
@@ -440,11 +467,81 @@ export default function SecurityScanPage() {
               </Button>
             </div>
             {(findingExplain || findingTest) && (
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3 text-sm font-mono whitespace-pre-wrap">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3 text-sm">
                 {findingExplain && (
-                  <div>
-                    <div className="text-xs uppercase text-slate-500 mb-1">Explain / Mitigate</div>
-                    {findingExplain}
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-xs uppercase text-slate-500 mb-1">Analysis</div>
+                      <div className="rounded border border-slate-200 bg-white p-3 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded bg-slate-100 px-2 py-1 uppercase tracking-wide text-slate-700">
+                            Severity {findingExplain.severity}
+                          </span>
+                          <span className="rounded bg-slate-100 px-2 py-1 uppercase tracking-wide text-slate-700">
+                            Confidence {findingExplain.confidence.score}/100
+                          </span>
+                          <span className="rounded bg-slate-100 px-2 py-1 uppercase tracking-wide text-slate-700">
+                            {findingExplain.confidence.label}
+                          </span>
+                          {findingExplain.cve && (
+                            <span className="rounded bg-amber-100 px-2 py-1 uppercase tracking-wide text-amber-800">
+                              {findingExplain.cve}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase text-slate-500">Summary</div>
+                          <div className="text-slate-800">{findingExplain.summary}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase text-slate-500">Affected Asset</div>
+                          <div className="text-slate-800">{findingExplain.affectedAsset}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase text-slate-500">Why It Matters</div>
+                          <div className="text-slate-800">{findingExplain.whyItMatters}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase text-slate-500">Confidence Rationale</div>
+                          <div className="text-slate-800">{findingExplain.confidence.rationale}</div>
+                        </div>
+                        {findingExplain.evidence.length > 0 && (
+                          <div>
+                            <div className="text-xs uppercase text-slate-500">Evidence</div>
+                            <ul className="list-disc pl-5 space-y-1 text-slate-800">
+                              {findingExplain.evidence.map((line, index) => (
+                                <li key={`${line}-${index}`}>{line}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {findingExplain.safeVerificationSteps.length > 0 && (
+                          <div>
+                            <div className="text-xs uppercase text-slate-500">Safe Verification</div>
+                            <ol className="list-decimal pl-5 space-y-1 text-slate-800">
+                              {findingExplain.safeVerificationSteps.map((step, index) => (
+                                <li key={`${step}-${index}`}>{step}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                        {findingExplain.recommendedFix.length > 0 && (
+                          <div>
+                            <div className="text-xs uppercase text-slate-500">Recommended Fix</div>
+                            <ul className="list-disc pl-5 space-y-1 text-slate-800">
+                              {findingExplain.recommendedFix.map((step, index) => (
+                                <li key={`${step}-${index}`}>{step}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {findingExplain.defensiveNote && (
+                          <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                            {findingExplain.defensiveNote}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
                 {findingTest && (

@@ -10,23 +10,116 @@ import { decryptSecret } from "../lib/crypto.js";
 const MODEL = process.env.HEALING_LLM_MODEL || "gpt-4o-mini";
 
 /**
- * Normalize LLM operation type names to the exact discriminator values Zod expects.
- * The model sometimes returns abbreviated variants (e.g. "replace" instead of
- * "replace_literal"). We fix those before schema validation so a sloppy-but-correct
- * response doesn't trigger a hard failure and skip the fallback rewrite.
+ * Normalize LLM patch-op payloads to the exact discriminator values and field names
+ * Zod expects. The model sometimes returns abbreviated type names, kebab/camel-case
+ * variants, omits `type` entirely, or uses field aliases like `replacement`.
+ * We normalize those before schema validation so a sloppy-but-correct response
+ * doesn't trigger a hard failure and skip the fallback rewrite.
  */
 function normalizeOpTypes(raw: string): string {
-  const TYPE_MAP: Record<string, string> = {
-    replace: "replace_literal",
-    replace_regex: "replace_regex_once",
-    insert_after: "insert_after_literal",
-    insert: "insert_after_literal",
+  const normalizeToken = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/([a-z])([A-Z])/g, "$1_$2")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_");
+
+  const canonicalType = (value: unknown, op?: Record<string, unknown>): string | undefined => {
+    if (typeof value === "string" && value.trim()) {
+      const normalized = normalizeToken(value);
+      const TYPE_MAP: Record<string, string> = {
+        replace: "replace_literal",
+        replace_literal: "replace_literal",
+        replace_text: "replace_literal",
+        replace_string: "replace_literal",
+        replace_line: "replace_literal",
+        replace_once: "replace_literal",
+        replace_literal_once: "replace_literal",
+        literal_replace: "replace_literal",
+        replace_regex: "replace_regex_once",
+        replace_regex_once: "replace_regex_once",
+        regex_replace: "replace_regex_once",
+        regex_replace_once: "replace_regex_once",
+        regex_once: "replace_regex_once",
+        pattern_replace: "replace_regex_once",
+        replace_pattern: "replace_regex_once",
+        insert: "insert_after_literal",
+        insert_after: "insert_after_literal",
+        insert_after_literal: "insert_after_literal",
+        append_after: "insert_after_literal",
+        append_after_literal: "insert_after_literal",
+      };
+      if (TYPE_MAP[normalized]) return TYPE_MAP[normalized];
+    }
+
+    if (!op) return undefined;
+    const hasFind = typeof op.find === "string" || typeof op.match === "string" || typeof op.anchor === "string";
+    const hasReplace =
+      typeof op.replace === "string" ||
+      typeof op.replacement === "string" ||
+      typeof op.value === "string" ||
+      typeof op.newText === "string";
+    const hasPattern = typeof op.pattern === "string" || typeof op.regex === "string";
+    const hasInsert =
+      typeof op.insert === "string" ||
+      typeof op.text === "string" ||
+      typeof op.content === "string";
+
+    if (hasPattern && hasReplace) return "replace_regex_once";
+    if (hasFind && hasInsert && !hasReplace) return "insert_after_literal";
+    if (hasFind && hasReplace) return "replace_literal";
+    return undefined;
   };
+
+  const normalizeOperation = (op: Record<string, unknown>) => {
+    const type = canonicalType(op.type, op);
+    if (type) op.type = type;
+
+    if (type === "replace_literal") {
+      if (typeof op.find !== "string") {
+        const nextFind = [op.match, op.target, op.search, op.needle].find((v) => typeof v === "string");
+        if (typeof nextFind === "string") op.find = nextFind;
+      }
+      if (typeof op.replace !== "string") {
+        const nextReplace = [op.replacement, op.value, op.newText, op.text].find((v) => typeof v === "string");
+        if (typeof nextReplace === "string") op.replace = nextReplace;
+      }
+    }
+
+    if (type === "replace_regex_once") {
+      if (typeof op.pattern !== "string") {
+        const nextPattern = [op.regex, op.find, op.match, op.search].find((v) => typeof v === "string");
+        if (typeof nextPattern === "string") op.pattern = nextPattern;
+      }
+      if (typeof op.replace !== "string") {
+        const nextReplace = [op.replacement, op.value, op.newText, op.text].find((v) => typeof v === "string");
+        if (typeof nextReplace === "string") op.replace = nextReplace;
+      }
+    }
+
+    if (type === "insert_after_literal") {
+      if (typeof op.find !== "string") {
+        const nextFind = [op.anchor, op.after, op.match, op.target, op.needle].find((v) => typeof v === "string");
+        if (typeof nextFind === "string") op.find = nextFind;
+      }
+      if (typeof op.insert !== "string") {
+        const nextInsert = [op.text, op.content, op.value, op.replacement, op.newText].find(
+          (v) => typeof v === "string"
+        );
+        if (typeof nextInsert === "string") op.insert = nextInsert;
+      }
+    }
+  };
+
   try {
     const obj = JSON.parse(raw);
     if (Array.isArray(obj?.operations)) {
       for (const op of obj.operations) {
-        if (op?.type && TYPE_MAP[op.type]) op.type = TYPE_MAP[op.type];
+        if (op && typeof op === "object" && !Array.isArray(op)) {
+          normalizeOperation(op as Record<string, unknown>);
+        }
       }
     }
     return JSON.stringify(obj);

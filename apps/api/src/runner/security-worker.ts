@@ -8,6 +8,13 @@ import net from "node:net";
 import path from "node:path";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
+import {
+  detectDirectoryListing,
+  extractHttpMethodFindings,
+  extractServiceExposureFindings,
+  extractVersionDisclosureFindings,
+  normalizeHeaderValue,
+} from "./security-heuristics.js";
 
 type FindingInput = {
   type: "recon" | "static_analysis" | "dependency" | "dynamic";
@@ -107,6 +114,13 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
         });
       }
     }
+    findings.push(
+      ...extractVersionDisclosureFindings({
+        headers,
+        location: job.baseUrl,
+        tool: "header-check",
+      })
+    );
     // Cookie flags
     const setCookie = headers["set-cookie"];
     if (Array.isArray(setCookie)) {
@@ -128,6 +142,13 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
     // Simple crawl (same host, shallow)
     try {
       const body = await res.body.text();
+      findings.push(
+        ...detectDirectoryListing({
+          body,
+          location: job.baseUrl,
+          tool: "recon-crawl",
+        })
+      );
       const hrefs = Array.from(body.matchAll(/href\s*=\s*["']([^"']+)["']/gi))
         .map((m) => m[1])
         .filter((h) => h.startsWith("/"));
@@ -185,6 +206,17 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
         location: `${host}:${port}`,
         tool: "port-probe",
       });
+      if (status === "open") {
+        const banner = await grabBanner(host, port);
+        findings.push(
+          ...extractServiceExposureFindings({
+            host,
+            port,
+            banner,
+            tool: "banner-grab",
+          })
+        );
+      }
     }
   }
 
@@ -399,6 +431,35 @@ async function probe(
   }
 }
 
+async function grabBanner(host: string, port: number, timeoutMs = 1200): Promise<string | null> {
+  return await new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+    let buffer = "";
+    const finish = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(buffer.trim() || null), timeoutMs);
+
+    socket.once("error", () => finish(buffer.trim() || null));
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      if (buffer.length >= 512 || /(\r?\n){1,2}/.test(buffer)) {
+        finish(buffer.slice(0, 512).trim() || null);
+      }
+    });
+    socket.connect(port, host, () => {
+      if ([80, 81, 3000, 4000, 5000, 8000, 8080, 8888].includes(port)) {
+        socket.write(`HEAD / HTTP/1.0\r\nHost: ${host}\r\n\r\n`);
+      }
+    });
+  });
+}
+
 /**
  * Passive dynamic checks that do NOT mutate state — safe without approval.
  * Tests: auth-required endpoints, open redirect indicators, CORS misconfiguration,
@@ -437,6 +498,20 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
   }
 
   // 3. Error disclosure — request a path that likely 404s and check for stack traces
+  const optionsRes = await probe(base, { method: "OPTIONS" });
+  if (optionsRes) {
+    findings.push(
+      ...extractHttpMethodFindings({
+        allowHeader:
+          normalizeHeaderValue(optionsRes.headers["allow"] as string | string[] | undefined) ??
+          normalizeHeaderValue(optionsRes.headers["public"] as string | string[] | undefined) ??
+          null,
+        location: base,
+        tool: "dast-options",
+      })
+    );
+  }
+
   const errRes = await probe(`${base}/__tm_dast_probe_404__`);
   if (errRes) {
     const body = errRes.body.toLowerCase();
