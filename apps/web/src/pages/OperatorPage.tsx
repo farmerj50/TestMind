@@ -13,8 +13,17 @@ type OperatorTask = {
   status: string;
   testRunId?: string | null;
   error?: string | null;
+  createdAt?: string;
   startedAt?: string | null;
   finishedAt?: string | null;
+  inputJson?: Record<string, any> | null;
+  outputJson?: Record<string, any> | null;
+  resolvedTarget?: {
+    testResultId?: string | null;
+    testCaseId?: string | null;
+    testTitle?: string | null;
+    testCaseKey?: string | null;
+  } | null;
 };
 
 type OperatorJob = {
@@ -72,6 +81,70 @@ function fmtTime(iso?: string | null) {
 function fmtDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString();
+}
+
+function taskLabel(task: OperatorTask) {
+  if (task.type === "repair") return "Repair testcase";
+  if (task.type === "triage") return "Triage";
+  if (task.type === "execute") return "Execute";
+  if (task.type === "discover") return "Discover";
+  return task.type;
+}
+
+function taskTargetTitle(task: OperatorTask) {
+  const resolved = task.resolvedTarget ?? {};
+  const input = task.inputJson ?? {};
+  const output = task.outputJson ?? {};
+  return (
+    (typeof resolved.testTitle === "string" && resolved.testTitle.trim()) ||
+    (typeof input.testTitle === "string" && input.testTitle.trim()) ||
+    (typeof output.testTitle === "string" && output.testTitle.trim()) ||
+    (typeof output.title === "string" && output.title.trim()) ||
+    null
+  );
+}
+
+function taskTargetKey(task: OperatorTask) {
+  const resolved = task.resolvedTarget ?? {};
+  const input = task.inputJson ?? {};
+  const raw =
+    (typeof resolved.testCaseKey === "string" && resolved.testCaseKey.trim()) ||
+    (typeof input.testCaseKey === "string" && input.testCaseKey.trim()) ||
+    null;
+  if (!raw) return null;
+  return raw;
+}
+
+function taskTargetFile(task: OperatorTask) {
+  const key = taskTargetKey(task);
+  if (!key) return null;
+  const [specPath] = key.split("#");
+  return specPath || key;
+}
+
+function taskTargetId(task: OperatorTask) {
+  const resolved = task.resolvedTarget ?? {};
+  const input = task.inputJson ?? {};
+  return (
+    (typeof resolved.testResultId === "string" && resolved.testResultId.trim()) ||
+    (typeof input.testResultId === "string" && input.testResultId.trim()) ||
+    null
+  );
+}
+
+function taskOutcome(task: OperatorTask) {
+  const output = task.outputJson ?? {};
+  const finalStatus =
+    typeof output.finalStatus === "string" && output.finalStatus.trim()
+      ? output.finalStatus.trim()
+      : null;
+  if (task.type !== "repair") return null;
+  if (finalStatus === "succeeded") return "patched";
+  if (finalStatus === "failed") return "repair failed";
+  if (finalStatus === "skipped") return "skipped";
+  if (task.status === "succeeded") return "patched";
+  if (task.status === "failed") return "repair failed";
+  return null;
 }
 
 export default function OperatorPage() {
@@ -450,11 +523,35 @@ export default function OperatorPage() {
                 <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
                   {job.tasks.map((task) => (
                     <div key={task.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                      <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex items-start gap-3">
                         <StatusBadge status={task.status} />
-                        <span className="capitalize text-slate-700">{task.type}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-700">{taskLabel(task)}</span>
+                            {taskOutcome(task) && (
+                              <span className="text-xs text-slate-400 uppercase tracking-wide">{taskOutcome(task)}</span>
+                            )}
+                          </div>
+                          {taskTargetTitle(task) && (
+                            <div
+                              className="truncate text-xs text-slate-500"
+                              title={taskTargetTitle(task) ?? undefined}
+                            >
+                              {taskTargetTitle(task)}
+                            </div>
+                          )}
+                          {taskTargetFile(task) && (
+                            <div
+                              className="truncate font-mono text-[11px] text-slate-400"
+                              title={taskTargetKey(task) ?? undefined}
+                            >
+                              {taskTargetFile(task)}
+                              {taskTargetId(task) ? ` · ${taskTargetId(task)!.slice(0, 8)}` : ""}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 pl-3">
                         {task.testRunId && (
                           <a
                             href={`/test-runs/${task.testRunId}`}
@@ -586,6 +683,34 @@ export default function OperatorPage() {
                       <p className="text-xs text-slate-400 font-mono">
                         {j.id.slice(0, 8)}… · {fmtDate(j.createdAt)}
                       </p>
+                      {j.tasks.some((t) => t.type === "repair" && taskTargetTitle(t)) && (
+                        <p
+                          className="truncate text-xs text-slate-500"
+                          title={j.tasks
+                            .filter((t) => t.type === "repair")
+                            .map((t) => {
+                              const title = taskTargetTitle(t);
+                              const file = taskTargetFile(t);
+                              return [title, file].filter(Boolean).join(" — ");
+                            })
+                            .filter(Boolean)
+                            .join(", ")}
+                        >
+                          {(j.tasks
+                            .filter((t) => t.type === "repair")
+                            .map((t) => {
+                              const title = taskTargetTitle(t);
+                              const file = taskTargetFile(t);
+                              return [title, file].filter(Boolean).join(" — ");
+                            })
+                            .filter(Boolean) as string[])
+                            .slice(0, 2)
+                            .join(" · ")}
+                          {(j.tasks.filter((t) => t.type === "repair" && taskTargetTitle(t)).length > 2)
+                            ? ` +${j.tasks.filter((t) => t.type === "repair" && taskTargetTitle(t)).length - 2} more`
+                            : ""}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0 ml-3">

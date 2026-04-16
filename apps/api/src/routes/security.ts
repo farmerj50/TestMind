@@ -3,6 +3,10 @@ import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { enqueueSecurityScan } from "../runner/queue.js";
+import {
+  buildSecurityFindingDetail,
+  buildSecurityRegressionTest,
+} from "../lib/security-finding-detail.js";
 
 function requireUser(req: any, reply: any) {
   const { userId } = getAuth(req);
@@ -107,7 +111,6 @@ export default async function securityRoutes(app: FastifyInstance) {
     return { jobs };
   });
 
-  // Explain + mitigation helper (stubbed text based on finding)
   app.post("/security/findings/:id/explain", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
@@ -116,27 +119,9 @@ export default async function securityRoutes(app: FastifyInstance) {
       where: { id, scan: { project: { ownerId: userId } } },
     });
     if (!finding) return reply.code(404).send({ error: "Not found" });
-    const repro =
-      finding.type === "dependency"
-        ? `Inspect dependency advisories reported by ${finding.tool || "the audit"} for ${finding.location ||
-            "the lockfile"} and attempt to install the fixed version.`
-        : `Visit ${finding.location || "the affected endpoint"} in a browser or with curl and confirm the issue noted by ${finding.tool || "the scan"} (e.g., missing headers/cookies or insecure response).`;
-
-    const mitigation =
-      finding.type === "dependency"
-        ? "Upgrade the vulnerable package(s) to the fixed version noted in the advisory. If not available, pin to a non-vulnerable version or apply vendor patch."
-        : "Add appropriate security headers/flags or input validation depending on the finding. For cookies, set Secure and HttpOnly; for headers, configure referrer-policy, x-content-type-options, x-frame-options, etc.";
-
-    const detail = {
-      title: finding.title,
-      repro,
-      mitigation,
-      cve: finding.tool?.toLowerCase().includes("cve") ? finding.title : null,
-    };
-    return { detail };
+    return { detail: buildSecurityFindingDetail(finding as any) };
   });
 
-  // Generate regression test helper (stubbed)
   app.post("/security/findings/:id/generate-test", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
@@ -145,16 +130,6 @@ export default async function securityRoutes(app: FastifyInstance) {
       where: { id, scan: { project: { ownerId: userId } } },
     });
     if (!finding) return reply.code(404).send({ error: "Not found" });
-
-    const test = `// Regression test for: ${finding.title}
-// Tool: ${finding.tool || "scan"}
-// Location: ${finding.location || "N/A"}
-test("security regression: ${finding.title}", async ({ page }) => {
-  // TODO: Implement specific reproduction based on the finding.
-  await page.goto("${finding.location || "/"}");
-  // Add assertions to ensure the issue is mitigated.
-});`;
-
-    return { test };
+    return { test: buildSecurityRegressionTest(finding as any) };
   });
 }

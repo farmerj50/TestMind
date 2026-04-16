@@ -12,6 +12,99 @@ const CreateJobBody = z.object({
   context: z.record(z.unknown()).optional(),
 });
 
+async function hydrateOperatorTasks<T extends {
+  id: string;
+  inputJson?: Prisma.JsonValue | null;
+  tasks: Array<{
+    id: string;
+    inputJson?: Prisma.JsonValue | null;
+    [key: string]: unknown;
+  }>;
+}>(jobs: T[]): Promise<Array<T & {
+  tasks: Array<T["tasks"][number] & {
+    resolvedTarget: {
+      testResultId: string | null;
+      testCaseId: string | null;
+      testTitle: string | null;
+      testCaseKey: string | null;
+    } | null;
+  }>;
+}>> {
+  const testResultIds = new Set<string>();
+  const testCaseIds = new Set<string>();
+
+  for (const job of jobs) {
+    for (const task of job.tasks) {
+      const input = (task.inputJson ?? null) as Record<string, unknown> | null;
+      if (typeof input?.testResultId === "string" && input.testResultId.trim()) {
+        testResultIds.add(input.testResultId);
+      }
+      if (typeof input?.testCaseId === "string" && input.testCaseId.trim()) {
+        testCaseIds.add(input.testCaseId);
+      }
+    }
+  }
+
+  const [results, cases] = await Promise.all([
+    testResultIds.size
+      ? prisma.testResult.findMany({
+          where: { id: { in: [...testResultIds] } },
+          select: {
+            id: true,
+            testCaseId: true,
+            testCase: { select: { id: true, key: true, title: true } },
+          },
+        })
+      : Promise.resolve([]),
+    testCaseIds.size
+      ? prisma.testCase.findMany({
+          where: { id: { in: [...testCaseIds] } },
+          select: { id: true, key: true, title: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const resultById = new Map(results.map((row) => [row.id, row]));
+  const caseById = new Map(cases.map((row) => [row.id, row]));
+
+  return jobs.map((job) => ({
+    ...job,
+    tasks: job.tasks.map((task) => {
+      const input = (task.inputJson ?? null) as Record<string, unknown> | null;
+      const inputTestResultId =
+        typeof input?.testResultId === "string" && input.testResultId.trim()
+          ? input.testResultId
+          : null;
+      const inputTestCaseId =
+        typeof input?.testCaseId === "string" && input.testCaseId.trim()
+          ? input.testCaseId
+          : null;
+      const inputTestTitle =
+        typeof input?.testTitle === "string" && input.testTitle.trim()
+          ? input.testTitle
+          : null;
+      const result = inputTestResultId ? resultById.get(inputTestResultId) : null;
+      const fallbackCaseId = result?.testCaseId ?? inputTestCaseId ?? null;
+      const testCase = fallbackCaseId ? caseById.get(fallbackCaseId) ?? result?.testCase ?? null : result?.testCase ?? null;
+
+      const resolvedTarget =
+        inputTestResultId || fallbackCaseId || inputTestTitle || testCase?.key || testCase?.title
+          ? {
+              testResultId: inputTestResultId,
+              testCaseId: fallbackCaseId,
+              testTitle: inputTestTitle ?? testCase?.title ?? null,
+              testCaseKey: testCase?.key ?? null,
+            }
+          : null;
+
+      return {
+        ...task,
+        resolvedTarget,
+      };
+    }),
+  }));
+}
+
 export default async function operatorRoutes(app: FastifyInstance) {
   // GET /operator/jobs — list jobs for the requesting user (most recent first)
   app.get('/operator/jobs', async (req, reply) => {
@@ -21,12 +114,27 @@ export default async function operatorRoutes(app: FastifyInstance) {
     const { limit = '20', offset = '0' } = req.query as { limit?: string; offset?: string };
     const jobs = await prisma.operatorJob.findMany({
       where: { requestedBy: userId },
-      include: { tasks: { select: { id: true, type: true, status: true, testRunId: true, error: true } } },
+      include: {
+        tasks: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            testRunId: true,
+            error: true,
+            createdAt: true,
+            startedAt: true,
+            finishedAt: true,
+            inputJson: true,
+            outputJson: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Number(limit) || 20, 100),
       skip: Number(offset) || 0,
     });
-    return reply.send({ jobs });
+    return reply.send({ jobs: await hydrateOperatorTasks(jobs) });
   });
 
   // POST /operator/jobs — create and enqueue an operator job
@@ -72,7 +180,8 @@ export default async function operatorRoutes(app: FastifyInstance) {
 
     // Extract rollup from contextJson._rollup (written by finalizeJob)
     const rollup = (job.contextJson as any)?._rollup ?? null;
-    return reply.send({ job, rollup });
+    const [hydratedJob] = await hydrateOperatorTasks([job]);
+    return reply.send({ job: hydratedJob, rollup });
   });
 
   // GET /operator/approvals?status=pending — UI polls this
