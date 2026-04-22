@@ -386,7 +386,7 @@ export default function SecurityScanPage() {
 
       {selectedFinding && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 p-4 space-y-3">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 p-4 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center">
               <div>
                 <div className="text-xs uppercase text-slate-500">Finding detail</div>
