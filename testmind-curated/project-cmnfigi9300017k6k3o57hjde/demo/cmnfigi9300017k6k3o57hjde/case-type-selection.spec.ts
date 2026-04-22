@@ -409,45 +409,21 @@ async function sharedLogin(page: Page) {
 
 test("Page loads: /case-type-selection", async ({ page }, testInfo: TestInfo) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Page loads: /case-type-selection" }, { type: "parameter", description: "page=/case-type-selection" });
-  await test.step("1. Navigate to https://www.justicepathlaw.com/case-type-selection", async () => {
+  await test.step("1. Navigate to /case-type-selection", async () => {
     try {
-    await navigateTo(page, "/case-type-selection");
+      await clickNavLink(page, "/case-type-selection");
+      await expect(page).toHaveURL(/\/case-type-selection/, { timeout: 15000 });
       await ensurePageIdentity(page, "/case-type-selection");
     } finally {
-      await captureStepArtifact(page, testInfo, "1. Navigate to https://www.justicepathlaw.com/case-type-selection");
+      await captureStepArtifact(page, testInfo, "1. Navigate to /case-type-selection");
     }
   });
-  await test.step("2. Ensure text \"JusticePath — Accessible Legal Help\" is visible", async () => {
+  await test.step("2. Ensure title and text are visible", async () => {
     try {
-    {
-      const rawText = "JusticePath — Accessible Legal Help";
-      if (/justicepath/i.test(rawText) && "/case-type-selection" !== "/") {
-        await ensurePageIdentity(page, "/case-type-selection");
-        return;
-      }
-      if (rawText.trim().toLowerCase() === "page") {
-        await expect(page).toHaveURL(pathRegex("/case-type-selection"), { timeout: 15000 });
-        await ensurePageIdentity(page, "/case-type-selection");
-        return;
-      }
-      const normalized = rawText.trim().toLowerCase();
-      const routeCandidate = normalized.startsWith("/") ? normalized : `/${normalized}`;
-      const routeLike = /^[a-z0-9\-/]+$/.test(normalized) && normalized !== "page";
-      if (routeLike) {
-        await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
-        await ensurePageIdentity(page, routeCandidate);
-        return;
-      }
-      const targetPath = identityPathForText(rawText);
-      if (targetPath) {
-        await expect(page).toHaveURL(pathRegex(targetPath), { timeout: 15000 });
-        await ensurePageIdentity(page, targetPath);
-        return;
-      }
-      await expect(page.getByText(rawText)).toBeVisible({ timeout: 10000 });
-    }
+      await expect(page).toHaveTitle(/JusticePath — Accessible Legal Help/, { timeout: 10000 });
+      await expect(page.getByText(/JusticePath — Accessible Legal Help/)).toBeVisible({ timeout: 10000 });
     } finally {
-      await captureStepArtifact(page, testInfo, "2. Ensure text \"JusticePath — Accessible Legal Help\" is visible");
+      await captureStepArtifact(page, testInfo, "2. Ensure title and text are visible");
     }
   });
 });

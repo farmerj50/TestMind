@@ -5,6 +5,7 @@ import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { enqueueRun, enqueueSelfHeal, enqueueSecurityScan } from './queue.js';
 import { CURATED_ROOT, agentSuiteId } from '../testmind/curated-store.js';
+import { GENERATED_ROOT } from '../lib/storageRoots.js';
 import type { OperatorJobPayload, ResumePhase, SecurityResumeCtx } from './queue.js';
 import { createStepRunner } from './step-executor.js';
 import { runBrowserCapability } from './capabilities/browser-cap.js';
@@ -187,7 +188,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
-    select: { repoUrl: true },
+    select: { repoUrl: true, ownerId: true },
   });
   const explicitMode = ctx.mode as string | undefined;
   const inferredMode = explicitMode ?? (isLikelyGitRepo(project?.repoUrl) ? 'regular' : 'ai');
@@ -247,6 +248,34 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
         const suiteDir = path.join(CURATED_ROOT, suite.rootRel);
         if (fsSync.existsSync(suiteDir)) { resolvedFile = suiteDir; break; }
       }
+    }
+
+    // Final fallback: scan generated root for {adapterId}-{ownerId}/{projectId} directory.
+    // Handles cases where curated suite dirs don't exist on disk (e.g. dev without volume).
+    if (!resolvedFile && project?.ownerId) {
+      try {
+        if (fsSync.existsSync(GENERATED_ROOT)) {
+          const adapters = fsSync.readdirSync(GENERATED_ROOT, { withFileTypes: true })
+            .filter((d) => d.isDirectory());
+          for (const adapter of adapters) {
+            const candidate = path.join(GENERATED_ROOT, adapter.name, opJob.projectId);
+            if (fsSync.existsSync(candidate)) {
+              resolvedFile = candidate;
+              console.log(`[operator-worker] qa: using generated dir as fallback: ${candidate}`);
+              break;
+            }
+          }
+        }
+      } catch {
+        // ignore scan errors
+      }
+    }
+
+    if (!resolvedFile) {
+      throw new Error(
+        `No spec directory found for project ${opJob.projectId}. ` +
+        `Sync specs to the curated suite or generate specs first.`
+      );
     }
   }
 
