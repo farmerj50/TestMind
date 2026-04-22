@@ -146,7 +146,10 @@ export default function QaAgentPage() {
   const [parallel, setParallel] = useState(false);
   const [job, setJob] = useState<QaJob | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [operatorAfterType, setOperatorAfterType] = useState<"none" | "qa" | "repair" | "discovery" | "security">("none");
+  const [operatorJob, setOperatorJob] = useState<{ id: string; status: string; error?: string } | null>(null);
   const pollRef = useRef<number | null>(null);
+  const opPollRef = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -178,6 +181,7 @@ export default function QaAgentPage() {
     return () => {
       mounted = false;
       if (pollRef.current) window.clearInterval(pollRef.current);
+      if (opPollRef.current) window.clearInterval(opPollRef.current);
     };
   }, [apiFetch, projectId, suiteId]);
 
@@ -209,12 +213,35 @@ export default function QaAgentPage() {
       });
       setJob(res.job);
       if (pollRef.current) window.clearInterval(pollRef.current);
+      const capturedProjectId = res.job.projectId;
       pollRef.current = window.setInterval(() => {
         apiFetch<{ job: QaJob }>(`/qa-agent/jobs/${res.job.id}`)
           .then((j) => {
             setJob(j.job);
             if (j.job.status === "succeeded" || j.job.status === "failed") {
               if (pollRef.current) window.clearInterval(pollRef.current);
+              if (operatorAfterType !== "none") {
+                apiFetch<{ job: { id: string; status: string } }>("/operator/jobs", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    projectId: capturedProjectId,
+                    type: operatorAfterType,
+                    context: { runId: j.job.runId },
+                  }),
+                }).then((opRes) => {
+                  setOperatorJob(opRes.job);
+                  opPollRef.current = window.setInterval(() => {
+                    apiFetch<{ job: { id: string; status: string; error?: string } }>(
+                      `/operator/jobs/${opRes.job.id}`
+                    ).then((r) => {
+                      setOperatorJob(r.job);
+                      if (r.job.status === "succeeded" || r.job.status === "failed") {
+                        window.clearInterval(opPollRef.current!);
+                      }
+                    }).catch(() => {});
+                  }, 3000);
+                }).catch(() => {});
+              }
             }
           })
           .catch(() => {});
@@ -288,10 +315,39 @@ export default function QaAgentPage() {
               />
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" checked={parallel} onChange={(e) => setParallel(e.target.checked)} />
-            Run tests in parallel
-          </label>
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={parallel} onChange={(e) => setParallel(e.target.checked)} />
+              Run tests in parallel
+            </label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                Auto-start Operator job when QA completes
+              </label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {([
+                  { value: "none", label: "None — skip" },
+                  { value: "qa", label: "QA — run tests" },
+                  { value: "repair", label: "Repair — fix failures" },
+                  { value: "discovery", label: "Discovery — find routes" },
+                  { value: "security", label: "Security — scan vulnerabilities" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setOperatorAfterType(opt.value)}
+                    className={`rounded-md border px-3 py-2 text-left text-xs font-medium transition-colors ${
+                      operatorAfterType === opt.value
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           <Button
             onClick={startJob}
             disabled={isActive}
@@ -301,6 +357,37 @@ export default function QaAgentPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {operatorJob && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-slate-800 flex items-center justify-between">
+              <span>Operator — {operatorAfterType !== "none" ? operatorAfterType.charAt(0).toUpperCase() + operatorAfterType.slice(1) : ""} job</span>
+              <span className={`text-sm font-semibold capitalize ${jobStatusTone(operatorJob.status)}`}>
+                {operatorJob.status}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-600 space-y-2">
+            <span className="font-mono bg-slate-100 rounded px-2 py-1 text-xs">
+              #{operatorJob.id.slice(0, 8)}
+            </span>
+            {operatorJob.error && (
+              <div className="text-rose-600 text-xs">{operatorJob.error}</div>
+            )}
+            <div>
+              <a
+                href={`/operator?jobId=${operatorJob.id}`}
+                className="text-blue-600 hover:underline text-xs"
+                target="_blank"
+                rel="noreferrer"
+              >
+                View in Operator →
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {job && (
         <Card>
