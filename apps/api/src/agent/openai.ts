@@ -106,3 +106,5 @@ export async function requestPageAnalysis(opts: {
 
   return result;
 }
+
+export { ensureClient };

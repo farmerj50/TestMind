@@ -21,6 +21,7 @@ import DocumentsPage from "../pages/DocumentsPage";
 import AgentSessionsPage from "../pages/AgentSessionsPage";
 import AgentSessionDetailPage from "../pages/AgentSessionDetailPage";
 import ProtectedRoute from "../components/ProtectedRoute";
+import { CopilotProvider } from "../context/CopilotContext";
 import AppLayout from "../components/layout/AppLayout";
 import BareLayout from "../components/layout/BareLayout";
 import MarketingLayout from "../components/layout/MarketingLayout";
@@ -113,6 +114,7 @@ export default function AppRoutes() {
   }, [isLoaded, user?.id, apiFetch]);
 
   return (
+    <CopilotProvider>
     <Routes>
       {/* Marketing pages (top nav only) */}
       <Route element={<MarketingLayout />}>
@@ -305,5 +307,6 @@ export default function AppRoutes() {
       {/* Fallback */}
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </CopilotProvider>
   );
 }

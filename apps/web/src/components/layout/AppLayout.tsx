@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { LoadingOverlay } from "../ui/LoadingOverlay";
 import TopNav from "./TopNav";
 import SideNav from "./SideNav";
+import { CopilotPanel, CopilotToggleButton } from "../copilot/CopilotPanel";
 
 export default function AppLayout() {
   const location = useLocation();
@@ -23,6 +24,8 @@ export default function AppLayout() {
         <Outlet />
       </main>
       <LoadingOverlay open={routeLoading} showTimer={false} />
+      <CopilotPanel />
+      <CopilotToggleButton />
     </div>
   );
 }

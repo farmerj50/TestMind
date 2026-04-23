@@ -44,6 +44,7 @@ import type { PlanTier } from "./config/plans.js";
 import { PAID_PLANS, STRIPE_PRICE_IDS, type PaidPlan } from "./config/stripe.js";
 import { requireStripe } from "./lib/stripe.js";
 import testmindRoutes from './testmind/routes.js';
+import copilotRoutes from './routes/copilot.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
 
 
@@ -297,6 +298,7 @@ await registerWithLog("operatorRoutes", () => app.register(operatorRoutes, { pre
 await registerWithLog("securityRoutes", () => app.register(securityRoutes, { prefix: "/" }));
 await registerWithLog("testBuilderRoutes", () => app.register(testBuilderRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
+await registerWithLog("copilotRoutes", () => app.register(copilotRoutes, { prefix: "/" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
 
 const require = createRequire(import.meta.url);
