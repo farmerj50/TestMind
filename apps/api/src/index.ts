@@ -45,6 +45,8 @@ import { PAID_PLANS, STRIPE_PRICE_IDS, type PaidPlan } from "./config/stripe.js"
 import { requireStripe } from "./lib/stripe.js";
 import testmindRoutes from './testmind/routes.js';
 import copilotRoutes from './routes/copilot.js';
+import jenkinsRoutes from './routes/jenkins.js';
+import environmentsRoutes from './routes/environments.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
 
 
@@ -299,6 +301,8 @@ await registerWithLog("securityRoutes", () => app.register(securityRoutes, { pre
 await registerWithLog("testBuilderRoutes", () => app.register(testBuilderRoutes, { prefix: "/" }));
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
 await registerWithLog("copilotRoutes", () => app.register(copilotRoutes, { prefix: "/" }));
+await registerWithLog("jenkinsRoutes", () => app.register(jenkinsRoutes, { prefix: "/" }));
+await registerWithLog("environmentsRoutes", () => app.register(environmentsRoutes, { prefix: "/" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
 
 const require = createRequire(import.meta.url);
@@ -450,8 +454,13 @@ app.get("/runner-logs/*", async (req, reply) => {
           ? "application/json"
           : ext === ".svg"
           ? "image/svg+xml"
+          : ext === ".png"
+          ? "image/png"
+          : ext === ".jpg" || ext === ".jpeg"
+          ? "image/jpeg"
           : "application/octet-stream";
-      reply.header("Content-Type", `${type}; charset=utf-8`);
+      const charset = type.startsWith("image/") ? "" : "; charset=utf-8";
+      reply.header("Content-Type", `${type}${charset}`);
       return reply.send(data);
     } catch {
       // try next root

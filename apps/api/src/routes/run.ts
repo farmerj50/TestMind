@@ -3380,8 +3380,13 @@ setup("auth storage", async ({ page, baseURL }) => {
             ? "application/json"
             : ext === ".svg"
             ? "image/svg+xml"
+            : ext === ".png"
+            ? "image/png"
+            : ext === ".jpg" || ext === ".jpeg"
+            ? "image/jpeg"
             : "application/octet-stream";
-        reply.header("Content-Type", `${type}; charset=utf-8`);
+        const charset = type.startsWith("image/") ? "" : "; charset=utf-8";
+        reply.header("Content-Type", `${type}${charset}`);
         return reply.send(data);
       } catch {
         // try next root

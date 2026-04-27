@@ -153,8 +153,10 @@ export default function OperatorPage() {
   // form state
   const [projects, setProjects] = useState<Project[]>([]);
   const [suites, setSuites] = useState<Array<{ id: string; name: string; projectId?: string }>>([]);
+  const [environments, setEnvironments] = useState<Array<{ id: string; name: string; baseUrl: string }>>([]);
   const [projectId, setProjectId] = useState("");
   const [suiteId, setSuiteId] = useState("");
+  const [environmentId, setEnvironmentId] = useState("");
   const [jobType, setJobType] = useState<"qa" | "repair" | "discovery" | "security">("qa");
   const [enableActive, setEnableActive] = useState(false);
   const [objective, setObjective] = useState("");
@@ -233,21 +235,35 @@ export default function OperatorPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-populate baseUrl from the selected project's repoUrl (app URL only, not git repos)
+  // Auto-populate environment + baseUrl when project changes
   useEffect(() => {
     if (!projectId) return;
-    const project = projects.find((p) => p.id === projectId);
-    if (!project?.repoUrl) return;
-    const url = project.repoUrl.trim();
-    const isGitRepo = url.endsWith('.git') || url.startsWith('git@') || /github\.com|gitlab\.com|bitbucket\.org/.test(url);
-    if (!isGitRepo && /^https?:\/\//i.test(url)) {
-      setBaseUrl(url);
-    }
-    // Also reset suiteId to first suite for this project
+
+    // Fetch environments for this project
+    apiFetch<{ environments: Array<{ id: string; name: string; baseUrl: string }> }>(`/environments?projectId=${projectId}`)
+      .then((res) => {
+        const envs = res.environments ?? [];
+        setEnvironments(envs);
+        const first = envs[0];
+        if (first) {
+          setEnvironmentId(first.id);
+          setBaseUrl(first.baseUrl);
+        } else {
+          setEnvironmentId("");
+          // Fallback: auto-populate from project repoUrl if it's an app URL
+          const project = projects.find((p) => p.id === projectId);
+          const url = project?.repoUrl?.trim() ?? "";
+          const isGit = url.endsWith(".git") || url.startsWith("git@") || /github\.com|gitlab\.com|bitbucket\.org/.test(url);
+          setBaseUrl(!isGit && /^https?:\/\//i.test(url) ? url : "");
+        }
+      })
+      .catch(() => {});
+
+    // Reset suiteId to first suite for this project
     const projectSuites = suites.filter((s) => s.projectId === projectId);
     if (projectSuites.length) setSuiteId(projectSuites[0].id);
     else setSuiteId("");
-  }, [projectId, projects, suites]);
+  }, [projectId, projects, suites, apiFetch]);
 
   // ── active job polling ────────────────────────────────────────────────────
 
@@ -290,6 +306,7 @@ export default function OperatorPage() {
           type: jobType,
           objective: objective.trim() || undefined,
           context: {
+            ...(environmentId ? { environmentId } : {}),
             ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
             ...(jobType === "qa" && suiteId ? { suiteId } : {}),
             ...(jobType === "security" && enableActive ? { enableActive: true } : {}),
@@ -452,14 +469,46 @@ export default function OperatorPage() {
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Base URL (optional)</label>
-            <Input
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="e.g. https://www.justicepath.com"
-              className="bg-white"
-            />
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Environment</label>
+              {environments.length > 0 ? (
+                <Select
+                  value={environmentId}
+                  onValueChange={(v) => {
+                    setEnvironmentId(v);
+                    const env = environments.find((e) => e.id === v);
+                    if (env) setBaseUrl(env.baseUrl);
+                  }}
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Select environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name} — <span className="font-mono text-xs">{e.baseUrl}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-xs text-slate-500 pt-1">
+                  No environments configured. <a href="/environments" className="underline text-blue-600">Add one</a> or enter a URL below.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                {environments.length > 0 ? "Override URL (optional)" : "Base URL"}
+              </label>
+              <Input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="e.g. https://www.justicepath.com"
+                className="bg-white"
+              />
+            </div>
           </div>
           {jobType === "security" && (
             <label className="flex items-center gap-3 cursor-pointer select-none">

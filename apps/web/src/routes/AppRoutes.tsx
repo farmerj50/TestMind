@@ -14,6 +14,7 @@ import RunPage from "../pages/RunPage";
 import AgentScanPage from "../pages/AgentScanPage";
 import AgentPageDetailPage from "../pages/AgentPageDetailPage";
 import IntegrationsPage from "../pages/IntegrationsPage";
+import EnvironmentsPage from "../pages/EnvironmentsPage";
 import RecorderPage from "../pages/RecorderPage";
 import TestBuilderPage from "../pages/TestBuilderPage";
 import ReportsPage from "../pages/ReportsPage";
@@ -220,6 +221,15 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <IntegrationsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/environments"
+          element={
+            <ProtectedRoute>
+              <EnvironmentsPage />
             </ProtectedRoute>
           }
         />

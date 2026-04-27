@@ -193,7 +193,18 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const explicitMode = ctx.mode as string | undefined;
   const inferredMode = explicitMode ?? (isLikelyGitRepo(project?.repoUrl) ? 'regular' : 'ai');
   const repoUrl = project?.repoUrl?.trim() ?? '';
+
+  let envBaseUrl: string | undefined;
+  if (ctx.environmentId) {
+    const env = await prisma.environment.findUnique({
+      where: { id: ctx.environmentId as string },
+      select: { baseUrl: true },
+    });
+    envBaseUrl = env?.baseUrl || undefined;
+  }
+
   const inferredBaseUrl: string | undefined =
+    envBaseUrl ||
     ctx.baseUrl ||
     (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
