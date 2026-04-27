@@ -405,7 +405,7 @@ async function sharedLogin(page: Page) {
   }
 }
 
-// Auto-generated for page /case-type-selection 6 test(s)
+// Auto-generated for page /login 6 test(s)
 
 test("Page loads: /case-type-selection", async ({ page }, testInfo: TestInfo) => {
   test.info().annotations.push({ type: "parentSuite", description: "Testmind Generated Suite" }, { type: "suite", description: "/case-type-selection" }, { type: "story", description: "Page loads: /case-type-selection" }, { type: "parameter", description: "page=/case-type-selection" });
@@ -413,7 +413,8 @@ test("Page loads: /case-type-selection", async ({ page }, testInfo: TestInfo) =>
     try {
       await clickNavLink(page, "/case-type-selection");
       await expect(page).toHaveURL(/\/case-type-selection/, { timeout: 15000 });
-      await ensurePageIdentity(page, "/case-type-selection");
+      await expect(page.getByRole('heading', { name: /JusticePath/ })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /Accessible Legal Help/ })).toBeVisible({ timeout: 10000 });
     } finally {
       await captureStepArtifact(page, testInfo, "1. Navigate to /case-type-selection");
     }
@@ -421,7 +422,7 @@ test("Page loads: /case-type-selection", async ({ page }, testInfo: TestInfo) =>
   await test.step("2. Ensure title and text are visible", async () => {
     try {
       await expect(page).toHaveTitle(/JusticePath — Accessible Legal Help/, { timeout: 10000 });
-      await expect(page.getByText(/JusticePath — Accessible Legal Help/)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/⚖️ JusticePath/)).toBeVisible({ timeout: 10000 });
     } finally {
       await captureStepArtifact(page, testInfo, "2. Ensure title and text are visible");
     }

@@ -1,0 +1,19 @@
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    restart: unless-stopped
+    ports:
+      - "9090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    environment:
+      # TestMind integration — set these once, all pipeline runs pick them up automatically
+      - TESTMIND_API_TOKEN=${TESTMIND_API_TOKEN}
+      - TM_PROJECT_ID=${TM_PROJECT_ID}
+      # Optional: override API URL (defaults to host machine on port 8787)
+      - TESTMIND_API_URL=${TESTMIND_API_URL:-http://host.docker.internal:8787}
+
+volumes:
+  jenkins_home:

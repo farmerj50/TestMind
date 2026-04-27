@@ -7,6 +7,7 @@ import {
   assertProvider,
   integrationProviders,
 } from "../integrations/registry.js";
+import { encryptSecret } from "../lib/crypto.js";
 
 const ListQuery = z.object({
   projectId: z.string().min(1),
@@ -85,7 +86,7 @@ export default async function integrationsRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: "Forbidden" });
     }
     const validated = provider.validateConfig
-      ? provider.validateConfig(body.config ?? {})
+      ? provider.validateConfig({ ...(body.config ?? {}), _projectId: project.id })
       : { config: body.config ?? {} };
     let targetId = body.id ?? null;
     if (!targetId && provider.allowMultiple !== true) {
@@ -116,6 +117,20 @@ export default async function integrationsRoutes(app: FastifyInstance) {
             enabled: body.enabled ?? true,
           },
         });
+    const rawToken = (validated as any)._rawToken as string | undefined;
+    if (rawToken) {
+      await prisma.projectSecret.upsert({
+        where: { projectId_key: { projectId: project.id, key: "jenkins_api_token" } },
+        create: {
+          projectId: project.id,
+          name: "Jenkins API Token",
+          key: "jenkins_api_token",
+          value: encryptSecret(rawToken),
+        },
+        update: { value: encryptSecret(rawToken) },
+      });
+    }
+
     const masked =
       provider.maskConfig?.(integration.config ?? null) ??
       integration.config;
@@ -130,6 +145,7 @@ export default async function integrationsRoutes(app: FastifyInstance) {
         createdAt: integration.createdAt,
         updatedAt: integration.updatedAt,
       },
+      ...(rawToken ? { token: rawToken } : {}),
     });
   });
 
@@ -186,6 +202,11 @@ export default async function integrationsRoutes(app: FastifyInstance) {
     }
     if (integration.project.ownerId !== userId) {
       return reply.code(403).send({ error: "Forbidden" });
+    }
+    if (integration.provider === "jenkins") {
+      await prisma.projectSecret.deleteMany({
+        where: { projectId: integration.projectId, key: "jenkins_api_token" },
+      });
     }
     await prisma.integration.delete({ where: { id } });
     return reply.send({ ok: true });

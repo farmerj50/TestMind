@@ -90,6 +90,8 @@ async function triggerRerun(
   if (headed !== undefined) params.headful = headed;
   if (effectiveBaseUrl) params.baseUrl = effectiveBaseUrl;
   params.adapterId = effectiveAdapterId;
+  params.mode = "ai";
+  params.livePreview = true;
   if (sharedSteps !== undefined) params.sharedSteps = sharedSteps;
   if (localRepoRoot) params.localRepoRoot = localRepoRoot;
   if (targetSpec) params.targetSpec = targetSpec;
@@ -158,6 +160,7 @@ async function triggerRerun(
     file: resolvedSpec,
     grep,
     baseUrl: effectiveBaseUrl,
+    livePreview: true,
   };
   if (headed !== undefined) payload.headed = headed;
 

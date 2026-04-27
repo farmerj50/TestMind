@@ -1,0 +1,107 @@
+pipeline {
+  agent any
+  triggers {
+    githubPush()
+  }
+  parameters {
+    choice(
+      name: 'ENVIRONMENT',
+      choices: ['qa', 'staging', 'prod', 'dev', 'uat'],
+      description: 'Target environment — must match a name in TestMind Settings → Environments'
+    )
+    choice(
+      name: 'WORKFLOW',
+      choices: ['qa-execute', 'repair', 'discovery', 'security'],
+      description: 'TestMind workflow to run'
+    )
+    string(name: 'BRANCH', defaultValue: 'main', description: 'Branch being tested')
+  }
+  stages {
+    stage('Trigger TestMind QA') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'testmind-api-token', variable: 'TM_TOKEN')
+        ]) {
+          sh '''
+            set -e
+            RESPONSE=$(curl -s --connect-timeout 10 --max-time 60 \
+              -o /tmp/tm_response.json -w "%{http_code}" \
+              -X POST http://host.docker.internal:8787/jenkins/run \
+              -H "Authorization: Bearer ${TM_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -H "X-Request-ID: jenkins-${BUILD_NUMBER}" \
+              -d "{\"workflow\":\"${WORKFLOW}\",\"environment\":\"${ENVIRONMENT}\",\"branch\":\"${BRANCH}\"}")
+            cat /tmp/tm_response.json
+            echo ""
+            echo "HTTP $RESPONSE"
+            [ "$RESPONSE" = "202" ] || [ "$RESPONSE" = "409" ] || exit 1
+            JOB_ID=$(grep -o '"jobId":"[^"]*"' /tmp/tm_response.json | cut -d'"' -f4)
+            echo "TestMind job: $JOB_ID"
+            echo "$JOB_ID" > /tmp/tm_job_id.txt
+          '''
+        }
+      }
+    }
+
+    stage('Wait for TestMind Results') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'testmind-api-token', variable: 'TM_TOKEN')
+        ]) {
+          sh '''
+            set -e
+            JOB_ID=$(cat /tmp/tm_job_id.txt)
+            MAX_WAIT=1200
+            WAITED=0
+            STATUS="queued"
+
+            echo "Polling TestMind job $JOB_ID (environment: ${ENVIRONMENT}) ..."
+            while [ "$STATUS" = "queued" ] || [ "$STATUS" = "running" ] || [ "$STATUS" = "blocked" ]; do
+              if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+                echo "TIMEOUT: TestMind job did not complete within ${MAX_WAIT}s"
+                exit 1
+              fi
+              sleep 15
+              WAITED=$((WAITED + 15))
+              STATUS_JSON=$(curl -s --connect-timeout 10 --max-time 30 \
+                "http://host.docker.internal:8787/jenkins/status/${JOB_ID}" \
+                -H "Authorization: Bearer ${TM_TOKEN}")
+              STATUS=$(echo "$STATUS_JSON" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+              PASSED=$(echo "$STATUS_JSON" | grep -o '"passed":[0-9]*' | cut -d':' -f2)
+              FAILED=$(echo "$STATUS_JSON" | grep -o '"failed":[0-9]*' | cut -d':' -f2)
+              echo "[${WAITED}s] status=${STATUS} passed=${PASSED:-0} failed=${FAILED:-0}"
+            done
+
+            echo ""
+            echo "=== TestMind QA Results ==="
+            echo "Environment : ${ENVIRONMENT}"
+            echo "Workflow    : ${WORKFLOW}"
+            echo "Status      : $STATUS"
+            PASSED=$(echo "$STATUS_JSON" | grep -o '"passed":[0-9]*' | cut -d':' -f2)
+            FAILED=$(echo "$STATUS_JSON" | grep -o '"failed":[0-9]*' | cut -d':' -f2)
+            TOTAL=$(echo "$STATUS_JSON" | grep -o '"total":[0-9]*' | cut -d':' -f2)
+            RUN_URL=$(echo "$STATUS_JSON" | grep -o '"runUrl":"[^"]*"' | head -1 | cut -d'"' -f4)
+            echo "Passed      : ${PASSED:-0}"
+            echo "Failed      : ${FAILED:-0}"
+            echo "Total       : ${TOTAL:-0}"
+            [ -n "$RUN_URL" ] && echo "Results     : $RUN_URL"
+            echo "==========================="
+
+            if [ "$STATUS" = "succeeded" ]; then
+              echo "All tests passed!"
+              exit 0
+            else
+              JOB_ERR=$(echo "$STATUS_JSON" | grep -o '"error":"[^"]*"' | head -1 | cut -d'"' -f4)
+              echo "Tests FAILED: ${JOB_ERR}"
+              exit 1
+            fi
+          '''
+        }
+      }
+    }
+  }
+  post {
+    success { echo 'TestMind QA passed' }
+    failure { echo 'TestMind QA failed or timed out' }
+  }
+}

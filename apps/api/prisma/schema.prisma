@@ -130,6 +130,7 @@ model Project {
   securityScans    SecurityScanJob[]
   curatedSuites    CuratedSuite[]
   operatorJobs     OperatorJob[]
+  environments     Environment[]
 }
 
 model GitAccount {
@@ -166,6 +167,9 @@ model TestRun {
   rerunOfId String?
   rerunOf   TestRun?  @relation("RunReruns", fields: [rerunOfId], references: [id])
   reruns    TestRun[] @relation("RunReruns")
+
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id])
 
   reportPath    String?
   artifactsJson Json?
@@ -568,11 +572,14 @@ model OperatorJob {
   status      OperatorJobStatus @default(queued)
   objective   String?           @db.Text
   requestedBy String?
-  contextJson Json?
-  error       String?           @db.Text
-  createdAt   DateTime          @default(now())
-  startedAt   DateTime?
-  finishedAt  DateTime?
+  contextJson   Json?
+  error         String?           @db.Text
+  createdAt     DateTime          @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id])
 
   tasks     OperatorTask[]
   artifacts OperatorArtifact[]
@@ -685,4 +692,21 @@ model OperatorApproval {
 
   @@index([jobId, status])
   @@index([status, expiresAt])
+}
+
+model Environment {
+  id               String        @id @default(cuid())
+  projectId        String
+  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name             String
+  baseUrl          String
+  variables        Json?
+  isProtected      Boolean       @default(false)
+  requiresApproval Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  operatorJobs     OperatorJob[]
+  testRuns         TestRun[]
+
+  @@unique([projectId, name])
 }
