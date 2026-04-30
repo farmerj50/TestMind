@@ -336,7 +336,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     console.log(
       `[operator-worker] qa: routing ${selfHealable.length} self-healable failure(s) to repair for run ${run.id}`
     );
-    await runRepairJob(
+    const { healedCount } = await runRepairJob(
       {
         ...opJob,
         contextJson: {
@@ -348,6 +348,62 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
       },
       reDelay
     );
+
+    if (healedCount > 0) {
+      console.log(`[operator-worker] qa: ${healedCount} test(s) healed — re-running full suite`);
+
+      // Clear the original execute task's testRunId so Jenkins sees "running" during re-run
+      await prisma.operatorTask.update({
+        where: { id: task.id },
+        data: { testRunId: null },
+      });
+
+      // Create a retest task so the UI surfaces the verification step
+      const retestTask = await prisma.operatorTask.create({
+        data: {
+          jobId: opJob.id,
+          type: 'retest',
+          status: 'running',
+          startedAt: new Date(),
+          inputJson: { healedCount, label: `Re-running suite after ${healedCount} repair(s)` },
+        },
+      });
+
+      // New full test run with the same scope and environment
+      const retestRun = await prisma.testRun.create({
+        data: {
+          projectId: opJob.projectId,
+          status: 'queued',
+          trigger: 'operator',
+          environmentId: (ctx.environmentId as string | undefined) ?? undefined,
+          paramsJson: { ...ctx, mode: inferredMode, baseUrl: inferredBaseUrl },
+        },
+      });
+
+      // Link task → run immediately so the status endpoint finds it
+      await prisma.operatorTask.update({
+        where: { id: retestTask.id },
+        data: { testRunId: retestRun.id },
+      });
+
+      await enqueueRun(retestRun.id, {
+        projectId: opJob.projectId,
+        baseUrl: inferredBaseUrl,
+        mode: inferredMode as 'regular' | 'ai',
+        file: resolvedFile,
+        grep: ctx.grep as string | undefined,
+        timeoutMs: 12 * 60 * 1000,
+      });
+
+      const retestDeadline = Date.now() + 15 * 60 * 1000;
+      await checkOrDelayRun(retestRun.id, retestTask.id, opJob.id, retestDeadline, reDelay);
+
+      const retestResult = await prisma.testRun.findUnique({
+        where: { id: retestRun.id },
+        select: { status: true },
+      });
+      console.log(`[operator-worker] qa: retest completed with status=${retestResult?.status}`);
+    }
   }
 
   // Log defects and blocked items as operator tasks with evidence
@@ -482,7 +538,7 @@ async function checkOrDelayRun(
 
 // ── Repair job ────────────────────────────────────────────────────────────────
 
-async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
+async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn): Promise<{ healedCount: number }> {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
   const maxTests = Number(ctx.maxTests ?? 10);
 
@@ -539,7 +595,7 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
   if (failingResults.length === 0) {
     console.log(`[operator-worker] repair: run ${targetRunId} has no failing tests`);
-    return;
+    return { healedCount: 0 };
   }
 
   const repairTasks = await Promise.all(
@@ -606,7 +662,7 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     healAttempts.map((a, i) => [a.id, repairTasks[i].id])
   );
   const deadline = Date.now() + 20 * 60 * 1000;
-  await checkOrDelayRepairs(opJob.id, [...healAttempts.map((a) => a.id)], taskMap, deadline, reDelay);
+  return await checkOrDelayRepairs(opJob.id, [...healAttempts.map((a) => a.id)], taskMap, deadline, reDelay);
 }
 
 async function checkOrDelayRepairs(
@@ -615,7 +671,7 @@ async function checkOrDelayRepairs(
   taskMap: Record<string, string>,  // healingAttemptId → operatorTaskId
   deadline: number,
   reDelay: ReDelayFn
-) {
+): Promise<{ healedCount: number }> {
   const attempts = await prisma.testHealingAttempt.findMany({
     where: { id: { in: remaining } },
     select: { id: true, status: true, error: true, testResultId: true },
@@ -658,7 +714,14 @@ async function checkOrDelayRepairs(
     }
   }
 
-  if (stillRemaining.length === 0) return;
+  if (stillRemaining.length === 0) {
+    // Count how many repairs succeeded across all invocations of this function
+    const taskIds = Object.values(taskMap);
+    const healed = await prisma.operatorTask.count({
+      where: { id: { in: taskIds }, status: 'succeeded' },
+    });
+    return { healedCount: healed };
+  }
 
   if (Date.now() > deadline) {
     await Promise.all(
@@ -671,7 +734,7 @@ async function checkOrDelayRepairs(
         });
       })
     );
-    return; // Timeout — partial results are still useful, don't throw
+    return { healedCount: 0 }; // Timeout — partial results are still useful, don't throw
   }
 
   await reDelay(REPAIR_POLL_MS, { kind: 'wait_repairs', remaining: stillRemaining, taskMap, deadline });
