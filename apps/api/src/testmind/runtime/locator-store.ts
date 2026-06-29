@@ -141,6 +141,16 @@ function normalizeLocatorFallbacks(value: unknown): LocatorStore["locatorFallbac
   return Object.keys(out).length ? out : undefined;
 }
 
+export function semanticKeyFromString(value?: string): string {
+  if (!value) return "default";
+  const cleaned = value
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "default";
+}
+
 export function normalizeSelectorValue(value: string): string | null {
   let cleaned = value.trim();
   if (!cleaned) return null;

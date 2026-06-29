@@ -137,11 +137,11 @@ export default async function jenkinsRoutes(app: FastifyInstance) {
     if (!opJob) return reply.code(404).send({ error: "Job not found" });
     if (opJob.projectId !== verified.projectId) return reply.code(403).send({ error: "Forbidden" });
 
-    // Find the test run linked to this operator job (via the first execute task)
+    // Find the most recent task with a testRunId — prefers retest over execute when present
     const task = await prisma.operatorTask.findFirst({
-      where: { jobId: opJob.id, type: "execute" },
+      where: { jobId: opJob.id, testRunId: { not: null } },
       select: { testRunId: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     });
 
     let testRun: { runId: string; status: string; passed: number; failed: number; total: number; error: string | null; runUrl: string } | null = null;

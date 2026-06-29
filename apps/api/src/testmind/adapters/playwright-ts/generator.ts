@@ -2,7 +2,7 @@ import type { LocatorStore, LocatorPage } from "../../runtime/locator-store.js";
 import type { TestPlan } from "../../core/plan.js";
 import fs from "node:fs";
 import path from "node:path";
-import { normalizeSharedSteps, resolveLocator, LocatorBucket } from "../../runtime/locator-store.js";
+import { normalizeSharedSteps, resolveLocator, semanticKeyFromString, LocatorBucket } from "../../runtime/locator-store.js";
 
 type Step =
   | { kind: "goto"; url: string }
@@ -160,16 +160,6 @@ type MissingLocatorItem = {
   stepText: string;
   suggestions: string[];
 };
-
-function semanticKeyFromString(value?: string): string {
-  if (!value) return "default";
-  const cleaned = value
-    .toLowerCase()
-    .replace(/["']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return cleaned || "default";
-}
 
 function normalizeCandidateSelector(value?: string): string | null {
   if (!value) return null;

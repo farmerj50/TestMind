@@ -14,13 +14,14 @@ import {
   attachScenarioToProject,
   getOrCreateProjectSession,
   getLatestSessionForProject,
+  getAgentOpenAiKeyStatus,
   regenerateAttachedSpecs,
   ensureCuratedSuiteRecord,
 } from "../agent/service.js";
 import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { agentSuiteId, ensureCuratedProjectEntry } from "../testmind/curated-store.js";
 import { prisma } from "../prisma.js";
-import { validatedEnv } from "../config/env.js";
+import { createQueueRedisConnection } from "../runner/redis.js";
 import { GENERATED_ROOT } from "../lib/storageRoots.js";
 
 type CoverageSummary = {
@@ -101,7 +102,7 @@ const ScenarioBody = z.object({
 });
 
 const agentQueue = new Queue("agent-sessions", {
-  connection: { url: validatedEnv.REDIS_URL },
+  connection: createQueueRedisConnection("agent-sessions"),
 });
 
 function registerProjectHelpers(
@@ -109,6 +110,18 @@ function registerProjectHelpers(
   base: string,
   requireUserFn: (req: any, reply: any) => string | null
 ) {
+  app.get(`${base}/projects/:projectId/openai-status`, async (req, reply) => {
+    const userId = requireUserFn(req, reply);
+    if (!userId) return;
+    const { projectId } = req.params as { projectId: string };
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ownerId: userId },
+      select: { id: true },
+    });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+    return reply.send({ openAi: await getAgentOpenAiKeyStatus(project.id) });
+  });
+
   app.get(`${base}/projects/:projectId/session`, async (req, reply) => {
     const userId = requireUserFn(req, reply);
     if (!userId) return;

@@ -3,6 +3,7 @@ import { Worker, Job } from "bullmq";
 import { prisma } from "../prisma.js";
 import { redis } from "./redis.js";
 import type { SecurityScanPayload } from "./queue.js";
+import { decryptSecret } from "../lib/crypto.js";
 import { request } from "undici";
 import net from "node:net";
 import path from "node:path";
@@ -15,14 +16,31 @@ import {
   extractVersionDisclosureFindings,
   normalizeHeaderValue,
 } from "./security-heuristics.js";
+import { runIntelligentValidation } from "../security/modules/intelligent-validation.js";
+import { runAnomalyBaseline } from "../security/modules/anomaly-baseline.js";
+import {
+  buildRouteContracts,
+  discoverRouteInventory,
+} from "../security/modules/route-inventory.js";
+import {
+  SECURITY_BASELINE_PROVIDER,
+  buildSecurityBehaviorBaseline,
+  compareSecurityBehaviorBaseline,
+  getSecurityBehaviorBaseline,
+  parseSecurityBaselineStore,
+} from "../security/baseline.js";
+import type { AuthMatrixResult, SecurityAgentFinding, SecurityAuthProfile } from "../security/types.js";
 
-type FindingInput = {
+type FindingInput = SecurityAgentFinding & {
   type: "recon" | "static_analysis" | "dependency" | "dynamic";
   severity: "info" | "low" | "medium" | "high" | "critical";
   title: string;
   description?: string;
   location?: string;
   tool?: string;
+  evidence?: unknown;
+  suggestion?: string;
+  status?: string;
 };
 
 const DEFAULT_HEADERS = [
@@ -60,10 +78,146 @@ async function addFindings(jobId: string, findings: FindingInput[]) {
         description: f.description,
         location: f.location,
         tool: f.tool,
-        evidence: {},
+        evidence: (f.evidence ?? {}) as any,
+        suggestion: f.suggestion,
+        status: f.status,
       },
     });
   }
+}
+
+function dedupeFindings(findings: FindingInput[]) {
+  const seen = new Set<string>();
+  return findings.filter((finding) => {
+    const evidence = finding.evidence as any;
+    const key = [
+      finding.title,
+      finding.location ?? "",
+      finding.description ?? "",
+      evidence?.testedControl ?? "",
+      evidence?.vulnerabilityClass ?? "",
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function summarizeAuthMatrix(matrix: AuthMatrixResult[]) {
+  const probes = matrix.flatMap((entry) => entry.probes);
+  return {
+    routes: matrix.length,
+    probes: probes.length,
+    passed: probes.filter((probe) => probe.passed === true).length,
+    failed: probes.filter((probe) => probe.passed === false).length,
+    inconclusive: probes.filter((probe) => probe.passed === null).length,
+    objectSwaps: matrix.filter((entry) => entry.objectSwap).length,
+    failuresByProbe: probes.reduce<Record<string, number>>((acc, probe) => {
+      if (probe.passed === false) acc[probe.label] = (acc[probe.label] || 0) + 1;
+      return acc;
+    }, {}),
+    routesWithFailures: matrix
+      .filter((entry) => entry.failCount > 0)
+      .slice(0, 20)
+      .map((entry) => ({
+        route: entry.route,
+        method: entry.method,
+        controls: entry.controls,
+        confidence: entry.confidence,
+        failCount: entry.failCount,
+        probes: entry.probes.map((probe) => ({
+          label: probe.label,
+          expected: probe.expected,
+          passed: probe.passed,
+          profile: probe.profile,
+          objectId: probe.objectId,
+          status: probe.evidence.status,
+          bodyLength: probe.evidence.bodyLength,
+          signals: probe.signals,
+        })),
+      })),
+  };
+}
+
+function buildDeepAnomalyDiagnostic(
+  payload: SecurityScanPayload,
+  routeInventory: Array<{ route: string; method: string; source: string }>,
+  routeContracts: Array<{ route: string; method: string; source: string }>,
+  snapshotCount: number
+): FindingInput | null {
+  if (payload.scanDepth !== "deep") return null;
+  if (routeContracts.length > 0 && snapshotCount > 0) return null;
+
+  const reason =
+    routeContracts.length === 0
+      ? "Deep discovery did not produce any protected route contracts."
+      : "Deep discovery produced route contracts, but none were probeable with the available fixtures.";
+
+  return {
+    type: "dynamic",
+    severity: "info",
+    title: "Deep anomaly validation had no probeable route contracts",
+    description:
+      `${reason} Add authorized test identities and protected object contracts, or expose an OpenAPI/API route inventory, to enable object-level and auth-matrix anomaly testing.`,
+    location: payload.baseUrl,
+    tool: "anomaly-baseline-agent",
+    status: "needs_setup",
+    evidence: {
+      scanDepth: payload.scanDepth,
+      routeInventoryCount: routeInventory.length,
+      routeContractCount: routeContracts.length,
+      baselineSnapshots: snapshotCount,
+      authProfiles: payload.authProfiles?.length ?? 0,
+      apiFixtures: payload.apiFixtures?.length ?? 0,
+      routeSources: routeInventory.reduce<Record<string, number>>((acc, route) => {
+        acc[route.source] = (acc[route.source] || 0) + 1;
+        return acc;
+      }, {}),
+      sampleRoutes: routeInventory.slice(0, 10).map((route) => `${route.method} ${route.route}`),
+    },
+    suggestion:
+      "Use Security Scan > Authorized test identities and Protected object contracts, then rerun deep mode. For API-heavy apps, add owner/other account fixtures with object IDs.",
+  };
+}
+
+async function resolveAuthProfiles(
+  projectId: string,
+  profiles: Array<Record<string, any>> = []
+): Promise<SecurityAuthProfile[]> {
+  const secretKeys = Array.from(
+    new Set(
+      profiles
+        .flatMap((profile) => [profile.tokenSecretKey, profile.cookieValueSecretKey, profile.passwordSecretKey])
+        .filter((key): key is string => typeof key === "string" && key.trim().length > 0)
+    )
+  );
+
+  const secretRows = secretKeys.length
+    ? await prisma.projectSecret.findMany({
+        where: { projectId, key: { in: secretKeys } },
+        select: { key: true, value: true },
+      })
+    : [];
+  const secrets = new Map(secretRows.map((row) => [row.key, decryptSecret(row.value)]));
+
+  return profiles.map((profile) => ({
+    ...profile,
+    token: profile.token ?? (profile.tokenSecretKey ? secrets.get(profile.tokenSecretKey) : undefined),
+    cookieValue:
+      profile.cookieValue ??
+      (profile.cookieValueSecretKey ? secrets.get(profile.cookieValueSecretKey) : undefined),
+    password: profile.password ?? (profile.passwordSecretKey ? secrets.get(profile.passwordSecretKey) : undefined),
+  })) as SecurityAuthProfile[];
+}
+
+async function loadApprovedBehaviorBaseline(projectId: string, scopeKey: string) {
+  const integration = await prisma.integration.findFirst({
+    where: { projectId, provider: SECURITY_BASELINE_PROVIDER, enabled: true },
+    orderBy: { updatedAt: "desc" },
+    select: { config: true },
+  });
+  const store = parseSecurityBaselineStore(integration?.config);
+  return getSecurityBehaviorBaseline(store, scopeKey);
 }
 
 function withinScope(urlStr: string, allowedHosts: string[], allowedPorts: number[]) {
@@ -702,17 +856,91 @@ export const securityWorker = new Worker(
     // Dynamic (baseline)
     allFindings.push(...(await runDynamic(payload)));
 
-    await addFindings(payload.jobId, allFindings);
+    await updateJob(payload.jobId, { phase: "intelligent_validation" });
+    const authProfiles = await resolveAuthProfiles(payload.projectId, payload.authProfiles);
+    const intelligentConfig = { ...(payload as any), authProfiles };
+    const routeInventory = await discoverRouteInventory(intelligentConfig);
+    const routeContracts = buildRouteContracts(intelligentConfig, routeInventory);
+    allFindings.push(...(await runIntelligentValidation(intelligentConfig)));
+
+    const anomalyResult = await runAnomalyBaseline(intelligentConfig, routeContracts);
+    allFindings.push(...anomalyResult.findings);
+    const deepDiagnostic = buildDeepAnomalyDiagnostic(
+      payload,
+      routeInventory,
+      routeContracts,
+      anomalyResult.snapshots.length
+    );
+    if (deepDiagnostic) allFindings.push(deepDiagnostic);
+
+    const baselineCandidate = buildSecurityBehaviorBaseline({
+      projectId: payload.projectId,
+      sourceScanId: payload.jobId,
+      baseUrl: payload.baseUrl,
+      environment: payload.environment ?? "qa",
+      authMatrix: anomalyResult.authMatrix,
+      snapshots: anomalyResult.snapshots,
+    });
+    const approvedBaseline = await loadApprovedBehaviorBaseline(payload.projectId, baselineCandidate.scopeKey);
+    const driftResult = compareSecurityBehaviorBaseline(approvedBaseline, baselineCandidate);
+    allFindings.push(...driftResult.findings);
+
+    const finalFindings = dedupeFindings(allFindings);
+
+    await addFindings(payload.jobId, finalFindings);
+
+    const owaspCounts = finalFindings.reduce<Record<string, number>>((acc, f) => {
+      const category = (f.evidence as any)?.owaspCategory;
+      if (category) acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {});
+
+    const owaspApiCounts = finalFindings.reduce<Record<string, number>>((acc, f) => {
+      const category = (f.evidence as any)?.owaspApiCategory;
+      if (category) acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {});
 
     await updateJob(payload.jobId, {
       status: "completed",
       phase: null,
       finishedAt: new Date(),
       summary: {
-        counts: allFindings.reduce<Record<string, number>>((acc, f) => {
+        counts: finalFindings.reduce<Record<string, number>>((acc, f) => {
           acc[f.severity] = (acc[f.severity] || 0) + 1;
           return acc;
         }, {}),
+        owaspCounts,
+        owaspApiCounts,
+        intelligentChecks: {
+          fixtures: payload.apiFixtures?.length ?? 0,
+          authProfiles: payload.authProfiles?.length ?? 0,
+          scanDepth: payload.scanDepth ?? "standard",
+          environment: payload.environment ?? "qa",
+        },
+        routeInventory: {
+          routes: routeInventory.length,
+          contracts: routeContracts.length,
+          anomalyBaselines: anomalyResult.snapshots.length,
+          sources: routeInventory.reduce<Record<string, number>>((acc, route) => {
+            acc[route.source] = (acc[route.source] || 0) + 1;
+            return acc;
+          }, {}),
+        },
+        authMatrix: summarizeAuthMatrix(anomalyResult.authMatrix),
+        baseline: {
+          scopeKey: baselineCandidate.scopeKey,
+          candidate: baselineCandidate,
+          approved: approvedBaseline
+            ? {
+                sourceScanId: approvedBaseline.sourceScanId,
+                approvedAt: approvedBaseline.approvedAt,
+                approvedBy: approvedBaseline.approvedBy,
+                fingerprints: approvedBaseline.fingerprints.length,
+              }
+            : null,
+          drift: driftResult.summary,
+        },
       },
     });
   },

@@ -199,9 +199,14 @@ async function replaceScenarios(pageId: string, scenarios: AgentScenarioPayload[
   });
 }
 
+function resolveEnvOpenAiKey() {
+  return process.env.OPENAI_API_KEY ?? process.env.OPEN_API_KEY ?? "";
+}
+
 async function resolveOpenAiKey(projectId?: string) {
   if (!projectId) {
-    return { apiKey: process.env.OPENAI_API_KEY, availableKeys: [] as string[] };
+    const apiKey = resolveEnvOpenAiKey();
+    return { apiKey, availableKeys: [] as string[], source: apiKey ? "app" : "missing" };
   }
   const secrets = await prisma.projectSecret.findMany({
     where: { projectId },
@@ -210,13 +215,23 @@ async function resolveOpenAiKey(projectId?: string) {
   const availableKeys = secrets.map((s) => s.key);
   const secret = secrets.find((s) => OPENAI_SECRET_KEYS.includes(s.key as any));
   if (!secret) {
-    return { apiKey: process.env.OPENAI_API_KEY, availableKeys };
+    const apiKey = resolveEnvOpenAiKey();
+    return { apiKey, availableKeys, source: apiKey ? "app" : "missing" };
   }
   try {
-    return { apiKey: decryptSecret(secret.value), availableKeys };
+    return { apiKey: decryptSecret(secret.value), availableKeys, source: "project" };
   } catch {
     throw new Error("Failed to decrypt OPENAI_API_KEY secret. Please re-save it.");
   }
+}
+
+export async function getAgentOpenAiKeyStatus(projectId?: string) {
+  const { apiKey, availableKeys, source } = await resolveOpenAiKey(projectId);
+  return {
+    available: Boolean(apiKey),
+    source,
+    projectSecretKeys: availableKeys.filter((key) => OPENAI_SECRET_KEYS.includes(key as any)),
+  };
 }
 
 export async function runAgentForPage(userId: string, pageId: string) {

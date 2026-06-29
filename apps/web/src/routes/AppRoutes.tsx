@@ -30,6 +30,8 @@ import ProjectSuite from "../pages/ProjectSuite";
 import QaAgentPage from "../pages/QaAgentPage";
 import OperatorPage from "../pages/OperatorPage";
 import SecurityScanPage from "../pages/SecurityScanPage";
+import ResearchAgentPage from "../pages/ResearchAgentPage";
+import WorkflowsPage from "../pages/WorkflowsPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import LocatorLibraryPage from "../pages/LocatorLibraryPage";
 import SuiteRedirectPage from "../pages/SuiteRedirectPage";
@@ -184,10 +186,26 @@ export default function AppRoutes() {
           }
         />
         <Route
+          path="/workflows"
+          element={
+            <ProtectedRoute>
+              <WorkflowsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/security-scan"
           element={
             <ProtectedRoute>
               <SecurityScanPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/research-agent"
+          element={
+            <ProtectedRoute>
+              <ResearchAgentPage />
             </ProtectedRoute>
           }
         />

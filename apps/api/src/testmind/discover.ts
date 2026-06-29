@@ -1,5 +1,6 @@
-import { chromium } from 'playwright';
+import { chromium, type BrowserContext } from 'playwright';
 import { URL } from 'node:url';
+import { semanticKeyFromString } from './runtime/locator-store.js';
 
 export type FormFieldMeta = {
   name: string;
@@ -20,9 +21,10 @@ export type FormMeta = {
 export type RouteScan = {
   url: string;
   title?: string;
+  status: number;
   links: string[];
-  buttons: string[];       // selectors for submit/buttons
-  fileInputs: string[];    // names/ids of file inputs
+  buttons: string[];
+  fileInputs: string[];
   fields: FormFieldMeta[];
 };
 
@@ -34,15 +36,37 @@ function isHtmlLike(href: string) {
   return true;
 }
 
-export async function scanPage(url: string): Promise<RouteScan> {
-  const browser = await chromium.launch(); // headless by default
-  const page = await browser.newPage();
+function parseCookieString(cookieStr: string, pageUrl: string) {
+  // Use url (not domain) so Playwright resolves domain/secure flags automatically
+  return cookieStr
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const eqIdx = pair.indexOf('=');
+      if (eqIdx === -1) return null;
+      return {
+        name: pair.slice(0, eqIdx).trim(),
+        value: pair.slice(eqIdx + 1).trim(),
+        url: pageUrl,
+      };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+}
+
+export async function scanPage(url: string, sharedCtx?: BrowserContext): Promise<RouteScan> {
+  const ownBrowser = !sharedCtx;
+  const browser = ownBrowser ? await chromium.launch() : null;
+  const context = sharedCtx ?? (await browser!.newContext());
+  const page = await context.newPage();
+  let status = 0;
+
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    status = response?.status() ?? 0;
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(800);
 
-    // 1) IN BROWSER: collect raw DOM info
     const info = await page.evaluate(() => {
       (globalThis as any).__name ??= (f: any) => f;
       const d: any = (globalThis as any).document;
@@ -51,7 +75,6 @@ export async function scanPage(url: string): Promise<RouteScan> {
 
       const q = (sel: string) => Array.from(d.querySelectorAll(sel) as any[]);
 
-      // links (& link-likes)
       const abs = (u: string) => { try { return new URLCtor(u, loc?.href).toString(); } catch { return u; } };
       const aHrefs      = q('a[href]').map((a: any) => a.getAttribute?.('href') || '').filter(Boolean);
       const roleLinks   = q('[role="link"]').map((el: any) => el.getAttribute?.('href') || el.getAttribute?.('data-href') || '').filter(Boolean);
@@ -69,7 +92,6 @@ export async function scanPage(url: string): Promise<RouteScan> {
 
       const links = [...aHrefs, ...roleLinks, ...dataHref, ...onclickCode].map(abs);
 
-      // forms
       const forms = q('form').map((f: any) => {
         const fields = Array.from((f as any).querySelectorAll('input, select, textarea') as any[])
           .map((el: any) => {
@@ -100,7 +122,6 @@ export async function scanPage(url: string): Promise<RouteScan> {
         return { selector, action: f.action || undefined, fields, submitSelectors };
       });
 
-      // page-level fields (outside forms)
       const pageLevelFields = q('input, select, textarea')
         .map((el: any) => {
           const type = (el.type || (el.tagName || '')).toLowerCase();
@@ -123,22 +144,16 @@ export async function scanPage(url: string): Promise<RouteScan> {
         return t ? `button:has-text("${t}")` : 'button';
       });
 
-      return {
-        title: String(d.title || ''),
-        links,
-        forms,
-        fileInputs,
-        pageButtons,
-        mergedFields: pageLevelFields,
-      };
+      return { title: String(d.title || ''), links, forms, fileInputs, pageButtons, mergedFields: pageLevelFields };
     });
 
-    // 2) OUTSIDE BROWSER: normalize & merge
     const urlObj = new URL(url);
     const sameOriginLinks = info.links
       .map((href: string) => { try { return new URL(href, url).toString(); } catch { return ''; } })
       .filter(Boolean)
-      .filter((h: string) => { try { const u = new URL(h); return u.origin === urlObj.origin && isHtmlLike(u.pathname); } catch { return false; } });
+      .filter((h: string) => {
+        try { const u = new URL(h); return u.origin === urlObj.origin && isHtmlLike(u.pathname); } catch { return false; }
+      });
 
     const formFields: FormFieldMeta[] = [];
     const submitSelectors: string[] = [];
@@ -150,6 +165,7 @@ export async function scanPage(url: string): Promise<RouteScan> {
 
     return {
       url,
+      status,
       title: info.title || '',
       links: Array.from(new Set(sameOriginLinks)),
       buttons: Array.from(new Set([...submitSelectors, ...info.pageButtons])),
@@ -157,71 +173,114 @@ export async function scanPage(url: string): Promise<RouteScan> {
       fields: [...formFields, ...pageFields],
     };
   } finally {
+    await page.close();
+    if (ownBrowser) {
+      await context.close();
+      await browser!.close();
+    }
+  }
+}
+
+export async function discoverSite(
+  baseUrl: string,
+  seedRoutes: string[] = [],
+  options: { cookieString?: string; maxPages?: number } = {},
+) {
+  const browser = await chromium.launch({
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+  });
+  try {
+    const context = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+      extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+
+    if (options.cookieString?.trim()) {
+      const cookies = parseCookieString(options.cookieString, baseUrl);
+      if (cookies.length) await context.addCookies(cookies);
+    }
+
+    const MAX = options.maxPages ?? Number(process.env.TM_MAX_ROUTES || 150);
+    const start = new URL(baseUrl);
+    const first = await scanPage(start.toString(), context);
+
+    const seeded = [
+      ...first.links,
+      ...seedRoutes.map((r) => new URL(r, baseUrl).toString()),
+    ];
+
+    const queue = Array.from(new Set(seeded)).slice(0, MAX);
+    const seen = new Set<string>([first.url]);
+    const scans: RouteScan[] = [first];
+
+    while (queue.length && scans.length < MAX) {
+      const next = queue.shift()!;
+      if (seen.has(next)) continue;
+      seen.add(next);
+
+      try {
+        const s = await scanPage(next, context);
+        scans.push(s);
+        for (const l of s.links) {
+          if (!seen.has(l) && scans.length + queue.length < MAX) queue.push(l);
+        }
+      } catch (err: any) {
+        console.warn(`[discoverSite] skipped unreachable page ${next}: ${err?.message ?? err}`);
+      }
+    }
+
+    const routes = Array.from(
+      new Set(scans.map((s) => { try { return new URL(s.url).pathname || '/'; } catch { return '/'; } })),
+    );
+
+    const forms: FormMeta[] = scans.flatMap((scan) => {
+      const pathname = (() => { try { return new URL(scan.url).pathname || '/'; } catch { return '/'; } })();
+      if (!scan.fields?.length) return [];
+      return [{
+        selector: 'form',
+        action: undefined,
+        fields: scan.fields.map((f) => ({ name: f.name, type: f.type, required: f.required, min: f.min, max: f.max, pattern: f.pattern })),
+        routeHint: pathname,
+      }];
+    });
+
+    return { routes, forms, apis: [], scans };
+  } finally {
     await browser.close();
   }
 }
 
-// discover.ts
-export async function discoverSite(baseUrl: string, seedRoutes: string[] = []) {
-  const start = new URL(baseUrl);
-  const first = await scanPage(start.toString());
+type ScanLocatorPage = { fields: Record<string, string>; buttons: Record<string, string> };
 
-  const MAX = Number(process.env.TM_MAX_ROUTES || 150);
+/**
+ * Seeds a LocatorStore-shaped object from scan data, using the exact same
+ * selector strings that casesFromScans() puts into generated test steps.
+ * Without this, codegen has no locator-store entry to resolve fill/click/upload
+ * steps against and emits "// Missing locator" comments instead of real actions.
+ */
+export function buildLocatorStoreFromScans(scans: RouteScan[]): { pages: Record<string, ScanLocatorPage> } {
+  const pages: Record<string, ScanLocatorPage> = {};
 
-  // seed with: (1) links from home, (2) repo-discovered routes
-  const seeded = [
-    ...first.links,
-    ...seedRoutes.map(r => new URL(r, baseUrl).toString()),
-  ];
+  const setEntry = (pagePath: string, bucket: 'fields' | 'buttons', selector: string) => {
+    if (!pages[pagePath]) pages[pagePath] = { fields: {}, buttons: {} };
+    pages[pagePath][bucket][semanticKeyFromString(selector)] = selector;
+  };
 
-  const queue = Array.from(new Set(seeded)).slice(0, MAX);
-  const seen = new Set<string>([first.url]);
-  const scans: RouteScan[] = [first];
+  for (const scan of scans) {
+    const pagePath = (() => { try { return new URL(scan.url).pathname || '/'; } catch { return '/'; } })();
 
-  while (queue.length && scans.length < MAX) {
-    const next = queue.shift()!;
-    if (seen.has(next)) continue;
-    seen.add(next);
-
-    const s = await scanPage(next);
-    scans.push(s);
-
-    // keep exploring newly found links
-    for (const l of s.links) {
-      if (!seen.has(l) && scans.length + queue.length < MAX) queue.push(l);
+    for (const f of scan.fields ?? []) {
+      if (!f?.name) continue;
+      setEntry(pagePath, 'fields', `[name='${f.name}'], #${f.name}`);
+    }
+    if ((scan.fileInputs?.length || 0) > 0) {
+      setEntry(pagePath, 'fields', `[name='${scan.fileInputs[0]}']`);
+    }
+    if ((scan.fields?.length || 0) > 0 && (scan.buttons?.length || 0) > 0) {
+      setEntry(pagePath, 'buttons', "button[type='submit'], input[type='submit']");
     }
   }
-  
 
-  // routes list for plan labeling
-  const routes = Array.from(new Set(scans.map(s => {
-    try { return new URL(s.url).pathname || '/'; } catch { return '/'; }
-  })));
-
-  // ✅ Build `forms` from each scan so the plan can emit validation/submit tests
-  const forms: FormMeta[] = scans.flatMap(scan => {
-    const pathname = (() => { try { return new URL(scan.url).pathname || "/"; } catch { return "/"; } })();
-    if (!scan.fields?.length) return [];
-    return [{
-      selector: "form",
-      action: undefined,
-      fields: scan.fields.map(f => ({
-        name: f.name,
-        type: f.type,
-        required: f.required,
-        min: f.min,
-        max: f.max,
-        pattern: f.pattern
-      })),
-      routeHint: pathname
-    }];
-  });
-  
-
-  return {
-    routes,
-    forms,   // ← return the synthesized forms (was [] before)
-    apis: [],
-    scans,
-  };
+  return { pages };
 }
