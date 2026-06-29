@@ -413,7 +413,9 @@ test("Page loads: /case-type-selection", async ({ page }, testInfo: TestInfo) =>
     try {
       await clickNavLink(page, "/case-type-selection");
       await expect(page).toHaveURL(/\/case-type-selection/, { timeout: 15000 });
+      await expect(page).toHaveURL(/\/case-type-selection/, { timeout: 15000 });
       await expect(page.getByRole('heading', { name: /⚖️ JusticePath/ })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /Case Type Selection/ })).toBeVisible({ timeout: 10000 });
       await expect(page.getByRole('heading', { name: /Accessible Legal Help/ })).toBeVisible({ timeout: 10000 });
     } finally {
       await captureStepArtifact(page, testInfo, "1. Navigate to /case-type-selection");

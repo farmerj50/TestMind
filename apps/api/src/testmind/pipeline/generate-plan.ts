@@ -38,6 +38,10 @@ function casesFromScans(input: any): any[] {
   };
 
   for (const scan of scans) {
+    // Skip blocked/error pages (403, 404, 5xx) — generating assertions against
+    // a Cloudflare/error page's text produces misleading, low-value tests.
+    if (typeof scan.status === "number" && scan.status !== 0 && (scan.status < 200 || scan.status >= 400)) continue;
+
     const pagePath = safePath(scan.url);
 
     // 1) Smoke

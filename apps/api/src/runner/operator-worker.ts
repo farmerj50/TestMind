@@ -9,6 +9,9 @@ import { GENERATED_ROOT } from '../lib/storageRoots.js';
 import type { OperatorJobPayload, ResumePhase, SecurityResumeCtx } from './queue.js';
 import { createStepRunner } from './step-executor.js';
 import { runBrowserCapability } from './capabilities/browser-cap.js';
+import { discoverSite, buildLocatorStoreFromScans } from '../testmind/discover.js';
+import { generatePlan } from '../testmind/pipeline/generate-plan.js';
+import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 
 export { createStepRunner };
 
@@ -744,11 +747,11 @@ async function checkOrDelayRepairs(
 
 async function runDiscoveryJob(opJob: OpJobCtx) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
-  const maxPages = Number(ctx.maxPages ?? 20);
+  const maxPages = Number(ctx.maxPages ?? 50);
 
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
-    select: { repoUrl: true, ownerId: true },
+    select: { repoUrl: true, ownerId: true, sharedSteps: true },
   });
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string | undefined =
@@ -756,6 +759,9 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
   if (!baseUrl) throw new Error('Discovery job requires a baseUrl or a non-git project.repoUrl');
+
+  const requestHeaders = (ctx.headers ?? {}) as Record<string, string>;
+  const cookieString = requestHeaders.Cookie || requestHeaders.cookie || '';
 
   const discoverTask = await prisma.operatorTask.create({
     data: {
@@ -767,66 +773,112 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     },
   });
 
-  const ctx2 = { jobId: opJob.id, taskId: discoverTask.id, projectId: opJob.projectId, baseUrl };
+  // ── Step 1: Playwright crawl ───────────────────────────────────────────────
+  const { routes, forms, scans } = await discoverSite(baseUrl, [], { cookieString, maxPages });
 
-  const homeResult = await runBrowserCapability({ action: 'navigate', target: baseUrl }, ctx2);
-  if (!homeResult.success) throw new Error(`Discovery: cannot reach ${baseUrl}: ${homeResult.error}`);
+  const checkedRoutes: Array<{ route: string; status: number; reachable: boolean }> = scans.map((s) => {
+    const route = (() => { try { return new URL(s.url).pathname || '/'; } catch { return s.url; } })();
+    return { route, status: s.status, reachable: s.status >= 200 && s.status < 400 };
+  });
 
-  const visited = new Set<string>([baseUrl]);
-  const discovered: string[] = ['/'];
-
-  let rawHtml = '';
-  try {
-    const res = await fetch(baseUrl, { headers: { 'User-Agent': 'TestMind-Operator/1.0' } });
-    rawHtml = await res.text();
-  } catch { rawHtml = ''; }
-
-  const hrefRe = /href="([^"#?]+)"/gi;
-  const links: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = hrefRe.exec(rawHtml)) !== null && links.length < maxPages * 2) {
-    const href = m[1].trim();
-    if (!href || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
-    try {
-      const abs = new URL(href, baseUrl).href;
-      if (abs.startsWith(baseUrl) && !visited.has(abs)) { visited.add(abs); links.push(abs); }
-    } catch {
-      const clean = '/' + href.replace(/^\/+/, '');
-      if (!visited.has(clean)) { visited.add(clean); links.push(baseUrl + clean); }
-    }
-  }
-
-  const checkedRoutes: Array<{ route: string; status: number; reachable: boolean }> = [
-    { route: '/', status: 200, reachable: homeResult.success },
-  ];
-
-  for (const link of links.slice(0, maxPages - 1)) {
-    const checkResult = await runBrowserCapability({ action: 'check', target: link }, ctx2);
-    const routePath = (() => { try { return new URL(link).pathname; } catch { return link; } })();
-    checkedRoutes.push({ route: routePath, status: (checkResult.data as any)?.status ?? 0, reachable: checkResult.success });
-    discovered.push(routePath);
-  }
-
-  const generatedTests = await prisma.testCase.findMany({
+  const existingTests = await prisma.testCase.findMany({
     where: { projectId: opJob.projectId },
     select: { title: true },
   });
-  const coveredRouteHints = generatedTests.map((t) => t.title.toLowerCase());
+  const coveredHints = existingTests.map((t) => t.title.toLowerCase());
 
   const uncovered = checkedRoutes
     .filter((r) => r.reachable)
     .filter((r) => {
       const rl = r.route.toLowerCase();
-      return !coveredRouteHints.some((h) => h.includes(rl) || rl.includes(h));
+      return !coveredHints.some((h) => h.includes(rl) || rl.includes(h));
     })
     .map((r) => r.route);
 
+  // ── Step 2: Generate test plan from discovered scans ───────────────────────
+  const plan = generatePlan(
+    {
+      env: { baseUrl },
+      component: { id: opJob.projectId, type: 'UI' },
+      requirement: { id: 'discovery', title: 'Auto-generated from discovery', priority: 'P2' },
+      risks: { likelihood: 0.3, impact: 0.5 },
+      discovered: { routes, forms, scans },
+    },
+    'sdet',
+  );
+
+  const planCases = plan.cases ?? (plan as any).testCases ?? [];
+
+  // ── Step 3: Seed locator store from scan data so fill/click/upload steps ───
+  // resolve to real selectors instead of "missing locator" stub comments.
+  const discoveredStore = buildLocatorStoreFromScans(scans);
+  const existingShared = (project?.sharedSteps as any) ?? {};
+  const existingPages = existingShared.pages ?? {};
+  const mergedPages: Record<string, any> = { ...existingPages };
+  for (const [pagePath, bucket] of Object.entries(discoveredStore.pages)) {
+    const existingPage = mergedPages[pagePath] ?? {};
+    mergedPages[pagePath] = {
+      ...existingPage,
+      fields: { ...bucket.fields, ...(existingPage.fields ?? {}) },
+      buttons: { ...bucket.buttons, ...(existingPage.buttons ?? {}) },
+    };
+  }
+  const mergedSharedSteps = { ...existingShared, pages: mergedPages };
+
+  await prisma.project.update({
+    where: { id: opJob.projectId },
+    data: { sharedSteps: mergedSharedSteps as any },
+  });
+
+  // ── Step 4: Write spec files to disk (with the seeded store active) ───────
+  const ownerId = project?.ownerId ?? 'unknown';
+  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId);
+  fsSync.mkdirSync(outDir, { recursive: true });
+
+  const prevSharedStepsEnv = process.env.TM_PROJECT_SHARED_STEPS;
+  process.env.TM_PROJECT_SHARED_STEPS = JSON.stringify(mergedSharedSteps);
+  let specCount = 0;
+  try {
+    const result = await writeSpecsFromPlan(outDir, plan, 'playwright-ts');
+    specCount = result.total;
+  } finally {
+    if (prevSharedStepsEnv === undefined) delete process.env.TM_PROJECT_SHARED_STEPS;
+    else process.env.TM_PROJECT_SHARED_STEPS = prevSharedStepsEnv;
+  }
+
+  // ── Step 5: Upsert test cases to DB ───────────────────────────────────────
+  let savedCount = 0;
+  if (planCases.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      for (const c of planCases) {
+        const title = (c.title ?? c.name ?? 'Unnamed test') as string;
+        const page = c.group?.page ?? '/';
+        const key = `discovery/${opJob.projectId}/${page}#${title}`.slice(0, 255);
+        const existing = await tx.testCase.findUnique({
+          where: { projectId_key: { projectId: opJob.projectId, key } },
+          select: { id: true, status: true },
+        });
+        if (existing?.status === 'archived') continue;
+        if (existing) {
+          await tx.testCase.update({ where: { id: existing.id }, data: { title } });
+        } else {
+          await tx.testCase.create({ data: { projectId: opJob.projectId, key, title } });
+          savedCount++;
+        }
+      }
+    });
+  }
+
+  // ── Step 6: Persist task result and artifact ───────────────────────────────
   const outputJson = {
     baseUrl,
     discoveredRoutes: checkedRoutes,
     uncoveredRoutes: uncovered,
-    existingTestCount: generatedTests.length,
-    summary: `Discovered ${checkedRoutes.length} routes; ${uncovered.length} have no test coverage`,
+    existingTestCount: existingTests.length,
+    generatedTestCount: savedCount,
+    specFileCount: specCount,
+    outDir,
+    summary: `Discovered ${checkedRoutes.length} routes; generated ${savedCount} new tests across ${specCount} spec files`,
   };
 
   await prisma.operatorTask.update({
@@ -834,16 +886,17 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     data: { status: 'succeeded', finishedAt: new Date(), outputJson },
   });
 
-  // Record discovery report as artifact
   await recordArtifact({
     jobId: opJob.id,
     taskId: discoverTask.id,
     type: 'report',
     path: `jobs/${opJob.id}/discovery-routes.json`,
-    meta: { routeCount: checkedRoutes.length, uncoveredCount: uncovered.length },
+    meta: { routeCount: checkedRoutes.length, uncoveredCount: uncovered.length, generatedCount: savedCount },
   });
 
-  console.log(`[operator-worker] discovery: ${checkedRoutes.length} routes found, ${uncovered.length} uncovered`);
+  console.log(
+    `[operator-worker] discovery: ${checkedRoutes.length} routes, ${savedCount} new tests, ${specCount} spec files → ${outDir}`,
+  );
 }
 
 // ── Security job ──────────────────────────────────────────────────────────────
@@ -867,6 +920,14 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     allowedPorts: ctx.allowedPorts ?? [80, 443],
     maxDurationMinutes: Number(ctx.maxDurationMinutes ?? 10),
     enableActive: Boolean(ctx.enableActive ?? false),
+    environment: typeof ctx.environment === 'string' ? ctx.environment : undefined,
+    scanDepth: ctx.scanDepth === 'baseline' || ctx.scanDepth === 'standard' || ctx.scanDepth === 'deep' ? ctx.scanDepth : undefined,
+    safeMode: typeof ctx.safeMode === 'boolean' ? ctx.safeMode : true,
+    authProfiles: Array.isArray(ctx.authProfiles) ? ctx.authProfiles : [],
+    apiFixtures: Array.isArray(ctx.apiFixtures) ? ctx.apiFixtures : [],
+    expectedControls: Array.isArray(ctx.expectedControls) ? ctx.expectedControls : [],
+    owaspCategories: Array.isArray(ctx.owaspCategories) ? ctx.owaspCategories : [],
+    complianceFrameworks: Array.isArray(ctx.complianceFrameworks) ? ctx.complianceFrameworks : [],
   };
 
   const task = await prisma.operatorTask.create({
@@ -879,7 +940,13 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     },
   });
 
-  if (securityCtx.enableActive && opJob.requestedBy) {
+  const needsSecurityApproval =
+    Boolean(securityCtx.enableActive) ||
+    securityCtx.scanDepth === 'deep' ||
+    securityCtx.safeMode === false ||
+    securityCtx.environment === 'prod';
+
+  if (needsSecurityApproval && opJob.requestedBy) {
     const approval = await prisma.operatorApproval.create({
       data: {
         jobId: opJob.id,
@@ -887,7 +954,7 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
         actionType: 'security_active_test',
         requestedBy: opJob.requestedBy,
         contextJson: {
-          prompt: `Run active DAST probes (XSS, SQLi, path traversal, open redirect) against ${baseUrl}`,
+          prompt: `Run approved security validation (${securityCtx.scanDepth ?? 'standard'} depth, ${securityCtx.environment ?? 'unspecified'} environment) against ${baseUrl}`,
           ...securityCtx,
         } as any,
         expiresAt: new Date(Date.now() + 30 * 60 * 1000),

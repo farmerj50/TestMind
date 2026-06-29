@@ -1,6 +1,6 @@
 // apps/api/src/runner/queue.ts
 import { Queue } from 'bullmq';
-import { redis } from './redis.js';
+import { createQueueRedisConnection } from './redis.js';
 
 // What the worker expects to receive:
 export type RunPayload = {
@@ -44,13 +44,25 @@ export type SecurityScanPayload = {
   allowedPorts: number[];
   maxDurationMinutes: number;
   enableActive: boolean;
+  environment?: string;
+  scanDepth?: "baseline" | "standard" | "deep";
+  safeMode?: boolean;
+  authProfiles?: Array<Record<string, any>>;
+  apiFixtures?: Array<Record<string, any>>;
+  expectedControls?: string[];
+  owaspCategories?: string[];
+  complianceFrameworks?: string[];
 };
 
-export const runQueue = new Queue('test-runs', { connection: redis });
-export const healingQueue = new Queue('self-heal', { connection: redis });
-export const securityQueue = new Queue('security-scan', { connection: redis });
-export const allureQueue = new Queue('allure-generate', { connection: redis });
-export const operatorQueue = new Queue('operator-jobs', { connection: redis });
+function createQueue<T = any>(name: string) {
+  return new Queue<T>(name, { connection: createQueueRedisConnection(name) });
+}
+
+export const runQueue = createQueue('test-runs');
+export const healingQueue = createQueue('self-heal');
+export const securityQueue = createQueue<SecurityScanPayload>('security-scan');
+export const allureQueue = createQueue('allure-generate');
+export const operatorQueue = createQueue<OperatorJobPayload>('operator-jobs');
 
 export type SecurityResumeCtx = {
   baseUrl: string;
@@ -58,6 +70,14 @@ export type SecurityResumeCtx = {
   allowedPorts: number[];
   maxDurationMinutes: number;
   enableActive: boolean;
+  environment?: string;
+  scanDepth?: "baseline" | "standard" | "deep";
+  safeMode?: boolean;
+  authProfiles?: Array<Record<string, any>>;
+  apiFixtures?: Array<Record<string, any>>;
+  expectedControls?: string[];
+  owaspCategories?: string[];
+  complianceFrameworks?: string[];
 };
 
 /** Checkpoint stored in BullMQ job data so a re-queued job can resume without re-running from scratch. */

@@ -46,9 +46,13 @@ const PLAYWRIGHT_BROWSERS_CACHE = path.join(REPO_ROOT, "node_modules", ".cache",
 const OPENAI_SECRET_KEYS = ["OPENAI_API_KEY", "OPEN_API_KEY"] as const;
 const AI_SPEC_MODEL = process.env.AI_SPEC_MODEL || process.env.AGENT_MODEL || "gpt-4o-mini";
 
+function resolveEnvOpenAiKey() {
+  return process.env.OPENAI_API_KEY ?? process.env.OPEN_API_KEY ?? "";
+}
+
 async function resolveOpenAiKey(projectId?: string) {
   if (!projectId) {
-    return { apiKey: process.env.OPENAI_API_KEY, availableKeys: [] as string[] };
+    return { apiKey: resolveEnvOpenAiKey(), availableKeys: [] as string[] };
   }
   const secrets = await prisma.projectSecret.findMany({
     where: { projectId },
@@ -57,7 +61,7 @@ async function resolveOpenAiKey(projectId?: string) {
   const availableKeys = secrets.map((s) => s.key);
   const secret = secrets.find((s) => OPENAI_SECRET_KEYS.includes(s.key as any));
   if (!secret) {
-    return { apiKey: process.env.OPENAI_API_KEY, availableKeys };
+    return { apiKey: resolveEnvOpenAiKey(), availableKeys };
   }
   try {
     return { apiKey: decryptSecret(secret.value), availableKeys };
@@ -1450,4 +1454,3 @@ export async function testRoutes(app: FastifyInstance) {
     }
   );
 }
-

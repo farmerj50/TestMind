@@ -25,10 +25,10 @@ type Project = {
   repoUrl?: string;
 };
 
-type ProjectSecret = {
-  id: string;
-  key: string;
-  name: string;
+type OpenAiStatus = {
+  available: boolean;
+  source: "project" | "app" | "missing";
+  projectSecretKeys: string[];
 };
 
 type AgentScenario = {
@@ -114,7 +114,7 @@ export default function AgentScanPage() {
     setBaseUrl(stored);
     fetchSession(selectedProject);
     fetchSessionsForProject(selectedProject);
-    fetchProjectSecrets(selectedProject);
+    fetchOpenAiStatus(selectedProject);
   }, [selectedProject]);
 
   async function fetchSession(projectId: string, opts?: { silent?: boolean }) {
@@ -151,15 +151,12 @@ export default function AgentScanPage() {
     }
   }
 
-  async function fetchProjectSecrets(projectId: string) {
+  async function fetchOpenAiStatus(projectId: string) {
     try {
-      const res = await apiFetch<{ secrets: ProjectSecret[] }>(
-        `/projects/${projectId}/secrets`
+      const res = await apiFetch<{ openAi: OpenAiStatus }>(
+        `/tm/agent/projects/${projectId}/openai-status`
       );
-      const hasKey = res.secrets.some(
-        (s) => s.key === "OPENAI_API_KEY" || s.key === "OPEN_API_KEY"
-      );
-      setHasOpenAiKey(hasKey);
+      setHasOpenAiKey(res.openAi.available);
     } catch {
       setHasOpenAiKey(null);
     }
@@ -354,7 +351,7 @@ export default function AgentScanPage() {
           storageKey="tm-howto-agent-scan"
           title="How to scan pages"
           steps={[
-            "Open Integrations > Secrets for this project and add OPENAI_API_KEY (or OPEN_API_KEY).",
+            "The app-level OpenAI key is used automatically. Optionally add OPENAI_API_KEY (or OPEN_API_KEY) under Integrations > Secrets for a project-specific override.",
             "Set Base URL once (ex: https://app.example.com) and it is saved per project.",
             "Use Page URL or path: enter /pricing for a path, or paste a full URL to override the base.",
             "Optional: add instructions to focus the scan on specific flows or risks.",
@@ -377,7 +374,7 @@ export default function AgentScanPage() {
       )}
       {hasOpenAiKey === false && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          Missing OPENAI_API_KEY for this project. Add OPENAI_API_KEY (or OPEN_API_KEY) under Integrations &gt; Secrets to run scans.
+          No app-level OpenAI key or project OpenAI secret is available. Add OPENAI_API_KEY (or OPEN_API_KEY) under Integrations &gt; Secrets, or configure the API environment.
         </div>
       )}
 
@@ -758,8 +755,6 @@ export default function AgentScanPage() {
     </div>
   );
 }
-
-
 
 
 

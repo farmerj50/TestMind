@@ -15,6 +15,12 @@ export type SecurityFindingLike = {
 export type SecurityFindingDetail = {
   title: string;
   severity: FindingSeverity;
+  vulnerabilityClass?: string | null;
+  owaspCategory?: string | null;
+  owaspApiCategory?: string | null;
+  complianceRefs?: string[];
+  expectedBehavior?: string | null;
+  observedBehavior?: string | null;
   summary: string;
   affectedAsset: string;
   whyItMatters: string;
@@ -26,11 +32,15 @@ export type SecurityFindingDetail = {
   evidence: string[];
   safeVerificationSteps: string[];
   recommendedFix: string[];
+  complianceSteps?: string[];
   defensiveNote: string;
   cve: string | null;
 };
 
 type FindingCategory =
+  | "access_control"
+  | "authentication"
+  | "object_property_authorization"
   | "dependency"
   | "headers"
   | "cookies"
@@ -56,6 +66,9 @@ function normalizeText(...values: Array<string | null | undefined>): string {
 function classifyFinding(finding: SecurityFindingLike): FindingCategory {
   const text = normalizeText(finding.title, finding.description, finding.tool);
   if (finding.type === "dependency") return "dependency";
+  if (/object property level authorization/.test(text)) return "object_property_authorization";
+  if (/broken object level authorization|broken function level authorization/.test(text)) return "access_control";
+  if (/broken authentication|identification and authentication/.test(text)) return "authentication";
   if (/missing security header|frame protection headers/.test(text)) return "headers";
   if (/cookies missing secure\/httponly/.test(text)) return "cookies";
   if (/cors misconfiguration|allow-origin/.test(text)) return "cors";
@@ -124,8 +137,23 @@ function evidenceLines(finding: SecurityFindingLike): string[] {
   if (finding.description) evidence.push(`Scanner note: ${finding.description}`);
 
   if (finding.evidence && typeof finding.evidence === "object" && !Array.isArray(finding.evidence)) {
+    const rich = finding.evidence as Record<string, any>;
+    if (rich.expectedBehavior) evidence.push(`Expected: ${String(rich.expectedBehavior).slice(0, 220)}`);
+    if (rich.observedBehavior) evidence.push(`Observed: ${String(rich.observedBehavior).slice(0, 220)}`);
+    if (Array.isArray(rich.requestResponse)) {
+      for (const item of rich.requestResponse.slice(0, 4)) {
+        const label = item?.label ? `${item.label}: ` : "";
+        const status = item?.status !== undefined ? `status ${item.status}` : "request error";
+        const bytes = item?.bodyLength !== undefined ? `, ${item.bodyLength} bytes` : "";
+        const profile = item?.profile ? `, profile ${item.profile}` : "";
+        evidence.push(`${label}${item?.method ?? "GET"} ${item?.url ?? "unknown URL"} -> ${status}${bytes}${profile}`);
+      }
+    }
     for (const [key, value] of Object.entries(finding.evidence as Record<string, unknown>).slice(0, 4)) {
       if (value == null) continue;
+      if (["requestResponse", "reproductionSteps", "remediationSteps", "complianceSteps"].includes(key)) {
+        continue;
+      }
       evidence.push(`${key}: ${String(value).slice(0, 180)}`);
     }
   }
@@ -136,6 +164,12 @@ function evidenceLines(finding: SecurityFindingLike): string[] {
 function buildSummary(finding: SecurityFindingLike, category: FindingCategory): string {
   const asset = finding.location || "the scanned asset";
   switch (category) {
+    case "access_control":
+      return `Access control did not match the expected authorization rule on ${asset}.`;
+    case "authentication":
+      return `Authentication enforcement appears incomplete on ${asset}.`;
+    case "object_property_authorization":
+      return `The response from ${asset} exposed properties that should be constrained by authorization.`;
     case "dependency":
       return `A dependency issue was reported for ${asset}. The package inventory should be reviewed and patched.`;
     case "headers":
@@ -175,6 +209,12 @@ function buildSummary(finding: SecurityFindingLike, category: FindingCategory): 
 
 function buildWhyItMatters(category: FindingCategory): string {
   switch (category) {
+    case "access_control":
+      return "Broken access control can expose another user or role's protected function, object, or data despite the caller being authenticated.";
+    case "authentication":
+      return "Authentication failures allow protected resources to be reached without a valid identity or session state.";
+    case "object_property_authorization":
+      return "Property-level authorization failures expose sensitive fields even when object-level route access appears controlled.";
     case "dependency":
       return "Known vulnerable components can expose reachable attack paths even when your application code is otherwise correct.";
     case "headers":
@@ -218,6 +258,24 @@ function safeVerificationSteps(
 ): string[] {
   const asset = finding.location || "the affected asset";
   switch (category) {
+    case "access_control":
+      return [
+        `Replay the recorded authorized baseline and lower-privilege comparison against ${asset}.`,
+        "Confirm the lower-privilege or cross-account profile now receives 401, 403, or 404.",
+        "Add the same profile/object fixture pair as a regression test.",
+      ];
+    case "authentication":
+      return [
+        `Request ${asset} without credentials and with invalid credentials.`,
+        "Confirm protected data is not returned and the response uses the expected deny status.",
+        "Retest with a valid approved test account to confirm legitimate access still works.",
+      ];
+    case "object_property_authorization":
+      return [
+        `Request ${asset} using the lower-privilege profile from the finding evidence.`,
+        "Confirm the forbidden fields are absent from the response body.",
+        "Retest higher-privilege access separately if those fields are expected for admins.",
+      ];
     case "dependency":
       return [
         "Review the package name and version in the project lockfile or manifest.",
@@ -328,6 +386,24 @@ function recommendedFixes(
   category: FindingCategory
 ): string[] {
   switch (category) {
+    case "access_control":
+      return [
+        "Enforce server-side authorization for the object, function, and caller role before returning data or executing business logic.",
+        "Use the authenticated principal and server-side ownership data, not client-supplied role or owner fields.",
+        "Add cross-account and lower-role regression tests for the affected route.",
+      ];
+    case "authentication":
+      return [
+        "Require a valid session or token before protected handlers run.",
+        "Reject missing, expired, malformed, and revoked credentials consistently.",
+        "Centralize authentication middleware and add negative-path tests for every protected route.",
+      ];
+    case "object_property_authorization":
+      return [
+        "Filter response fields by role and object relationship before serialization.",
+        "Use explicit response DTOs or serializers for lower-privilege profiles.",
+        "Add regression tests that assert sensitive fields are not present.",
+      ];
     case "dependency":
       return [
         "Upgrade the affected package to a fixed version.",
@@ -441,16 +517,43 @@ function extractCve(finding: SecurityFindingLike): string | null {
 
 export function buildSecurityFindingDetail(finding: SecurityFindingLike): SecurityFindingDetail {
   const category = classifyFinding(finding);
+  const rich =
+    finding.evidence && typeof finding.evidence === "object" && !Array.isArray(finding.evidence)
+      ? (finding.evidence as Record<string, any>)
+      : {};
+  const richConfidence = rich.confidence as
+    | { score?: number; label?: "low" | "medium" | "high"; rationale?: string }
+    | undefined;
+  const fallbackConfidence = confidenceForFinding(finding, category);
+  const richSteps = Array.isArray(rich.reproductionSteps) ? rich.reproductionSteps : null;
+  const richFixes = Array.isArray(rich.remediationSteps) ? rich.remediationSteps : null;
   return {
     title: finding.title,
     severity: finding.severity,
-    summary: buildSummary(finding, category),
+    vulnerabilityClass: typeof rich.vulnerabilityClass === "string" ? rich.vulnerabilityClass : null,
+    owaspCategory: typeof rich.owaspCategory === "string" ? rich.owaspCategory : null,
+    owaspApiCategory: typeof rich.owaspApiCategory === "string" ? rich.owaspApiCategory : null,
+    complianceRefs: Array.isArray(rich.complianceRefs) ? rich.complianceRefs : [],
+    expectedBehavior: typeof rich.expectedBehavior === "string" ? rich.expectedBehavior : null,
+    observedBehavior: typeof rich.observedBehavior === "string" ? rich.observedBehavior : null,
+    summary: typeof rich.observedBehavior === "string" ? rich.observedBehavior : buildSummary(finding, category),
     affectedAsset: finding.location || "Project or application surface",
     whyItMatters: buildWhyItMatters(category),
-    confidence: confidenceForFinding(finding, category),
+    confidence: {
+      score: typeof richConfidence?.score === "number" ? richConfidence.score : fallbackConfidence.score,
+      label:
+        richConfidence?.label === "high" || richConfidence?.label === "medium" || richConfidence?.label === "low"
+          ? richConfidence.label
+          : fallbackConfidence.label,
+      rationale:
+        typeof richConfidence?.rationale === "string"
+          ? richConfidence.rationale
+          : fallbackConfidence.rationale,
+    },
     evidence: evidenceLines(finding),
-    safeVerificationSteps: safeVerificationSteps(finding, category),
-    recommendedFix: recommendedFixes(finding, category),
+    safeVerificationSteps: richSteps ?? safeVerificationSteps(finding, category),
+    recommendedFix: richFixes ?? recommendedFixes(finding, category),
+    complianceSteps: Array.isArray(rich.complianceSteps) ? rich.complianceSteps : [],
     defensiveNote:
       "This guidance stays in defensive mode: verify with benign requests, review evidence, and remediate without attempting exploitation.",
     cve: extractCve(finding),
@@ -459,10 +562,57 @@ export function buildSecurityFindingDetail(finding: SecurityFindingLike): Securi
 
 export function buildSecurityRegressionTest(finding: SecurityFindingLike): string {
   const category = classifyFinding(finding);
+  const rich =
+    finding.evidence && typeof finding.evidence === "object" && !Array.isArray(finding.evidence)
+      ? (finding.evidence as Record<string, any>)
+      : {};
   const titleLiteral = JSON.stringify(`security regression: ${finding.title}`);
   const locationLiteral = JSON.stringify(finding.location || "/");
   const headerName =
     finding.title.match(/missing security header:\s*([a-z0-9-]+)/i)?.[1]?.toLowerCase() || "";
+
+  if (rich.vulnerabilityClass === "broken_authentication") {
+    return `test(${titleLiteral}, async ({ request }) => {
+  const response = await request.get(${locationLiteral});
+  expect([401, 403, 404]).toContain(response.status());
+});`;
+  }
+
+  if (rich.vulnerabilityClass === "broken_object_level_authorization") {
+    return `test(${titleLiteral}, async ({ request }) => {
+  const forbiddenResponse = await request.get(${locationLiteral}, {
+    headers: { Authorization: \`Bearer \${process.env.SECURITY_ACCOUNT_B_TOKEN}\` },
+  });
+  expect([401, 403, 404]).toContain(forbiddenResponse.status());
+});`;
+  }
+
+  if (rich.vulnerabilityClass === "broken_function_level_authorization") {
+    return `test(${titleLiteral}, async ({ request }) => {
+  const lowerRoleResponse = await request.get(${locationLiteral}, {
+    headers: { Authorization: \`Bearer \${process.env.SECURITY_LOW_PRIVILEGE_TOKEN}\` },
+  });
+  expect([401, 403, 404]).toContain(lowerRoleResponse.status());
+});`;
+  }
+
+  if (rich.vulnerabilityClass === "broken_object_property_level_authorization") {
+    const fields = Array.isArray((rich as any).anomalySignals)
+      ? (rich as any).anomalySignals
+          .map((signal: string) => signal.match(/^forbidden_field:(.+)$/)?.[1])
+          .filter(Boolean)
+      : [];
+    const fieldsLiteral = JSON.stringify(fields.length ? fields : ["sensitiveField"]);
+    return `test(${titleLiteral}, async ({ request }) => {
+  const response = await request.get(${locationLiteral}, {
+    headers: { Authorization: \`Bearer \${process.env.SECURITY_LOW_PRIVILEGE_TOKEN}\` },
+  });
+  const body = await response.text();
+  for (const field of ${fieldsLiteral}) {
+    expect(body).not.toContain(\`"\${field}"\`);
+  }
+});`;
+  }
 
   if (category === "headers" && headerName) {
     return `test(${titleLiteral}, async ({ request }) => {

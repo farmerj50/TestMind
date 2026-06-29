@@ -159,6 +159,8 @@ export default function OperatorPage() {
   const [environmentId, setEnvironmentId] = useState("");
   const [jobType, setJobType] = useState<"qa" | "repair" | "discovery" | "security">("qa");
   const [enableActive, setEnableActive] = useState(false);
+  const [securityScanDepth, setSecurityScanDepth] = useState<"baseline" | "standard" | "deep">("standard");
+  const [securitySafeMode, setSecuritySafeMode] = useState(true);
   const [objective, setObjective] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -309,7 +311,9 @@ export default function OperatorPage() {
             ...(environmentId ? { environmentId } : {}),
             ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
             ...(jobType === "qa" && suiteId ? { suiteId } : {}),
-            ...(jobType === "security" && enableActive ? { enableActive: true } : {}),
+            ...(jobType === "security"
+              ? { enableActive, scanDepth: securityScanDepth, safeMode: securitySafeMode }
+              : {}),
           },
         }),
       });
@@ -511,6 +515,34 @@ export default function OperatorPage() {
             </div>
           </div>
           {jobType === "security" && (
+            <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Scan depth</label>
+                  <Select value={securityScanDepth} onValueChange={(v) => setSecurityScanDepth(v as typeof securityScanDepth)}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baseline">Baseline</SelectItem>
+                      <SelectItem value="standard">Standard</SelectItem>
+                      <SelectItem value="deep">Deep</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Validation mode</label>
+                  <label className="flex items-center gap-3 cursor-pointer select-none rounded border border-slate-200 bg-white px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={securitySafeMode}
+                      onChange={(e) => setSecuritySafeMode(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                    />
+                    <span className="text-sm text-slate-700">Safe mode</span>
+                  </label>
+                </div>
+              </div>
             <label className="flex items-center gap-3 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -525,6 +557,10 @@ export default function OperatorPage() {
                 </span>
               </span>
             </label>
+              <p className="text-xs text-slate-500">
+                Deep, active, production, or non-safe security jobs create an approval before the scan worker runs.
+              </p>
+            </div>
           )}
           <Button
             onClick={startJob}
