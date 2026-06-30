@@ -584,6 +584,10 @@ function emitTest(
   const stepStrings: string[] = [];
   let loginInserted = false;
   let postLoginStepAdded = false;
+  // Steps after a `goto` should resolve locators/assertions against the destination page,
+  // not the spec-wide origin pagePath — otherwise a generic post-navigation "Page" check
+  // (or any later locator lookup) always validates against the wrong page.
+  let currentPath = pagePath;
   tc.steps.forEach((step, idx) => {
     if (needsLogin && isLoginFieldStep(step)) {
       return;
@@ -591,7 +595,10 @@ function emitTest(
     if (needsLogin && isLoginSuccessCheck(step)) {
       return;
     }
-    const stepStr = emitStep(step, idx, pagePath, locatorStore);
+    const stepStr = emitStep(step, idx, currentPath, locatorStore);
+    if (step.kind === "goto") {
+      currentPath = toRelativeTarget(step.url);
+    }
     if (!stepStr.trim()) {
       return;
     }

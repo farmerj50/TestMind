@@ -8,6 +8,7 @@ import { clerkPlugin, getAuth } from "@clerk/fastify";
 import { z } from "zod";
 
 import fastifyStatic from "@fastify/static";
+import fastifyWebsocket from "@fastify/websocket";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -290,6 +291,7 @@ await registerWithLog("clerk", () =>
   })
 );
 
+await registerWithLog("websocket", () => app.register(fastifyWebsocket));
 await registerWithLog("githubRoutes", () => app.register(githubRoutes));
 await registerWithLog("testRoutes", () => app.register(testRoutes));
 await registerWithLog("runRoutes", () => app.register(runRoutes, { prefix: "/runner" }));

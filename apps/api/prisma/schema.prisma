@@ -132,6 +132,7 @@ model Project {
   operatorJobs     OperatorJob[]
   environments     Environment[]
   workflows        Workflow[]
+  securityAuthSessions SecurityAuthSession[]
 }
 
 model GitAccount {
@@ -446,6 +447,32 @@ model SecurityFinding {
   createdAt   DateTime            @default(now())
 
   @@index([scanId, severity])
+}
+
+model SecurityAuthSession {
+  id                String    @id @default(cuid())
+  projectId         String
+  project           Project   @relation(fields: [projectId], references: [id])
+  mode              String // enterprise | bug_bounty
+  provider          String? // clerk | auth0 | firebase | cognito | custom | manual
+  baseUrl           String?
+  loginUrl          String?
+  scopeAcknowledged Boolean   @default(false)
+  successPattern    String?
+  storagePath       String?
+  role              String? // admin | user | other | anonymous — enterprise role-session generation
+  bypassSecretKey   String? // ProjectSecret.key holding the shared secret for the /testmind/auth/session bypass contract
+  providerConfig    Json? // non-secret OAuth/IdP config (domain, clientId, audience, username) for provider-based auth
+  providerPasswordSecretKey String? // ProjectSecret.key holding the test account's password for provider-based auth
+  providerClientSecretKey   String? // ProjectSecret.key holding the OAuth client secret, if the app is a confidential client
+  expiresAt         DateTime?
+  status            String    @default("pending") // pending | mfa_required | authenticated | captured | expired | failed
+  error             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([projectId, status])
 }
 
 model ProjectSecret {
