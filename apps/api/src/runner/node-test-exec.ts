@@ -343,6 +343,12 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       TM_SOURCE_ROOT: req.extraEnv?.TM_SOURCE_ROOT ?? req.workdir,
       PW_JSON_OUTPUT: req.jsonOutPath,
       ALLURE_RESULTS_DIR: req.extraEnv?.PW_ALLURE_RESULTS || req.extraEnv?.ALLURE_RESULTS_DIR,
+      // auth.setup.ts/ciConfig are rewritten with fresh content at the same path every run.
+      // Playwright's transform cache is keyed loosely enough that a stale cached compile of
+      // an earlier version of that file can get served back, producing bogus module-format
+      // mismatches (e.g. "ReferenceError: exports is not defined"). Isolating the cache dir
+      // per run guarantees every run transforms these files from scratch.
+      PWTEST_CACHE_DIR: path.join(path.dirname(req.jsonOutPath), ".pw-cache"),
       ...(req.extraEnv || {}),
     };
     const nodePathParts = new Set<string>();

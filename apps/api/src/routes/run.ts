@@ -131,6 +131,33 @@ function isLikelyGitRepo(url?: string | null) {
     /github\.com|gitlab\.com|bitbucket\.org/.test(trimmed)
   );
 }
+
+// Converts a pasted "name=value; name2=value2" cookie header into Playwright's
+// storageState JSON shape so a pre-authenticated session can be injected before
+// generated tests run, without scripting an actual login flow.
+function buildStorageStateFromCookie(cookieStr: string, baseUrl: string) {
+  const url = new URL(baseUrl);
+  const cookies = cookieStr
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const idx = pair.indexOf("=");
+      if (idx === -1) return null;
+      return {
+        name: pair.slice(0, idx).trim(),
+        value: pair.slice(idx + 1).trim(),
+        domain: url.hostname,
+        path: "/",
+        expires: -1,
+        httpOnly: false,
+        secure: url.protocol === "https:",
+        sameSite: "Lax" as const,
+      };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+  return { cookies, origins: [] as any[] };
+}
 // If webServer uses `vite preview`, make sure the app is built first
 async function findPlaywrightWorkspace(repoRoot: string): Promise<{ subdir: string, configPath?: string }> {
   // candidate folders (monorepo friendly)
@@ -858,6 +885,27 @@ export default async function runRoutes(app: FastifyInstance) {
       : undefined;
     if (projectStoredBaseUrl) effectiveBaseUrl = projectStoredBaseUrl;
 
+    // Resolve a per-environment session cookie by matching the run's target origin
+    // against this project's configured Environments. No environmentId is threaded
+    // through the run request itself, so origin match is the least invasive hook.
+    let sessionCookie: string | undefined;
+    try {
+      const targetOrigin = new URL(effectiveBaseUrl).origin;
+      const envs = await prisma.environment.findMany({ where: { projectId: pid } });
+      const matchedEnv = envs.find((e) => {
+        try {
+          return new URL(e.baseUrl).origin === targetOrigin;
+        } catch {
+          return false;
+        }
+      });
+      const vars = matchedEnv?.variables as Record<string, string> | null | undefined;
+      const cookie = vars?.sessionCookie?.trim();
+      if (cookie) sessionCookie = cookie;
+    } catch {
+      // malformed effectiveBaseUrl — fall through with no cookie injection
+    }
+
     const curatedSuite =
       suiteId
         ? await prisma.curatedSuite.findUnique({
@@ -1459,6 +1507,20 @@ export default async function runRoutes(app: FastifyInstance) {
         process.env.PW_BASE_URL = effectiveBaseUrl;
         process.env.TM_BASE_URL = effectiveBaseUrl;
 
+        if (sessionCookie) {
+          try {
+            const authStoragePath = path.join(work, ".auth", "state.json");
+            await fs.mkdir(path.dirname(authStoragePath), { recursive: true });
+            await fs.writeFile(
+              authStoragePath,
+              JSON.stringify(buildStorageStateFromCookie(sessionCookie, effectiveBaseUrl)),
+              "utf8"
+            );
+            process.env.TM_AUTH_STORAGE = authStoragePath;
+          } catch (err) {
+            console.warn("[run] failed to write session-cookie storage state:", err);
+          }
+        }
 
         // inside apps/api/src/routes/run.ts, after: const cwd = path.resolve(work, appSubdir);
         const configDir = work;
@@ -1525,6 +1587,7 @@ export default async function runRoutes(app: FastifyInstance) {
         const ciConfig = generatedOnly
           ? `import { defineConfig } from '@playwright/test';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
@@ -1561,8 +1624,12 @@ const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
 const MAX_FAILURES = process.env.TM_MAX_FAILURES
   ? Number(process.env.TM_MAX_FAILURES)
   : 0;
-const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS);
 const AUTH_STORAGE = process.env.TM_AUTH_STORAGE || path.resolve(DIR, '.auth', 'state.json');
+// HAS_AUTH covers two cases: a real E2E_EMAIL/E2E_PASS login (auth-setup project runs and
+// writes AUTH_STORAGE itself) OR a pre-seeded session-cookie storage state already written
+// to AUTH_STORAGE before this process started (auth-setup still runs but no-ops safely since
+// it returns early without email/password, so it never overwrites the seeded file).
+const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS) || fs.existsSync(AUTH_STORAGE);
 
 export default defineConfig({
   use: {
@@ -1588,7 +1655,7 @@ export default defineConfig({
     '**/.*/**',
   ],
   projects: [
-    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\\.setup\\.(ts|js|mjs)/, testDir: DIR }] : []),
+    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\\.setup\\.(ts|js|mjs)/, testDir: path.join(DIR, 'tm-runner') }] : []),
     {
       name: 'generated',
       testDir: GEN_DIR,
@@ -1687,16 +1754,26 @@ export default defineConfig({
             .replace(new RegExp(PORT_PLACEHOLDER, "g"), String(serverPort))
             .replace("__GEN_DEST__", genDestName);
           await fs.writeFile(ciConfigPath, finalConfig, "utf8");
-          // Write auth.setup.ts alongside config so auth-setup project can find it
-          const authSetupPath = path.join(path.dirname(ciConfigPath), "auth.setup.ts");
+          // Write auth setup into a dedicated ESM file under tm-runner/ rather than
+          // directly at the repo root. The repo root's package.json has no "type"
+          // field, so Playwright can transform root auth.setup.ts as CommonJS and then
+          // execute it as ESM, producing "ReferenceError: exports is not defined".
+          const authSetupDir = path.join(path.dirname(ciConfigPath), "tm-runner");
+          await fs.mkdir(authSetupDir, { recursive: true });
+          await fs.writeFile(
+            path.join(authSetupDir, "package.json"),
+            JSON.stringify({ name: "tm-runner-internal", private: true, type: "module" }, null, 2),
+            "utf8"
+          );
+          const authSetupPath = path.join(authSetupDir, "auth.setup.mjs");
           const authSetupContent = `import { test as setup } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-const DIR = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
-export const AUTH_STORAGE = process.env.TM_AUTH_STORAGE
+const DIR = path.dirname(fileURLToPath(import.meta.url));
+const AUTH_STORAGE = process.env.TM_AUTH_STORAGE
   ? path.resolve(process.env.TM_AUTH_STORAGE)
-  : path.join(DIR, ".auth", "state.json");
+  : path.join(DIR, "..", ".auth", "state.json");
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASS;
 const loginPath = process.env.TM_LOGIN_PATH || "/login";

@@ -28,9 +28,12 @@ export const CURATED_ROOT = defaultRoot("TM_CURATED_ROOT", "testmind-curated");
 
 export const REPORT_ROOT = defaultRoot("TM_REPORT_ROOT", "testmind-reports");
 
+export const AUTH_SESSION_ROOT = defaultRoot("TM_AUTH_SESSION_ROOT", "testmind-auth-sessions");
+
 export async function ensureStorageDirs() {
   await fs.mkdir(GENERATED_ROOT, { recursive: true });
   await fs.mkdir(CURATED_ROOT, { recursive: true });
   await fs.mkdir(REPORT_ROOT, { recursive: true });
   await fs.mkdir(path.join(REPORT_ROOT, "runner-logs"), { recursive: true });
+  await fs.mkdir(AUTH_SESSION_ROOT, { recursive: true });
 }
