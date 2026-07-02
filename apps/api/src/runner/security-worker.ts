@@ -18,6 +18,9 @@ import {
 } from "./security-heuristics.js";
 import { runIntelligentValidation } from "../security/modules/intelligent-validation.js";
 import { runAnomalyBaseline } from "../security/modules/anomaly-baseline.js";
+import { runGraphQLAudit } from "../security/modules/graphql-audit.js";
+import { runOpenApiScan } from "../security/modules/openapi-scan.js";
+import { parseApiSpec } from "../security/openapi-parser.js";
 import {
   buildRouteContracts,
   discoverRouteInventory,
@@ -837,6 +840,31 @@ export const securityWorker = new Worker(
   "security-scan",
   async (job: Job<SecurityScanPayload>) => {
     const payload = job.data;
+
+    // Race the entire scan pipeline against the configured duration cap.
+    // Individual probe functions have their own per-request timeouts; this is the
+    // job-level wall-clock limit. If the deadline fires first we throw so BullMQ's
+    // "failed" handler marks the job terminated — the background probes finish
+    // naturally (they all have sub-10-second individual timeouts).
+    const deadlineMs = (payload.maxDurationMinutes ?? 10) * 60 * 1000;
+    let deadlineHandle: ReturnType<typeof setTimeout> | null = null;
+    const deadlinePromise = new Promise<never>((_, reject) => {
+      deadlineHandle = setTimeout(
+        () => reject(new Error(`Scan exceeded the ${payload.maxDurationMinutes ?? 10}-minute limit and was stopped.`)),
+        deadlineMs,
+      );
+    });
+
+    try {
+      await Promise.race([runScanPipeline(payload), deadlinePromise]);
+    } finally {
+      if (deadlineHandle !== null) clearTimeout(deadlineHandle);
+    }
+  },
+  { connection: redis }
+);
+
+async function runScanPipeline(payload: SecurityScanPayload) {
     await updateJob(payload.jobId, { status: "running", phase: "recon" });
 
     const allFindings: FindingInput[] = [];
@@ -862,6 +890,27 @@ export const securityWorker = new Worker(
     const routeInventory = await discoverRouteInventory(intelligentConfig);
     const routeContracts = buildRouteContracts(intelligentConfig, routeInventory);
     allFindings.push(...(await runIntelligentValidation(intelligentConfig)));
+
+    // GraphQL-specific audit — runs after intelligent validation so auth profiles are
+    // already resolved. Detects endpoint, tries introspection, tests auth enforcement,
+    // cross-account BOLA, batching abuse, and sensitive field exposure.
+    await updateJob(payload.jobId, { phase: "graphql_audit" });
+    allFindings.push(...(await runGraphQLAudit(intelligentConfig)));
+
+    // OpenAPI spec-driven scan — if a spec was attached to this scan job, load it from
+    // the DB and run targeted probes against every declared endpoint.
+    if (payload.apiSpecId) {
+      await updateJob(payload.jobId, { phase: "openapi_scan" });
+      const specRecord = await prisma.apiSpec.findUnique({ where: { id: payload.apiSpecId } });
+      if (specRecord) {
+        try {
+          const parsedSpec = parseApiSpec(specRecord.specJson);
+          allFindings.push(...(await runOpenApiScan(parsedSpec, payload.baseUrl, authProfiles)));
+        } catch (err: any) {
+          console.warn(`[security-worker] OpenAPI scan failed for spec ${payload.apiSpecId}:`, err?.message);
+        }
+      }
+    }
 
     const anomalyResult = await runAnomalyBaseline(intelligentConfig, routeContracts);
     allFindings.push(...anomalyResult.findings);
@@ -943,9 +992,7 @@ export const securityWorker = new Worker(
         },
       },
     });
-  },
-  { connection: redis }
-);
+}
 
 securityWorker.on("failed", async (job, err) => {
   if (job?.data?.jobId) {

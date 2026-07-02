@@ -11,6 +11,8 @@ import { redactAuthProfileForStorage } from "../security/redaction.js";
 import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/auth-session-stream.js";
 import { callAuthBypassEndpoint, buildStorageStateFromCookieString } from "../security/enterprise-bypass.js";
 import { authenticateAuth0, authenticateFirebase, authenticateCognito, authenticateClerk } from "../security/provider-auth.js";
+import { parseApiSpec, specSummary } from "../security/openapi-parser.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -57,6 +59,7 @@ const startSchema = z.object({
   safeMode: z.boolean().default(true),
   useSavedSetup: z.boolean().default(true),
   authSessionId: z.string().optional(),
+  apiSpecId: z.string().optional(),
   authProfiles: z.array(securityAuthProfileSchema).default([]),
   apiFixtures: z.array(apiSecurityFixtureSchema).default([]),
   expectedControls: z.array(expectedSecurityControlSchema).default([]),
@@ -360,6 +363,7 @@ export default async function securityRoutes(app: FastifyInstance) {
         expectedControls: testSetup.expectedControls,
         owaspCategories: testSetup.owaspCategories,
         complianceFrameworks: testSetup.complianceFrameworks,
+        apiSpecId: body.apiSpecId,
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -665,6 +669,37 @@ export default async function securityRoutes(app: FastifyInstance) {
     return { session };
   });
 
+  app.post("/security/auth-sessions/:id/import-cookies", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({
+      where: { id, project: { ownerId: userId } },
+    });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+
+    const body = req.body as { cookies?: string; baseUrl?: string } | null;
+    const rawCookies = body?.cookies?.trim() ?? "";
+    if (!rawCookies) return reply.code(400).send({ error: "cookies is required" });
+
+    const targetUrl = body?.baseUrl?.trim() || session.baseUrl || "https://example.com";
+    try {
+      const storageState = buildStorageStateFromCookieString(rawCookies, targetUrl);
+      if (!storageState.cookies.length) {
+        return reply.code(400).send({ error: "No valid cookies found in the provided string." });
+      }
+      const storagePath = path.join(AUTH_SESSION_ROOT, `${id}.json`);
+      await fs.writeFile(storagePath, JSON.stringify(storageState), "utf8");
+      const updated = await prisma.securityAuthSession.update({
+        where: { id },
+        data: { status: "captured", storagePath, error: null },
+      });
+      return { session: updated };
+    } catch (err: any) {
+      return reply.code(400).send({ error: `Failed to import cookies: ${err?.message ?? err}` });
+    }
+  });
+
   app.post("/security/auth-sessions/:id/bypass-authenticate", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
@@ -820,7 +855,8 @@ export default async function securityRoutes(app: FastifyInstance) {
   });
 
   const streamTicketSchema = z.object({
-    attemptWafBypass: z.boolean().default(false),
+    allowInteractiveChallengeHandling: z.boolean().default(false),
+    proxyUrl: z.string().url().optional(),
   });
 
   app.post("/security/auth-sessions/:id/stream-ticket", async (req, reply) => {
@@ -834,11 +870,100 @@ export default async function securityRoutes(app: FastifyInstance) {
     if (session.mode !== "bug_bounty") {
       return reply.code(400).send({ error: "Live session capture is only available for Bug Bounty sessions" });
     }
-    // attemptWafBypass requires the same in-scope acknowledgement already collected at session start.
+    // allowInteractiveChallengeHandling requires the same in-scope acknowledgement already
+    // collected at session start.
     const parsed = streamTicketSchema.safeParse(req.body ?? {});
-    const attemptWafBypass = (parsed.success && parsed.data.attemptWafBypass) && session.scopeAcknowledged;
-    return { ticket: issueStreamTicket(id, attemptWafBypass) };
+    const allowInteractiveChallengeHandling =
+      (parsed.success && parsed.data.allowInteractiveChallengeHandling) && session.scopeAcknowledged;
+    const proxyUrl = parsed.success ? parsed.data.proxyUrl : undefined;
+    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl) };
   });
 
   registerAuthSessionStreamRoutes(app);
+
+  // ── API Spec (OpenAPI / Swagger import) ──────────────────────────────────────
+
+  const importSpecSchema = z.object({
+    projectId: z.string(),
+    specUrl: z.string().url().optional(),
+    specJson: z.record(z.unknown()).optional(),
+  }).refine((d) => d.specUrl || d.specJson, { message: "Provide either specUrl or specJson" });
+
+  app.post("/security/api-specs/import", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const parsed = importSpecSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const body = parsed.data;
+
+    const project = await prisma.project.findFirst({ where: { id: body.projectId, ownerId: userId }, select: { id: true } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    let rawSpec: unknown;
+    if (body.specUrl) {
+      const specUrl = body.specUrl;
+      const urlParsed = new URL(specUrl);
+      const res = await safeFetch(specUrl, {}, { allowedHosts: [urlParsed.hostname] });
+      const text = await res.text();
+      if (!res.ok) return reply.code(400).send({ error: `Failed to fetch spec from URL (${res.status}): ${text.slice(0, 200)}` });
+      try { rawSpec = JSON.parse(text); } catch {
+        return reply.code(400).send({ error: "Fetched spec is not valid JSON. YAML specs must be converted to JSON first." });
+      }
+    } else {
+      rawSpec = body.specJson;
+    }
+
+    let spec;
+    try { spec = parseApiSpec(rawSpec); } catch (err: any) {
+      return reply.code(400).send({ error: err?.message ?? "Failed to parse spec" });
+    }
+
+    const summary = specSummary(spec);
+    const record = await prisma.apiSpec.create({
+      data: {
+        projectId: body.projectId,
+        title: spec.title,
+        version: spec.version,
+        sourceUrl: body.specUrl,
+        specJson: rawSpec as any,
+        endpoints: spec.endpoints as any,
+        endpointCount: summary.endpointCount,
+      },
+    });
+    return reply.code(201).send({ spec: record, summary });
+  });
+
+  app.get("/security/api-specs", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { projectId } = req.query as { projectId?: string };
+    if (!projectId) return reply.code(400).send({ error: "projectId required" });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ownerId: userId }, select: { id: true } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+    const specs = await prisma.apiSpec.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true, version: true, sourceUrl: true, endpointCount: true, createdAt: true },
+    });
+    return { specs };
+  });
+
+  app.get("/security/api-specs/:id", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const spec = await prisma.apiSpec.findFirst({ where: { id, project: { ownerId: userId } } });
+    if (!spec) return reply.code(404).send({ error: "Not found" });
+    return { spec };
+  });
+
+  app.delete("/security/api-specs/:id", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const spec = await prisma.apiSpec.findFirst({ where: { id, project: { ownerId: userId } }, select: { id: true } });
+    if (!spec) return reply.code(404).send({ error: "Not found" });
+    await prisma.apiSpec.delete({ where: { id } });
+    return { ok: true };
+  });
 }
