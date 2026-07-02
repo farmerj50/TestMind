@@ -133,6 +133,7 @@ model Project {
   environments     Environment[]
   workflows        Workflow[]
   securityAuthSessions SecurityAuthSession[]
+  apiSpecs             ApiSpec[]
 }
 
 model GitAccount {
@@ -447,6 +448,22 @@ model SecurityFinding {
   createdAt   DateTime            @default(now())
 
   @@index([scanId, severity])
+}
+
+model ApiSpec {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  title         String
+  version       String?
+  sourceUrl     String?
+  specJson      Json     // raw parsed OpenAPI/Swagger object
+  endpoints     Json     // normalized endpoint list for quick preview without re-parsing
+  endpointCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([projectId, createdAt])
 }
 
 model SecurityAuthSession {

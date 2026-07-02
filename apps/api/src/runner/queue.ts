@@ -52,6 +52,7 @@ export type SecurityScanPayload = {
   expectedControls?: string[];
   owaspCategories?: string[];
   complianceFrameworks?: string[];
+  apiSpecId?: string;
 };
 
 function createQueue<T = any>(name: string) {
