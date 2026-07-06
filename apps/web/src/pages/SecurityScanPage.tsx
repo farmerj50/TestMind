@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useApi } from "../lib/api";
+import { useApi, apiUrl } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Code2, KeyRound, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { Building2, Bug, Code2, KeyRound, Plus, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-react";
 
 type Project = { id: string; name: string };
 type ProjectSecret = { id: string; name: string; key: string; createdAt: string; updatedAt: string };
@@ -52,6 +52,9 @@ type SecurityJob = {
   status: "queued" | "running" | "completed" | "failed";
   phase?: string | null;
   summary?: any;
+  config?: {
+    authProfiles?: Array<{ label: string; role?: string | null; type?: string }>;
+  } | null;
   createdAt: string;
   updatedAt: string;
   findings?: SecurityFinding[];
@@ -61,6 +64,33 @@ type SecurityJob = {
 type OperatorJobRef = {
   id: string;
   status: string;
+};
+
+type AuthMode = "enterprise" | "bug_bounty";
+
+type SecurityAuthSession = {
+  id: string;
+  projectId: string;
+  mode: AuthMode;
+  provider?: string | null;
+  baseUrl?: string | null;
+  loginUrl?: string | null;
+  scopeAcknowledged: boolean;
+  role?: string | null;
+  expiresAt?: string | null;
+  status: "pending" | "mfa_required" | "authenticated" | "captured" | "expired" | "failed";
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ApiSpecRecord = {
+  id: string;
+  title: string;
+  version?: string | null;
+  sourceUrl?: string | null;
+  endpointCount: number;
+  createdAt: string;
 };
 
 type SecurityFinding = {
@@ -112,6 +142,133 @@ const SECURITY_CONTROLS = [
   "input_validation",
 ] as const;
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+const OWASP_WEB_TOP_10 = [
+  { value: "A01:2021", label: "A01 — Broken Access Control" },
+  { value: "A02:2021", label: "A02 — Cryptographic Failures" },
+  { value: "A03:2021", label: "A03 — Injection" },
+  { value: "A04:2021", label: "A04 — Insecure Design" },
+  { value: "A05:2021", label: "A05 — Security Misconfiguration" },
+  { value: "A06:2021", label: "A06 — Vulnerable and Outdated Components" },
+  { value: "A07:2021", label: "A07 — Identification and Authentication Failures" },
+  { value: "A08:2021", label: "A08 — Software and Data Integrity Failures" },
+  { value: "A09:2021", label: "A09 — Security Logging and Monitoring Failures" },
+  { value: "A10:2021", label: "A10 — Server-Side Request Forgery" },
+] as const;
+
+const OWASP_API_TOP_10 = [
+  { value: "API1:2023", label: "API1 — Broken Object Level Authorization" },
+  { value: "API2:2023", label: "API2 — Broken Authentication" },
+  { value: "API3:2023", label: "API3 — Broken Object Property Level Authorization" },
+  { value: "API4:2023", label: "API4 — Unrestricted Resource Consumption" },
+  { value: "API5:2023", label: "API5 — Broken Function Level Authorization" },
+  { value: "API6:2023", label: "API6 — Unrestricted Access to Sensitive Business Flows" },
+  { value: "API7:2023", label: "API7 — Server Side Request Forgery" },
+  { value: "API8:2023", label: "API8 — Security Misconfiguration" },
+  { value: "API9:2023", label: "API9 — Improper Inventory Management" },
+  { value: "API10:2023", label: "API10 — Unsafe Consumption of APIs" },
+] as const;
+
+const ALL_WEB_CATEGORIES = OWASP_WEB_TOP_10.map((c) => c.value);
+const ALL_API_CATEGORIES = OWASP_API_TOP_10.map((c) => c.value);
+
+// The access-control vulnerability classes that genuinely depend on having more than one
+// authenticated role available — BOLA/IDOR, role escalation, admin-route testing, and session
+// boundary testing only mean something once a scan actually has multiple captured/configured
+// auth contexts to compare. Labels/categories mirror apps/api/src/security/owasp.ts's
+// VULNERABILITY_CATALOG for these same four classes.
+const ACCESS_CONTROL_MATRIX_ROWS = [
+  {
+    vulnerabilityClass: "broken_object_level_authorization",
+    label: "Object-level authorization (BOLA/IDOR)",
+    owaspCategory: "A01:2021 Broken Access Control",
+    owaspApiCategory: "API1:2023 Broken Object Level Authorization",
+  },
+  {
+    vulnerabilityClass: "broken_object_property_level_authorization",
+    label: "Object property exposure (ownership/field-level)",
+    owaspCategory: "A01:2021 Broken Access Control",
+    owaspApiCategory: "API3:2023 Broken Object Property Level Authorization",
+  },
+  {
+    vulnerabilityClass: "broken_function_level_authorization",
+    label: "Function-level authorization (role escalation / admin routes)",
+    owaspCategory: "A01:2021 Broken Access Control",
+    owaspApiCategory: "API5:2023 Broken Function Level Authorization",
+  },
+  {
+    vulnerabilityClass: "broken_authentication",
+    label: "Authentication / session boundary",
+    owaspCategory: "A07:2021 Identification and Authentication Failures",
+    owaspApiCategory: "API2:2023 Broken Authentication",
+  },
+] as const;
+
+const SCAN_INTENTS = [
+  {
+    value: "recon",
+    label: "Recon",
+    categories: ["A05:2021", "A06:2021", "A09:2021", "API8:2023", "API9:2023"],
+  },
+  {
+    value: "auth",
+    label: "Auth",
+    categories: ["A01:2021", "A07:2021", "API2:2023", "API5:2023"],
+  },
+  {
+    value: "api",
+    label: "API",
+    categories: [...ALL_API_CATEGORIES],
+  },
+  {
+    value: "input",
+    label: "Input",
+    categories: ["A03:2021", "API8:2023"],
+  },
+  {
+    value: "business_logic",
+    label: "Business Logic",
+    categories: ["A04:2021", "API6:2023"],
+  },
+  {
+    value: "full",
+    label: "Full",
+    categories: [...ALL_WEB_CATEGORIES, ...ALL_API_CATEGORIES],
+  },
+] as const;
+
+const BB_STATUS_LABEL: Record<string, string> = {
+  pending: "Waiting for login",
+  mfa_required: "MFA required",
+  authenticated: "Authenticated",
+  captured: "Session captured",
+  expired: "Session expired",
+  failed: "Re-authentication required",
+};
+
+const RISK_MODES = [
+  {
+    value: "safe",
+    label: "Safe",
+    description: "Non-destructive authorized validation only.",
+    safeMode: true,
+    enableActive: false,
+  },
+  {
+    value: "active",
+    label: "Active",
+    description: "Bounded active probes (input mutation, redirect checks) within authorized scope.",
+    safeMode: true,
+    enableActive: true,
+  },
+  {
+    value: "deep",
+    label: "Deep (requires approval)",
+    description: "Deep scan depth with active probing and reduced safe-mode guardrails. Always routes through Operator approval.",
+    safeMode: false,
+    enableActive: true,
+  },
+] as const;
 
 function prettyJson(value: unknown) {
   return value && Array.isArray(value) && value.length ? JSON.stringify(value, null, 2) : "";
@@ -215,6 +372,50 @@ export default function SecurityScanPage() {
   const { apiFetch } = useApi();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode>("enterprise");
+  const [bbLoginUrl, setBbLoginUrl] = useState("");
+  const [bbScopeAck, setBbScopeAck] = useState(false);
+  const [bbAllowInteractiveChallengeHandling, setBbAllowInteractiveChallengeHandling] = useState(false);
+  const [bbProxyUrl, setBbProxyUrl] = useState("");
+  const [bbInputMode, setBbInputMode] = useState<"live" | "paste">("live");
+  const [bbPastedCookies, setBbPastedCookies] = useState("");
+  const [bbPasteImporting, setBbPasteImporting] = useState(false);
+  const [bbStarting, setBbStarting] = useState(false);
+  const [bbSession, setBbSession] = useState<SecurityAuthSession | null>(null);
+  const bbPollRef = useRef<number | null>(null);
+  const [entMethod, setEntMethod] = useState<"bypass" | "auth0" | "firebase" | "cognito" | "clerk">("bypass");
+  const [entBypassSecretKey, setEntBypassSecretKey] = useState("");
+  const [entRole, setEntRole] = useState("admin");
+  const [entStarting, setEntStarting] = useState(false);
+  const [entSession, setEntSession] = useState<SecurityAuthSession | null>(null);
+  const [auth0Domain, setAuth0Domain] = useState("");
+  const [auth0ClientId, setAuth0ClientId] = useState("");
+  const [auth0Audience, setAuth0Audience] = useState("");
+  const [auth0Username, setAuth0Username] = useState("");
+  const [auth0PasswordSecretKey, setAuth0PasswordSecretKey] = useState("");
+  const [auth0ClientSecretKey, setAuth0ClientSecretKey] = useState("");
+  const [fbApiKey, setFbApiKey] = useState("");
+  const [fbEmail, setFbEmail] = useState("");
+  const [fbPasswordSecretKey, setFbPasswordSecretKey] = useState("");
+  const [cogRegion, setCogRegion] = useState("");
+  const [cogClientId, setCogClientId] = useState("");
+  const [cogUsername, setCogUsername] = useState("");
+  const [cogPasswordSecretKey, setCogPasswordSecretKey] = useState("");
+  const [cogClientSecretKey, setCogClientSecretKey] = useState("");
+  const [clerkFrontendApiUrl, setClerkFrontendApiUrl] = useState("");
+  const [clerkOrigin, setClerkOrigin] = useState("");
+  const [clerkIdentifier, setClerkIdentifier] = useState("");
+  const [clerkPasswordSecretKey, setClerkPasswordSecretKey] = useState("");
+  const [authSessions, setAuthSessions] = useState<SecurityAuthSession[]>([]);
+  const [selectedAuthSessionId, setSelectedAuthSessionId] = useState("");
+  const [apiSpecs, setApiSpecs] = useState<ApiSpecRecord[]>([]);
+  const [selectedApiSpecId, setSelectedApiSpecId] = useState("");
+  const [apiSpecImportUrl, setApiSpecImportUrl] = useState("");
+  const [apiSpecImporting, setApiSpecImporting] = useState(false);
+  const [liveViewOpen, setLiveViewOpen] = useState(false);
+  const [liveViewConnecting, setLiveViewConnecting] = useState(false);
+  const liveWsRef = useRef<WebSocket | null>(null);
+  const liveImgRef = useRef<HTMLImageElement | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [allowedHosts, setAllowedHosts] = useState("");
   const [allowedPorts, setAllowedPorts] = useState("80,443");
@@ -223,6 +424,10 @@ export default function SecurityScanPage() {
   const [environment, setEnvironment] = useState<"dev" | "qa" | "stage" | "prod">("qa");
   const [scanDepth, setScanDepth] = useState<"baseline" | "standard" | "deep">("standard");
   const [safeMode, setSafeMode] = useState(true);
+  const [riskMode, setRiskMode] = useState<(typeof RISK_MODES)[number]["value"]>("safe");
+  const [scanIntent, setScanIntent] = useState<(typeof SCAN_INTENTS)[number]["value"]>("full");
+  const [owaspCategories, setOwaspCategories] = useState<string[]>([]);
+  const [complianceFrameworks] = useState<string[]>(["OWASP ASVS", "SOC 2", "ISO 27001"]);
   const [expectedControls, setExpectedControls] = useState(DEFAULT_EXPECTED_CONTROLS);
   const [authProfiles, setAuthProfiles] = useState<AuthProfileConfig[]>([]);
   const [apiFixtures, setApiFixtures] = useState<ApiFixtureConfig[]>([]);
@@ -276,6 +481,8 @@ export default function SecurityScanPage() {
     return () => {
       mounted = false;
       stopPolling();
+      stopBbPolling();
+      closeLiveView();
     };
   }, [apiFetch]);
 
@@ -286,6 +493,45 @@ export default function SecurityScanPage() {
       .then((res) => setRecent(uniqByPage(res.jobs || [])))
       .catch(() => {});
   }, [apiFetch, projectId]);
+
+  const loadAuthSessions = (pid: string) => {
+    apiFetch<{ sessions: SecurityAuthSession[] }>(`/security/auth-sessions?projectId=${pid}`)
+      .then((res) => setAuthSessions(res.sessions || []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!projectId) return;
+    loadAuthSessions(projectId);
+    loadApiSpecs(projectId);
+  }, [apiFetch, projectId]);
+
+  const usableAuthSessions = authSessions.filter((s) => s.status === "authenticated" || s.status === "captured");
+
+  const loadApiSpecs = (pid: string) => {
+    apiFetch<{ specs: ApiSpecRecord[] }>(`/security/api-specs?projectId=${pid}`)
+      .then((res) => setApiSpecs(res.specs || []))
+      .catch(() => {});
+  };
+
+  const importApiSpec = async () => {
+    if (!projectId) { setError("Pick a project first."); return; }
+    if (!apiSpecImportUrl.trim()) { setError("Enter a spec URL to import."); return; }
+    setError(null);
+    setApiSpecImporting(true);
+    try {
+      await apiFetch("/security/api-specs/import", {
+        method: "POST",
+        body: JSON.stringify({ projectId, specUrl: apiSpecImportUrl.trim() }),
+      });
+      setApiSpecImportUrl("");
+      loadApiSpecs(projectId);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to import spec");
+    } finally {
+      setApiSpecImporting(false);
+    }
+  };
 
   useEffect(() => {
     if (!projectId) return;
@@ -309,6 +555,7 @@ export default function SecurityScanPage() {
             ? setup.expectedControls.join(",")
             : DEFAULT_EXPECTED_CONTROLS
         );
+        setOwaspCategories(setup.owaspCategories || []);
         setSecrets(secretsRes.secrets || []);
         setContractSuggestions([]);
         setSuggestionInventory(null);
@@ -336,6 +583,49 @@ export default function SecurityScanPage() {
     [apiFixtures]
   );
 
+  // Coverage is inferred, not directly recorded: SecurityFinding only ever represents a
+  // confirmed vulnerability (status is always "open" — there's no "passed" record). So
+  // "covered" here means "this role had a configured session and no vulnerability of this
+  // class was found for it" — a reasonable proxy, not a guarantee the check ran exhaustively.
+  const accessControlMatrix = useMemo(() => {
+    const profiles = job?.config?.authProfiles ?? [];
+    if (!profiles.length) return null;
+    const roleForLabel = new Map<string, string>();
+    const roles: string[] = [];
+    for (const p of profiles) {
+      const role = (p.role && p.role.trim()) || p.label.trim();
+      if (!role) continue;
+      roleForLabel.set(p.label.trim(), role);
+      if (!roles.includes(role)) roles.push(role);
+    }
+    if (!roles.length) return null;
+
+    const cells = new Map<string, Map<string, "vulnerable" | "covered">>();
+    for (const row of ACCESS_CONTROL_MATRIX_ROWS) {
+      const roleStatus = new Map<string, "vulnerable" | "covered">();
+      for (const role of roles) roleStatus.set(role, "covered");
+      cells.set(row.vulnerabilityClass, roleStatus);
+    }
+
+    for (const finding of job?.findings ?? []) {
+      const vulnerabilityClass = (finding.evidence as any)?.vulnerabilityClass;
+      const roleStatus = vulnerabilityClass ? cells.get(vulnerabilityClass) : undefined;
+      if (!roleStatus) continue;
+      const touchedLabels: string[] = ((finding.evidence as any)?.requestResponse ?? [])
+        .map((rr: any) => rr?.profile)
+        .filter(Boolean);
+      for (const label of touchedLabels) {
+        const role = roleForLabel.get(String(label).trim()) ?? String(label).trim();
+        if (roleStatus.has(role)) roleStatus.set(role, "vulnerable");
+      }
+    }
+
+    return {
+      roles,
+      rows: ACCESS_CONTROL_MATRIX_ROWS.map((row) => ({ ...row, cells: cells.get(row.vulnerabilityClass)! })),
+    };
+  }, [job]);
+
   const pollJob = (jobId: string) => {
     stopPolling();
     pollRef.current = window.setInterval(() => {
@@ -345,6 +635,13 @@ export default function SecurityScanPage() {
           pollFailures.current = 0;
           if (res.job.status === "completed" || res.job.status === "failed") {
             stopPolling();
+            // Refresh the Recent scans list so it shows the final status rather than
+            // the stale "running" entry that was cached when the project was loaded.
+            if (projectId) {
+              apiFetch<{ jobs: SecurityJob[] }>(`/security/scans?projectId=${projectId}`)
+                .then((r) => setRecent(uniqByPage(r.jobs || [])))
+                .catch(() => {});
+            }
           }
         })
         .catch(() => {
@@ -354,6 +651,389 @@ export default function SecurityScanPage() {
           }
         });
     }, 1500);
+  };
+
+  const stopBbPolling = () => {
+    if (bbPollRef.current) {
+      window.clearInterval(bbPollRef.current);
+      bbPollRef.current = null;
+    }
+  };
+
+  const pollBbSession = (sessionId: string) => {
+    stopBbPolling();
+    bbPollRef.current = window.setInterval(() => {
+      apiFetch<{ session: SecurityAuthSession }>(`/security/auth-sessions/${sessionId}/status`)
+        .then((res) => {
+          setBbSession(res.session);
+          if (["authenticated", "captured", "expired", "failed"].includes(res.session.status)) {
+            stopBbPolling();
+            if (projectId) loadAuthSessions(projectId);
+          }
+        })
+        .catch(() => stopBbPolling());
+    }, 2000);
+  };
+
+  const startBugBountySession = async () => {
+    if (!projectId) {
+      setError("Pick a project first.");
+      return;
+    }
+    // In paste mode the user never navigates anywhere — use baseUrl as the loginUrl so the
+    // session record is created without requiring a separate login URL field.
+    const effectiveLoginUrl = bbInputMode === "paste" ? baseUrl.trim() : bbLoginUrl.trim();
+    if (!baseUrl.trim() || !effectiveLoginUrl) {
+      setError(
+        bbInputMode === "paste"
+          ? "Target base URL is required."
+          : "Target URL and login URL are required for Bug Bounty mode."
+      );
+      return;
+    }
+    if (!bbScopeAck) {
+      setError("Confirm program scope/rules before starting a Bug Bounty session.");
+      return;
+    }
+    setError(null);
+    setBbStarting(true);
+    try {
+      const res = await apiFetch<{ session: SecurityAuthSession }>("/security/auth-sessions/start", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          mode: "bug_bounty",
+          baseUrl: baseUrl.trim(),
+          loginUrl: effectiveLoginUrl,
+          scopeAcknowledged: bbScopeAck,
+        }),
+      });
+      setBbSession(res.session);
+      pollBbSession(res.session.id);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to start Bug Bounty session");
+    } finally {
+      setBbStarting(false);
+    }
+  };
+
+  const importPastedCookies = async () => {
+    if (!bbSession) return;
+    if (!bbPastedCookies.trim()) {
+      setError("Paste your session cookies first.");
+      return;
+    }
+    setError(null);
+    setBbPasteImporting(true);
+    try {
+      const res = await apiFetch<{ session: SecurityAuthSession }>(
+        `/security/auth-sessions/${bbSession.id}/import-cookies`,
+        {
+          method: "POST",
+          body: JSON.stringify({ cookies: bbPastedCookies.trim(), baseUrl: baseUrl.trim() || undefined }),
+        }
+      );
+      setBbSession(res.session);
+      setBbPastedCookies("");
+      if (projectId) loadAuthSessions(projectId);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to import cookies");
+    } finally {
+      setBbPasteImporting(false);
+    }
+  };
+
+  const refreshBugBountySession = async () => {
+    if (!bbSession) return;
+    setError(null);
+    try {
+      const res = await apiFetch<{ session: SecurityAuthSession }>(
+        `/security/auth-sessions/${bbSession.id}/refresh`,
+        { method: "POST" }
+      );
+      setBbSession(res.session);
+      pollBbSession(res.session.id);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to refresh Bug Bounty session");
+    }
+  };
+
+  const refreshEnterpriseSession = async () => {
+    if (!entSession) return;
+    setError(null);
+    try {
+      const res = await apiFetch<{ session: SecurityAuthSession }>(
+        `/security/auth-sessions/${entSession.id}/refresh`,
+        { method: "POST" }
+      );
+      setEntSession(res.session);
+      if (projectId) loadAuthSessions(projectId);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to refresh session");
+    }
+  };
+
+  const LIVE_VIEWPORT = { width: 1280, height: 800 };
+
+  function closeLiveView() {
+    if (liveWsRef.current) {
+      try {
+        liveWsRef.current.close();
+      } catch {}
+      liveWsRef.current = null;
+    }
+    setLiveViewOpen(false);
+    setLiveViewConnecting(false);
+  }
+
+  async function openLiveView() {
+    if (!bbSession) return;
+    setError(null);
+    setLiveViewConnecting(true);
+    try {
+      const res = await apiFetch<{ ticket: string }>(`/security/auth-sessions/${bbSession.id}/stream-ticket`, {
+        method: "POST",
+        body: JSON.stringify({
+          allowInteractiveChallengeHandling: bbAllowInteractiveChallengeHandling,
+          ...(bbProxyUrl.trim() ? { proxyUrl: bbProxyUrl.trim() } : {}),
+        }),
+      });
+      const httpBase = apiUrl(`/security/auth-sessions/${bbSession.id}/stream`);
+      const wsUrl = `${httpBase.replace(/^http/, "ws")}?ticket=${encodeURIComponent(res.ticket)}`;
+      const ws = new WebSocket(wsUrl);
+      liveWsRef.current = ws;
+      ws.onopen = () => {
+        setLiveViewOpen(true);
+        setLiveViewConnecting(false);
+      };
+      ws.onmessage = (evt) => {
+        let msg: any;
+        try {
+          msg = JSON.parse(evt.data);
+        } catch {
+          return;
+        }
+        if (msg.type === "frame" && liveImgRef.current) {
+          liveImgRef.current.src = `data:image/jpeg;base64,${msg.data}`;
+        } else if (msg.type === "status") {
+          setBbSession((prev) => (prev ? { ...prev, status: msg.status, error: msg.error ?? null } : prev));
+          if (msg.status === "captured") {
+            closeLiveView();
+          }
+        }
+      };
+      ws.onerror = () => {
+        setError("Live session view disconnected.");
+        closeLiveView();
+      };
+      ws.onclose = () => {
+        if (liveWsRef.current === ws) liveWsRef.current = null;
+        setLiveViewOpen(false);
+        setLiveViewConnecting(false);
+      };
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to open live session view");
+      setLiveViewConnecting(false);
+    }
+  }
+
+  function sendLiveInput(payload: Record<string, unknown>) {
+    const ws = liveWsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  }
+
+  function liveCoords(e: { clientX: number; clientY: number; currentTarget: HTMLElement }) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * LIVE_VIEWPORT.width;
+    const y = ((e.clientY - rect.top) / rect.height) * LIVE_VIEWPORT.height;
+    return { x, y };
+  }
+
+  function captureLiveSession() {
+    sendLiveInput({ type: "capture" });
+  }
+
+  async function startEnterpriseBypass() {
+    if (!projectId) {
+      setError("Pick a project first.");
+      return;
+    }
+    if (!baseUrl.trim()) {
+      setError("Base URL is required for the bypass endpoint.");
+      return;
+    }
+    if (!entBypassSecretKey) {
+      setError("Select a project secret holding the shared bypass secret.");
+      return;
+    }
+    setError(null);
+    setEntStarting(true);
+    let sessionId: string | null = null;
+    try {
+      const startRes = await apiFetch<{ session: SecurityAuthSession }>("/security/auth-sessions/start", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          mode: "enterprise",
+          provider: "bypass",
+          baseUrl: baseUrl.trim(),
+          role: entRole.trim() || undefined,
+          bypassSecretKey: entBypassSecretKey,
+          scopeAcknowledged: true,
+        }),
+      });
+      sessionId = startRes.session.id;
+      setEntSession(startRes.session);
+      const authRes = await apiFetch<{ session: SecurityAuthSession }>(
+        `/security/auth-sessions/${sessionId}/bypass-authenticate`,
+        { method: "POST" }
+      );
+      setEntSession(authRes.session);
+      loadAuthSessions(projectId);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to authenticate via bypass endpoint");
+      if (sessionId) {
+        apiFetch<{ session: SecurityAuthSession }>(`/security/auth-sessions/${sessionId}/status`)
+          .then((res) => setEntSession(res.session))
+          .catch(() => {});
+        loadAuthSessions(projectId);
+      }
+    } finally {
+      setEntStarting(false);
+    }
+  }
+
+  async function startProviderAuth(
+    provider: "auth0" | "firebase" | "cognito" | "clerk",
+    providerConfig: Record<string, string | undefined>,
+    passwordSecretKey: string,
+    clientSecretKey?: string
+  ) {
+    if (!projectId) {
+      setError("Pick a project first.");
+      return;
+    }
+    if (!passwordSecretKey) {
+      setError("Select a project secret holding the test account password.");
+      return;
+    }
+    setError(null);
+    setEntStarting(true);
+    let sessionId: string | null = null;
+    try {
+      const startRes = await apiFetch<{ session: SecurityAuthSession }>("/security/auth-sessions/start", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          mode: "enterprise",
+          provider,
+          role: entRole.trim() || undefined,
+          providerConfig,
+          providerPasswordSecretKey: passwordSecretKey,
+          providerClientSecretKey: clientSecretKey || undefined,
+          scopeAcknowledged: true,
+        }),
+      });
+      sessionId = startRes.session.id;
+      setEntSession(startRes.session);
+      const authRes = await apiFetch<{ session: SecurityAuthSession }>(
+        `/security/auth-sessions/${sessionId}/provider-authenticate`,
+        { method: "POST" }
+      );
+      setEntSession(authRes.session);
+      loadAuthSessions(projectId);
+    } catch (err: any) {
+      setError(err?.message ?? `Failed to authenticate via ${provider}`);
+      if (sessionId) {
+        apiFetch<{ session: SecurityAuthSession }>(`/security/auth-sessions/${sessionId}/status`)
+          .then((res) => setEntSession(res.session))
+          .catch(() => {});
+        loadAuthSessions(projectId);
+      }
+    } finally {
+      setEntStarting(false);
+    }
+  }
+
+  function startAuth0Auth() {
+    if (!auth0Domain.trim() || !auth0ClientId.trim() || !auth0Username.trim()) {
+      setError("Auth0 domain, client ID, and username are required.");
+      return;
+    }
+    startProviderAuth(
+      "auth0",
+      {
+        domain: auth0Domain.trim(),
+        clientId: auth0ClientId.trim(),
+        audience: auth0Audience.trim() || undefined,
+        username: auth0Username.trim(),
+      },
+      auth0PasswordSecretKey,
+      auth0ClientSecretKey || undefined
+    );
+  }
+
+  function startFirebaseAuth() {
+    if (!fbApiKey.trim() || !fbEmail.trim()) {
+      setError("Firebase API key and email are required.");
+      return;
+    }
+    startProviderAuth("firebase", { apiKey: fbApiKey.trim(), username: fbEmail.trim() }, fbPasswordSecretKey);
+  }
+
+  function startCognitoAuth() {
+    if (!cogRegion.trim() || !cogClientId.trim() || !cogUsername.trim()) {
+      setError("Cognito region, client ID, and username are required.");
+      return;
+    }
+    startProviderAuth(
+      "cognito",
+      { region: cogRegion.trim(), clientId: cogClientId.trim(), username: cogUsername.trim() },
+      cogPasswordSecretKey,
+      cogClientSecretKey || undefined
+    );
+  }
+
+  function startClerkAuth() {
+    if (!clerkFrontendApiUrl.trim() || !clerkIdentifier.trim()) {
+      setError("Clerk Frontend API URL and identifier (email/username) are required.");
+      return;
+    }
+    startProviderAuth(
+      "clerk",
+      {
+        frontendApiUrl: clerkFrontendApiUrl.trim(),
+        username: clerkIdentifier.trim(),
+        origin: clerkOrigin.trim() || undefined,
+      },
+      clerkPasswordSecretKey
+    );
+  }
+
+  const applyRiskMode = (mode: (typeof RISK_MODES)[number]["value"]) => {
+    const config = RISK_MODES.find((m) => m.value === mode);
+    if (!config) return;
+    setRiskMode(mode);
+    setSafeMode(config.safeMode);
+    setEnableActive(config.enableActive);
+    if (mode === "deep") setScanDepth("deep");
+  };
+
+  const applyScanIntent = (intent: (typeof SCAN_INTENTS)[number]["value"]) => {
+    const config = SCAN_INTENTS.find((i) => i.value === intent);
+    if (!config) return;
+    setScanIntent(intent);
+    setOwaspCategories([...config.categories]);
+    setSetupDirty(true);
+  };
+
+  const toggleOwaspCategory = (category: string) => {
+    setOwaspCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
+    );
+    setSetupDirty(true);
   };
 
   const syncAuthProfiles = (next: AuthProfileConfig[]) => {
@@ -568,8 +1248,8 @@ export default function SecurityScanPage() {
       authProfiles: normalizedAuthProfiles,
       apiFixtures: normalizedApiFixtures,
       expectedControls: splitList(expectedControls),
-      owaspCategories: [],
-      complianceFrameworks: ["OWASP ASVS", "SOC 2", "ISO 27001"],
+      owaspCategories,
+      complianceFrameworks,
     };
   };
 
@@ -604,6 +1284,7 @@ export default function SecurityScanPage() {
           ? res.setup.expectedControls.join(",")
           : DEFAULT_EXPECTED_CONTROLS
       );
+      setOwaspCategories(res.setup.owaspCategories || []);
       setSetupDirty(false);
     } catch (err: any) {
       setError(err?.message ?? "Failed to save security test setup");
@@ -630,7 +1311,7 @@ export default function SecurityScanPage() {
       apiFixtures: [] as any[],
       expectedControls: [] as string[],
       owaspCategories: [] as string[],
-      complianceFrameworks: ["OWASP ASVS", "SOC 2", "ISO 27001"],
+      complianceFrameworks,
     };
     try {
       if (!useSavedSetup) setup = parseSetupEditors();
@@ -639,8 +1320,8 @@ export default function SecurityScanPage() {
           authProfiles,
           apiFixtures,
           expectedControls: splitList(expectedControls),
-          owaspCategories: [],
-          complianceFrameworks: ["OWASP ASVS", "SOC 2", "ISO 27001"],
+          owaspCategories,
+          complianceFrameworks,
         };
       }
     } catch (err: any) {
@@ -653,6 +1334,8 @@ export default function SecurityScanPage() {
     const scanContext = {
       projectId,
       baseUrl: baseUrl.trim(),
+      authSessionId: selectedAuthSessionId || undefined,
+      apiSpecId: selectedApiSpecId || undefined,
       allowedHosts: allowedHosts
         .split(",")
         .map((h) => h.trim())
@@ -755,6 +1438,740 @@ export default function SecurityScanPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-slate-800">Authentication mode</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setAuthMode("enterprise")}
+              className={`text-left rounded-md border p-4 transition ${
+                authMode === "enterprise" ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                Enterprise / My Application
+              </div>
+              <p className="mt-1 text-xs text-slate-600">
+                Use test accounts, provider integration, stored token, or safe bypass.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode("bug_bounty")}
+              className={`text-left rounded-md border p-4 transition ${
+                authMode === "bug_bounty" ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <Bug className="h-4 w-4 text-amber-600" />
+                Bug Bounty / External Target
+              </div>
+              <p className="mt-1 text-xs text-slate-600">
+                Open browser login, complete MFA manually, then scan using that session.
+              </p>
+            </button>
+          </div>
+
+          {authMode === "bug_bounty" && (
+            <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4">
+              <div className="text-sm font-semibold text-amber-800">Bug Bounty session capture</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBbInputMode("live")}
+                  className={`rounded-md border px-3 py-1 text-xs font-medium ${
+                    bbInputMode === "live"
+                      ? "border-amber-500 bg-amber-100 text-amber-900"
+                      : "border-slate-300 bg-white text-slate-600 hover:border-slate-400"
+                  }`}
+                >
+                  Live browser capture
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBbInputMode("paste")}
+                  className={`rounded-md border px-3 py-1 text-xs font-medium ${
+                    bbInputMode === "paste"
+                      ? "border-amber-500 bg-amber-100 text-amber-900"
+                      : "border-slate-300 bg-white text-slate-600 hover:border-slate-400"
+                  }`}
+                >
+                  Paste cookies from browser
+                </button>
+              </div>
+
+              {bbInputMode === "paste" && (
+                <div className="space-y-3">
+                  <p className="text-xs text-amber-800">
+                    If the target blocks automated browsers (Cloudflare Bot Management, etc.), log in manually
+                    in your real browser, copy your session cookies from DevTools, and paste them here.
+                    <br />
+                    <strong>How to copy:</strong> F12 → Application → Cookies → select your target domain → copy the
+                    Name=Value pairs, or open the Network tab, click any request, and copy the full Cookie header.
+                  </p>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Target base URL (for cookie scoping)</label>
+                    <Input
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      placeholder="https://app.chime.com"
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Session cookies</label>
+                    <textarea
+                      value={bbPastedCookies}
+                      onChange={(e) => setBbPastedCookies(e.target.value)}
+                      placeholder="session_id=abc123; csrf_token=xyz; ..."
+                      rows={4}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Paste the raw Cookie header value — multiple cookies separated by semicolons.
+                    </p>
+                  </div>
+                  {!bbSession && (
+                    <Button
+                      type="button"
+                      onClick={startBugBountySession}
+                      disabled={bbStarting || !bbScopeAck}
+                      className="bg-amber-600 text-white hover:bg-amber-700"
+                    >
+                      {bbStarting ? "Creating session..." : "Create session record"}
+                    </Button>
+                  )}
+                  {bbSession && (
+                    <Button
+                      type="button"
+                      onClick={importPastedCookies}
+                      disabled={bbPasteImporting || !bbPastedCookies.trim()}
+                      className="bg-amber-600 text-white hover:bg-amber-700"
+                    >
+                      {bbPasteImporting ? "Importing..." : "Import cookies → capture session"}
+                    </Button>
+                  )}
+                  <label className="flex items-start gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={bbScopeAck}
+                      onChange={(e) => setBbScopeAck(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>I confirm this target is in-scope for my bug bounty program and I'm authorized to test it.</span>
+                  </label>
+                  {bbSession && (
+                    <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                      <div className="font-semibold uppercase tracking-wide text-slate-500">Session status</div>
+                      <div className="mt-1">{BB_STATUS_LABEL[bbSession.status] ?? bbSession.status}</div>
+                      {bbSession.error && <div className="mt-1 text-rose-600">{bbSession.error}</div>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bbInputMode === "live" && (
+              <>
+              <p className="text-xs text-amber-800">
+                Starts a real, server-side browser pointed at the login URL below. Open the live view to log in
+                (including MFA) yourself — once you're authenticated, the session is captured automatically and
+                reused for the scan.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700">Login URL</label>
+                  <Input
+                    value={bbLoginUrl}
+                    onChange={(e) => setBbLoginUrl(e.target.value)}
+                    placeholder="https://target.com/login"
+                    className="bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700">Target base URL</label>
+                  <Input
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://target.com"
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">
+                  Outbound proxy <span className="text-slate-400 font-normal">(optional)</span>
+                </label>
+                <Input
+                  value={bbProxyUrl}
+                  onChange={(e) => setBbProxyUrl(e.target.value)}
+                  placeholder="http://127.0.0.1:8080"
+                  className="bg-white"
+                />
+                <p className="text-xs text-slate-500">
+                  Route the live browser through a proxy — useful when the target blocks
+                  server/datacenter IPs but allows your local machine's IP. Point this at your
+                  local Burp listener (http://127.0.0.1:8080) or a residential proxy service.
+                </p>
+              </div>
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={bbScopeAck}
+                  onChange={(e) => setBbScopeAck(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I confirm this target is in-scope for my bug bounty program and I'm authorized to test it.</span>
+              </label>
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={bbAllowInteractiveChallengeHandling}
+                  onChange={(e) => setBbAllowInteractiveChallengeHandling(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Allow interactive challenge handling in the live view (sends IP-trust headers such as
+                  X-Forwarded-For, to test IP-reputation misconfigurations). Only use this if testing IP-trust
+                  handling is explicitly in scope for your engagement.
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={startBugBountySession}
+                  disabled={bbStarting}
+                  className="bg-amber-600 text-white hover:bg-amber-700"
+                >
+                  {bbStarting ? "Starting..." : "Start session capture"}
+                </Button>
+                {bbSession && (bbSession.status === "expired" || bbSession.status === "failed") && (
+                  <Button type="button" variant="outline" onClick={refreshBugBountySession}>
+                    <RefreshCw className="mr-1 h-4 w-4" /> Re-authenticate
+                  </Button>
+                )}
+                {bbSession && !["captured", "authenticated"].includes(bbSession.status) && !liveViewOpen && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={openLiveView}
+                    disabled={liveViewConnecting}
+                  >
+                    {liveViewConnecting ? "Connecting..." : "Watch live & log in"}
+                  </Button>
+                )}
+                {liveViewOpen && (
+                  <Button type="button" variant="outline" onClick={closeLiveView}>
+                    Close live view
+                  </Button>
+                )}
+              </div>
+              {bbSession && (
+                <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                  <div className="font-semibold uppercase tracking-wide text-slate-500">Session status</div>
+                  <div className="mt-1">{BB_STATUS_LABEL[bbSession.status] ?? bbSession.status}</div>
+                  {bbSession.error && <div className="mt-1 text-rose-600">{bbSession.error}</div>}
+                </div>
+              )}
+              {liveViewOpen && (
+                <div className="space-y-2 rounded border border-amber-300 bg-black/5 p-3">
+                  <p className="text-xs text-amber-800">
+                    Log in (and complete MFA) inside this live view. Click into it first, then type and click as
+                    normal. When you're authenticated, click "I'm logged in" to capture the session.
+                  </p>
+                  <div
+                    className="relative w-full overflow-hidden rounded border border-slate-300 bg-slate-900"
+                    style={{ aspectRatio: `${LIVE_VIEWPORT.width} / ${LIVE_VIEWPORT.height}` }}
+                    tabIndex={0}
+                    onMouseMove={(e) => sendLiveInput({ type: "mouse", event: "move", ...liveCoords(e) })}
+                    onMouseDown={(e) => sendLiveInput({ type: "mouse", event: "down", ...liveCoords(e) })}
+                    onMouseUp={(e) => sendLiveInput({ type: "mouse", event: "up", ...liveCoords(e) })}
+                    onWheel={(e) =>
+                      sendLiveInput({ type: "mouse", event: "wheel", ...liveCoords(e), deltaX: e.deltaX, deltaY: e.deltaY })
+                    }
+                    onKeyDown={(e) => {
+                      if (["Tab"].includes(e.key)) e.preventDefault();
+                      sendLiveInput({ type: "key", event: "down", key: e.key });
+                    }}
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
+                    <img
+                      ref={liveImgRef}
+                      alt="Live session view"
+                      draggable={false}
+                      className="h-full w-full select-none"
+                    />
+                  </div>
+                  <Button type="button" onClick={captureLiveSession} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                    I'm logged in — capture session
+                  </Button>
+                </div>
+              )}
+              </>
+              )}
+            </div>
+          )}
+
+          {authMode === "enterprise" && (
+            <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50 p-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Authentication method</label>
+                <Select value={entMethod} onValueChange={(v) => setEntMethod(v as typeof entMethod)}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bypass">Test-only bypass endpoint</SelectItem>
+                    <SelectItem value="auth0">Auth0 (test account)</SelectItem>
+                    <SelectItem value="firebase">Firebase Authentication (test account)</SelectItem>
+                    <SelectItem value="cognito">AWS Cognito (test account)</SelectItem>
+                    <SelectItem value="clerk">Clerk (test account)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {entMethod === "bypass" && (
+                <>
+                  <p className="text-xs text-blue-800">
+                    Calls a <code>POST /testmind/auth/session</code> endpoint your app implements for
+                    non-production environments only (guarded by <code>TESTMIND_AUTH_BYPASS_ENABLED</code> + a
+                    shared secret). On success, the returned session cookie is captured and reused for the scan —
+                    no browser automation or real credentials needed.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Target base URL</label>
+                      <Input
+                        value={baseUrl}
+                        onChange={(e) => setBaseUrl(e.target.value)}
+                        placeholder="https://staging.myapp.com"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Role to request</label>
+                      <Input
+                        value={entRole}
+                        onChange={(e) => setEntRole(e.target.value)}
+                        placeholder="admin"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Shared secret (project secret)</label>
+                    <Select value={entBypassSecretKey} onValueChange={setEntBypassSecretKey}>
+                      <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                        <SelectValue placeholder={secrets.length ? "Select secret" : "No secrets — add one first"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {secrets.map((secret) => (
+                          <SelectItem key={secret.id} value={secret.key}>
+                            {secret.key}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500">
+                      Must match the secret value your app checks against <code>TESTMIND_SHARED_SECRET</code> for
+                      the bypass endpoint. Manage project secrets on the Integrations page.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={startEnterpriseBypass}
+                    disabled={entStarting}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {entStarting ? "Authenticating..." : "Authenticate via bypass endpoint"}
+                  </Button>
+                </>
+              )}
+
+              {entMethod === "auth0" && (
+                <>
+                  <p className="text-xs text-blue-800">
+                    Signs in a test account directly against Auth0's token endpoint (Resource Owner Password
+                    Grant) — no bypass endpoint or browser automation needed. Returns a real access token used as
+                    a Bearer credential for the scan.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Auth0 domain</label>
+                      <Input
+                        value={auth0Domain}
+                        onChange={(e) => setAuth0Domain(e.target.value)}
+                        placeholder="your-tenant.us.auth0.com"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Client ID</label>
+                      <Input
+                        value={auth0ClientId}
+                        onChange={(e) => setAuth0ClientId(e.target.value)}
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Audience (optional)</label>
+                      <Input
+                        value={auth0Audience}
+                        onChange={(e) => setAuth0Audience(e.target.value)}
+                        placeholder="https://your-api-identifier"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Test account username/email</label>
+                      <Input
+                        value={auth0Username}
+                        onChange={(e) => setAuth0Username(e.target.value)}
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Role to request (label only)</label>
+                      <Input
+                        value={entRole}
+                        onChange={(e) => setEntRole(e.target.value)}
+                        placeholder="admin"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Password (project secret)</label>
+                      <Select value={auth0PasswordSecretKey} onValueChange={setAuth0PasswordSecretKey}>
+                        <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                          <SelectValue placeholder={secrets.length ? "Select secret" : "No secrets"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {secrets.map((secret) => (
+                            <SelectItem key={secret.id} value={secret.key}>
+                              {secret.key}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">
+                        Client secret (optional, confidential clients only)
+                      </label>
+                      <Select value={auth0ClientSecretKey} onValueChange={setAuth0ClientSecretKey}>
+                        <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                          <SelectValue placeholder="None" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {secrets.map((secret) => (
+                            <SelectItem key={secret.id} value={secret.key}>
+                              {secret.key}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={startAuth0Auth}
+                    disabled={entStarting}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {entStarting ? "Authenticating..." : "Authenticate via Auth0"}
+                  </Button>
+                </>
+              )}
+
+              {entMethod === "firebase" && (
+                <>
+                  <p className="text-xs text-blue-800">
+                    Signs in a test account directly against Firebase Authentication's REST API — returns a real
+                    ID token used as a Bearer credential for the scan.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Firebase Web API key</label>
+                      <Input value={fbApiKey} onChange={(e) => setFbApiKey(e.target.value)} className="bg-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Test account email</label>
+                      <Input value={fbEmail} onChange={(e) => setFbEmail(e.target.value)} className="bg-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Role to request (label only)</label>
+                      <Input
+                        value={entRole}
+                        onChange={(e) => setEntRole(e.target.value)}
+                        placeholder="admin"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Password (project secret)</label>
+                    <Select value={fbPasswordSecretKey} onValueChange={setFbPasswordSecretKey}>
+                      <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                        <SelectValue placeholder={secrets.length ? "Select secret" : "No secrets"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {secrets.map((secret) => (
+                          <SelectItem key={secret.id} value={secret.key}>
+                            {secret.key}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={startFirebaseAuth}
+                    disabled={entStarting}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {entStarting ? "Authenticating..." : "Authenticate via Firebase"}
+                  </Button>
+                </>
+              )}
+
+              {entMethod === "cognito" && (
+                <>
+                  <p className="text-xs text-blue-800">
+                    Signs in a test account directly against an AWS Cognito user pool (InitiateAuth,
+                    USER_PASSWORD_AUTH) — returns a real ID token used as a Bearer credential for the scan. The
+                    test account must not require MFA or a forced password change.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">AWS region</label>
+                      <Input
+                        value={cogRegion}
+                        onChange={(e) => setCogRegion(e.target.value)}
+                        placeholder="us-east-1"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">App client ID</label>
+                      <Input value={cogClientId} onChange={(e) => setCogClientId(e.target.value)} className="bg-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Test account username</label>
+                      <Input value={cogUsername} onChange={(e) => setCogUsername(e.target.value)} className="bg-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Role to request (label only)</label>
+                      <Input
+                        value={entRole}
+                        onChange={(e) => setEntRole(e.target.value)}
+                        placeholder="admin"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Password (project secret)</label>
+                      <Select value={cogPasswordSecretKey} onValueChange={setCogPasswordSecretKey}>
+                        <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                          <SelectValue placeholder={secrets.length ? "Select secret" : "No secrets"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {secrets.map((secret) => (
+                            <SelectItem key={secret.id} value={secret.key}>
+                              {secret.key}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">
+                        App client secret (optional, if the client is configured with one)
+                      </label>
+                      <Select value={cogClientSecretKey} onValueChange={setCogClientSecretKey}>
+                        <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                          <SelectValue placeholder="None" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {secrets.map((secret) => (
+                            <SelectItem key={secret.id} value={secret.key}>
+                              {secret.key}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={startCognitoAuth}
+                    disabled={entStarting}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {entStarting ? "Authenticating..." : "Authenticate via Cognito"}
+                  </Button>
+                </>
+              )}
+
+              {entMethod === "clerk" && (
+                <>
+                  <p className="text-xs text-blue-800">
+                    Signs in a test account against Clerk's Frontend API (the same one clerk-js uses) — creates a
+                    sign-in attempt, submits the password as the first factor, then mints a session token. Only
+                    single-factor test accounts (no MFA) are supported.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Clerk Frontend API URL</label>
+                      <Input
+                        value={clerkFrontendApiUrl}
+                        onChange={(e) => setClerkFrontendApiUrl(e.target.value)}
+                        placeholder="https://clerk.yourapp.com"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Origin header (optional)</label>
+                      <Input
+                        value={clerkOrigin}
+                        onChange={(e) => setClerkOrigin(e.target.value)}
+                        placeholder="https://yourapp.com"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Test account email/username</label>
+                      <Input
+                        value={clerkIdentifier}
+                        onChange={(e) => setClerkIdentifier(e.target.value)}
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-700">Role to request (label only)</label>
+                      <Input
+                        value={entRole}
+                        onChange={(e) => setEntRole(e.target.value)}
+                        placeholder="admin"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Password (project secret)</label>
+                    <Select value={clerkPasswordSecretKey} onValueChange={setClerkPasswordSecretKey}>
+                      <SelectTrigger className="bg-white" disabled={!secrets.length}>
+                        <SelectValue placeholder={secrets.length ? "Select secret" : "No secrets"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {secrets.map((secret) => (
+                          <SelectItem key={secret.id} value={secret.key}>
+                            {secret.key}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={startClerkAuth}
+                    disabled={entStarting}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {entStarting ? "Authenticating..." : "Authenticate via Clerk"}
+                  </Button>
+                </>
+              )}
+
+              {entSession && (
+                <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold uppercase tracking-wide text-slate-500">Session status</div>
+                    {(entSession.status === "expired" || entSession.status === "failed") && (
+                      <Button type="button" variant="outline" size="sm" onClick={refreshEnterpriseSession}>
+                        <RefreshCw className="mr-1 h-3 w-3" /> Re-authenticate
+                      </Button>
+                    )}
+                  </div>
+                  <div className="mt-1">{BB_STATUS_LABEL[entSession.status] ?? entSession.status}</div>
+                  {entSession.error && <div className="mt-1 text-rose-600">{entSession.error}</div>}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-slate-800">API specification</CardTitle>
+          <p className="text-sm text-slate-500">
+            Import an OpenAPI / Swagger spec to unlock targeted endpoint testing — auth enforcement on every
+            route, injection probing with correct parameter types, IDOR detection on ID params, and method
+            tampering. This goes deeper than blind scanning.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              value={apiSpecImportUrl}
+              onChange={(e) => setApiSpecImportUrl(e.target.value)}
+              placeholder="https://api.yourapp.com/openapi.json"
+              className="bg-white flex-1"
+            />
+            <Button
+              type="button"
+              onClick={importApiSpec}
+              disabled={apiSpecImporting || !projectId}
+              className="shrink-0"
+            >
+              {apiSpecImporting ? "Importing…" : "Import spec"}
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500">
+            Accepts OpenAPI 3.x or Swagger 2.0 (JSON). Paste directly in Configure Scan below if you have
+            the JSON already.
+          </p>
+          {apiSpecs.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-slate-600">Imported specs</div>
+              {apiSpecs.map((spec) => (
+                <div
+                  key={spec.id}
+                  className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-xs"
+                >
+                  <div>
+                    <span className="font-medium text-slate-800">{spec.title}</span>
+                    {spec.version && <span className="ml-1 text-slate-400">v{spec.version}</span>}
+                    <span className="ml-2 text-slate-500">{spec.endpointCount} endpoints</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">{new Date(spec.createdAt).toLocaleDateString()}</span>
+                    <button
+                      type="button"
+                      className="text-rose-500 hover:text-rose-700 text-xs"
+                      onClick={() =>
+                        apiFetch(`/security/api-specs/${spec.id}`, { method: "DELETE" })
+                          .then(() => loadApiSpecs(projectId))
+                          .catch(() => {})
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-slate-800">Configure scan</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -783,6 +2200,59 @@ export default function SecurityScanPage() {
                 className="bg-white"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">
+              Captured auth session <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <Select
+              value={selectedAuthSessionId || "__none__"}
+              onValueChange={(v) => setSelectedAuthSessionId(v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger className="bg-white">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {usableAuthSessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.mode === "bug_bounty" ? "Bug Bounty" : "Enterprise"} — {s.role || "no role"} —{" "}
+                    {new Date(s.createdAt).toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              Use a captured/authenticated session (from the Authentication mode card above) for this scan's
+              requests, instead of (or in addition to) the auth profiles below.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">
+              API specification <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <Select
+              value={selectedApiSpecId || "__none__"}
+              onValueChange={(v) => setSelectedApiSpecId(v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger className="bg-white">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {apiSpecs.map((spec) => (
+                  <SelectItem key={spec.id} value={spec.id}>
+                    {spec.title} — {spec.endpointCount} endpoints
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              Select an imported OpenAPI spec to run targeted endpoint-level checks (auth enforcement,
+              injection, IDOR detection) on top of the standard scan.
+            </p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -849,25 +2319,128 @@ export default function SecurityScanPage() {
 
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Active checks</label>
-              <div className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={enableActive}
-                  onChange={(e) => setEnableActive(e.target.checked)}
-                />
-                <span>Allow limited active checks (bounded input mutation and redirect probes)</span>
-              </div>
+              <label className="text-sm font-medium text-slate-700">Scan intent</label>
+              <Select value={scanIntent} onValueChange={(v) => applyScanIntent(v as typeof scanIntent)}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCAN_INTENTS.map((intent) => (
+                    <SelectItem key={intent.value} value={intent.value}>
+                      {intent.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Applies a starting OWASP category set below — adjust freely after.</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Safe mode</label>
-              <div className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={safeMode}
-                  onChange={(e) => setSafeMode(e.target.checked)}
-                />
-                <span>Use non-destructive authorized validation only</span>
+              <label className="text-sm font-medium text-slate-700">Risk mode</label>
+              <Select value={riskMode} onValueChange={(v) => applyRiskMode(v as typeof riskMode)}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RISK_MODES.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                {RISK_MODES.find((m) => m.value === riskMode)?.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">OWASP coverage selection</div>
+                <p className="text-xs text-slate-500">
+                  Findings are mapped against the categories selected here. {owaspCategories.length} selected.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setOwaspCategories([...ALL_WEB_CATEGORIES, ...ALL_API_CATEGORIES]);
+                    setSetupDirty(true);
+                  }}
+                >
+                  Select all
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setOwaspCategories([]);
+                    setSetupDirty(true);
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  OWASP Web Top 10
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {OWASP_WEB_TOP_10.map((category) => {
+                    const checked = owaspCategories.includes(category.value);
+                    return (
+                      <label
+                        key={category.value}
+                        className={`inline-flex items-center gap-2 rounded border px-2 py-1 text-xs ${
+                          checked
+                            ? "border-blue-200 bg-blue-50 text-blue-800"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOwaspCategory(category.value)}
+                        />
+                        <span>{category.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  OWASP API Top 10
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {OWASP_API_TOP_10.map((category) => {
+                    const checked = owaspCategories.includes(category.value);
+                    return (
+                      <label
+                        key={category.value}
+                        className={`inline-flex items-center gap-2 rounded border px-2 py-1 text-xs ${
+                          checked
+                            ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOwaspCategory(category.value)}
+                        />
+                        <span>{category.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -1089,7 +2662,7 @@ export default function SecurityScanPage() {
             )}
 
             {contractSuggestions.length > 0 && (
-              <div className="space-y-2 rounded-md border border-blue-100 bg-blue-50/60 p-3">
+              <div className="space-y-2 rounded-md border border-blue-100 bg-blue-50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-xs font-semibold uppercase tracking-wide text-blue-800">
                     Suggested contracts
@@ -1436,10 +3009,67 @@ export default function SecurityScanPage() {
           <CardContent className="space-y-3 text-sm">
             <div className="flex flex-wrap gap-3 items-center">
               <span className="font-semibold capitalize">Status: {job.status}</span>
-              {job.phase && <span className="text-slate-600">Phase: {job.phase}</span>}
+              {job.phase && (
+                <span className="text-slate-600">
+                  Phase:{" "}
+                  {{
+                    recon: "Reconnaissance",
+                    static_analysis: "Static analysis",
+                    dependency: "Dependency scan",
+                    dynamic: "Dynamic probing",
+                    intelligent_validation: "Access control validation",
+                    graphql_audit: "GraphQL audit",
+                    openapi_scan: "OpenAPI endpoint scan",
+                    js_analysis: "JavaScript bundle analysis",
+                    advanced_analysis: "JWT · IDOR · Race conditions · Nuclei",
+                    business_logic_cors: "Business logic · CORS audit",
+                    mobile_scan: "Mobile security · Performance baseline",
+                    anomaly_baseline: "Anomaly baseline",
+                  }[job.phase] ?? job.phase}
+                </span>
+              )}
               <span className="text-xs text-slate-500">
                 Updated {new Date(job.updatedAt).toLocaleString()}
               </span>
+              {job.status === "completed" && (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const url = apiUrl(`/security/scans/${job.id}/compliance-report?format=html`);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `compliance-report-${job.id.slice(-8)}.html`;
+                      a.click();
+                    }}
+                  >
+                    Download HTML report
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const res = await apiFetch<{ report: any }>(`/security/scans/${job.id}/compliance-report`);
+                        const blob = new Blob([JSON.stringify(res.report, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `compliance-report-${job.id.slice(-8)}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (err: any) {
+                        setError(err?.message ?? "Failed to download compliance report");
+                      }
+                    }}
+                  >
+                    Download JSON
+                  </Button>
+                </div>
+              )}
               {job.error && <span className="text-rose-600">Error: {job.error}</span>}
             </div>
             {job.summary?.counts && (
@@ -1630,6 +3260,56 @@ export default function SecurityScanPage() {
                 </div>
               </div>
             )}
+            {accessControlMatrix && (
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-800">Access control coverage</div>
+                <p className="text-xs text-slate-500">
+                  Which roles this scan actually had a session for, cross-referenced against confirmed findings.
+                  "Covered" means a session was available and no vulnerability of that class was found for that
+                  role — it isn't a guarantee every code path was exercised.
+                </p>
+                <div className="overflow-x-auto rounded-md border border-slate-200">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-slate-600">
+                        <th className="p-2 font-medium">Category</th>
+                        {accessControlMatrix.roles.map((role) => (
+                          <th key={role} className="p-2 font-medium capitalize">
+                            {role}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accessControlMatrix.rows.map((row) => (
+                        <tr key={row.vulnerabilityClass} className="border-t border-slate-200">
+                          <td className="p-2">
+                            <div className="font-medium text-slate-800">{row.label}</div>
+                            <div className="text-slate-500">{row.owaspApiCategory}</div>
+                          </td>
+                          {accessControlMatrix.roles.map((role) => {
+                            const status = row.cells.get(role);
+                            return (
+                              <td key={role} className="p-2">
+                                <span
+                                  className={
+                                    status === "vulnerable"
+                                      ? "rounded bg-rose-100 px-2 py-1 text-rose-800"
+                                      : "rounded bg-emerald-100 px-2 py-1 text-emerald-800"
+                                  }
+                                >
+                                  {status === "vulnerable" ? "Vulnerable" : "No issues found"}
+                                </span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {job.findings && job.findings.length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-800">Findings</div>
@@ -1782,6 +3462,28 @@ export default function SecurityScanPage() {
                 disabled={findingLoading.test}
               >
                 {findingLoading.test ? "Generating..." : "Generate regression test"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const res = await apiFetch<{ report: { markdown: string; title: string; cvssScore: number; severity: string } }>(
+                      `/security/findings/${selectedFinding.id}/bug-bounty-report`,
+                      { method: "POST", body: JSON.stringify({ format: "json" }) }
+                    );
+                    const blob = new Blob([res.report.markdown], { type: "text/markdown" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `bug-bounty-report-${selectedFinding.id.slice(-8)}.md`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (err: any) {
+                    setError(err?.message ?? "Failed to generate bug bounty report");
+                  }
+                }}
+              >
+                Generate bug bounty report
               </Button>
             </div>
             {(findingExplain || findingTest) && (

@@ -35,6 +35,13 @@ enum PlanTier {
   team
 }
 
+enum OrgRole {
+  owner
+  admin
+  member
+  viewer
+}
+
 enum TestResultStatus {
   passed
   failed
@@ -107,6 +114,35 @@ model User {
   createdAt        DateTime          @default(now())
   AgentSession     AgentSession[]
   jiraIntegrations JiraIntegration[]
+  orgMemberships   OrganizationMember[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  plan      PlanTier @default(free)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  OrganizationMember[]
+  projects Project[]
+}
+
+model OrganizationMember {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        OrgRole      @default(member)
+  invitedBy   String?
+  inviteEmail String?
+  joinedAt    DateTime     @default(now())
+
+  @@unique([orgId, userId])
+  @@index([userId])
 }
 
 model Project {
@@ -116,6 +152,8 @@ model Project {
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id])
   plan      PlanTier @default(free)
+  orgId     String?
+  org       Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   sharedSteps Json?   @default("{}")
 
@@ -134,6 +172,8 @@ model Project {
   workflows        Workflow[]
   securityAuthSessions SecurityAuthSession[]
   apiSpecs             ApiSpec[]
+  authIntegrations     AuthIntegration[]
+  mobileConfigs        MobileConfig[]
 }
 
 model GitAccount {
@@ -812,4 +852,46 @@ model ResearchProgram {
   updatedAt     DateTime @updatedAt
 
   @@index([userId])
+}
+
+// ── Auth integrations registry ────────────────────────────────────────────────
+// Named, reusable auth provider configurations. Storing these separately means users
+// don't have to re-enter the same Auth0 domain/clientId/audience on every scan config.
+// Secrets (passwords, client secrets) are NOT stored here — they stay in ProjectSecret.
+
+model AuthIntegration {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  provider    String   // auth0 | firebase | cognito | clerk | custom
+  config      Json     // non-secret fields: domain, clientId, audience, region, frontendApiUrl, etc.
+  passwordSecretKey    String? // ProjectSecret.key holding test-account password
+  clientSecretKey      String? // ProjectSecret.key holding OAuth client secret
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+// ── Mobile testing configuration ──────────────────────────────────────────────
+
+model MobileConfig {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name         String
+  platform     String   // android | ios
+  appiumUrl    String   // Appium server URL
+  appPackage   String?  // Android: app package name
+  appActivity  String?  // Android: main activity
+  bundleId     String?  // iOS: bundle identifier
+  deviceName   String?
+  platformVersion String?
+  proxyPort    Int?     // intercept traffic via TestMind proxy on this local port
+  capabilities Json?    // additional Appium capabilities
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([projectId])
 }

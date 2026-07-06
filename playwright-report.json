@@ -10,17 +10,42 @@
     "grep": {},
     "grepInvert": null,
     "maxFailures": 0,
-    "metadata": {},
+    "metadata": {
+      "actualWorkers": 6
+    },
     "preserveOutput": "always",
     "projects": [
       {
         "outputDir": "C:/Users/gabby/TestMind-main/TestMind-main/test-results",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {},
+        "metadata": {
+          "actualWorkers": 6
+        },
+        "id": "auth-setup",
+        "name": "auth-setup",
+        "testDir": "C:/Users/gabby/TestMind-main/TestMind-main/tm-runner",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/dist/**",
+          "**/build/**",
+          "**/.*/**"
+        ],
+        "testMatch": [
+          "/auth\\.setup\\.(ts|js|mjs)/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/gabby/TestMind-main/TestMind-main/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 6
+        },
         "id": "generated",
         "name": "generated",
-        "testDir": "C:/Users/gabby/TestMind-main/TestMind-main/testmind-generated/playwright-ts-user_3BjvLDIaa0a3fTwE3y1eAo7SU2M/cmnfigi9300017k6k3o57hjde",
+        "testDir": "C:/Users/gabby/TestMind-main/TestMind-main/testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh",
         "testIgnore": [
           "**/node_modules/**",
           "**/dist/**",
@@ -66,19 +91,609 @@
     "workers": 6,
     "webServer": null
   },
-  "suites": [],
-  "errors": [
+  "suites": [
     {
-      "message": "Error: No tests found.\nMake sure that arguments are regular expressions matching test files.\nYou may need to escape symbols like \"$\" or \"*\" and quote the arguments.",
-      "stack": "Error: No tests found.\nMake sure that arguments are regular expressions matching test files.\nYou may need to escape symbols like \"$\" or \"*\" and quote the arguments."
+      "title": "tm-runner\\auth.setup.mjs",
+      "file": "tm-runner/auth.setup.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "auth storage",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "auth-setup",
+              "projectName": "auth-setup",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 688,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-29T16:13:28.446Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "8e28a9ef0354a572fae2-24aae2d0ed950a6b5630",
+          "file": "tm-runner/auth.setup.mjs",
+          "line": 14,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts",
+      "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "Page loads: /case-type-selection",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "parentSuite",
+                  "description": "Testmind Generated Suite"
+                },
+                {
+                  "type": "suite",
+                  "description": "/case-type-selection"
+                },
+                {
+                  "type": "story",
+                  "description": "Page loads: /case-type-selection"
+                },
+                {
+                  "type": "parameter",
+                  "description": "page=/case-type-selection"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "generated",
+              "projectName": "generated",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17888,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "1. Navigate to https://www.justicepathlaw.com/case-type-selection",
+                      "duration": 16072
+                    },
+                    {
+                      "title": "2. Ensure text \"JusticePath — Accessible Legal Help\" is visible",
+                      "duration": 14
+                    }
+                  ],
+                  "startTime": "2026-06-29T16:13:34.015Z",
+                  "annotations": [
+                    {
+                      "type": "parentSuite",
+                      "description": "Testmind Generated Suite"
+                    },
+                    {
+                      "type": "suite",
+                      "description": "/case-type-selection"
+                    },
+                    {
+                      "type": "story",
+                      "description": "Page loads: /case-type-selection"
+                    },
+                    {
+                      "type": "parameter",
+                      "description": "page=/case-type-selection"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "fa112b3ec6c947d6f162-527b99d8372cb6c7e8e3",
+          "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+          "line": 402,
+          "column": 5
+        },
+        {
+          "title": "Navigate /case-type-selection → /",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "parentSuite",
+                  "description": "Testmind Generated Suite"
+                },
+                {
+                  "type": "suite",
+                  "description": "/case-type-selection"
+                },
+                {
+                  "type": "story",
+                  "description": "Navigate /case-type-selection → /"
+                },
+                {
+                  "type": "parameter",
+                  "description": "page=/case-type-selection"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "generated",
+              "projectName": "generated",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 1,
+                  "status": "timedOut",
+                  "duration": 30404,
+                  "error": {
+                    "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                    "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                  },
+                  "errors": [
+                    {
+                      "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                    },
+                    {
+                      "location": {
+                        "file": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts",
+                        "column": 28,
+                        "line": 474
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/^(?:https?:\\/\\/[^/]+)?\\/case-type-selection(?:$|[?#/])/\u001b[39m\nReceived string:  \u001b[31m\"https://justicepathlaw.com/\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 15000ms\u001b[22m\n\u001b[2m    17 × unexpected value \"https://justicepathlaw.com/\"\u001b[22m\n\n\n  472 |       }\n  473 |       if (rawText.trim().toLowerCase() === \"page\") {\n> 474 |         await expect(page).toHaveURL(pathRegex(\"/case-type-selection\"), { timeout: 15000 });\n      |                            ^\n  475 |         await ensurePageIdentity(page, \"/case-type-selection\");\n  476 |         return;\n  477 |       }\n    at C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts:474:28\n    at C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts:465:14"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "1. Navigate to https://www.justicepathlaw.com/case-type-selection",
+                      "duration": 14410
+                    },
+                    {
+                      "title": "2. Navigate to /",
+                      "duration": 611
+                    },
+                    {
+                      "title": "3. Ensure text \"Page\" is visible",
+                      "duration": 14212,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/^(?:https?:\\/\\/[^/]+)?\\/case-type-selection(?:$|[?#/])/\u001b[39m\nReceived string:  \u001b[31m\"https://justicepathlaw.com/\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 15000ms\u001b[22m\n\u001b[2m    17 × unexpected value \"https://justicepathlaw.com/\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/^(?:https?:\\/\\/[^/]+)?\\/case-type-selection(?:$|[?#/])/\u001b[39m\nReceived string:  \u001b[31m\"https://justicepathlaw.com/\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 15000ms\u001b[22m\n\u001b[2m    17 × unexpected value \"https://justicepathlaw.com/\"\u001b[22m\n\n    at C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts:474:28\n    at C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts:465:14",
+                        "location": {
+                          "file": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts",
+                          "column": 28,
+                          "line": 474
+                        },
+                        "snippet": "  472 |       }\n  473 |       if (rawText.trim().toLowerCase() === \"page\") {\n> 474 |         await expect(page).toHaveURL(pathRegex(\"/case-type-selection\"), { timeout: 15000 });\n      |                            ^\n  475 |         await ensurePageIdentity(page, \"/case-type-selection\");\n  476 |         return;\n  477 |       }"
+                      }
+                    }
+                  ],
+                  "startTime": "2026-06-29T16:13:34.025Z",
+                  "annotations": [
+                    {
+                      "type": "parentSuite",
+                      "description": "Testmind Generated Suite"
+                    },
+                    {
+                      "type": "suite",
+                      "description": "/case-type-selection"
+                    },
+                    {
+                      "type": "story",
+                      "description": "Navigate /case-type-selection → /"
+                    },
+                    {
+                      "type": "parameter",
+                      "description": "page=/case-type-selection"
+                    }
+                  ],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\test-results\\cmli5yu4a00027kgkidnny7jh--82dec-gate-case-type-selection-→--generated\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\test-results\\cmli5yu4a00027kgkidnny7jh--82dec-gate-case-type-selection-→--generated\\error-context.md"
+                    }
+                  ]
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "fa112b3ec6c947d6f162-46f2b43023cde5e20c04",
+          "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+          "line": 447,
+          "column": 5
+        },
+        {
+          "title": "Navigate /case-type-selection → /live-chat",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "parentSuite",
+                  "description": "Testmind Generated Suite"
+                },
+                {
+                  "type": "suite",
+                  "description": "/case-type-selection"
+                },
+                {
+                  "type": "story",
+                  "description": "Navigate /case-type-selection → /live-chat"
+                },
+                {
+                  "type": "parameter",
+                  "description": "page=/case-type-selection"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "generated",
+              "projectName": "generated",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 18185,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "1. Navigate to https://www.justicepathlaw.com/case-type-selection",
+                      "duration": 16276
+                    },
+                    {
+                      "title": "2. Navigate to /live-chat",
+                      "duration": 388
+                    },
+                    {
+                      "title": "3. Ensure text \"live-chat\" is visible",
+                      "duration": 226
+                    }
+                  ],
+                  "startTime": "2026-06-29T16:13:34.022Z",
+                  "annotations": [
+                    {
+                      "type": "parentSuite",
+                      "description": "Testmind Generated Suite"
+                    },
+                    {
+                      "type": "suite",
+                      "description": "/case-type-selection"
+                    },
+                    {
+                      "type": "story",
+                      "description": "Navigate /case-type-selection → /live-chat"
+                    },
+                    {
+                      "type": "parameter",
+                      "description": "page=/case-type-selection"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "fa112b3ec6c947d6f162-19d9e4cb2d4636016426",
+          "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+          "line": 500,
+          "column": 5
+        },
+        {
+          "title": "Navigate /case-type-selection → /pricing",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "parentSuite",
+                  "description": "Testmind Generated Suite"
+                },
+                {
+                  "type": "suite",
+                  "description": "/case-type-selection"
+                },
+                {
+                  "type": "story",
+                  "description": "Navigate /case-type-selection → /pricing"
+                },
+                {
+                  "type": "parameter",
+                  "description": "page=/case-type-selection"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "generated",
+              "projectName": "generated",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 16538,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "1. Navigate to https://www.justicepathlaw.com/case-type-selection",
+                      "duration": 14090
+                    },
+                    {
+                      "title": "2. Navigate to /pricing",
+                      "duration": 591
+                    },
+                    {
+                      "title": "3. Ensure text \"pricing\" is visible",
+                      "duration": 205
+                    }
+                  ],
+                  "startTime": "2026-06-29T16:13:34.054Z",
+                  "annotations": [
+                    {
+                      "type": "parentSuite",
+                      "description": "Testmind Generated Suite"
+                    },
+                    {
+                      "type": "suite",
+                      "description": "/case-type-selection"
+                    },
+                    {
+                      "type": "story",
+                      "description": "Navigate /case-type-selection → /pricing"
+                    },
+                    {
+                      "type": "parameter",
+                      "description": "page=/case-type-selection"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "fa112b3ec6c947d6f162-9cbe6a34714b1dcb3547",
+          "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+          "line": 553,
+          "column": 5
+        },
+        {
+          "title": "Navigate /case-type-selection → /login",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "parentSuite",
+                  "description": "Testmind Generated Suite"
+                },
+                {
+                  "type": "suite",
+                  "description": "/case-type-selection"
+                },
+                {
+                  "type": "story",
+                  "description": "Navigate /case-type-selection → /login"
+                },
+                {
+                  "type": "parameter",
+                  "description": "page=/case-type-selection"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "generated",
+              "projectName": "generated",
+              "results": [
+                {
+                  "workerIndex": 5,
+                  "parallelIndex": 4,
+                  "status": "timedOut",
+                  "duration": 30217,
+                  "error": {
+                    "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                    "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                  },
+                  "errors": [
+                    {
+                      "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                    },
+                    {
+                      "location": {
+                        "file": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts",
+                        "column": 29,
+                        "line": 387
+                      },
+                      "message": "Error: locator.waitFor: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"email\"], input[type=\"email\"], input[autocomplete=\"username\"], input[name=\"username\"], #username, #email, input[placeholder*=\"email\" i]').first() to be visible\u001b[22m\n\n\n  385 |   const password = SHARED_LOGIN_CONFIG.passwordValue ?? envPassword;\n  386 |   const userLocator = page.locator(SHARED_LOGIN_CONFIG.usernameSelector);\n> 387 |   await userLocator.first().waitFor({ state: 'visible', timeout: 30000 });\n      |                             ^\n  388 |   await userLocator.first().fill(username);\n  389 |   const passLocator = page.locator(SHARED_LOGIN_CONFIG.passwordSelector);\n  390 |   await passLocator.first().waitFor({ state: 'visible', timeout: 30000 });\n    at sharedLogin (C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts:387:29)\n    at C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5\\cmn6hcpfz00017kjkr5vu7ls6\\cmli5yu4a00027kgkidnny7jh\\cmli5yu4a00027kgkidnny7jh\\case-type-selection.spec.ts:616:9"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "1. Navigate to https://www.justicepathlaw.com/case-type-selection",
+                      "duration": 13789
+                    }
+                  ],
+                  "startTime": "2026-06-29T16:13:34.068Z",
+                  "annotations": [
+                    {
+                      "type": "parentSuite",
+                      "description": "Testmind Generated Suite"
+                    },
+                    {
+                      "type": "suite",
+                      "description": "/case-type-selection"
+                    },
+                    {
+                      "type": "story",
+                      "description": "Navigate /case-type-selection → /login"
+                    },
+                    {
+                      "type": "parameter",
+                      "description": "page=/case-type-selection"
+                    }
+                  ],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\test-results\\cmli5yu4a00027kgkidnny7jh--85582-case-type-selection-→-login-generated\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\test-results\\cmli5yu4a00027kgkidnny7jh--85582-case-type-selection-→-login-generated\\error-context.md"
+                    }
+                  ]
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "fa112b3ec6c947d6f162-b7a3362c80359c1d3330",
+          "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+          "line": 606,
+          "column": 5
+        },
+        {
+          "title": "Navigate /case-type-selection → /signup",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "parentSuite",
+                  "description": "Testmind Generated Suite"
+                },
+                {
+                  "type": "suite",
+                  "description": "/case-type-selection"
+                },
+                {
+                  "type": "story",
+                  "description": "Navigate /case-type-selection → /signup"
+                },
+                {
+                  "type": "parameter",
+                  "description": "page=/case-type-selection"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "generated",
+              "projectName": "generated",
+              "results": [
+                {
+                  "workerIndex": 6,
+                  "parallelIndex": 5,
+                  "status": "passed",
+                  "duration": 16162,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "1. Navigate to https://www.justicepathlaw.com/case-type-selection",
+                      "duration": 14026
+                    },
+                    {
+                      "title": "2. Navigate to /signup",
+                      "duration": 948
+                    },
+                    {
+                      "title": "3. Ensure text \"signup\" is visible",
+                      "duration": 199
+                    }
+                  ],
+                  "startTime": "2026-06-29T16:13:34.152Z",
+                  "annotations": [
+                    {
+                      "type": "parentSuite",
+                      "description": "Testmind Generated Suite"
+                    },
+                    {
+                      "type": "suite",
+                      "description": "/case-type-selection"
+                    },
+                    {
+                      "type": "story",
+                      "description": "Navigate /case-type-selection → /signup"
+                    },
+                    {
+                      "type": "parameter",
+                      "description": "page=/case-type-selection"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "fa112b3ec6c947d6f162-25886d0b81a6bfc605d9",
+          "file": "testmind-generated/playwright-ts-user_33gWRDa4D9dgsEJUNxFdjN8Gog5/cmn6hcpfz00017kjkr5vu7ls6/cmli5yu4a00027kgkidnny7jh/cmli5yu4a00027kgkidnny7jh/case-type-selection.spec.ts",
+          "line": 660,
+          "column": 5
+        }
+      ]
     }
   ],
+  "errors": [],
   "stats": {
-    "startTime": "2026-04-15T21:59:00.994Z",
-    "duration": 9.77599999999984,
-    "expected": 0,
+    "startTime": "2026-06-29T16:13:26.875Z",
+    "duration": 38693.825999999994,
+    "expected": 5,
     "skipped": 0,
-    "unexpected": 0,
+    "unexpected": 2,
     "flaky": 0
   }
 }

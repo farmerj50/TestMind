@@ -17,6 +17,7 @@ import {
   getAgentOpenAiKeyStatus,
   regenerateAttachedSpecs,
   ensureCuratedSuiteRecord,
+  normalizeAgentMaxScenarios,
 } from "../agent/service.js";
 import { emitSpecFile } from "../testmind/adapters/playwright-ts/generator.js";
 import { agentSuiteId, ensureCuratedProjectEntry } from "../testmind/curated-store.js";
@@ -83,6 +84,7 @@ const ScanBody = z
     path: z.string().optional(),
     url: z.string().optional(),
     instructions: z.string().optional(),
+    maxScenarios: z.coerce.number().int().min(1).max(50).optional(),
   })
   .refine((val) => !!(val.path || val.url), {
     message: "path or url is required",
@@ -92,6 +94,12 @@ const ScanBody = z
 const AttachBody = z.object({
   projectId: z.string().optional(),
 });
+
+const RunPageBody = z
+  .object({
+    maxScenarios: z.coerce.number().int().min(1).max(50).optional(),
+  })
+  .optional();
 
 const ScenarioBody = z.object({
   title: z.string().min(1),
@@ -157,7 +165,9 @@ function registerProjectHelpers(
         url: parsed.data.url,
         instructions: parsed.data.instructions,
       });
-      const updated = await runAgentForPage(userId, page.id);
+      const updated = await runAgentForPage(userId, page.id, {
+        maxScenarios: normalizeAgentMaxScenarios(parsed.data.maxScenarios),
+      });
       return reply.send({ session: updated });
     } catch (err: any) {
       return reply.code(500).send({ error: err?.message ?? "Failed to start scan" });
@@ -263,8 +273,14 @@ export default async function agentRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (!userId) return;
     const { id } = req.params as { id: string };
+    const parsed = RunPageBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
     try {
-      const session = await runAgentForPage(userId, id);
+      const session = await runAgentForPage(userId, id, {
+        maxScenarios: normalizeAgentMaxScenarios(parsed.data?.maxScenarios),
+      });
       return reply.send({ session });
     } catch (err: any) {
       return reply.code(500).send({ error: err?.message ?? "Failed to analyze page" });

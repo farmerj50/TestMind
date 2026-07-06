@@ -31,7 +31,7 @@ import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 import { generateAndWrite } from "./testmind/service.js";
-import { validateAndNormalizeRepoUrl } from "./lib/git-url.js";
+import { validateAndNormalizeProjectUrl } from "./lib/git-url.js";
 import { safeFetch } from "./lib/safe-fetch.js";
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import {
@@ -47,6 +47,9 @@ import { requireStripe } from "./lib/stripe.js";
 import testmindRoutes from './testmind/routes.js';
 import copilotRoutes from './routes/copilot.js';
 import jenkinsRoutes from './routes/jenkins.js';
+import ciRoutes from './routes/ci.js';
+import orgRoutes from './routes/orgs.js';
+import mobileRoutes from './routes/mobile.js';
 import environmentsRoutes from './routes/environments.js';
 import workflowsRoutes from './routes/workflows.js';
 import researchAgentRoutes from './routes/researchAgent.js';
@@ -307,6 +310,9 @@ await registerWithLog("testBuilderRoutes", () => app.register(testBuilderRoutes,
 await registerWithLog("testmindRoutes", () => app.register(testmindRoutes, { prefix: "/tm" }));
 await registerWithLog("copilotRoutes", () => app.register(copilotRoutes, { prefix: "/" }));
 await registerWithLog("jenkinsRoutes", () => app.register(jenkinsRoutes, { prefix: "/" }));
+await registerWithLog("ciRoutes", () => app.register(ciRoutes, { prefix: "/" }));
+await registerWithLog("orgRoutes", () => app.register(orgRoutes, { prefix: "/" }));
+await registerWithLog("mobileRoutes", () => app.register(mobileRoutes, { prefix: "/" }));
 await registerWithLog("environmentsRoutes", () => app.register(environmentsRoutes, { prefix: "/" }));
 await registerWithLog("workflowsRoutes", () => app.register(workflowsRoutes, { prefix: "/" }));
 await registerWithLog("researchAgentRoutes", () => app.register(researchAgentRoutes, { prefix: "/" }));
@@ -993,9 +999,9 @@ app.post("/projects", async (req, reply) => {
   const { name, repoUrl } = parsed.data;
   let normalizedRepoUrl = "";
   if (repoUrl) {
-    const checked = validateAndNormalizeRepoUrl(repoUrl);
+    const checked = validateAndNormalizeProjectUrl(repoUrl);
     if (!checked.ok) {
-      const reason = "reason" in checked ? checked.reason : "Invalid repository URL";
+      const reason = "reason" in checked ? checked.reason : "Invalid project URL";
       return reply.code(400).send({ error: reason });
     }
     normalizedRepoUrl = checked.normalized;
@@ -1032,9 +1038,9 @@ app.patch<{ Params: { id: string }; Body: UpdateProjectBody }>(
       if (!parsed.data.repoUrl) {
         data.repoUrl = "";
       } else {
-        const checked = validateAndNormalizeRepoUrl(parsed.data.repoUrl);
+        const checked = validateAndNormalizeProjectUrl(parsed.data.repoUrl);
         if (!checked.ok) {
-          const reason = "reason" in checked ? checked.reason : "Invalid repository URL";
+          const reason = "reason" in checked ? checked.reason : "Invalid project URL";
           return reply.code(400).send({ error: reason });
         }
         data.repoUrl = checked.normalized;

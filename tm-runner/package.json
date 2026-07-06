@@ -1,0 +1,5 @@
+{
+  "name": "tm-runner-internal",
+  "private": true,
+  "type": "module"
+}

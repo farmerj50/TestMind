@@ -252,3 +252,47 @@ export async function authenticateClerk(opts: {
   }
   return { token: jwt };
 }
+
+// ── Unified dispatcher ────────────────────────────────────────────────────────
+// Used by mid-scan re-auth in security-worker to refresh a token without knowing
+// which provider was originally used.
+
+export async function authenticateProvider(
+  provider: string,
+  opts: Record<string, string | undefined>,
+): Promise<ProviderAuthResult> {
+  switch (provider) {
+    case "auth0":
+      return authenticateAuth0({
+        domain: opts.domain ?? "",
+        clientId: opts.clientId ?? "",
+        clientSecret: opts.clientSecret,
+        audience: opts.audience,
+        username: opts.username ?? "",
+        password: opts.password ?? "",
+      });
+    case "firebase":
+      return authenticateFirebase({
+        apiKey: opts.apiKey ?? "",
+        email: opts.email ?? opts.username ?? "",
+        password: opts.password ?? "",
+      });
+    case "cognito":
+      return authenticateCognito({
+        region: opts.region ?? "us-east-1",
+        clientId: opts.clientId ?? "",
+        username: opts.username ?? "",
+        password: opts.password ?? "",
+        clientSecret: opts.clientSecret,
+      });
+    case "clerk":
+      return authenticateClerk({
+        frontendApiUrl: opts.frontendApiUrl ?? "",
+        identifier: opts.identifier ?? opts.username ?? "",
+        password: opts.password ?? "",
+        origin: opts.origin,
+      });
+    default:
+      throw new Error(`Unknown provider: ${provider}`);
+  }
+}

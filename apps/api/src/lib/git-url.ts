@@ -57,6 +57,28 @@ export type RepoUrlValidation =
   | { ok: true; normalized: string }
   | { ok: false; reason: string };
 
+function pathLooksLikeRepository(pathname: string) {
+  return pathname.split("/").filter(Boolean).length >= 2;
+}
+
+export function isLikelyGitRepoUrl(raw?: string | null) {
+  const trimmed = raw?.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("git@") || trimmed.endsWith(".git")) return true;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (!pathLooksLikeRepository(parsed.pathname)) return false;
+
+  return hostMatchesAllowlist(hostname, getAllowedHosts());
+}
+
 export function validateAndNormalizeRepoUrl(raw: string): RepoUrlValidation {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, reason: "Repository URL cannot be empty." };
@@ -97,4 +119,30 @@ export function validateAndNormalizeRepoUrl(raw: string): RepoUrlValidation {
   parsed.search = "";
   const normalized = parsed.toString().replace(/\/+$/, "");
   return { ok: true, normalized };
+}
+
+export function validateAndNormalizeProjectUrl(raw: string): RepoUrlValidation {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: false, reason: "Project URL cannot be empty." };
+
+  if (isLikelyGitRepoUrl(trimmed)) {
+    return validateAndNormalizeRepoUrl(trimmed);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, reason: "Project URL must be a valid absolute URL." };
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return { ok: false, reason: "Project URL must use http:// or https://." };
+  }
+  if (parsed.username || parsed.password) {
+    return { ok: false, reason: "Project URL must not include embedded credentials." };
+  }
+
+  parsed.hash = "";
+  return { ok: true, normalized: parsed.toString().replace(/\/+$/, "") };
 }

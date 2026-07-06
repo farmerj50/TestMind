@@ -19,6 +19,7 @@ import { REPORT_ROOT } from '../lib/storageRoots.js';
 import { decryptSecret } from '../lib/crypto.js';
 import { runAdapter } from '../testmind/service.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
+import { isLikelyGitRepoUrl } from '../lib/git-url.js';
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
@@ -521,22 +522,12 @@ export const worker = new Worker(
         : DEFAULT_FRAMEWORK_ID;
     const mode = payload?.mode ?? runParams?.mode ?? "regular";
     let aiMode = mode === "ai";
-    const isLikelyGitRepo = (url?: string | null) => {
-      if (!url) return false;
-      const trimmed = url.trim();
-      if (!trimmed) return false;
-      return (
-        trimmed.endsWith(".git") ||
-        trimmed.startsWith("git@") ||
-        /github\.com|gitlab\.com|bitbucket\.org/.test(trimmed)
-      );
-    };
     const targetSpec =
       payload?.file ?? runParams?.targetSpec ?? runParams?.file ?? undefined;
     const fileTarget = targetSpec;
     const localRepoRoot =
       payload?.localRepoRoot ?? runParams?.localRepoRoot ?? undefined;
-    const nonGitRepo = !isLikelyGitRepo(project?.repoUrl);
+    const nonGitRepo = !isLikelyGitRepoUrl(project?.repoUrl);
     const hasAiInputs = Boolean(
       payload?.genDir ||
         payload?.file ||
@@ -737,7 +728,7 @@ export const worker = new Worker(
       // it's an app URL (not a git repo), then the environment default.
       const repoUrl = project?.repoUrl?.trim() ?? "";
       const projectAppUrl =
-        !isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined;
+        !isLikelyGitRepoUrl(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined;
       const jobBaseUrl =
         payload?.baseUrl ??
         (runParams?.baseUrl as string | undefined) ??

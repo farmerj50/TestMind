@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { prisma } from "../prisma.js";
 import { enqueueOperatorJob } from "../runner/queue.js";
+import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 
 const WORKFLOW_TYPES = ["qa-execute", "repair", "discovery", "security"] as const;
 const TRIGGER_TYPES = ["manual", "jenkins", "github", "webhook"] as const;
@@ -42,17 +43,6 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function isLikelyGitRepo(value: string) {
-  const url = value.trim().toLowerCase();
-  return (
-    url.endsWith(".git") ||
-    url.startsWith("git@") ||
-    url.includes("github.com/") ||
-    url.includes("gitlab.com/") ||
-    url.includes("bitbucket.org/")
-  );
-}
-
 function resolveBaseUrl(workflow: any) {
   const config = asRecord(workflow.configJson);
   const configBaseUrl = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
@@ -66,7 +56,7 @@ function resolveBaseUrl(workflow: any) {
   if (sharedBaseUrl) return sharedBaseUrl;
 
   const repoUrl = typeof workflow.project?.repoUrl === "string" ? workflow.project.repoUrl.trim() : "";
-  if (repoUrl && /^https?:\/\//i.test(repoUrl) && !isLikelyGitRepo(repoUrl)) return repoUrl;
+  if (repoUrl && /^https?:\/\//i.test(repoUrl) && !isLikelyGitRepoUrl(repoUrl)) return repoUrl;
 
   return null;
 }

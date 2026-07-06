@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateAndNormalizeRepoUrl } from "./git-url.js";
+import {
+  isLikelyGitRepoUrl,
+  validateAndNormalizeProjectUrl,
+  validateAndNormalizeRepoUrl,
+} from "./git-url.js";
 
 function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
   const prev: Record<string, string | undefined> = {};
@@ -73,5 +77,26 @@ test("repo url rejects non-allowlisted hosts", () => {
     const res = validateAndNormalizeRepoUrl("https://evil.example.org/org/repo");
     assert.equal(res.ok, false);
     if (!res.ok) assert.match(res.reason, /not allowed/i);
+  });
+});
+
+test("project url allows deployed app targets on non-git hosts", () => {
+  withEnv({ TM_GIT_ALLOWED_HOSTS: undefined }, () => {
+    const res = validateAndNormalizeProjectUrl("https://panic-room-front-end-production.up.railway.app");
+    assert.equal(res.ok, true);
+    if (res.ok) assert.equal(res.normalized, "https://panic-room-front-end-production.up.railway.app");
+  });
+});
+
+test("project url still validates likely git repositories", () => {
+  const res = validateAndNormalizeProjectUrl("https://token@github.com/org/repo");
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.match(res.reason, /credentials/i);
+});
+
+test("likely git detection supports enterprise git allowlist", () => {
+  withEnv({ TM_GIT_ALLOWED_HOSTS: "git.enterprise.local" }, () => {
+    assert.equal(isLikelyGitRepoUrl("https://git.enterprise.local/org/repo"), true);
+    assert.equal(isLikelyGitRepoUrl("https://app.enterprise.local/dashboard"), false);
   });
 });

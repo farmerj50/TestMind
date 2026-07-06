@@ -22,12 +22,15 @@ export async function requestPageAnalysis(opts: {
   instructions?: string;
   scan: RouteScan;
   apiKey?: string;
+  maxScenarios?: number;
 }): Promise<PageAnalysisResult> {
   const openai = ensureClient(opts.apiKey);
+  const maxScenarios = Math.max(1, Math.min(50, Math.floor(opts.maxScenarios ?? 20)));
   const payload = {
     baseUrl: opts.baseUrl,
     pageUrl: opts.url,
     instructions: opts.instructions ?? null,
+    maxScenarios,
     scan: {
       title: opts.scan.title,
       links: opts.scan.links?.slice(0, 25),
@@ -49,7 +52,9 @@ export async function requestPageAnalysis(opts: {
           "Given page metadata, produce exhaustive scenarios covering statement, branch, edge, decision, and security testing.",
           "Return JSON with keys: summary (string), coverage (object with percentages), scenarios (array).",
           "Each scenario requires: title, coverageType, description, tags, risk (low|medium|high), steps (array of actions).",
-          "Steps should be normalized objects: { kind, target, value, note }.",
+          `Generate as close to ${maxScenarios} unique scenarios as the page supports, and never return more than ${maxScenarios}.`,
+          "Do not stop at one scenario per coverage type. Cover every discovered link, button, form field, file input, auth entry point, error state, accessibility risk, responsive behavior, and security-relevant control.",
+          "Steps should be normalized objects. Prefer emitter-ready fields: { kind, url } for goto, { kind, selector } for click/fill/expect-visible/upload, and { kind, text } for expect-text. You may also include target, value, and note.",
           "IMPORTANT: scenario titles MUST be specific to the site being tested.",
           "Include the site name (derived from baseUrl) in every scenario title so titles are unique per site.",
           "For example, for baseUrl 'https://etoro.com' prefer 'eToro — verify login form' over the generic 'Verify login form'.",
@@ -87,6 +92,10 @@ export async function requestPageAnalysis(opts: {
     steps: Array.isArray(s.steps)
       ? s.steps.map((step: any) => ({
           kind: typeof step.kind === "string" ? step.kind : "custom",
+          url: typeof step.url === "string" ? step.url : undefined,
+          selector: typeof step.selector === "string" ? step.selector : undefined,
+          text: typeof step.text === "string" ? step.text : undefined,
+          path: typeof step.path === "string" ? step.path : undefined,
           target: typeof step.target === "string" ? step.target : undefined,
           value: typeof step.value === "string" ? step.value : undefined,
           note: typeof step.note === "string" ? step.note : undefined,

@@ -248,15 +248,25 @@ function fallbackCases(input: PatternInput): any[] {
 
     for (const toPath of Array.from(new Set(linkTargets)).slice(0, NAV_MAX)) {
       const toUrl = pathToUrl.get(toPath) ?? absUrl(toPath, base);
+      // Only add an expect-text step when there is a meaningful segment name.
+      // For the root path ("/"), pop() returns "" and the "Page" fallback is
+      // a generic placeholder that triggers a wrong URL assertion in the generator
+      // (the rawText==="page" branch uses the SOURCE page path, not the destination).
+      // The goto step already emits ensurePageIdentity(destination), so a redundant
+      // text check on the root adds no value and causes persistent self-heal churn.
+      const navText = toPath.split("/").pop();
+      const navSteps: any[] = [
+        { kind: "goto", url: fromUrl },
+        { kind: "goto", url: toUrl },
+      ];
+      if (navText) {
+        navSteps.push({ kind: "expect-text", text: navText });
+      }
       push({
         id: `nav:${fromUrl}->${toUrl}`,
         name: `Navigate ${fromPath} → ${toPath}`,
         group: { page: fromPath },
-        steps: [
-          { kind: "goto", url: fromUrl },
-          { kind: "goto", url: toUrl },
-          { kind: "expect-text", text: (toPath.split("/").pop() || "Page") },
-        ],
+        steps: navSteps,
       });
     }
   }

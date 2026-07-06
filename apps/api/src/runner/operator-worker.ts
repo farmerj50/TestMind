@@ -12,6 +12,7 @@ import { runBrowserCapability } from './capabilities/browser-cap.js';
 import { discoverSite, buildLocatorStoreFromScans } from '../testmind/discover.js';
 import { generatePlan } from '../testmind/pipeline/generate-plan.js';
 import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
+import { isLikelyGitRepoUrl } from '../lib/git-url.js';
 
 export { createStepRunner };
 
@@ -164,12 +165,6 @@ async function recordArtifact(opts: {
   });
 }
 
-const isLikelyGitRepo = (url?: string | null) => {
-  if (!url) return false;
-  const t = url.trim();
-  return t.endsWith('.git') || t.startsWith('git@') || /github\.com|gitlab\.com|bitbucket\.org/.test(t);
-};
-
 // ── Resume dispatcher ─────────────────────────────────────────────────────────
 
 async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDelayFn) {
@@ -194,7 +189,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     select: { repoUrl: true, ownerId: true },
   });
   const explicitMode = ctx.mode as string | undefined;
-  const inferredMode = explicitMode ?? (isLikelyGitRepo(project?.repoUrl) ? 'regular' : 'ai');
+  const inferredMode = explicitMode ?? (isLikelyGitRepoUrl(project?.repoUrl) ? 'regular' : 'ai');
   const repoUrl = project?.repoUrl?.trim() ?? '';
 
   let envBaseUrl: string | undefined;
@@ -209,7 +204,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const inferredBaseUrl: string | undefined =
     envBaseUrl ||
     ctx.baseUrl ||
-    (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
+    (!isLikelyGitRepoUrl(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
   const task = await prisma.operatorTask.create({
     data: {
@@ -552,7 +547,7 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn): Promise<{ heal
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string | undefined =
     ctx.baseUrl ||
-    (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
+    (!isLikelyGitRepoUrl(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
   let targetRunId = ctx.runId as string | undefined;
   if (!targetRunId) {
@@ -756,7 +751,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string | undefined =
     ctx.baseUrl ||
-    (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
+    (!isLikelyGitRepoUrl(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : undefined);
 
   if (!baseUrl) throw new Error('Discovery job requires a baseUrl or a non-git project.repoUrl');
 
@@ -910,7 +905,7 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   });
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string =
-    ctx.baseUrl || (!isLikelyGitRepo(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : '');
+    ctx.baseUrl || (!isLikelyGitRepoUrl(repoUrl) && /^https?:\/\//i.test(repoUrl) ? repoUrl : '');
 
   if (!baseUrl) throw new Error('Security job requires a baseUrl or a non-git project.repoUrl');
 

@@ -12,6 +12,8 @@ import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/au
 import { callAuthBypassEndpoint, buildStorageStateFromCookieString } from "../security/enterprise-bypass.js";
 import { authenticateAuth0, authenticateFirebase, authenticateCognito, authenticateClerk } from "../security/provider-auth.js";
 import { parseApiSpec, specSummary } from "../security/openapi-parser.js";
+import { buildHtmlReport } from "../security/compliance-report.js";
+import { generateBugBountyReport } from "../security/bug-bounty-report.js";
 import { safeFetch } from "../lib/safe-fetch.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
 import fs from "node:fs/promises";
@@ -403,6 +405,32 @@ export default async function securityRoutes(app: FastifyInstance) {
     return { job };
   });
 
+  app.get("/security/scans/:id/compliance-report", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const { format = "json" } = req.query as { format?: string };
+    const job = await prisma.securityScanJob.findFirst({
+      where: { id, project: { ownerId: userId } },
+      select: { id: true, status: true, summary: true },
+    });
+    if (!job) return reply.code(404).send({ error: "Not found" });
+    if (job.status !== "completed") {
+      return reply.code(400).send({ error: "Compliance report is only available for completed scans." });
+    }
+    const report = (job.summary as any)?.complianceReport;
+    if (!report) return reply.code(404).send({ error: "No compliance report found for this scan. Re-run the scan to generate one." });
+    if (format === "html") {
+      const html = buildHtmlReport(report);
+      return reply
+        .code(200)
+        .header("Content-Type", "text/html; charset=utf-8")
+        .header("Content-Disposition", `attachment; filename="compliance-report-${id.slice(-8)}.html"`)
+        .send(html);
+    }
+    return { report };
+  });
+
   app.post("/security/scans/:id/approve-baseline", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
@@ -517,6 +545,28 @@ export default async function securityRoutes(app: FastifyInstance) {
     });
     if (!finding) return reply.code(404).send({ error: "Not found" });
     return { test: buildSecurityRegressionTest(finding as any) };
+  });
+
+  app.post("/security/findings/:id/bug-bounty-report", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const finding = await prisma.securityFinding.findFirst({
+      where: { id, scan: { project: { ownerId: userId } } },
+      include: { scan: { select: { id: true, config: true } } },
+    });
+    if (!finding) return reply.code(404).send({ error: "Not found" });
+    const targetUrl = (finding.scan.config as any)?.baseUrl ?? finding.location ?? "";
+    const report = generateBugBountyReport(finding as any, targetUrl);
+    const { format = "json" } = (req.body as any) ?? {};
+    if (format === "markdown") {
+      return reply
+        .code(200)
+        .header("Content-Type", "text/markdown; charset=utf-8")
+        .header("Content-Disposition", `attachment; filename="bug-bounty-report-${id.slice(-8)}.md"`)
+        .send(report.markdown);
+    }
+    return { report };
   });
 
   // ── Auth sessions (Enterprise / Bug Bounty mode) ────────────────────────────
@@ -964,6 +1014,87 @@ export default async function securityRoutes(app: FastifyInstance) {
     const spec = await prisma.apiSpec.findFirst({ where: { id, project: { ownerId: userId } }, select: { id: true } });
     if (!spec) return reply.code(404).send({ error: "Not found" });
     await prisma.apiSpec.delete({ where: { id } });
+    return { ok: true };
+  });
+
+  // ── Auth integrations registry ───────────────────────────────────────────────
+  // Named, reusable auth provider configs. Store once per project, reference by ID
+  // in scan configs instead of re-entering the same domain/clientId every scan.
+
+  const authIntegrationSchema = z.object({
+    projectId: z.string(),
+    name: z.string().min(1).max(80),
+    provider: z.enum(["auth0", "firebase", "cognito", "clerk", "custom"]),
+    config: z.record(z.string()),
+    passwordSecretKey: z.string().optional(),
+    clientSecretKey: z.string().optional(),
+  });
+
+  app.post("/security/auth/integrations", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const parsed = authIntegrationSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const body = parsed.data;
+    const project = await prisma.project.findUnique({ where: { id: body.projectId } });
+    if (!project || project.ownerId !== userId) return reply.code(403).send({ error: "Forbidden" });
+    const integration = await prisma.authIntegration.create({
+      data: {
+        projectId: body.projectId,
+        name: body.name,
+        provider: body.provider,
+        config: body.config,
+        passwordSecretKey: body.passwordSecretKey,
+        clientSecretKey: body.clientSecretKey,
+      },
+    });
+    return reply.code(201).send(integration);
+  });
+
+  app.get<{ Querystring: { projectId?: string } }>("/security/auth/integrations", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    if (!req.query.projectId) return reply.code(400).send({ error: "projectId required" });
+    const project = await prisma.project.findUnique({ where: { id: req.query.projectId } });
+    if (!project || project.ownerId !== userId) return reply.code(403).send({ error: "Forbidden" });
+    const integrations = await prisma.authIntegration.findMany({
+      where: { projectId: req.query.projectId },
+      orderBy: { createdAt: "desc" },
+    });
+    return reply.send(integrations);
+  });
+
+  app.put<{ Params: { id: string } }>("/security/auth/integrations/:id", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const existing = await prisma.authIntegration.findFirst({
+      where: { id: req.params.id, project: { ownerId: userId } },
+    });
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+    const parsed = authIntegrationSchema.partial().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const updated = await prisma.authIntegration.update({
+      where: { id: req.params.id },
+      data: {
+        ...(parsed.data.name && { name: parsed.data.name }),
+        ...(parsed.data.provider && { provider: parsed.data.provider }),
+        ...(parsed.data.config && { config: parsed.data.config }),
+        ...(parsed.data.passwordSecretKey !== undefined && { passwordSecretKey: parsed.data.passwordSecretKey }),
+        ...(parsed.data.clientSecretKey !== undefined && { clientSecretKey: parsed.data.clientSecretKey }),
+      },
+    });
+    return reply.send(updated);
+  });
+
+  app.delete<{ Params: { id: string } }>("/security/auth/integrations/:id", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const existing = await prisma.authIntegration.findFirst({
+      where: { id: req.params.id, project: { ownerId: userId } },
+      select: { id: true },
+    });
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+    await prisma.authIntegration.delete({ where: { id: req.params.id } });
     return { ok: true };
   });
 }
