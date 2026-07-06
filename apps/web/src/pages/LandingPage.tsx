@@ -537,12 +537,14 @@ function DemoSection() {
               </div>
               <div className="text-xs text-slate-400">/marketing/testmind-90-second-demo.mp4</div>
             </div>
-            <div className="relative grid min-h-[320px] place-items-center overflow-hidden">
+            <div className="relative grid aspect-video place-items-center overflow-hidden bg-black">
               {!videoMissing && (
                 <video
-                  className="h-full min-h-[320px] w-full bg-black object-cover"
+                  className="h-full w-full bg-black object-contain"
                   controls
-                  poster="/marketing/testmind-demo-poster.png"
+                  playsInline
+                  preload="metadata"
+                  poster="/marketing/screenshots/dashboard.png"
                   onError={() => setVideoMissing(true)}
                 >
                   <source src="/marketing/testmind-90-second-demo.mp4" type="video/mp4" />
@@ -837,7 +839,7 @@ function ProductScreenshots() {
         <SectionHeader
           eyebrow="Product screenshots"
           title="Show the real product surfaces buyers care about"
-          description="Use actual screenshots here before launch. The page is wired for real assets and avoids fake UI captures."
+          description="Real views of the TestMind workspace across quality health, generation, reporting, security, and CI workflows."
         />
         <div className="mt-10 grid gap-5 lg:grid-cols-3">
           {screenshotAssets.map((asset) => (
@@ -861,12 +863,14 @@ function ScreenshotAssetCard({ title, src, icon: Icon }: { title: string; src: s
         </div>
         <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">Screenshot</span>
       </div>
-      <div className="aspect-[16/10] bg-slate-100">
+      <div className="aspect-[16/10] bg-slate-950">
         {!missing ? (
           <img
             src={src}
             alt={`${title} screenshot`}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
+            loading="lazy"
+            decoding="async"
             onError={() => setMissing(true)}
           />
         ) : (
