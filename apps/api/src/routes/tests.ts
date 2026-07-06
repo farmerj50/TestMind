@@ -974,11 +974,15 @@ export async function testRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (!userId) return;
 
-    const { projectId, suiteId, curatedSuiteId, q } = (req.query ?? {}) as {
+    const { projectId, suiteId, curatedSuiteId, q, status, priority, type, tag } = (req.query ?? {}) as {
       projectId?: string;
       suiteId?: string;
       curatedSuiteId?: string;
       q?: string;
+      status?: string;
+      priority?: string;
+      type?: string;
+      tag?: string;
     };
     if (!projectId) return reply.code(400).send({ error: "projectId required" });
 
@@ -991,13 +995,16 @@ export async function testRoutes(app: FastifyInstance) {
     const cases = await prisma.testCase.findMany({
       where: {
         projectId,
-        // curatedSuiteId takes precedence over the legacy TestSuite suiteId filter
         ...(curatedSuiteId
           ? { curatedSuiteId }
           : suiteId
           ? { suiteId }
           : {}),
-        status: { not: "archived" },
+        // When status filter is provided use exact match; otherwise exclude archived
+        ...(status ? { status: status as any } : { status: { not: "archived" } }),
+        ...(priority ? { priority: priority as any } : {}),
+        ...(type ? { type: type as any } : {}),
+        ...(tag ? { tags: { has: tag } } : {}),
         title: q ? { contains: q, mode: "insensitive" } : undefined,
       },
       orderBy: [{ updatedAt: "desc" }],
@@ -1016,6 +1023,143 @@ export async function testRoutes(app: FastifyInstance) {
     });
 
     reply.send({ cases });
+  });
+
+  // ── Static-segment routes must come BEFORE /tests/cases/:id ──────────────────
+
+  app.get("/tests/cases/export", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const { projectId, suiteId, curatedSuiteId, q, status, priority, type, tag } = (req.query ?? {}) as {
+      projectId?: string; suiteId?: string; curatedSuiteId?: string;
+      q?: string; status?: string; priority?: string; type?: string; tag?: string;
+    };
+    if (!projectId) return reply.code(400).send({ error: "projectId required" });
+
+    const ownerOk = await prisma.project.findFirst({ where: { id: projectId, ownerId: userId }, select: { id: true } });
+    if (!ownerOk) return reply.code(404).send({ error: "Project not found" });
+
+    const cases = await prisma.testCase.findMany({
+      where: {
+        projectId,
+        ...(curatedSuiteId ? { curatedSuiteId } : suiteId ? { suiteId } : {}),
+        ...(status ? { status: status as any } : { status: { not: "archived" } }),
+        ...(priority ? { priority: priority as any } : {}),
+        ...(type ? { type: type as any } : {}),
+        ...(tag ? { tags: { has: tag } } : {}),
+        title: q ? { contains: q, mode: "insensitive" } : undefined,
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      select: { key: true, title: true, status: true, priority: true, type: true, tags: true, preconditions: true, suiteId: true },
+    });
+
+    function csvField(v: string | null | undefined): string {
+      const s = (v ?? "").replace(/"/g, '""');
+      return /[",\n\r]/.test(s) ? `"${s}"` : s;
+    }
+
+    const header = ["key", "title", "status", "priority", "type", "tags", "preconditions", "suiteId"];
+    const rows = cases.map((c) =>
+      [c.key, c.title, c.status, c.priority, c.type, (c.tags ?? []).join("|"), c.preconditions ?? "", c.suiteId ?? ""]
+        .map(csvField).join(",")
+    );
+    const csv = [header.join(","), ...rows].join("\n");
+
+    reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="cases-${projectId}.csv"`)
+      .send(csv);
+  });
+
+  app.post("/tests/cases/bulk", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const Body = z.object({
+      projectId: z.string().min(1),
+      ids: z.array(z.string().min(1)).min(1).max(100),
+      action: z.enum(["setStatus", "setPriority", "moveSuite", "delete"]),
+      value: z.string().optional(),
+    });
+    const parsed = Body.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const { projectId, ids, action, value } = parsed.data;
+
+    const ownerOk = await prisma.project.findFirst({ where: { id: projectId, ownerId: userId }, select: { id: true } });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
+
+    const count = await prisma.testCase.count({ where: { id: { in: ids }, projectId } });
+    if (count !== ids.length) return reply.code(400).send({ error: "One or more case IDs do not belong to this project" });
+
+    let updated = 0;
+    if (action === "setStatus") {
+      const r = await prisma.testCase.updateMany({ where: { id: { in: ids } }, data: { status: value as any } });
+      updated = r.count;
+    } else if (action === "setPriority") {
+      const r = await prisma.testCase.updateMany({ where: { id: { in: ids } }, data: { priority: value as any } });
+      updated = r.count;
+    } else if (action === "moveSuite") {
+      const r = await prisma.testCase.updateMany({ where: { id: { in: ids } }, data: { suiteId: value ?? null } });
+      updated = r.count;
+    } else if (action === "delete") {
+      // Soft delete — archive instead of destroy
+      const r = await prisma.testCase.updateMany({ where: { id: { in: ids } }, data: { status: "archived" } });
+      updated = r.count;
+    }
+
+    reply.send({ updated });
+  });
+
+  app.post("/tests/cases/import", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const StepSchema = z.object({ action: z.string().min(1), expected: z.string().min(1) });
+    const CaseSchema = z.object({
+      title: z.string().min(1),
+      priority: z.enum(["low", "medium", "high"]).optional(),
+      type: z.enum(["functional", "regression", "security", "accessibility", "other"]).optional(),
+      status: z.enum(["draft", "active", "archived"]).optional(),
+      tags: z.array(z.string()).optional(),
+      preconditions: z.string().optional(),
+      steps: z.array(StepSchema).optional(),
+    });
+    const Body = z.object({
+      projectId: z.string().min(1),
+      suiteId: z.string().optional(),
+      cases: z.array(CaseSchema).min(1).max(500),
+    });
+    const parsed = Body.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const { projectId, suiteId, cases } = parsed.data;
+
+    const ownerOk = await prisma.project.findFirst({ where: { id: projectId, ownerId: userId }, select: { id: true } });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
+
+    await prisma.$transaction(async (tx) => {
+      for (const c of cases) {
+        const tc = await tx.testCase.create({
+          data: {
+            projectId,
+            ...(suiteId ? { suiteId } : {}),
+            title: c.title,
+            priority: c.priority ?? "medium",
+            type: c.type ?? "functional",
+            status: c.status ?? "draft",
+            tags: c.tags ?? [],
+            preconditions: c.preconditions,
+          },
+        });
+        if (c.steps?.length) {
+          await tx.testStep.createMany({
+            data: c.steps.map((s, i) => ({ caseId: tc.id, idx: i, action: s.action, expected: s.expected })),
+          });
+        }
+      }
+    });
+
+    reply.code(201).send({ created: cases.length });
   });
 
   app.get<{ Params: { id: string } }>("/tests/cases/:id", async (req, reply) => {
@@ -1199,6 +1343,48 @@ export async function testRoutes(app: FastifyInstance) {
 
     await prisma.testCase.delete({ where: { id: req.params.id } });
     reply.code(204).send();
+  });
+
+  app.post<{ Params: { id: string } }>("/tests/cases/:id/duplicate", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+
+    const source = await prisma.testCase.findUnique({
+      where: { id: req.params.id },
+      select: {
+        projectId: true, suiteId: true, title: true, priority: true,
+        type: true, status: true, tags: true, preconditions: true, locators: true,
+        steps: { orderBy: { idx: "asc" }, select: { action: true, expected: true } },
+      },
+    });
+    if (!source) return reply.code(404).send({ error: "Case not found" });
+
+    const ownerOk = await prisma.project.findFirst({ where: { id: source.projectId, ownerId: userId }, select: { id: true } });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
+
+    const newCase = await prisma.$transaction(async (tx) => {
+      const tc = await tx.testCase.create({
+        data: {
+          projectId: source.projectId,
+          ...(source.suiteId ? { suiteId: source.suiteId } : {}),
+          title: `${source.title} (copy)`,
+          priority: source.priority,
+          type: source.type,
+          status: source.status,
+          tags: source.tags,
+          preconditions: source.preconditions ?? undefined,
+          locators: source.locators ?? undefined,
+        },
+      });
+      if (source.steps.length) {
+        await tx.testStep.createMany({
+          data: source.steps.map((s, i) => ({ caseId: tc.id, idx: i, action: s.action, expected: s.expected })),
+        });
+      }
+      return tc;
+    });
+
+    reply.code(201).send({ case: newCase });
   });
 
   //

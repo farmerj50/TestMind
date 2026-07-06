@@ -21,6 +21,18 @@ import { runAnomalyBaseline } from "../security/modules/anomaly-baseline.js";
 import { runGraphQLAudit } from "../security/modules/graphql-audit.js";
 import { runOpenApiScan } from "../security/modules/openapi-scan.js";
 import { parseApiSpec } from "../security/openapi-parser.js";
+import { runRaceConditionScan } from "../security/modules/race-condition.js";
+import { runJwtAnalysis } from "../security/modules/jwt-analyzer.js";
+import { runIdorScan } from "../security/modules/idor-engine.js";
+import { buildComplianceReport } from "../security/compliance-report.js";
+import { runNucleiScan } from "../security/modules/nuclei-scan.js";
+import { runJsEndpointExtraction } from "../security/modules/js-endpoint-extractor.js";
+import { runSubdomainEnum } from "../security/modules/subdomain-enum.js";
+import { runBusinessLogicScan } from "../security/modules/business-logic.js";
+import { runCorsAudit } from "../security/modules/cors-audit.js";
+import { runPerfBaseline } from "../security/modules/perf-baseline.js";
+import { runMobileScan } from "../security/modules/mobile-scan.js";
+import { authenticateProvider } from "../security/provider-auth.js";
 import {
   buildRouteContracts,
   discoverRouteInventory,
@@ -211,6 +223,89 @@ async function resolveAuthProfiles(
       (profile.cookieValueSecretKey ? secrets.get(profile.cookieValueSecretKey) : undefined),
     password: profile.password ?? (profile.passwordSecretKey ? secrets.get(profile.passwordSecretKey) : undefined),
   })) as SecurityAuthProfile[];
+}
+
+/**
+ * Mid-scan re-auth: if any auth profiles have a sessionId pointing to a
+ * SecurityAuthSession with a stored providerConfig, attempt to get a fresh token
+ * from that provider. Mutates profiles in-place and persists the new token to the
+ * session record so future scans start warm.
+ */
+async function refreshExpiredProfiles(
+  profiles: SecurityAuthProfile[],
+  projectId: string,
+  baseUrl: string,
+): Promise<void> {
+  for (const profile of profiles) {
+    if (!profile.sessionId) continue;
+    try {
+      // Quick liveness check — if the token is still valid, skip re-auth
+      const testHeaders: Record<string, string> = {};
+      if (profile.type === "bearer" && profile.token) testHeaders["Authorization"] = `Bearer ${profile.token}`;
+      if (profile.type === "cookie" && profile.cookieValue) {
+        testHeaders["Cookie"] = profile.cookieName === "__raw__"
+          ? profile.cookieValue
+          : `${profile.cookieName || "session"}=${profile.cookieValue}`;
+      }
+      const liveCheck = await new Promise<{ status: number } | null>((resolve) => {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 5_000);
+        import("undici").then(({ request }) =>
+          request(`${baseUrl}/api/me`, { method: "GET", headers: testHeaders, signal: ctrl.signal as any })
+            .then(async (r) => { await r.body.text().catch(() => ""); resolve({ status: r.statusCode }); })
+            .catch(() => resolve(null))
+        );
+      });
+      if (liveCheck && liveCheck.status !== 401 && liveCheck.status !== 403) continue;
+
+      // Token expired — fetch provider config and re-auth
+      const session = await prisma.securityAuthSession.findUnique({
+        where: { id: profile.sessionId },
+        select: {
+          provider: true, providerConfig: true, providerPasswordSecretKey: true,
+          providerClientSecretKey: true, bypassSecretKey: true,
+        },
+      });
+      if (!session?.provider || !session?.providerConfig) continue;
+
+      const secretKeys = [session.providerPasswordSecretKey, session.providerClientSecretKey, session.bypassSecretKey]
+        .filter((k): k is string => typeof k === "string" && k.length > 0);
+      const secretRows = secretKeys.length
+        ? await prisma.projectSecret.findMany({ where: { projectId, key: { in: secretKeys } }, select: { key: true, value: true } })
+        : [];
+      const secrets = new Map(secretRows.map((r) => [r.key, decryptSecret(r.value)]));
+
+      const providerConfig = session.providerConfig as Record<string, string>;
+      const password = session.providerPasswordSecretKey ? secrets.get(session.providerPasswordSecretKey) : undefined;
+      const clientSecret = session.providerClientSecretKey ? secrets.get(session.providerClientSecretKey) : undefined;
+
+      const result = await authenticateProvider(session.provider, {
+        ...providerConfig,
+        password,
+        clientSecret,
+      }).catch(() => null);
+
+      if (!result?.token) continue;
+
+      // Update in-memory profile
+      profile.token = result.token;
+      profile.type = "bearer";
+
+      // Persist to DB so the session record stays fresh
+      await prisma.securityAuthSession.update({
+        where: { id: profile.sessionId },
+        data: {
+          status: "authenticated",
+          expiresAt: result.expiresIn
+            ? new Date(Date.now() + result.expiresIn * 1000)
+            : undefined,
+        },
+      });
+      console.info(`[security-worker] Mid-scan re-auth succeeded for session ${profile.sessionId}`);
+    } catch (err: any) {
+      console.warn(`[security-worker] Mid-scan re-auth failed for session ${profile.sessionId}:`, err?.message);
+    }
+  }
 }
 
 async function loadApprovedBehaviorBaseline(projectId: string, scopeKey: string) {
@@ -869,19 +964,21 @@ async function runScanPipeline(payload: SecurityScanPayload) {
 
     const allFindings: FindingInput[] = [];
 
-    // Recon
-    allFindings.push(...(await runRecon(payload)));
-    await updateJob(payload.jobId, { phase: "static_analysis" });
+    // Recon, SAST, and SCA are all independent — run them in parallel to cut wall-clock
+    // time. Dynamic probing depends on knowing the live target is reachable, so it runs
+    // after, but is also independent of static analysis and deps.
+    const [reconFindings, staticFindings, depsFindings, subdomainResult] = await Promise.all([
+      runRecon(payload).catch((e) => { console.warn("[security-worker] recon error:", e?.message); return [] as FindingInput[]; }),
+      runStatic(payload).catch((e) => { console.warn("[security-worker] static error:", e?.message); return [] as FindingInput[]; }),
+      runDeps(payload).catch((e) => { console.warn("[security-worker] deps error:", e?.message); return [] as FindingInput[]; }),
+      runSubdomainEnum(payload.baseUrl).catch((e) => {
+        console.warn("[security-worker] subdomain enum error:", e?.message);
+        return { findings: [] as any[], liveSubdomains: [] as string[] };
+      }),
+    ]);
+    allFindings.push(...reconFindings, ...staticFindings, ...depsFindings, ...(subdomainResult.findings as any));
 
-    // SAST
-    allFindings.push(...(await runStatic(payload)));
-    await updateJob(payload.jobId, { phase: "dependency" });
-
-    // SCA
-    allFindings.push(...(await runDeps(payload)));
     await updateJob(payload.jobId, { phase: "dynamic" });
-
-    // Dynamic (baseline)
     allFindings.push(...(await runDynamic(payload)));
 
     await updateJob(payload.jobId, { phase: "intelligent_validation" });
@@ -911,6 +1008,65 @@ async function runScanPipeline(payload: SecurityScanPayload) {
         }
       }
     }
+
+    // JS bundle analysis: extract hidden API endpoints from the SPA's JavaScript bundles.
+    // Run before the advanced modules so discovered endpoints can enrich the IDOR scan.
+    await updateJob(payload.jobId, { phase: "js_analysis" });
+    const jsResult = await runJsEndpointExtraction(payload.baseUrl, authProfiles).catch((e) => {
+      console.warn("[security-worker] JS extraction error:", e?.message);
+      return { findings: [] as any[], discoveredEndpoints: [] as string[] };
+    });
+    allFindings.push(...(jsResult.findings as any));
+
+    // Mid-scan re-auth: before firing the expensive parallel modules, check whether any
+    // bearer token profiles have gone stale (target returns 401) and re-auth if so.
+    await refreshExpiredProfiles(authProfiles, payload.projectId, payload.baseUrl);
+
+    // Advanced modules: JWT analysis, IDOR engine, race condition testing, and Nuclei.
+    // All independent — run in parallel to keep wall-clock time bounded.
+    await updateJob(payload.jobId, { phase: "advanced_analysis" });
+    const [jwtFindings, idorFindings, raceFindings, nucleiFindings] = await Promise.all([
+      runJwtAnalysis(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] JWT analysis error:", e?.message); return [];
+      }),
+      runIdorScan(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] IDOR scan error:", e?.message); return [];
+      }),
+      runRaceConditionScan(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] Race condition scan error:", e?.message); return [];
+      }),
+      runNucleiScan(payload.baseUrl, authProfiles, payload.scanDepth ?? "standard").catch((e) => {
+        console.warn("[security-worker] Nuclei scan error:", e?.message); return [];
+      }),
+    ]);
+    allFindings.push(...jwtFindings, ...idorFindings, ...raceFindings, ...(nucleiFindings as any));
+
+    // Business logic + CORS: two independent modules, run in parallel.
+    // Business logic probes financial mutation endpoints for invalid inputs (negative amounts,
+    // overflow, zero-value, mass assignment, parameter pollution).
+    // CORS audit tests 7 distinct attack patterns against discovered API endpoints.
+    await updateJob(payload.jobId, { phase: "business_logic_cors" });
+    const [bizLogicFindings, corsFindings] = await Promise.all([
+      runBusinessLogicScan(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] Business logic scan error:", e?.message); return [];
+      }),
+      runCorsAudit(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] CORS audit error:", e?.message); return [];
+      }),
+    ]);
+    allFindings.push(...bizLogicFindings, ...corsFindings);
+
+    // Mobile security: runs in parallel with perf baseline — independent checks
+    await updateJob(payload.jobId, { phase: "mobile_scan" });
+    const [perfFindings2, mobileFindings] = await Promise.all([
+      runPerfBaseline(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] Perf baseline error:", e?.message); return [];
+      }),
+      runMobileScan(payload.baseUrl, authProfiles).catch((e) => {
+        console.warn("[security-worker] Mobile scan error:", e?.message); return [];
+      }),
+    ]);
+    allFindings.push(...perfFindings2, ...mobileFindings);
 
     const anomalyResult = await runAnomalyBaseline(intelligentConfig, routeContracts);
     allFindings.push(...anomalyResult.findings);
@@ -990,6 +1146,17 @@ async function runScanPipeline(payload: SecurityScanPayload) {
             : null,
           drift: driftResult.summary,
         },
+        complianceReport: buildComplianceReport(
+          payload.jobId,
+          payload.baseUrl,
+          finalFindings as any[],
+          {
+            phases: ["recon", "static_analysis", "dependency", "dynamic", "intelligent_validation",
+                     "graphql_audit", "js_analysis", "advanced_analysis", "business_logic_cors",
+                     "mobile_scan", "anomaly_baseline"],
+            authProfileCount: payload.authProfiles?.length ?? 0,
+          }
+        ),
       },
     });
 }

@@ -567,17 +567,28 @@ function emitTest(
     ? ""
     : `  // Auto-nav added because no explicit goto step was provided\n  await navigateTo(page, ${JSON.stringify(navTarget)});\n  await ensurePageIdentity(page, ${JSON.stringify(navTarget)});\n`;
 
+  // A "discovery navigation test" is auto-generated from crawl data and just
+  // verifies that a link/button leads to the expected URL. Its name matches the
+  // pattern "Navigate /from → /to". These tests should NEVER have sharedLogin
+  // injected — they don't test the login form, they test navigation. The name-
+  // based heuristics below (/login/, /signin/) would otherwise fire because the
+  // destination URL can contain "login" (e.g. "Navigate /home → /login").
+  const hasLoginFormFill = tc.steps.some(
+    (s) =>
+      s.kind === "fill" &&
+      typeof s.selector === "string" &&
+      /(user|email|pass)/i.test(s.selector)
+  );
+  const isDiscoveryNavTest =
+    /^Navigate\s+\S+\s+→\s+/.test(tc.name.trim()) && !hasLoginFormFill;
+
   const needsLogin =
-    /login/i.test(tc.name) ||
-    /signin/i.test(tc.name) ||
-    /sign in/i.test(tc.name) ||
-    /auth/i.test(tc.name) ||
-    tc.steps.some(
-      (s) =>
-        s.kind === "fill" &&
-        typeof s.selector === "string" &&
-        /(user|email|pass)/i.test(s.selector)
-    );
+    !isDiscoveryNavTest &&
+    (/login/i.test(tc.name) ||
+      /signin/i.test(tc.name) ||
+      /sign in/i.test(tc.name) ||
+      /auth/i.test(tc.name) ||
+      hasLoginFormFill);
 
   const loginCall = needsLogin ? "  await sharedLogin(page);" : "";
   const postLoginCheck = makePostLoginCheck(postLoginPath);

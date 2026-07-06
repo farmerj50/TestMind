@@ -34,6 +34,7 @@ import { regenerateAttachedSpecs } from "../agent/service.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRoots.js";
 import { sendRunNotifications } from "../notifications/runNotifications.js";
+import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { finalizeLatestTestState } from "../runner/finalize-latest-test-state.js";
 
 // Minimal, workspace-aware dependency installer
@@ -119,17 +120,6 @@ async function installDeps(repoRoot: string, workspaceCwd: string) {
 
   const tEnd = Date.now();
   console.log(`[runner] installDeps completed in ${tEnd - tStart}ms (cwd=${workspaceCwd})`);
-}
-
-function isLikelyGitRepo(url?: string | null) {
-  if (!url) return false;
-  const trimmed = url.trim();
-  if (!trimmed) return false;
-  return (
-    trimmed.endsWith(".git") ||
-    trimmed.startsWith("git@") ||
-    /github\.com|gitlab\.com|bitbucket\.org/.test(trimmed)
-  );
 }
 
 // Converts a pasted "name=value; name2=value2" cookie header into Playwright's
@@ -879,7 +869,7 @@ export default async function runRoutes(app: FastifyInstance) {
             : "";
           if (stored) return stored;
           const repo = project.repoUrl?.trim() ?? "";
-          if (repo && !isLikelyGitRepo(repo) && /^https?:\/\//i.test(repo)) return repo;
+          if (repo && !isLikelyGitRepoUrl(repo) && /^https?:\/\//i.test(repo)) return repo;
           return undefined;
         })()
       : undefined;
@@ -922,7 +912,7 @@ export default async function runRoutes(app: FastifyInstance) {
       ].filter((v): v is string => typeof v === "string");
       const inferredAi =
         pathHints.some((p) => p.replace(/\\/g, "/").includes("testmind-generated/")) ||
-        (!isLikelyGitRepo(project.repoUrl) &&
+        (!isLikelyGitRepoUrl(project.repoUrl) &&
           (parsed.data.file || parsed.data.specPath || (parsed.data.files?.length ?? 0) > 0));
       mode = inferredAi ? "ai" : "regular";
       aiMode = mode === "ai";
@@ -1019,7 +1009,7 @@ export default async function runRoutes(app: FastifyInstance) {
     }
     const allowLocalRepo = (process.env.TM_USE_LOCAL_REPO ?? "1") === "1"; // default: allow local fallback
     const runFromRepo = !aiMode && (process.env.TM_RUN_FROM_REPO ?? "0") === "1"; // default: standalone generated-only
-    const hasRepoUrl = runFromRepo && isLikelyGitRepo(project.repoUrl);
+    const hasRepoUrl = runFromRepo && isLikelyGitRepoUrl(project.repoUrl);
     if (runFromRepo && !hasRepoUrl && !allowLocalRepo) {
       return sendError(
         reply,

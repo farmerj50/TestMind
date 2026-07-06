@@ -35,6 +35,8 @@ import WorkflowsPage from "../pages/WorkflowsPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import LocatorLibraryPage from "../pages/LocatorLibraryPage";
 import SuiteRedirectPage from "../pages/SuiteRedirectPage";
+import OrganizationsPage from "../pages/OrganizationsPage";
+import OrganizationDetailPage from "../pages/OrganizationDetailPage";
 
 function NotFound() {
   return (
@@ -230,6 +232,23 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <LocatorLibraryPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/organizations"
+          element={
+            <ProtectedRoute>
+              <OrganizationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/organizations/:slug"
+          element={
+            <ProtectedRoute>
+              <OrganizationDetailPage />
             </ProtectedRoute>
           }
         />

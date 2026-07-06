@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { SignedIn, SignedOut, UserButton, SignUpButton } from "@clerk/clerk-react";
+import { SignedIn, UserButton, useAuth } from "@clerk/clerk-react";
 import { Moon, Sun } from "lucide-react";
 import { useDarkMode } from "../../lib/useDarkMode";
 
@@ -25,10 +25,13 @@ function MarketingLinks() {
       <Link to="/#features" className="px-3 py-2 text-sm text-slate-900 hover:text-slate-950">
         Features
       </Link>
+      <Link to="/#demo" className="px-3 py-2 text-sm text-slate-900 hover:text-slate-950">
+        Demo
+      </Link>
       <Link to="/pricing" className="px-3 py-2 text-sm text-slate-900 hover:text-slate-950">
         Pricing
       </Link>
-      <Link to="/#how" className="px-3 py-2 text-sm text-slate-900 hover:text-slate-950">
+      <Link to="/documents" className="px-3 py-2 text-sm text-slate-900 hover:text-slate-950">
         Docs
       </Link>
     </nav>
@@ -37,6 +40,10 @@ function MarketingLinks() {
 
 export default function TopNav({ mode = "app" }: { mode?: TopNavMode }) {
   const { dark, toggle } = useDarkMode();
+  const { isLoaded, isSignedIn } = useAuth();
+  const showSignedOutLinks = !isLoaded || !isSignedIn;
+  const showDashboardLink = mode !== "app" && isLoaded && isSignedIn;
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[color:var(--tm-border)] bg-[color:var(--tm-shell)] backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
@@ -63,22 +70,32 @@ export default function TopNav({ mode = "app" }: { mode?: TopNavMode }) {
           </button>
 
           {mode !== "app" && (
-            <SignedOut>
-              <Link
-                to="/signin"
-                className="rounded-md border px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-white/10"
-              >
-                Sign in
-              </Link>
-              <SignUpButton mode="modal">
-                <button
-                  type="button"
+            <>
+              {showSignedOutLinks && (
+                <>
+                <Link
+                  to="/signin"
+                  className="rounded-md border px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-white/10"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  to="/signup"
                   className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
                 >
                   Get started
-                </button>
-              </SignUpButton>
-            </SignedOut>
+                </Link>
+                </>
+              )}
+              {showDashboardLink && (
+                <Link
+                  to="/dashboard"
+                  className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
+                >
+                  Dashboard
+                </Link>
+              )}
+            </>
           )}
 
           <SignedIn>

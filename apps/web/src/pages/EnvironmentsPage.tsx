@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
@@ -44,6 +45,7 @@ type FormState = {
   baseUrl: string;
   isProtected: boolean;
   requiresApproval: boolean;
+  sessionCookie: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -52,6 +54,7 @@ const emptyForm = (): FormState => ({
   baseUrl: "",
   isProtected: false,
   requiresApproval: false,
+  sessionCookie: "",
 });
 
 export default function EnvironmentsPage() {
@@ -110,6 +113,7 @@ export default function EnvironmentsPage() {
       baseUrl: env.baseUrl,
       isProtected: env.isProtected,
       requiresApproval: env.requiresApproval,
+      sessionCookie: env.variables?.sessionCookie ?? "",
     });
     setShowForm(true);
   }
@@ -129,6 +133,13 @@ export default function EnvironmentsPage() {
     setSaving(true);
     setError(null);
     try {
+      const existingVariables = editingId
+        ? environments.find((e) => e.id === editingId)?.variables ?? {}
+        : {};
+      const variables = {
+        ...existingVariables,
+        ...(form.sessionCookie.trim() ? { sessionCookie: form.sessionCookie.trim() } : { sessionCookie: undefined }),
+      };
       if (editingId) {
         await apiFetch(`/environments/${editingId}`, {
           method: "PUT",
@@ -137,6 +148,7 @@ export default function EnvironmentsPage() {
             baseUrl: form.baseUrl.trim(),
             isProtected: form.isProtected,
             requiresApproval: form.requiresApproval,
+            variables,
           }),
         });
       } else {
@@ -148,6 +160,7 @@ export default function EnvironmentsPage() {
             baseUrl: form.baseUrl.trim(),
             isProtected: form.isProtected,
             requiresApproval: form.requiresApproval,
+            variables,
           }),
         });
       }
@@ -273,6 +286,22 @@ export default function EnvironmentsPage() {
                 />
                 <span className="text-sm text-slate-700">Requires approval before job runs</span>
               </label>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                Session cookie <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <Textarea
+                value={form.sessionCookie}
+                onChange={(e) => setForm((f) => ({ ...f, sessionCookie: e.target.value }))}
+                placeholder="session=abc123; token=xyz"
+                rows={2}
+                className="bg-white font-mono text-xs"
+              />
+              <p className="text-xs text-slate-500">
+                Paste a browser session cookie to authenticate generated tests against this environment when login/SSO
+                can't be scripted. Injected as Playwright storage state before each run targeting this base URL.
+              </p>
             </div>
             <div className="flex gap-2 pt-1">
               <Button

@@ -16,6 +16,10 @@ export type AgentScenarioStep = {
     | "expect-visible"
     | "upload"
     | "custom";
+  url?: string;
+  selector?: string;
+  text?: string;
+  path?: string;
   target?: string;
   value?: string;
   note?: string;

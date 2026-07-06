@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TM_PORT ?? 4173);
@@ -9,7 +10,7 @@ const GEN_ROOT = process.env.TM_GENERATED_ROOT
   : path.resolve(DIR, 'testmind-generated');
 const GEN_DIR = process.env.TM_TEST_DIR
   ? path.resolve(process.env.TM_TEST_DIR)
-  : "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_3BjvLDIaa0a3fTwE3y1eAo7SU2M\\cmnfigi9300017k6k3o57hjde";
+  : "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_3FzveohbdUbLjsyIct2MyQOXVFh\\cmr52pl5800017kz8nq8j9uxe";
 console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
@@ -36,8 +37,12 @@ const WORKERS = Number.isFinite(Number(process.env.TM_WORKERS))
 const MAX_FAILURES = process.env.TM_MAX_FAILURES
   ? Number(process.env.TM_MAX_FAILURES)
   : 0;
-const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS);
 const AUTH_STORAGE = process.env.TM_AUTH_STORAGE || path.resolve(DIR, '.auth', 'state.json');
+// HAS_AUTH covers two cases: a real E2E_EMAIL/E2E_PASS login (auth-setup project runs and
+// writes AUTH_STORAGE itself) OR a pre-seeded session-cookie storage state already written
+// to AUTH_STORAGE before this process started (auth-setup still runs but no-ops safely since
+// it returns early without email/password, so it never overwrites the seeded file).
+const HAS_AUTH = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASS) || fs.existsSync(AUTH_STORAGE);
 
 export default defineConfig({
   use: {
@@ -63,7 +68,7 @@ export default defineConfig({
     '**/.*/**',
   ],
   projects: [
-    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\.setup\.(ts|js|mjs)/, testDir: DIR }] : []),
+    ...(HAS_AUTH ? [{ name: 'auth-setup', testMatch: /auth\.setup\.(ts|js|mjs)/, testDir: path.join(DIR, 'tm-runner') }] : []),
     {
       name: 'generated',
       testDir: GEN_DIR,

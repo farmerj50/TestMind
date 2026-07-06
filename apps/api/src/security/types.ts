@@ -20,6 +20,8 @@ export type SecurityAuthProfile = {
   username?: string;
   password?: string;
   passwordSecretKey?: string;
+  // Mid-scan re-auth: session ID allows looking up provider config to refresh expired tokens
+  sessionId?: string;
 };
 
 export type ExpectedSecurityControl =

@@ -10,11 +10,18 @@ import type { RepairExecutionResult } from "./repair-executor.js";
 const toJson = <T>(value: T): any => JSON.parse(JSON.stringify(value));
 
 /**
- * When the spec lives in the generated folder, also patch its copy in the
- * agent curated suite so the next operator/suite run picks up the fix.
+ * When the spec lives in the generated folder, mirror the patch to every
+ * curated suite directory that already contains a matching copy of the spec.
  *
- * Generated layout: GENERATED_ROOT/{adapterId}-{userId}/{projectId}/path/to/spec.ts
- * Agent suite layout: CURATED_ROOT/agent-{projectId}/path/to/spec.ts
+ * The original implementation only checked the `agent-{projectId}` suite, which
+ * meant that user-created curated suites (e.g. `CURATED_ROOT/my-suite/spec.ts`)
+ * were never updated — causing "rerun from suite" to run the unfixed original.
+ *
+ * Fix: scan ALL immediate subdirectories of CURATED_ROOT and update any
+ * existing file whose path ends with the spec's project-relative path.
+ *
+ * Generated layout:  GENERATED_ROOT/{adapterId}-{userId}/{projectId}/path/to/spec.ts
+ * Curated layout:    CURATED_ROOT/{any-suite-name}/path/to/spec.ts
  */
 async function mirrorPatchedSpecToCuratedSuite(context: AiExecutionContext, patchedSpec: string) {
   const repoAbs = path.resolve(context.repoAbsolutePath);
@@ -24,21 +31,41 @@ async function mirrorPatchedSpecToCuratedSuite(context: AiExecutionContext, patc
   // If the spec is already inside the curated root it was patched directly — nothing extra needed.
   if (repoAbs.startsWith(curatedRootAbs)) return;
 
-  // Only attempt if the spec is inside the generated root.
+  // Only attempt mirroring for specs that live inside the generated root.
   if (!repoAbs.startsWith(generatedRootAbs)) return;
 
   // Strip generated root + {adapterId}-{userId} + {projectId} → get spec-relative path.
   const relToGen = path.relative(generatedRootAbs, repoAbs); // e.g. playwright-ts-uid/proj-id/path/spec.ts
   const parts = relToGen.split(path.sep);
-  if (parts.length < 3) return; // unexpected layout
+  if (parts.length < 3) return; // unexpected layout — bail out safely
 
-  const specRel = parts.slice(2).join(path.sep); // path/spec.ts
-  const agentCopy = path.join(curatedRootAbs, `agent-${context.scope.projectId}`, specRel);
+  const specRel = parts.slice(2).join(path.sep); // path/to/spec.ts (project-relative)
 
-  // Only write if the curated copy already exists (don't create new files).
-  await fs.access(agentCopy).then(async () => {
-    await fs.writeFile(agentCopy, patchedSpec, "utf8");
-  }).catch(() => { /* curated copy doesn't exist — skip */ });
+  // Enumerate every direct child directory of CURATED_ROOT and update any
+  // pre-existing file that matches `specRel`. We never create new files here
+  // — only patch copies that the user already placed in a curated suite.
+  let suiteDirs: string[];
+  try {
+    const entries = await fs.readdir(curatedRootAbs, { withFileTypes: true });
+    suiteDirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => path.join(curatedRootAbs, e.name));
+  } catch {
+    return; // CURATED_ROOT doesn't exist or is unreadable — nothing to mirror
+  }
+
+  await Promise.all(
+    suiteDirs.map(async (suiteDir) => {
+      const candidate = path.join(suiteDir, specRel);
+      try {
+        await fs.access(candidate); // throws if file doesn't exist
+        await fs.writeFile(candidate, patchedSpec, "utf8");
+        console.log(`[self-heal] mirrored patch to curated suite: ${candidate}`);
+      } catch {
+        // File doesn't exist in this suite dir — skip silently
+      }
+    })
+  );
 }
 
 async function mirrorPatchedSpecToRunTarget(context: AiExecutionContext, patchedSpec: string) {

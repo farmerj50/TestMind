@@ -5,9 +5,14 @@ import { Card, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { Checkbox } from "../components/ui/checkbox";
 import { toast } from "sonner";
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
+import CaseFilterBar, { type CaseFilters, EMPTY_FILTERS } from "../components/CaseFilterBar";
+import BulkActionToolbar from "../components/BulkActionToolbar";
+import CreateCaseModal, { type CreateCasePayload } from "../components/CreateCaseModal";
+import ImportCaseModal, { type ImportRow } from "../components/ImportCaseModal";
 
 type TestRunStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -78,6 +83,12 @@ export default function ProjectPage() {
   } | null>(null);
   const [aiSpecBusy, setAiSpecBusy] = useState(false);
 
+  // Management features
+  const [filters, setFilters] = useState<CaseFilters>(EMPTY_FILTERS);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
   const hasActiveRun = useMemo(
     () => runs.some((r) => r.status === "queued" || r.status === "running"),
     [runs]
@@ -110,6 +121,14 @@ export default function ProjectPage() {
     load();
   }, [id, apiFetch]);
 
+  // Re-fetch cases when suite selection or filters change
+  useEffect(() => {
+    if (!id) return;
+    refreshCases();
+    setSelectedIds(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSuiteId, filters]);
+
   // Poll automated runs while active
   useEffect(() => {
     if (!id || !hasActiveRun) return;
@@ -137,10 +156,8 @@ export default function ProjectPage() {
       .finally(() => setLoadingCase(false));
   }, [selectedCaseId, apiFetch]);
 
-  const visibleCases = useMemo(() => {
-    if (!selectedSuiteId) return cases;
-    return cases.filter((c) => c.suiteId === selectedSuiteId);
-  }, [cases, selectedSuiteId]);
+  // visibleCases: server already applies suite + filter params; client just renders what came back
+  const visibleCases = cases;
 
   function formatCaseTitle(title: string) {
     // Split optional path from step description (e.g., "path/spec.ts > Navigate /...")
@@ -161,9 +178,17 @@ export default function ProjectPage() {
     });
   }, [visibleCases]);
 
-  async function refreshCases() {
+  async function refreshCases(overrideFilters?: CaseFilters) {
     if (!id) return;
-    const res = await apiFetch<{ cases: CaseListItem[] }>(`/tests/cases?projectId=${id}`);
+    const f = overrideFilters ?? filters;
+    const params = new URLSearchParams({ projectId: id });
+    if (selectedSuiteId) params.set("suiteId", selectedSuiteId);
+    if (f.q) params.set("q", f.q);
+    if (f.status) params.set("status", f.status);
+    if (f.priority) params.set("priority", f.priority);
+    if (f.type) params.set("type", f.type);
+    if (f.tag) params.set("tag", f.tag);
+    const res = await apiFetch<{ cases: CaseListItem[] }>(`/tests/cases?${params}`);
     setCases(res.cases);
   }
 
@@ -190,25 +215,81 @@ export default function ProjectPage() {
     }
   }
 
-  async function handleAddCase() {
+  function handleAddCase() {
+    setShowCreateModal(true);
+  }
+
+  async function handleCreateCase(payload: CreateCasePayload) {
     if (!id) return;
-    const title = prompt("Case title?");
-    if (!title) return;
+    const res = await apiFetch<{ case: CaseListItem }>("/tests/cases", {
+      method: "POST",
+      body: JSON.stringify({ projectId: id, ...payload }),
+    });
+    toast.success("Case created");
+    await refreshCases();
+    setSelectedCaseId(res.case.id);
+    setShowCreateModal(false);
+  }
+
+  async function handleDuplicateCase(caseId: string) {
+    if (!id) return;
     try {
-      const res = await apiFetch<{ case: CaseListItem }>("/tests/cases", {
-        method: "POST",
-        body: JSON.stringify({
-          projectId: id,
-          suiteId: selectedSuiteId || undefined,
-          title,
-        }),
-      });
-      toast.success("Case created");
+      const res = await apiFetch<{ case: CaseListItem }>(`/tests/cases/${caseId}/duplicate`, { method: "POST" });
+      toast.success("Case duplicated");
       await refreshCases();
       setSelectedCaseId(res.case.id);
     } catch (e: any) {
-      toast.error(e?.message || "Failed to create case");
+      toast.error(e?.message || "Failed to duplicate case");
     }
+  }
+
+  async function handleBulkAction(action: string, value?: string) {
+    if (!id || selectedIds.size === 0) return;
+    try {
+      await apiFetch("/tests/cases/bulk", {
+        method: "POST",
+        body: JSON.stringify({ projectId: id, ids: [...selectedIds], action, value }),
+      });
+      const label = action === "delete" ? "Archived" : "Updated";
+      toast.success(`${label} ${selectedIds.size} case(s)`);
+      setSelectedIds(new Set());
+      await refreshCases();
+    } catch (e: any) {
+      toast.error(e?.message || "Bulk action failed");
+    }
+  }
+
+  async function handleExportCsv() {
+    if (!id) return;
+    try {
+      const params = new URLSearchParams({ projectId: id });
+      if (selectedSuiteId) params.set("suiteId", selectedSuiteId);
+      if (filters.q) params.set("q", filters.q);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.type) params.set("type", filters.type);
+      if (filters.tag) params.set("tag", filters.tag);
+      const res = await apiFetch<Response>(`/tests/cases/export?${params}`, { rawResponse: true } as any);
+      const blob = await (res as unknown as Response).blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `cases-${id}.csv`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch (e: any) {
+      toast.error(e?.message || "Export failed");
+    }
+  }
+
+  async function handleImport(projectId: string, suiteId: string | null, importedCases: ImportRow[]) {
+    const res = await apiFetch<{ created: number }>("/tests/cases/import", {
+      method: "POST",
+      body: JSON.stringify({ projectId, suiteId: suiteId ?? undefined, cases: importedCases }),
+    });
+    toast.success(`Imported ${res.created} case(s)`);
+    await refreshCases();
+    setShowImportModal(false);
   }
 
   async function handleDeleteCase(caseId: string) {
@@ -396,6 +477,29 @@ export default function ProjectPage() {
     return map;
   }, [suites]);
 
+  const availableTags = useMemo(
+    () => [...new Set(cases.flatMap((c) => c.tags ?? []))].sort(),
+    [cases]
+  );
+
+  const allVisibleSelected = dedupedCases.length > 0 && dedupedCases.every((c) => selectedIds.has(c.id));
+
+  function toggleAll() {
+    if (allVisibleSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(dedupedCases.map((c) => c.id)));
+    }
+  }
+
+  function toggleCase(caseId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(caseId)) next.delete(caseId); else next.add(caseId);
+      return next;
+    });
+  }
+
   const summarizeRun = (r: TestRun) => {
     if (r.summary) {
       try {
@@ -472,44 +576,98 @@ export default function ProjectPage() {
 
             <div className="mt-4 flex items-center justify-between">
               <div className="text-sm font-medium text-slate-700">Cases</div>
-              <Button size="sm" variant="outline" onClick={handleAddCase}>
-                Add case
-              </Button>
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="ghost" onClick={handleExportCsv} title="Export CSV">Export</Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowImportModal(true)} title="Import CSV">Import</Button>
+                <Button size="sm" variant="outline" onClick={handleAddCase}>Add case</Button>
+              </div>
             </div>
+
+            {/* Filter bar */}
+            <CaseFilterBar
+              filters={filters}
+              availableTags={availableTags}
+              onChange={(f) => setFilters(f)}
+              onClear={() => setFilters(EMPTY_FILTERS)}
+            />
+
+            {/* Select-all header */}
+            {dedupedCases.length > 0 && (
+              <div className="flex items-center gap-2 px-1 py-1">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all"
+                />
+                <span className="text-xs text-slate-500">
+                  {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
+                </span>
+              </div>
+            )}
+
             <div className="space-y-2">
               {dedupedCases.map((c) => (
-                <button
+                <div
                   key={c.id}
-                  onClick={() => {
-                    setSelectedCaseId(c.id);
-                    setSelectedSuiteId(c.suiteId ?? null);
-                  }}
-                  className={`w-full rounded border px-3 py-2 text-left text-sm bg-white ${
+                  className={`flex items-start gap-2 rounded border px-3 py-2 text-sm bg-white ${
                     selectedCaseId === c.id
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      ? "border-blue-500 bg-blue-50"
+                      : selectedIds.has(c.id)
+                      ? "border-violet-300 bg-violet-50"
                       : "border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <span
-                      className={
-                        "font-semibold " +
-                        (selectedCaseId === c.id ? "text-blue-800" : "text-slate-900")
-                      }
-                    >
-                      <span className="break-words">{formatCaseTitle(c.title)}</span>
-                    </span>
-                    <span className="text-xs uppercase text-slate-500 shrink-0">
-                      {c.priority}
-                    </span>
+                  <Checkbox
+                    checked={selectedIds.has(c.id)}
+                    onCheckedChange={() => toggleCase(c.id)}
+                    className="mt-0.5 shrink-0"
+                    aria-label="Select case"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <button
+                    className="flex-1 text-left min-w-0"
+                    onClick={() => {
+                      setSelectedCaseId(c.id);
+                    }}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <span className={`font-semibold break-words ${selectedCaseId === c.id ? "text-blue-800" : "text-slate-900"}`}>
+                        {formatCaseTitle(c.title)}
+                      </span>
+                      <span className="text-xs uppercase text-slate-500 shrink-0">{c.priority}</span>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {suiteLookup.get(c.suiteId || "")?.name || "Unassigned"}
+                    </div>
+                  </button>
+                  {/* Kebab menu */}
+                  <div className="relative shrink-0">
+                    <details className="group">
+                      <summary className="list-none cursor-pointer p-1 rounded hover:bg-slate-100 text-slate-400">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+                          <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+                        </svg>
+                      </summary>
+                      <div className="absolute right-0 top-6 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[110px]">
+                        <button
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 text-slate-700"
+                          onClick={(e) => { e.preventDefault(); handleDuplicateCase(c.id); }}
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 text-red-600"
+                          onClick={(e) => { e.preventDefault(); handleDeleteCase(c.id); }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </details>
                   </div>
-                  <div className="text-xs text-slate-500">
-                    {suiteLookup.get(c.suiteId || "")?.name || "Unassigned"}
-                  </div>
-                </button>
+                </div>
               ))}
               {dedupedCases.length === 0 && (
-                <p className="text-sm text-slate-500">No cases in this suite.</p>
+                <p className="text-sm text-slate-500 px-1">No cases match the current filters.</p>
               )}
             </div>
           </div>
@@ -874,6 +1032,35 @@ export default function ProjectPage() {
           </Card>
         </div>
       </div>
+
+      {/* Bulk action toolbar */}
+      <BulkActionToolbar
+        selectedIds={selectedIds}
+        suites={suites}
+        onAction={handleBulkAction}
+        onClear={() => setSelectedIds(new Set())}
+      />
+
+      {/* Create case modal */}
+      <CreateCaseModal
+        open={showCreateModal}
+        suites={suites}
+        defaultSuiteId={selectedSuiteId}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleCreateCase}
+      />
+
+      {/* Import modal */}
+      {id && (
+        <ImportCaseModal
+          open={showImportModal}
+          projectId={id}
+          suites={suites}
+          defaultSuiteId={selectedSuiteId}
+          onClose={() => setShowImportModal(false)}
+          onImport={handleImport}
+        />
+      )}
     </div>
   );
 }

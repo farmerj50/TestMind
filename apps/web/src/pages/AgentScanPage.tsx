@@ -79,6 +79,7 @@ export default function AgentScanPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
   const [pageInput, setPageInput] = useState("/");
+  const [maxScenarios, setMaxScenarios] = useState(20);
   const [instructions, setInstructions] = useState("");
   const [loadingSession, setLoadingSession] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -223,8 +224,9 @@ export default function AgentScanPage() {
       return;
     }
 
-    const body: Record<string, string> = {
+    const body: Record<string, string | number> = {
       baseUrl: trimmedBase,
+      maxScenarios,
     };
     if (/^https?:\/\//i.test(target)) body.url = target;
     else body.path = target.startsWith("/") ? target : `/${target}`;
@@ -412,7 +414,7 @@ export default function AgentScanPage() {
                   size="sm"
                   onClick={handleCreateProject}
                   disabled={creatingProject}
-                  title="Create a project using the Base URL as repoUrl"
+                  title="Create a project using the Base URL as the app target"
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
                 >
                   {creatingProject ? (
@@ -466,16 +468,34 @@ export default function AgentScanPage() {
               />
             </div>
 
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-700">
-                Page URL or path
-              </label>
-              <Input
-                value={pageInput}
-                onChange={(e) => setPageInput(e.target.value)}
-                placeholder="/dashboard or https://example.com/dashboard"
-                className="bg-white"
-              />
+            <div className="grid gap-3 md:grid-cols-[1fr_140px]">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Page URL or path
+                </label>
+                <Input
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  placeholder="/dashboard or https://example.com/dashboard"
+                  className="bg-white"
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Max tests
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={maxScenarios}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setMaxScenarios(Number.isFinite(next) ? Math.max(1, Math.min(50, next)) : 20);
+                  }}
+                  className="bg-white"
+                />
+              </div>
             </div>
 
             <div className="grid gap-2">
@@ -576,9 +596,10 @@ export default function AgentScanPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() =>
-                          apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(() =>
-                            fetchSession(selectedProject, { silent: true })
-                          )
+                          apiFetch(`/tm/agent/pages/${page.id}/run`, {
+                            method: "POST",
+                            body: JSON.stringify({ maxScenarios }),
+                          }).then(() => fetchSession(selectedProject, { silent: true }))
                         }
                       >
                         Run page
@@ -671,9 +692,10 @@ export default function AgentScanPage() {
                     variant="default"
                     className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm"
                     onClick={() =>
-                      apiFetch(`/tm/agent/pages/${page.id}/run`, { method: "POST" }).then(() =>
-                        fetchSession(selectedProject, { silent: true })
-                      )
+                      apiFetch(`/tm/agent/pages/${page.id}/run`, {
+                        method: "POST",
+                        body: JSON.stringify({ maxScenarios }),
+                      }).then(() => fetchSession(selectedProject, { silent: true }))
                     }
                     disabled={busyGenerateAll === page.id}
                   >
@@ -755,8 +777,4 @@ export default function AgentScanPage() {
     </div>
   );
 }
-
-
-
-
 

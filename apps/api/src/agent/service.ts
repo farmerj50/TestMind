@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import path from "path";
 import fs from "fs/promises";
 import { prisma } from "../prisma.js";
-import { scanPage } from "../testmind/discover.js";
+import { scanPage, type RouteScan } from "../testmind/discover.js";
 import { requestPageAnalysis } from "./openai.js";
 import type { AgentScenarioPayload, AgentScenarioStep } from "./types.js";
 import { ensureCuratedProjectEntry, agentSuiteId } from "../testmind/curated-store.js";
@@ -14,9 +14,324 @@ import { GENERATED_ROOT } from "../lib/storageRoots.js";
 const defaultCoverage: Prisma.InputJsonValue = {};
 const CURATED_ADAPTER = "playwright-ts";
 const OPENAI_SECRET_KEYS = ["OPENAI_API_KEY", "OPEN_API_KEY"] as const;
+const DEFAULT_AGENT_MAX_SCENARIOS = 20;
+const HARD_MAX_AGENT_SCENARIOS = 50;
+const COVERAGE_TYPES: AgentScenarioPayload["coverageType"][] = [
+  "statement",
+  "branch",
+  "edge",
+  "decision",
+  "security",
+  "accessibility",
+  "regression",
+  "other",
+];
+
+function envMaxScenarios() {
+  const raw = process.env.TM_AGENT_MAX_SCENARIOS_PER_PAGE ?? process.env.AGENT_MAX_SCENARIOS_PER_PAGE;
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) ? parsed : DEFAULT_AGENT_MAX_SCENARIOS;
+}
+
+export function normalizeAgentMaxScenarios(value?: number | null) {
+  const parsed = typeof value === "number" ? value : envMaxScenarios();
+  const fallback = Number.isFinite(parsed) ? parsed : DEFAULT_AGENT_MAX_SCENARIOS;
+  return Math.max(1, Math.min(HARD_MAX_AGENT_SCENARIOS, Math.floor(fallback)));
+}
 
 function generatedProjectRoot(projectId: string, ownerId: string) {
   return path.join(GENERATED_ROOT, `${CURATED_ADAPTER}-${ownerId}`, projectId);
+}
+
+function siteNameFrom(baseUrl: string, scan?: RouteScan) {
+  const title = scan?.title?.trim();
+  if (title) {
+    return title
+      .replace(/\s+[|\u2014-]\s+.*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  try {
+    return new URL(baseUrl).hostname
+      .replace(/^www\./, "")
+      .split(".")[0]
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (m) => m.toUpperCase());
+  } catch {
+    return "Application";
+  }
+}
+
+function scenarioSignature(title: string) {
+  return title.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeCoverageType(value: unknown): AgentScenarioPayload["coverageType"] {
+  const normalized = typeof value === "string" ? value.toLowerCase() : "";
+  return COVERAGE_TYPES.includes(normalized as AgentScenarioPayload["coverageType"])
+    ? (normalized as AgentScenarioPayload["coverageType"])
+    : "other";
+}
+
+function gotoStep(url: string): AgentScenarioStep {
+  return { kind: "goto", url, target: url, value: url };
+}
+
+function visibleStep(selector: string): AgentScenarioStep {
+  return { kind: "expect-visible", selector, target: selector };
+}
+
+function clickStep(selector: string): AgentScenarioStep {
+  return { kind: "click", selector, target: selector };
+}
+
+function fillStep(selector: string, value: string): AgentScenarioStep {
+  return { kind: "fill", selector, target: selector, value };
+}
+
+function normalizeStep(step: AgentScenarioStep, pageUrl: string): AgentScenarioStep {
+  const kind = step.kind || "custom";
+  if (kind === "goto") {
+    const url = step.url || step.value || step.target || pageUrl;
+    return { ...step, kind, url, target: step.target || url, value: step.value || url };
+  }
+  if (kind === "click" || kind === "fill" || kind === "expect-visible" || kind === "upload") {
+    const selector = step.selector || step.target || (kind === "expect-visible" ? step.value : undefined) || "body";
+    return { ...step, kind, selector, target: step.target || selector };
+  }
+  if (kind === "expect-text") {
+    const text = step.text || step.value || step.target || "ready";
+    return { ...step, kind, text, target: step.target || text, value: step.value || text };
+  }
+  return { ...step, kind: "custom" };
+}
+
+function normalizeScenarioForSave(
+  scenario: AgentScenarioPayload,
+  pageUrl: string
+): AgentScenarioPayload {
+  return {
+    title: scenario.title?.trim() || "Scenario",
+    coverageType: normalizeCoverageType(scenario.coverageType),
+    description: scenario.description,
+    tags: Array.isArray(scenario.tags) ? scenario.tags.filter(Boolean) : [],
+    risk: scenario.risk === "low" || scenario.risk === "medium" || scenario.risk === "high" ? scenario.risk : "medium",
+    steps: (scenario.steps || []).map((step) => normalizeStep(step, pageUrl)),
+  };
+}
+
+function linkSelector(rawUrl: string, baseUrl: string) {
+  try {
+    const url = new URL(rawUrl, baseUrl);
+    const pathWithQuery = `${url.pathname || "/"}${url.search || ""}`;
+    const escapedPath = pathWithQuery.replace(/"/g, '\\"');
+    const escapedFull = url.toString().replace(/"/g, '\\"');
+    return `a[href="${escapedPath}"], a[href="${escapedFull}"]`;
+  } catch {
+    return "a[href]";
+  }
+}
+
+function readableRoute(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    const value = `${url.pathname || "/"}${url.search || ""}`;
+    return value === "/" ? "home" : value.replace(/^\/+/, "").replace(/[-_/]+/g, " ");
+  } catch {
+    return rawUrl.replace(/^\/+/, "").replace(/[-_/]+/g, " ") || "page";
+  }
+}
+
+function fieldSelector(name: string) {
+  const escaped = name.replace(/"/g, '\\"');
+  return `[name="${escaped}"], input[placeholder="${escaped}"], textarea[placeholder="${escaped}"], select[name="${escaped}"]`;
+}
+
+function valueForField(field: RouteScan["fields"][number]) {
+  const name = `${field.name} ${field.type ?? ""}`.toLowerCase();
+  if (name.includes("email")) return "qa@example.com";
+  if (name.includes("phone")) return "5555550100";
+  if (name.includes("pass")) return "TestPass123!";
+  if (field.type === "number") return String(field.min ?? 1);
+  if (field.type === "date") return "2026-01-01";
+  return "Test value";
+}
+
+function buttonLabel(selector: string) {
+  const match = selector.match(/has-text\(["'](.+?)["']\)/i);
+  if (match?.[1]) return match[1];
+  return selector.replace(/[^a-z0-9]+/gi, " ").trim() || "control";
+}
+
+function buildFallbackScenarios(params: {
+  baseUrl: string;
+  pageUrl: string;
+  scan: RouteScan;
+  maxScenarios: number;
+}) {
+  const { baseUrl, pageUrl, scan, maxScenarios } = params;
+  const siteName = siteNameFrom(baseUrl, scan);
+  const title = (suffix: string) => `${siteName} - ${suffix}`;
+  const scenarios: AgentScenarioPayload[] = [];
+  const add = (scenario: AgentScenarioPayload) => {
+    if (scenarios.length < maxScenarios) scenarios.push(normalizeScenarioForSave(scenario, pageUrl));
+  };
+
+  add({
+    title: title("verify page loads and renders core shell"),
+    coverageType: "statement",
+    description: "Ensure the scanned page loads without a blank or broken UI.",
+    tags: ["page-load", "smoke"],
+    risk: "medium",
+    steps: [gotoStep(pageUrl), visibleStep("body")],
+  });
+  add({
+    title: title("verify primary content remains visible"),
+    coverageType: "statement",
+    description: "Check that the main page content is visible after navigation.",
+    tags: ["content", "ui"],
+    risk: "medium",
+    steps: [gotoStep(pageUrl), visibleStep("main, [role='main'], body")],
+  });
+  if (scan.title) {
+    add({
+      title: title("verify browser title and page identity"),
+      coverageType: "decision",
+      description: "Validate that the page identity is still recognizable.",
+      tags: ["identity", "regression"],
+      risk: "low",
+      steps: [gotoStep(pageUrl), visibleStep("body")],
+    });
+  }
+
+  for (const link of scan.links || []) {
+    add({
+      title: title(`verify navigation to ${readableRoute(link)}`),
+      coverageType: "branch",
+      description: `Validate that the discovered navigation target ${link} is reachable from the scanned page.`,
+      tags: ["navigation", "link"],
+      risk: "medium",
+      steps: [gotoStep(pageUrl), clickStep(linkSelector(link, baseUrl)), visibleStep("body")],
+    });
+  }
+
+  for (const button of scan.buttons || []) {
+    add({
+      title: title(`exercise ${buttonLabel(button)} control`),
+      coverageType: "decision",
+      description: `Exercise the discovered control ${button} and confirm the UI remains usable.`,
+      tags: ["button", "interaction"],
+      risk: "medium",
+      steps: [gotoStep(pageUrl), visibleStep(button), clickStep(button), visibleStep("body")],
+    });
+  }
+
+  for (const field of scan.fields || []) {
+    const selector = fieldSelector(field.name);
+    add({
+      title: title(`accept valid input for ${field.name}`),
+      coverageType: "edge",
+      description: `Fill the ${field.name} field with representative valid input.`,
+      tags: ["form", "input"],
+      risk: "medium",
+      steps: [gotoStep(pageUrl), fillStep(selector, valueForField(field)), visibleStep("body")],
+    });
+    if (field.required) {
+      add({
+        title: title(`validate required input handling for ${field.name}`),
+        coverageType: "branch",
+        description: `Submit or inspect the page with ${field.name} left empty to cover required-field behavior.`,
+        tags: ["form", "validation"],
+        risk: "medium",
+        steps: [gotoStep(pageUrl), visibleStep(selector), visibleStep("body")],
+      });
+    }
+    if (field.min !== undefined || field.max !== undefined || field.pattern) {
+      add({
+        title: title(`validate boundary rules for ${field.name}`),
+        coverageType: "edge",
+        description: `Cover min, max, or pattern constraints discovered for ${field.name}.`,
+        tags: ["form", "boundary"],
+        risk: "medium",
+        steps: [gotoStep(pageUrl), fillStep(selector, "boundary-test"), visibleStep("body")],
+      });
+    }
+  }
+
+  for (const fileInput of scan.fileInputs || []) {
+    const selector = fieldSelector(fileInput);
+    add({
+      title: title(`verify file upload control ${fileInput}`),
+      coverageType: "edge",
+      description: `Confirm the file upload control ${fileInput} is present before upload-specific fixtures are added.`,
+      tags: ["upload", "file-input"],
+      risk: "medium",
+      steps: [gotoStep(pageUrl), visibleStep(selector)],
+    });
+  }
+
+  const generic: Array<[AgentScenarioPayload["coverageType"], string, string[], "low" | "medium" | "high"]> = [
+    ["accessibility", "verify keyboard-accessible page structure", ["accessibility", "keyboard"], "medium"],
+    ["accessibility", "verify screen-reader landmarks are present", ["accessibility", "landmarks"], "medium"],
+    ["security", "verify authentication entry points do not expose protected content", ["security", "auth"], "high"],
+    ["security", "verify page does not expose obvious sensitive data", ["security", "privacy"], "high"],
+    ["edge", "verify page remains usable after repeated load", ["stability", "edge"], "medium"],
+    ["regression", "capture visual baseline for primary viewport", ["regression", "visual"], "low"],
+    ["regression", "capture mobile-layout smoke coverage", ["regression", "responsive"], "medium"],
+    ["decision", "verify primary call-to-action path remains available", ["cta", "decision"], "medium"],
+    ["branch", "verify alternate navigation path remains available", ["navigation", "branch"], "medium"],
+    ["statement", "verify footer or secondary content remains reachable", ["content", "smoke"], "low"],
+  ];
+
+  for (const [coverageType, suffix, tags, risk] of generic) {
+    add({
+      title: title(suffix),
+      coverageType,
+      description: `Additional ${coverageType} coverage for ${siteName}.`,
+      tags,
+      risk,
+      steps: [gotoStep(pageUrl), visibleStep("body")],
+    });
+  }
+
+  let counter = 1;
+  while (scenarios.length < maxScenarios) {
+    add({
+      title: title(`extended regression coverage ${counter}`),
+      coverageType: counter % 2 === 0 ? "edge" : "regression",
+      description: `Additional generated coverage slot ${counter} for the scanned page.`,
+      tags: ["extended", "regression"],
+      risk: "low",
+      steps: [gotoStep(pageUrl), visibleStep("body")],
+    });
+    counter++;
+  }
+
+  return scenarios;
+}
+
+function ensureScenarioCount(params: {
+  generated: AgentScenarioPayload[];
+  baseUrl: string;
+  pageUrl: string;
+  scan: RouteScan;
+  maxScenarios: number;
+}) {
+  const { generated, baseUrl, pageUrl, scan, maxScenarios } = params;
+  const selected: AgentScenarioPayload[] = [];
+  const seen = new Set<string>();
+  const push = (scenario: AgentScenarioPayload) => {
+    if (selected.length >= maxScenarios) return;
+    const normalized = normalizeScenarioForSave(scenario, pageUrl);
+    const key = scenarioSignature(normalized.title);
+    if (seen.has(key)) return;
+    seen.add(key);
+    selected.push(normalized);
+  };
+
+  for (const scenario of generated || []) push(scenario);
+  for (const scenario of buildFallbackScenarios({ baseUrl, pageUrl, scan, maxScenarios })) push(scenario);
+  return selected.slice(0, maxScenarios);
 }
 
 export async function ensureCuratedSuiteRecord(projectId: string, projectName: string, _ownerId: string) {
@@ -234,7 +549,11 @@ export async function getAgentOpenAiKeyStatus(projectId?: string) {
   };
 }
 
-export async function runAgentForPage(userId: string, pageId: string) {
+export async function runAgentForPage(
+  userId: string,
+  pageId: string,
+  options: { maxScenarios?: number } = {}
+) {
   const page = await prisma.agentPage.findFirst({
     where: { id: pageId, session: { userId } },
     include: { session: true },
@@ -248,6 +567,7 @@ export async function runAgentForPage(userId: string, pageId: string) {
 
   try {
     const scan = await scanPage(page.url);
+    const maxScenarios = normalizeAgentMaxScenarios(options.maxScenarios);
     const { apiKey, availableKeys } = await resolveOpenAiKey(page.session.projectId ?? undefined);
     if (!apiKey) {
       throw new Error(
@@ -262,6 +582,14 @@ export async function runAgentForPage(userId: string, pageId: string) {
       instructions: page.instructions ?? page.session.instructions ?? undefined,
       scan,
       apiKey,
+      maxScenarios,
+    });
+    const scenarios = ensureScenarioCount({
+      generated: llm.scenarios,
+      baseUrl: page.session.baseUrl,
+      pageUrl: page.url,
+      scan,
+      maxScenarios,
     });
 
     await prisma.$transaction([
@@ -280,7 +608,7 @@ export async function runAgentForPage(userId: string, pageId: string) {
       }),
     ]);
 
-    await replaceScenarios(page.id, llm.scenarios);
+    await replaceScenarios(page.id, scenarios);
     return getAgentSession(userId, page.sessionId);
   } catch (err: any) {
     await prisma.agentPage.update({

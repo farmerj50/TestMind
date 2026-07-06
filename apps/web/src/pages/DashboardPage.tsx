@@ -977,12 +977,12 @@ export default function DashboardPage() {
 
                 <div>
                   <label className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-                    Repository URL
+                    Repository or App URL
                   </label>
                   <Input
                     value={repoUrl}
                     onChange={(e) => setRepoUrl(e.target.value)}
-                    placeholder="https://github.com/acme/checkout"
+                    placeholder="https://github.com/acme/checkout or https://app.example.com"
                     className="mt-2"
                   />
                   {formErrors.repoUrl ? (
