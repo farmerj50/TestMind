@@ -10,7 +10,7 @@ const GEN_ROOT = process.env.TM_GENERATED_ROOT
   : path.resolve(DIR, 'testmind-generated');
 const GEN_DIR = process.env.TM_TEST_DIR
   ? path.resolve(process.env.TM_TEST_DIR)
-  : "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_3FzveohbdUbLjsyIct2MyQOXVFh\\cmr52pl5800017kz8nq8j9uxe\\panic-room-front-end-production-up-railway-app";
+  : "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-generated\\playwright-ts-user_3EMYRBXaTs1QZ76UgK9JVOQ3L83\\cmpr1b1pv00017km0wrewug2i";
 console.log('[runner] GEN_DIR resolved to:', GEN_DIR);
 const JSON_REPORT = process.env.PW_JSON_OUTPUT
   ? path.resolve(process.env.PW_JSON_OUTPUT)
