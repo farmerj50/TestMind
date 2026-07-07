@@ -125,6 +125,68 @@ html.dark .text-blue-600 { color: #60a5fa; }
 /* ── Dark mode table dividers ───────────────────────────────────────────── */
 html.dark .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: var(--tm-border); }
 
+.tm-comparison-table {
+  background-color: #ffffff;
+  color: #334155;
+}
+
+.tm-comparison-table thead {
+  background-color: #f8fafc;
+  color: #334155;
+}
+
+.tm-comparison-table th,
+.tm-comparison-table td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tm-comparison-table tbody tr:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+.tm-comparison-table tbody tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+.tm-comparison-table td:first-child {
+  color: #0f172a;
+}
+
+.tm-comparison-table td:last-child {
+  color: #1d4ed8;
+}
+
+html.dark .tm-comparison-table {
+  background-color: #0f172a;
+  color: #dbeafe;
+}
+
+html.dark .tm-comparison-table thead {
+  background-color: #1e293b;
+  color: #dbeafe;
+}
+
+html.dark .tm-comparison-table th,
+html.dark .tm-comparison-table td {
+  border-color: #334155;
+}
+
+html.dark .tm-comparison-table tbody tr:nth-child(odd) {
+  background-color: #0f172a;
+}
+
+html.dark .tm-comparison-table tbody tr:nth-child(even) {
+  background-color: #162033;
+}
+
+html.dark .tm-comparison-table td:first-child {
+  color: #f8fafc;
+}
+
+html.dark .tm-comparison-table td:last-child {
+  color: #93c5fd;
+}
+
 body {
   position: relative;
 }
