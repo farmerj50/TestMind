@@ -37,6 +37,7 @@ import LocatorLibraryPage from "../pages/LocatorLibraryPage";
 import SuiteRedirectPage from "../pages/SuiteRedirectPage";
 import OrganizationsPage from "../pages/OrganizationsPage";
 import OrganizationDetailPage from "../pages/OrganizationDetailPage";
+import ApiTestingPage from "../pages/ApiTestingPage";
 
 function NotFound() {
   return (
@@ -192,6 +193,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <WorkflowsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/api-testing"
+          element={
+            <ProtectedRoute>
+              <ApiTestingPage />
             </ProtectedRoute>
           }
         />

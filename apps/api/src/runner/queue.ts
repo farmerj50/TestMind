@@ -156,3 +156,22 @@ export async function enqueueAllureGenerate(payload: AllureGeneratePayload) {
     backoff: { type: 'exponential', delay: 15_000 },
   });
 }
+
+// ── API Testing queue (functional validation — separate from security scans) ──
+
+export type ApiTestRunPayload = {
+  runId: string;
+  collectionId: string;
+  projectId: string;
+  testCaseIds?: string[]; // undefined = run all cases in collection
+};
+
+export const apiTestQueue = createQueue<ApiTestRunPayload>('api-tests');
+
+export async function enqueueApiTestRun(payload: ApiTestRunPayload) {
+  return apiTestQueue.add('api-test-run', payload, {
+    removeOnComplete: true,
+    removeOnFail: false,
+    attempts: 1,
+  });
+}

@@ -174,6 +174,7 @@ model Project {
   apiSpecs             ApiSpec[]
   authIntegrations     AuthIntegration[]
   mobileConfigs        MobileConfig[]
+  apiCollections       ApiCollection[]
 }
 
 model GitAccount {
@@ -502,6 +503,7 @@ model ApiSpec {
   endpointCount Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  collections   ApiCollection[]
 
   @@index([projectId, createdAt])
 }
@@ -793,6 +795,7 @@ model Environment {
   operatorJobs     OperatorJob[]
   testRuns         TestRun[]
   workflows        Workflow[]
+  apiCollections   ApiCollection[]
 
   @@unique([projectId, name])
 }
@@ -894,4 +897,86 @@ model MobileConfig {
   updatedAt    DateTime @updatedAt
 
   @@index([projectId])
+}
+
+// ── API Testing (functional validation) ──────────────────────────────────────
+// Separate from Security Scan. Covers endpoint availability, status codes,
+// request/response assertions, JSON schemas, and auth. No overlap with
+// SecurityScanJob, TestRun, or TestCase models.
+
+model ApiCollection {
+  id            String       @id @default(cuid())
+  projectId     String
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  apiSpecId     String?
+  apiSpec       ApiSpec?     @relation(fields: [apiSpecId], references: [id], onDelete: SetNull)
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  name          String
+  baseUrl       String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  testCases     ApiTestCase[]
+  runs          ApiTestRun[]
+
+  @@index([projectId, createdAt])
+}
+
+model ApiTestCase {
+  id             String        @id @default(cuid())
+  collectionId   String
+  collection     ApiCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  name           String?
+  method         String        // GET POST PUT PATCH DELETE HEAD OPTIONS
+  path           String        // /users/{id}
+  headers        Json?         // Record<string,string>
+  queryParams    Json?         // Record<string,string>
+  bodyJson       String?       @db.Text
+  expectedStatus Int?
+  assertions     Json?         // Assertion[] — evaluated by api-test-worker
+  authSessionId  String?
+  timeoutMs      Int           @default(8000)
+  order          Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  results        ApiTestResult[]
+
+  @@index([collectionId, order])
+}
+
+model ApiTestRun {
+  id           String        @id @default(cuid())
+  projectId    String
+  collectionId String
+  collection   ApiCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  status       String        @default("queued") // queued running completed failed
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  summary      Json?         // { total, passed, failed, errors, durationMs }
+  error        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  results      ApiTestResult[]
+
+  @@index([projectId, createdAt])
+  @@index([collectionId, createdAt])
+}
+
+model ApiTestResult {
+  id               String      @id @default(cuid())
+  runId            String
+  run              ApiTestRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  testCaseId       String
+  testCase         ApiTestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  status           String      // passed failed error skipped
+  statusCode       Int?
+  durationMs       Int?
+  responseHeaders  Json?       // redacted: Authorization and Cookie values removed
+  bodyPreview      String?     @db.Text  // capped at 2000 chars
+  assertionResults Json?       // [{ type, passed, actual, expected }]
+  error            String?
+  createdAt        DateTime    @default(now())
+
+  @@index([runId])
+  @@index([testCaseId])
 }

@@ -2366,7 +2366,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                <div className="font-medium text-slate-800">Missing nav mappings</div>
+                <div className="tm-run-section-title font-medium">Missing nav mappings</div>
 
 
 
@@ -2433,7 +2433,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <div className="tm-run-empty-state rounded-md p-3 text-sm">
 
 
 
@@ -2481,7 +2481,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                        className="rounded-md border border-slate-200 bg-white/80 p-3"
+                        className="tm-run-locator-card rounded-md p-3"
 
 
 
@@ -2497,11 +2497,11 @@ const fetchMissingLocators = useCallback(
 
 
 
-                            <div className="text-sm font-semibold text-slate-800">{item.stepText}</div>
+                            <div className="tm-run-locator-title text-sm font-semibold">{item.stepText}</div>
 
 
 
-                            <div className="text-xs text-slate-500">
+                            <div className="tm-run-locator-meta text-xs">
 
 
 
@@ -2517,7 +2517,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                          <span className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600">
+                          <span className="tm-run-locator-badge rounded-full px-2 py-0.5 text-[11px]">
 
 
 
@@ -2537,7 +2537,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <div className="tm-run-suggestions mt-2 flex flex-wrap items-center gap-2 text-xs">
 
 
 
@@ -2561,7 +2561,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                                className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 transition hover:bg-slate-100"
+                                className="tm-run-suggestion-chip rounded-full px-2 py-0.5 text-xs transition"
 
 
 
@@ -2621,7 +2621,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                            className="flex-1 min-w-[220px] rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+                            className="tm-run-selector-input flex-1 min-w-[220px] rounded-md px-2 py-1 text-sm focus:outline-none"
 
 
 
@@ -2817,7 +2817,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                <div className="font-medium text-slate-800">Missing locators</div>
+                <div className="tm-run-section-title font-medium">Missing locators</div>
 
 
 
@@ -2913,7 +2913,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <div className="tm-run-empty-state rounded-md p-3 text-sm">
 
 
 
@@ -2961,7 +2961,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                        className="rounded-md border border-slate-200 bg-white/80 p-3"
+                        className="tm-run-locator-card rounded-md p-3"
 
 
 
@@ -2977,11 +2977,11 @@ const fetchMissingLocators = useCallback(
 
 
 
-                            <div className="text-sm font-semibold text-slate-800">{item.stepText}</div>
+                            <div className="tm-run-locator-title text-sm font-semibold">{item.stepText}</div>
 
 
 
-                            <div className="text-xs text-slate-500">
+                            <div className="tm-run-locator-meta text-xs">
 
 
 
@@ -2997,7 +2997,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                          <span className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600">
+                          <span className="tm-run-locator-badge rounded-full px-2 py-0.5 text-[11px]">
 
 
 
@@ -3017,7 +3017,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <div className="tm-run-suggestions mt-2 flex flex-wrap items-center gap-2 text-xs">
 
 
 
@@ -3041,7 +3041,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                                className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 transition hover:bg-slate-100"
+                                className="tm-run-suggestion-chip rounded-full px-2 py-0.5 text-xs transition"
 
 
 
@@ -3101,7 +3101,7 @@ const fetchMissingLocators = useCallback(
 
 
 
-                            className="flex-1 min-w-[220px] rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+                            className="tm-run-selector-input flex-1 min-w-[220px] rounded-md px-2 py-1 text-sm focus:outline-none"
 
 
 
@@ -3663,7 +3663,6 @@ const fetchMissingLocators = useCallback(
 
 
 }
-
 
 
 

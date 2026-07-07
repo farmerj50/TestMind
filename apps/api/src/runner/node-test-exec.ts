@@ -413,10 +413,22 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
 
     if (mappedGlobs.length) {
       const baseDir = aiTestDir ?? req.workdir ?? repoRoot;
+      const absPaths: string[] = [];
       for (const g of mappedGlobs) {
         const abs = path.isAbsolute(g) ? g : path.resolve(baseDir, g);
         if (!fsSync.existsSync(abs)) continue;
-        args.push(normalizePath(abs));
+        absPaths.push(normalizePath(abs));
+      }
+      // Windows CreateProcess limit is ~32767 chars but Playwright's spawn adds significant
+      // overhead. When the individual file list pushes args over a safe threshold, collapse
+      // to unique parent directories instead — --grep already scopes which tests run.
+      const WIN_CMD_SAFE = 6000;
+      const pathArgLen = absPaths.reduce((s, p) => s + p.length + 1, 0);
+      if (process.platform === "win32" && pathArgLen > WIN_CMD_SAFE) {
+        const dirs = [...new Set(absPaths.map((p) => normalizePath(path.dirname(p))))];
+        for (const d of dirs) args.push(d);
+      } else {
+        for (const abs of absPaths) args.push(abs);
       }
     }
 
