@@ -900,11 +900,11 @@ function ComparisonTable() {
           description="A practical comparison for SMB teams choosing between frameworks, enterprise suites, and an AI QA cockpit. Capabilities vary by edition and implementation."
         />
         <div className="mt-10 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[820px] w-full border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700">
+          <table className="tm-comparison-table min-w-[820px] w-full border-collapse text-left text-sm">
+            <thead>
               <tr>
                 {columns.map((column) => (
-                  <th key={column} className="border-b border-slate-200 px-4 py-3 font-semibold">
+                  <th key={column} className="px-4 py-3 font-semibold">
                     {column}
                   </th>
                 ))}
@@ -912,13 +912,11 @@ function ComparisonTable() {
             </thead>
             <tbody>
               {comparisonRows.map((row) => (
-                <tr key={row[0]} className="odd:bg-white even:bg-slate-50/60">
+                <tr key={row[0]}>
                   {row.map((cell, index) => (
                     <td
                       key={`${row[0]}-${index}`}
-                      className={`border-b border-slate-200 px-4 py-3 ${
-                        index === 0 ? "font-semibold text-slate-950" : "text-slate-700"
-                      } ${index === 4 ? "font-semibold text-blue-700" : ""}`}
+                      className={`px-4 py-3 ${index === 0 || index === 4 ? "font-semibold" : ""}`}
                     >
                       {cell}
                     </td>

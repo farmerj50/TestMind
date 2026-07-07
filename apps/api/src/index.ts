@@ -54,6 +54,7 @@ import environmentsRoutes from './routes/environments.js';
 import workflowsRoutes from './routes/workflows.js';
 import researchAgentRoutes from './routes/researchAgent.js';
 import researchAuthTestRoutes from './routes/researchAuthTest.js';
+import apiTestingRoutes from './routes/apiTesting.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
 
 
@@ -317,6 +318,7 @@ await registerWithLog("environmentsRoutes", () => app.register(environmentsRoute
 await registerWithLog("workflowsRoutes", () => app.register(workflowsRoutes, { prefix: "/" }));
 await registerWithLog("researchAgentRoutes", () => app.register(researchAgentRoutes, { prefix: "/" }));
 await registerWithLog("researchAuthTestRoutes", () => app.register(researchAuthTestRoutes, { prefix: "/" }));
+await registerWithLog("apiTestingRoutes", () => app.register(apiTestingRoutes, { prefix: "/" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
 
 const require = createRequire(import.meta.url);
@@ -2097,6 +2099,7 @@ const startWorkersOnce = () => {
   start(import("./runner/security-worker.js"), "security-scan");
   start(import("./runner/allure-worker.js"), "allure-generate");
   start(import("./runner/operator-worker.js"), "operator-jobs");
+  start(import("./runner/api-test-worker.js"), "api-tests");
 };
 
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch

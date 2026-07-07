@@ -125,6 +125,168 @@ html.dark .text-blue-600 { color: #60a5fa; }
 /* ── Dark mode table dividers ───────────────────────────────────────────── */
 html.dark .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: var(--tm-border); }
 
+.tm-comparison-table {
+  background-color: #ffffff;
+  color: #334155;
+}
+
+.tm-comparison-table thead {
+  background-color: #f8fafc;
+  color: #334155;
+}
+
+.tm-comparison-table th,
+.tm-comparison-table td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tm-comparison-table tbody tr:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+.tm-comparison-table tbody tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+.tm-comparison-table td:first-child {
+  color: #0f172a;
+}
+
+.tm-comparison-table td:last-child {
+  color: #1d4ed8;
+}
+
+html.dark .tm-comparison-table {
+  background-color: #0f172a;
+  color: #dbeafe;
+}
+
+html.dark .tm-comparison-table thead {
+  background-color: #1e293b;
+  color: #dbeafe;
+}
+
+html.dark .tm-comparison-table th,
+html.dark .tm-comparison-table td {
+  border-color: #334155;
+}
+
+html.dark .tm-comparison-table tbody tr:nth-child(odd) {
+  background-color: #0f172a;
+}
+
+html.dark .tm-comparison-table tbody tr:nth-child(even) {
+  background-color: #162033;
+}
+
+html.dark .tm-comparison-table td:first-child {
+  color: #f8fafc;
+}
+
+html.dark .tm-comparison-table td:last-child {
+  color: #93c5fd;
+}
+
+.tm-run-section-title {
+  color: #0f172a;
+}
+
+.tm-run-empty-state {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.tm-run-locator-card {
+  background-color: #ffffff;
+  border: 1px solid #dbe3ef;
+  color: #334155;
+}
+
+.tm-run-locator-title {
+  color: #0f172a;
+}
+
+.tm-run-locator-meta,
+.tm-run-suggestions {
+  color: #475569;
+}
+
+.tm-run-locator-badge,
+.tm-run-suggestion-chip {
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
+.tm-run-suggestion-chip:hover {
+  background-color: #e2e8f0;
+}
+
+.tm-run-selector-input {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+.tm-run-selector-input::placeholder {
+  color: #64748b;
+}
+
+.tm-run-selector-input:focus {
+  border-color: #2563eb;
+}
+
+html.dark .tm-run-section-title {
+  color: #f8fafc;
+}
+
+html.dark .tm-run-empty-state {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #bfdbfe;
+}
+
+html.dark .tm-run-locator-card {
+  background-color: #111827;
+  border-color: #334155;
+  color: #dbeafe;
+}
+
+html.dark .tm-run-locator-title {
+  color: #f8fafc;
+}
+
+html.dark .tm-run-locator-meta,
+html.dark .tm-run-suggestions {
+  color: #cbd5e1;
+}
+
+html.dark .tm-run-locator-badge,
+html.dark .tm-run-suggestion-chip {
+  background-color: #0f172a;
+  border-color: #475569;
+  color: #dbeafe;
+}
+
+html.dark .tm-run-suggestion-chip:hover {
+  background-color: #1e293b;
+}
+
+html.dark .tm-run-selector-input {
+  background-color: #0f172a;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+html.dark .tm-run-selector-input::placeholder {
+  color: #94a3b8;
+}
+
+html.dark .tm-run-selector-input:focus {
+  border-color: #60a5fa;
+}
+
 body {
   position: relative;
 }

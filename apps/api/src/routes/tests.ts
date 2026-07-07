@@ -951,6 +951,18 @@ export async function testRoutes(app: FastifyInstance) {
     const parsed = Body.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
+    const existing = await prisma.testSuite.findUnique({
+      where: { id: req.params.id },
+      select: { projectId: true },
+    });
+    if (!existing) return reply.code(404).send({ error: "Suite not found" });
+
+    const ownerOk = await prisma.project.findFirst({
+      where: { id: existing.projectId, ownerId: userId },
+      select: { id: true },
+    });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
+
     const suite = await prisma.testSuite.update({
       where: { id: req.params.id },
       data: parsed.data as any,
@@ -962,6 +974,18 @@ export async function testRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>("/tests/suites/:id", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
+
+    const existing = await prisma.testSuite.findUnique({
+      where: { id: req.params.id },
+      select: { projectId: true },
+    });
+    if (!existing) return reply.code(404).send({ error: "Suite not found" });
+
+    const ownerOk = await prisma.project.findFirst({
+      where: { id: existing.projectId, ownerId: userId },
+      select: { id: true },
+    });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
 
     await prisma.testSuite.delete({ where: { id: req.params.id } });
     reply.code(204).send();
@@ -1281,6 +1305,18 @@ export async function testRoutes(app: FastifyInstance) {
     const parsed = Body.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
+    const caseRecord = await prisma.testCase.findUnique({
+      where: { id: req.params.id },
+      select: { projectId: true },
+    });
+    if (!caseRecord) return reply.code(404).send({ error: "Case not found" });
+
+    const ownerOk = await prisma.project.findFirst({
+      where: { id: caseRecord.projectId, ownerId: userId },
+      select: { id: true },
+    });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
+
     const { steps, ...casePayload } = parsed.data;
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -1340,6 +1376,18 @@ export async function testRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>("/tests/cases/:id", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
+
+    const caseRecord = await prisma.testCase.findUnique({
+      where: { id: req.params.id },
+      select: { projectId: true },
+    });
+    if (!caseRecord) return reply.code(404).send({ error: "Case not found" });
+
+    const ownerOk = await prisma.project.findFirst({
+      where: { id: caseRecord.projectId, ownerId: userId },
+      select: { id: true },
+    });
+    if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
 
     await prisma.testCase.delete({ where: { id: req.params.id } });
     reply.code(204).send();
