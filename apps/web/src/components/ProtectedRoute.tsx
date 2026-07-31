@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
-import { ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useApi } from "../lib/api";
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {

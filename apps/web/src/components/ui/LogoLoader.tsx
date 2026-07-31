@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import testmindLogo from "../../assets/testmind_logo.svg";
 
 type LogoLoaderProps = {

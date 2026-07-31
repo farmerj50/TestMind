@@ -62,6 +62,7 @@ enum HealingStatus {
   succeeded
   failed
   skipped
+  needs_review
 }
 
 enum AgentSessionStatus {
@@ -316,6 +317,14 @@ model TestHealingAttempt {
   prompt        Json?
   response      Json?
   artifactsPath String?
+  targetSpec    String?
+  originalSpec  String?       @db.Text
+  repairedSpec  String?       @db.Text
+  modelUsed     String?
+  repairReason  String?       @db.Text
+  confidenceScore Int?
+  executionBefore Json?
+  executionAfter  Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -360,6 +369,7 @@ model AgentSession {
   instructions String?
   status       AgentSessionStatus @default(draft)
   meta         Json?
+  metrics      Json?
   pages        AgentPage[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
@@ -378,6 +388,7 @@ model AgentPage {
   status       AgentPageStatus @default(pending)
   summary      String?
   coverage     Json?
+  fingerprint  String?
   error        String?
   scenarios    AgentScenario[]
   createdAt    DateTime        @default(now())

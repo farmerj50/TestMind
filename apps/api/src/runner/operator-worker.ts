@@ -1,6 +1,7 @@
 import { Worker, Job, DelayedError } from 'bullmq';
 import path from 'path';
 import fsSync from 'fs';
+import fs from 'fs/promises';
 import { prisma } from '../prisma.js';
 import { redis } from './redis.js';
 import { enqueueRun, enqueueSelfHeal, enqueueSecurityScan } from './queue.js';
@@ -13,6 +14,15 @@ import { discoverSite, buildLocatorStoreFromScans } from '../testmind/discover.j
 import { generatePlan } from '../testmind/pipeline/generate-plan.js';
 import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
+import {
+  getOctokitForProject,
+  pushSpecFilesToBranch,
+  ensurePullRequest,
+  postPrComment,
+  setCommitStatus,
+  buildRepairPrBody,
+} from './github-writeback.js';
+import { validatedEnv } from '../config/env.js';
 
 export { createStepRunner };
 
@@ -98,6 +108,31 @@ async function finalizeJob(jobId: string, status: 'succeeded' | 'failed', error?
   });
   // Rollup: count tasks by status and write summary into contextJson._rollup
   await writeJobRollup(jobId);
+
+  // Post final GitHub commit status if a SHA was stored on this job
+  try {
+    const job = await prisma.operatorJob.findUnique({
+      where: { id: jobId },
+      select: { projectId: true, contextJson: true },
+    });
+    const sha = (job?.contextJson as any)?.sha as string | undefined;
+    if (sha) {
+      const gh = await getOctokitForProject(job!.projectId);
+      if (gh) {
+        const rollup = (job?.contextJson as any)?._rollup as any;
+        const passed = rollup?.linkedRunIds?.length ? undefined : undefined;
+        await setCommitStatus({
+          ...gh, sha,
+          state: status === 'succeeded' ? 'success' : 'failure',
+          context: 'TestMind / operator',
+          description: status === 'succeeded' ? 'Tests passed' : `Tests failed`,
+          targetUrl: validatedEnv.TESTMIND_APP_URL || undefined,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[operator-worker] finalizeJob: GitHub status post failed', e);
+  }
 }
 
 async function writeJobRollup(jobId: string) {
@@ -183,6 +218,25 @@ async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDela
 
 async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
+
+  // Post "pending" status to GitHub if a commit SHA is present
+  const sha = ctx.sha as string | undefined;
+  if (sha) {
+    try {
+      const gh = await getOctokitForProject(opJob.projectId);
+      if (gh) {
+        await setCommitStatus({
+          ...gh, sha,
+          state: 'pending',
+          context: 'TestMind / operator',
+          description: 'Tests running…',
+          targetUrl: validatedEnv.TESTMIND_APP_URL || undefined,
+        });
+      }
+    } catch (e) {
+      console.warn('[operator-worker] runQaJob: pending status post failed', e);
+    }
+  }
 
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
@@ -401,6 +455,91 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
         select: { status: true },
       });
       console.log(`[operator-worker] qa: retest completed with status=${retestResult?.status}`);
+
+      // GitHub writeback after successful retest
+      if (retestResult?.status === 'succeeded') {
+        try {
+          const gh = await getOctokitForProject(opJob.projectId);
+          if (gh) {
+            const attempts = await prisma.testHealingAttempt.findMany({
+              where: { runId: run.id, status: 'succeeded' },
+              select: {
+                id: true, targetSpec: true, repairedSpec: true, originalSpec: true,
+                modelUsed: true, repairReason: true, confidenceScore: true,
+                executionBefore: true, diff: true,
+              },
+            });
+
+            if (attempts.length > 0) {
+              // Collect retest summary
+              const retestResults = await prisma.testResult.findMany({
+                where: { runId: retestRun.id },
+                select: { status: true },
+              });
+              const retestSummary = {
+                passed: retestResults.filter((r) => r.status === 'passed').length,
+                failed: retestResults.filter((r) => r.status === 'failed').length,
+                total: retestResults.length,
+              };
+
+              // Persist executionAfter
+              await prisma.testHealingAttempt.updateMany({
+                where: { id: { in: attempts.map((a) => a.id) } },
+                data: { executionAfter: retestSummary as any },
+              });
+
+              const files = await Promise.all(
+                attempts
+                  .filter((a) => a.targetSpec)
+                  .map(async (a) => ({
+                    path: a.targetSpec!,
+                    content: a.repairedSpec ?? await fs.readFile(a.targetSpec!, 'utf8').catch(() => ''),
+                  }))
+              ).then((arr) => arr.filter((f) => f.content));
+
+              if (files.length > 0) {
+                const branchName = `testmind/heal-${opJob.id.slice(0, 8)}`;
+                const minConf = Math.min(...attempts.map((a) => a.confidenceScore ?? 0));
+                const prTitle = `TestMind: repaired ${attempts.length} test(s)`;
+                const prBody = buildRepairPrBody({ attempts, retestSummary });
+
+                const { commitSha } = await pushSpecFilesToBranch({
+                  ...gh, branch: branchName, baseBranch: gh.defaultBranch, files,
+                  commitMessage: `fix(tests): self-heal repair — ${attempts.length} spec(s) [job ${opJob.id.slice(0, 8)}]`,
+                });
+
+                if (minConf >= 95) {
+                  const { prNumber, prUrl } = await ensurePullRequest({
+                    ...gh, branch: branchName, baseBranch: gh.defaultBranch,
+                    title: prTitle, body: prBody, draft: false,
+                  });
+                  await postPrComment({ ...gh, prNumber,
+                    body: `✅ Retest passed after repair (commit \`${commitSha.slice(0, 7)}\`). [View PR](${prUrl})`,
+                  });
+                } else if (minConf >= 80) {
+                  const { prNumber, prUrl } = await ensurePullRequest({
+                    ...gh, branch: branchName, baseBranch: gh.defaultBranch,
+                    draft: true,
+                    title: `[DRAFT] ${prTitle}`,
+                    body: `⚠️ Confidence: ${minConf}% — QA review recommended.\n\n${prBody}`,
+                  });
+                  await postPrComment({ ...gh, prNumber,
+                    body: `⚠️ Draft PR opened (confidence ${minConf}%). Manual review required before merge.`,
+                  });
+                } else {
+                  await prisma.testHealingAttempt.updateMany({
+                    where: { id: { in: attempts.map((a) => a.id) } },
+                    data: { status: 'needs_review' },
+                  });
+                  console.warn(`[operator-worker] repair confidence too low (${minConf}%) — no PR for job ${opJob.id}`);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[operator-worker] qa: GitHub writeback failed (non-fatal)', e);
+        }
+      }
     }
   }
 

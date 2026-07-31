@@ -30,7 +30,7 @@ pipeline {
               -H "Authorization: Bearer ${TM_TOKEN}" \
               -H "Content-Type: application/json" \
               -H "X-Request-ID: jenkins-${BUILD_NUMBER}" \
-              -d "{\"workflow\":\"${WORKFLOW}\",\"environment\":\"${ENVIRONMENT}\",\"branch\":\"${BRANCH}\"}")
+              -d "{\"workflow\":\"${WORKFLOW}\",\"environment\":\"${ENVIRONMENT}\",\"branch\":\"${BRANCH}\",\"sha\":\"${GIT_COMMIT}\"}")
             cat /tmp/tm_response.json
             echo ""
             echo "HTTP $RESPONSE"

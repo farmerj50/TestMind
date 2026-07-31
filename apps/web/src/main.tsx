@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, useNavigate } from "react-router-dom";
 import { ClerkProvider } from "@clerk/clerk-react";
+import { HelmetProvider } from "react-helmet-async";
 import AppRoutes from "./routes/AppRoutes";
 import "./index.css";
 import { Toaster } from "sonner";
@@ -35,9 +36,11 @@ function ClerkWithRouter() {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <ClerkWithRouter />
-      <Toaster richColors position="top-center" />
-    </BrowserRouter>
+    <HelmetProvider>
+      <BrowserRouter>
+        <ClerkWithRouter />
+        <Toaster richColors position="top-center" />
+      </BrowserRouter>
+    </HelmetProvider>
   </React.StrictMode>
 );

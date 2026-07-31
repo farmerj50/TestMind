@@ -3,10 +3,17 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Button } from "../components/ui/button";
 import { Mail, Phone, Calendar, MessageSquare } from "lucide-react";
+import SEOHead from "../components/SEOHead";
 
 export default function ContactPage() {
   return (
-    <div className="min-h-screen px-6 py-12 lg:px-12">
+    <>
+      <SEOHead
+        title="Contact Sales — TestMind AI"
+        description="Book a demo or reach our team. We'll show you how TestMind AI can automate your QA workflow end to end."
+        canonicalPath="/contact"
+      />
+      <div className="min-h-screen px-6 py-12 lg:px-12">
       <div className="max-w-5xl mx-auto grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <Card className="shadow-sm bg-white border border-slate-200">
           <CardHeader>
@@ -90,5 +97,6 @@ export default function ContactPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

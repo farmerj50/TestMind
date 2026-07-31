@@ -9,7 +9,15 @@ import {
 } from "../lib/security-finding-detail.js";
 import { redactAuthProfileForStorage } from "../security/redaction.js";
 import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/auth-session-stream.js";
-import { callAuthBypassEndpoint, buildStorageStateFromCookieString } from "../security/enterprise-bypass.js";
+import {
+  callAuthBypassEndpoint,
+  buildStorageStateFromCookieString,
+  detectCaptureFormat,
+  parseRawHttpRequest,
+  parseCurlCommand,
+  type CaptureFormat,
+  type ParsedAuthCapture,
+} from "../security/enterprise-bypass.js";
 import { authenticateAuth0, authenticateFirebase, authenticateCognito, authenticateClerk } from "../security/provider-auth.js";
 import { parseApiSpec, specSummary } from "../security/openapi-parser.js";
 import { buildHtmlReport } from "../security/compliance-report.js";
@@ -47,6 +55,67 @@ function requireUser(req: any, reply: any) {
     return null;
   }
   return userId;
+}
+
+async function validateImportedSession(
+  baseUrl: string,
+  capture: ParsedAuthCapture
+): Promise<{ valid: boolean | null; statusCode?: number }> {
+  const headers: Record<string, string> = { ...capture.additionalHeaders };
+  if (capture.cookieString) headers["Cookie"] = capture.cookieString;
+
+  const attempts: Array<{ url: string; method: string; body?: string; contentType?: string }> = [];
+
+  if (capture.preferredEndpoint && capture.preferredMethod) {
+    try {
+      const endpointUrl = new URL(capture.preferredEndpoint, baseUrl).toString();
+      attempts.push({
+        url: endpointUrl,
+        method: capture.preferredMethod,
+        body: capture.preferredBody,
+        contentType: capture.rawHeaders["Content-Type"],
+      });
+    } catch {
+      // malformed endpoint — skip
+    }
+  }
+
+  try {
+    attempts.push({ url: new URL("/", baseUrl).toString(), method: "HEAD" });
+  } catch {
+    // malformed baseUrl — skip
+  }
+
+  for (const attempt of attempts) {
+    try {
+      const reqHeaders: Record<string, string> = { ...headers };
+      if (attempt.body) reqHeaders["Content-Type"] = attempt.contentType ?? "application/json";
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      let res: Response;
+      try {
+        res = await safeFetch(
+          attempt.url,
+          {
+            method: attempt.method,
+            headers: reqHeaders,
+            body: attempt.body && !["GET", "HEAD"].includes(attempt.method) ? attempt.body : undefined,
+            signal: controller.signal as any,
+          },
+          { allowHttp: true, maxRedirects: 3 }
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      const status = res.status;
+      if (status >= 200 && status < 400) return { valid: true, statusCode: status };
+      if (status === 401 || status === 403) return { valid: false, statusCode: status };
+      // Other status — try next attempt
+    } catch {
+      // Network error, SSRF block, abort, or redirect overflow — try next
+    }
+  }
+  return { valid: null };
 }
 
 const startSchema = z.object({
@@ -289,7 +358,9 @@ export default async function securityRoutes(app: FastifyInstance) {
           const cookieHeader = (parsedState.cookies ?? [])
             .map((c: any) => `${c.name}=${c.value}`)
             .join("; ");
-          if (!cookieHeader) throw new Error("Captured session has no cookies or bearer token.");
+          if (!cookieHeader && !parsedState.additionalHeaders) {
+            throw new Error("Captured session has no cookies or bearer token.");
+          }
           sessionAuthProfiles = [
             {
               label: "Captured session (auth-session)",
@@ -299,6 +370,21 @@ export default async function securityRoutes(app: FastifyInstance) {
               cookieValue: cookieHeader,
             },
           ];
+        }
+        // Extend with additional headers captured from Burp/cURL import
+        if (
+          sessionAuthProfiles.length > 0 &&
+          parsedState.additionalHeaders &&
+          typeof parsedState.additionalHeaders === "object"
+        ) {
+          sessionAuthProfiles[0].additionalHeaders = parsedState.additionalHeaders as Record<string, string>;
+        }
+        if (
+          sessionAuthProfiles.length > 0 &&
+          parsedState.rawHeaders &&
+          typeof parsedState.rawHeaders === "object"
+        ) {
+          sessionAuthProfiles[0].rawHeaders = parsedState.rawHeaders as Record<string, string>;
         }
       } catch (err: any) {
         return reply.code(400).send({ error: `Failed to load captured session: ${err?.message ?? err}` });
@@ -747,6 +833,83 @@ export default async function securityRoutes(app: FastifyInstance) {
       return { session: updated };
     } catch (err: any) {
       return reply.code(400).send({ error: `Failed to import cookies: ${err?.message ?? err}` });
+    }
+  });
+
+  app.post("/security/auth-sessions/:id/import-session", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({
+      where: { id, project: { ownerId: userId } },
+    });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+
+    const body = req.body as { payload?: string; baseUrl?: string } | null;
+    const payload = body?.payload?.trim() ?? "";
+    if (!payload) return reply.code(400).send({ error: "payload is required" });
+
+    const targetUrl = body?.baseUrl?.trim() || session.baseUrl || "https://example.com";
+
+    try {
+      const format: CaptureFormat = detectCaptureFormat(payload);
+      let capture: ParsedAuthCapture;
+
+      if (format === "raw_http") {
+        capture = parseRawHttpRequest(payload);
+      } else if (format === "curl") {
+        capture = parseCurlCommand(payload);
+      } else {
+        // cookies mode — strip accidental "Cookie: " prefix
+        let cookiePayload = payload;
+        if (/^cookie:\s*/i.test(cookiePayload)) {
+          cookiePayload = cookiePayload.replace(/^cookie:\s*/i, "");
+        }
+        capture = {
+          cookieString: cookiePayload,
+          rawHeaders: {},
+          additionalHeaders: {},
+          baseUrl: targetUrl,
+          warnings: [],
+        };
+      }
+
+      const effectiveBaseUrl = capture.baseUrl ?? targetUrl;
+      const baseStorageState = capture.cookieString
+        ? buildStorageStateFromCookieString(capture.cookieString, effectiveBaseUrl)
+        : { cookies: [], origins: [] as any[] };
+
+      const storageState: Record<string, unknown> = {
+        ...baseStorageState,
+        captureMode: format,
+        rawCapture: payload.slice(0, 16384),
+      };
+      if (Object.keys(capture.rawHeaders).length) storageState.rawHeaders = capture.rawHeaders;
+      if (Object.keys(capture.additionalHeaders).length) storageState.additionalHeaders = capture.additionalHeaders;
+      if (capture.preferredEndpoint) storageState.preferredEndpoint = capture.preferredEndpoint;
+      if (capture.preferredMethod) storageState.preferredMethod = capture.preferredMethod;
+      if (capture.preferredBody) storageState.preferredBody = capture.preferredBody;
+      if (capture.preferredOperation) storageState.preferredOperation = capture.preferredOperation;
+      if (capture.warnings.length) storageState.importWarnings = capture.warnings;
+
+      const storagePath = path.join(AUTH_SESSION_ROOT, `${id}.json`);
+      await fs.writeFile(storagePath, JSON.stringify(storageState), "utf8");
+      await prisma.securityAuthSession.update({
+        where: { id },
+        data: { status: "captured", storagePath, error: null },
+      });
+
+      const validationResult = await validateImportedSession(effectiveBaseUrl, capture);
+
+      return {
+        status: "captured",
+        detectedFormat: format,
+        sessionValid: validationResult.valid,
+        statusCode: validationResult.statusCode,
+        warnings: capture.warnings,
+      };
+    } catch (err: any) {
+      return reply.code(400).send({ error: `Failed to import session: ${err?.message ?? err}` });
     }
   });
 

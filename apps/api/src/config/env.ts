@@ -25,6 +25,7 @@ const EnvSchema = z.object({
   ENABLE_DEBUG_ROUTES: z.string().optional(),
   ENABLE_AI_ANALYSIS: z.string().optional(),
   START_RECORDER_HELPER: z.string().optional(),
+  TESTMIND_APP_URL: z.string().optional().default(""),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -95,6 +96,7 @@ export const validatedEnv = {
   ENABLE_DEBUG_ROUTES: parseBoolean(env.ENABLE_DEBUG_ROUTES, false, "ENABLE_DEBUG_ROUTES"),
   ENABLE_AI_ANALYSIS: parseBoolean(env.ENABLE_AI_ANALYSIS, false, "ENABLE_AI_ANALYSIS"),
   START_RECORDER_HELPER: parseBoolean(env.START_RECORDER_HELPER, false, "START_RECORDER_HELPER"),
+  TESTMIND_APP_URL: env.TESTMIND_APP_URL ?? "",
 };
 
 

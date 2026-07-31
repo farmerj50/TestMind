@@ -22,6 +22,9 @@ export type SecurityAuthProfile = {
   passwordSecretKey?: string;
   // Mid-scan re-auth: session ID allows looking up provider config to refresh expired tokens
   sessionId?: string;
+  // Extended auth context captured from Burp/cURL import
+  additionalHeaders?: Record<string, string>;
+  rawHeaders?: Record<string, string>;
 };
 
 export type ExpectedSecurityControl =

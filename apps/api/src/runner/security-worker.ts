@@ -44,7 +44,7 @@ import {
   getSecurityBehaviorBaseline,
   parseSecurityBaselineStore,
 } from "../security/baseline.js";
-import type { AuthMatrixResult, SecurityAgentFinding, SecurityAuthProfile } from "../security/types.js";
+import type { ApiSecurityFixture, AuthMatrixResult, SecurityAgentFinding, SecurityAuthProfile } from "../security/types.js";
 
 type FindingInput = SecurityAgentFinding & {
   type: "recon" | "static_analysis" | "dependency" | "dynamic";
@@ -986,7 +986,43 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     const intelligentConfig = { ...(payload as any), authProfiles };
     const routeInventory = await discoverRouteInventory(intelligentConfig);
     const routeContracts = buildRouteContracts(intelligentConfig, routeInventory);
-    allFindings.push(...(await runIntelligentValidation(intelligentConfig)));
+
+    const userFixtures = intelligentConfig.apiFixtures ?? [];
+    const supportedMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+    const seenFixtures = new Set<string>();
+
+    const syntheticFixtures: ApiSecurityFixture[] =
+      userFixtures.length === 0
+        ? routeContracts
+            .map((contract) => ({
+              contract,
+              method: (contract.method ?? "GET").trim().toUpperCase(),
+            }))
+            .filter(({ contract, method }) => {
+              if (!contract.route || !supportedMethods.has(method)) return false;
+              const key = `${method}:${contract.route}`;
+              if (seenFixtures.has(key)) return false;
+              seenFixtures.add(key);
+              return true;
+            })
+            .map(({ contract, method }) => ({
+              route: contract.route,
+              method,
+              expectedControls: contract.expectedControls ?? [],
+            }))
+            .slice(0, 40)
+        : [];
+
+    console.info(
+      `[security-worker] intelligent-validation fixtures: user=${userFixtures.length} synthetic=${syntheticFixtures.length} contracts=${routeContracts.length}`,
+    );
+
+    const validationConfig =
+      syntheticFixtures.length > 0
+        ? { ...intelligentConfig, apiFixtures: syntheticFixtures }
+        : intelligentConfig;
+
+    allFindings.push(...(await runIntelligentValidation(validationConfig)));
 
     // GraphQL-specific audit — runs after intelligent validation so auth profiles are
     // already resolved. Detects endpoint, tries introspection, tests auth enforcement,

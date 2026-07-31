@@ -4,6 +4,7 @@ import { LoadingOverlay } from "../ui/LoadingOverlay";
 import TopNav from "./TopNav";
 import SideNav from "./SideNav";
 import { CopilotPanel, CopilotToggleButton } from "../copilot/CopilotPanel";
+import SEOHead from "../SEOHead";
 
 export default function AppLayout() {
   const location = useLocation();
@@ -16,16 +17,23 @@ export default function AppLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-[var(--tm-bg)]">
-      <TopNav mode="app" />         {/* sticky header */}
+    <>
+      <SEOHead
+        title="TestMind AI"
+        description="Secure TestMind AI application workspace."
+        noIndex
+      />
+      <div className="min-h-screen bg-[var(--tm-bg)]">
+        <TopNav mode="app" />         {/* sticky header */}
       <SideNav />        {/* fixed sidebar on md+ */}
       {/* Give space under the header; add left padding only on md+ so content doesn't sit behind sidebar */}
       <main className="pt-6 md:pl-56">
         <Outlet />
       </main>
-      <LoadingOverlay open={routeLoading} showTimer={false} />
-      <CopilotPanel />
-      <CopilotToggleButton />
-    </div>
+        <LoadingOverlay open={routeLoading} showTimer={false} />
+        <CopilotPanel />
+        <CopilotToggleButton />
+      </div>
+    </>
   );
 }

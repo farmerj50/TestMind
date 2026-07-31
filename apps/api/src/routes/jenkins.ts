@@ -46,11 +46,12 @@ export default async function jenkinsRoutes(app: FastifyInstance) {
     }
     const { projectId } = verified;
 
-    const { workflow = "qa-execute", branch, baseUrl: bodyBaseUrl, environment: envName } = (req.body ?? {}) as {
+    const { workflow = "qa-execute", branch, baseUrl: bodyBaseUrl, environment: envName, sha } = (req.body ?? {}) as {
       workflow?: string;
       branch?: string;
       baseUrl?: string;
       environment?: string;
+      sha?: string;
     };
 
     const jobType = WORKFLOW_MAP[workflow];
@@ -110,6 +111,7 @@ export default async function jenkinsRoutes(app: FastifyInstance) {
           requestId: requestId ?? null,
           baseUrl: effectiveBaseUrl,
           environmentId: environmentId ?? null,
+          sha: sha ?? null,
         } as Prisma.InputJsonValue,
       },
     });

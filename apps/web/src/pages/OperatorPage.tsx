@@ -688,7 +688,7 @@ export default function OperatorPage() {
                   </div>
                   {output.scanId && (
                     <a
-                      href={`/security-scan`}
+                      href={`/security-scan?jobId=${output.scanId}`}
                       className="text-xs text-blue-600 hover:underline"
                     >
                       View full report →

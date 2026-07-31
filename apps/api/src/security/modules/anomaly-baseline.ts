@@ -3,6 +3,7 @@ import {
   metadataForVulnerability,
   type VulnerabilityClass,
 } from "../owasp.js";
+import { buildAuthHeaders } from "../auth-headers.js";
 import {
   hasErrorDisclosure,
   hasServerError,
@@ -26,21 +27,6 @@ import type {
   SecurityFindingEvidence,
   SecuritySeverity,
 } from "../types.js";
-
-function buildAuthHeaders(profile?: SecurityAuthProfile): Record<string, string> {
-  if (!profile || profile.type === "none") return {};
-  if (profile.type === "bearer" && profile.token) return { Authorization: `Bearer ${profile.token}` };
-  if (profile.type === "cookie" && profile.cookieValue) {
-    if (profile.cookieName === "__raw__") return { Cookie: profile.cookieValue };
-    return { Cookie: `${profile.cookieName || "session"}=${profile.cookieValue}` };
-  }
-  if (profile.type === "basic" && profile.username && profile.password) {
-    return {
-      Authorization: `Basic ${Buffer.from(`${profile.username}:${profile.password}`).toString("base64")}`,
-    };
-  }
-  return {};
-}
 
 function profileFor(
   profiles: SecurityAuthProfile[],
@@ -85,7 +71,7 @@ function hasMeaningfulBody(result: ProbeResult): boolean {
 }
 
 function isMatrixAllowed(result: ProbeResult): boolean {
-  return isSuccessStatus(result.status) && (hasMeaningfulBody(result) || result.status === 204);
+  return isSuccessStatus(result.status);
 }
 
 function differenceRatio(a: ProbeResult, b: ProbeResult): number {
@@ -500,7 +486,7 @@ export async function runAnomalyBaseline(
       const unauth = raw.unauthenticated;
       const shouldFlag =
         isSuccessStatus(unauth.status) &&
-        hasMeaningfulBody(unauth) &&
+        isMatrixAllowed(unauth) &&
         (!baseline || isSuccessStatus(baseline.status));
       if (shouldFlag && !isDeniedStatus(unauth.status, contract.expectedDenyStatuses)) {
         const sameBody = baseline ? baseline.body === unauth.body && baseline.bodyLength > 0 : false;
@@ -564,7 +550,7 @@ export async function runAnomalyBaseline(
           const matchedOwnerBody =
             ownerBaseline && probe.result.body === ownerBaseline.body && ownerBaseline.bodyLength > 0;
           const hasOtherBaseline =
-            otherOwnBaseline && isSuccessStatus(otherOwnBaseline.status) && hasMeaningfulBody(otherOwnBaseline);
+            otherOwnBaseline && isMatrixAllowed(otherOwnBaseline);
           findings.push(
             makeFinding({
               contract,
@@ -597,7 +583,7 @@ export async function runAnomalyBaseline(
 
     if (contract.expectedControls.includes("role_admin_required") && raw.lowerPrivilege) {
       const lowerResult = raw.lowerPrivilege;
-      if (isSuccessStatus(lowerResult.status) && hasMeaningfulBody(lowerResult)) {
+      if (isMatrixAllowed(lowerResult)) {
         findings.push(
           makeFinding({
             contract,

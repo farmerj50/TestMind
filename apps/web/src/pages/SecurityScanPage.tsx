@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApi, apiUrl } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -370,6 +371,7 @@ function uniqByPage(jobs: SecurityJob[]) {
 
 export default function SecurityScanPage() {
   const { apiFetch } = useApi();
+  const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [authMode, setAuthMode] = useState<AuthMode>("enterprise");
@@ -378,8 +380,9 @@ export default function SecurityScanPage() {
   const [bbAllowInteractiveChallengeHandling, setBbAllowInteractiveChallengeHandling] = useState(false);
   const [bbProxyUrl, setBbProxyUrl] = useState("");
   const [bbInputMode, setBbInputMode] = useState<"live" | "paste">("live");
-  const [bbPastedCookies, setBbPastedCookies] = useState("");
-  const [bbPasteImporting, setBbPasteImporting] = useState(false);
+  const [bbPastedCapture, setBbPastedCapture] = useState("");
+  const [bbDetectedFormat, setBbDetectedFormat] = useState<"raw_http" | "curl" | "cookies" | null>(null);
+  const [bbImportResult, setBbImportResult] = useState<{ sessionValid: boolean | null; statusCode?: number; warnings: string[] } | null>(null);
   const [bbStarting, setBbStarting] = useState(false);
   const [bbSession, setBbSession] = useState<SecurityAuthSession | null>(null);
   const bbPollRef = useRef<number | null>(null);
@@ -456,7 +459,7 @@ export default function SecurityScanPage() {
   const [findingTest, setFindingTest] = useState<string>("");
   const [findingLoading, setFindingLoading] = useState<{ explain?: boolean; test?: boolean }>({});
   const [baselineApproving, setBaselineApproving] = useState(false);
-  const needsOperatorApproval = environment === "prod" || scanDepth === "deep" || enableActive || safeMode === false;
+  const needsOperatorApproval = environment === "prod" || scanDepth === "deep" || safeMode === false;
   const stopPolling = () => {
     if (pollRef.current) {
       window.clearInterval(pollRef.current);
@@ -493,6 +496,19 @@ export default function SecurityScanPage() {
       .then((res) => setRecent(uniqByPage(res.jobs || [])))
       .catch(() => {});
   }, [apiFetch, projectId]);
+
+  // deep-link: if ?jobId= is present (e.g. from Operator "View full report →"), load that scan
+  useEffect(() => {
+    const linkedJobId = searchParams.get("jobId");
+    if (!linkedJobId) return;
+    apiFetch<{ job: SecurityJob }>(`/security/scans/${linkedJobId}`)
+      .then((res) => {
+        setJob(res.job);
+        // auto-select the project so the page context is correct
+        if (res.job.projectId) setProjectId(res.job.projectId);
+      })
+      .catch(() => {});
+  }, [apiFetch, searchParams]);
 
   const loadAuthSessions = (pid: string) => {
     apiFetch<{ sessions: SecurityAuthSession[] }>(`/security/auth-sessions?projectId=${pid}`)
@@ -675,20 +691,20 @@ export default function SecurityScanPage() {
     }, 2000);
   };
 
+  function detectCaptureFormat(text: string): "raw_http" | "curl" | "cookies" {
+    const t = text.trimStart();
+    if (/^curl\s/i.test(t)) return "curl";
+    if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|CONNECT|TRACE)\s+\S+\s+HTTP\//i.test(t)) return "raw_http";
+    return "cookies";
+  }
+
   const startBugBountySession = async () => {
     if (!projectId) {
       setError("Pick a project first.");
       return;
     }
-    // In paste mode the user never navigates anywhere — use baseUrl as the loginUrl so the
-    // session record is created without requiring a separate login URL field.
-    const effectiveLoginUrl = bbInputMode === "paste" ? baseUrl.trim() : bbLoginUrl.trim();
-    if (!baseUrl.trim() || !effectiveLoginUrl) {
-      setError(
-        bbInputMode === "paste"
-          ? "Target base URL is required."
-          : "Target URL and login URL are required for Bug Bounty mode."
-      );
+    if (!baseUrl.trim() || !bbLoginUrl.trim()) {
+      setError("Target URL and login URL are required for Bug Bounty mode.");
       return;
     }
     if (!bbScopeAck) {
@@ -704,7 +720,7 @@ export default function SecurityScanPage() {
           projectId,
           mode: "bug_bounty",
           baseUrl: baseUrl.trim(),
-          loginUrl: effectiveLoginUrl,
+          loginUrl: bbLoginUrl.trim(),
           scopeAcknowledged: bbScopeAck,
         }),
       });
@@ -717,29 +733,54 @@ export default function SecurityScanPage() {
     }
   };
 
-  const importPastedCookies = async () => {
-    if (!bbSession) return;
-    if (!bbPastedCookies.trim()) {
-      setError("Paste your session cookies first.");
-      return;
-    }
+  const startAndImportSession = async () => {
+    if (!projectId) { setError("Pick a project first."); return; }
+    if (!baseUrl.trim()) { setError("Target base URL is required."); return; }
+    if (!bbScopeAck) { setError("Confirm program scope/rules before starting a session."); return; }
+    if (!bbPastedCapture.trim()) { setError("Paste your authentication data first."); return; }
+
     setError(null);
-    setBbPasteImporting(true);
+    setBbStarting(true);
+    setBbImportResult(null);
     try {
-      const res = await apiFetch<{ session: SecurityAuthSession }>(
-        `/security/auth-sessions/${bbSession.id}/import-cookies`,
-        {
-          method: "POST",
-          body: JSON.stringify({ cookies: bbPastedCookies.trim(), baseUrl: baseUrl.trim() || undefined }),
-        }
+      const sessionRes = await apiFetch<{ session: SecurityAuthSession }>("/security/auth-sessions/start", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          mode: "bug_bounty",
+          baseUrl: baseUrl.trim(),
+          loginUrl: baseUrl.trim(),
+          scopeAcknowledged: bbScopeAck,
+        }),
+      });
+      const newSession = sessionRes.session;
+      setBbSession(newSession);
+
+      const importRes = await apiFetch<{
+        status: string;
+        detectedFormat: "raw_http" | "curl" | "cookies";
+        sessionValid: boolean | null;
+        statusCode?: number;
+        warnings: string[];
+      }>(`/security/auth-sessions/${newSession.id}/import-session`, {
+        method: "POST",
+        body: JSON.stringify({ payload: bbPastedCapture.trim(), baseUrl: baseUrl.trim() }),
+      });
+
+      const statusRes = await apiFetch<{ session: SecurityAuthSession }>(
+        `/security/auth-sessions/${newSession.id}/status`
       );
-      setBbSession(res.session);
-      setBbPastedCookies("");
+      setBbSession(statusRes.session);
+      setBbImportResult({
+        sessionValid: importRes.sessionValid,
+        statusCode: importRes.statusCode,
+        warnings: importRes.warnings ?? [],
+      });
       if (projectId) loadAuthSessions(projectId);
     } catch (err: any) {
-      setError(err?.message ?? "Failed to import cookies");
+      setError(err?.message ?? "Failed to create authenticated session");
     } finally {
-      setBbPasteImporting(false);
+      setBbStarting(false);
     }
   };
 
@@ -1476,11 +1517,14 @@ export default function SecurityScanPage() {
 
           {authMode === "bug_bounty" && (
             <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4">
-              <div className="text-sm font-semibold text-amber-800">Bug Bounty session capture</div>
+              <div>
+                <div className="text-sm font-semibold text-amber-800">Authenticated request</div>
+                <div className="text-xs text-amber-700">Import your session from Burp Suite, browser DevTools, or a cURL command</div>
+              </div>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setBbInputMode("live")}
+                  onClick={() => { setBbInputMode("live"); setBbImportResult(null); }}
                   className={`rounded-md border px-3 py-1 text-xs font-medium ${
                     bbInputMode === "live"
                       ? "border-amber-500 bg-amber-100 text-amber-900"
@@ -1491,28 +1535,21 @@ export default function SecurityScanPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setBbInputMode("paste")}
+                  onClick={() => { setBbInputMode("paste"); setBbSession(null); setBbImportResult(null); }}
                   className={`rounded-md border px-3 py-1 text-xs font-medium ${
                     bbInputMode === "paste"
                       ? "border-amber-500 bg-amber-100 text-amber-900"
                       : "border-slate-300 bg-white text-slate-600 hover:border-slate-400"
                   }`}
                 >
-                  Paste cookies from browser
+                  Paste authentication
                 </button>
               </div>
 
               {bbInputMode === "paste" && (
                 <div className="space-y-3">
-                  <p className="text-xs text-amber-800">
-                    If the target blocks automated browsers (Cloudflare Bot Management, etc.), log in manually
-                    in your real browser, copy your session cookies from DevTools, and paste them here.
-                    <br />
-                    <strong>How to copy:</strong> F12 → Application → Cookies → select your target domain → copy the
-                    Name=Value pairs, or open the Network tab, click any request, and copy the full Cookie header.
-                  </p>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Target base URL (for cookie scoping)</label>
+                    <label className="text-xs font-medium text-slate-700">Target base URL</label>
                     <Input
                       value={baseUrl}
                       onChange={(e) => setBaseUrl(e.target.value)}
@@ -1521,38 +1558,37 @@ export default function SecurityScanPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Session cookies</label>
                     <textarea
-                      value={bbPastedCookies}
-                      onChange={(e) => setBbPastedCookies(e.target.value)}
-                      placeholder="session_id=abc123; csrf_token=xyz; ..."
-                      rows={4}
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      value={bbPastedCapture}
+                      onChange={(e) => {
+                        setBbPastedCapture(e.target.value);
+                        setBbDetectedFormat(e.target.value.trim() ? detectCaptureFormat(e.target.value) : null);
+                      }}
+                      placeholder={
+                        "Paste any of:\n  • Cookie header:        cf_clearance=xxx; __Host-authn=yyy\n  • Raw HTTP request      (from Burp Repeater or Proxy)\n  • cURL command          (right-click → \"Copy as cURL\")"
+                      }
+                      rows={7}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
                     />
-                    <p className="text-xs text-slate-500">
-                      Paste the raw Cookie header value — multiple cookies separated by semicolons.
-                    </p>
+                    {bbDetectedFormat && (
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          bbDetectedFormat === "raw_http"
+                            ? "bg-blue-100 text-blue-800"
+                            : bbDetectedFormat === "curl"
+                            ? "bg-purple-100 text-purple-800"
+                            : "bg-slate-100 text-slate-700"
+                        }`}>
+                          {bbDetectedFormat === "raw_http"
+                            ? "Raw HTTP Request"
+                            : bbDetectedFormat === "curl"
+                            ? "cURL Command"
+                            : "Cookie Header"}
+                        </span>
+                        <span className="text-xs text-slate-500">detected</span>
+                      </div>
+                    )}
                   </div>
-                  {!bbSession && (
-                    <Button
-                      type="button"
-                      onClick={startBugBountySession}
-                      disabled={bbStarting || !bbScopeAck}
-                      className="bg-amber-600 text-white hover:bg-amber-700"
-                    >
-                      {bbStarting ? "Creating session..." : "Create session record"}
-                    </Button>
-                  )}
-                  {bbSession && (
-                    <Button
-                      type="button"
-                      onClick={importPastedCookies}
-                      disabled={bbPasteImporting || !bbPastedCookies.trim()}
-                      className="bg-amber-600 text-white hover:bg-amber-700"
-                    >
-                      {bbPasteImporting ? "Importing..." : "Import cookies → capture session"}
-                    </Button>
-                  )}
                   <label className="flex items-start gap-2 text-xs text-slate-700">
                     <input
                       type="checkbox"
@@ -1562,6 +1598,43 @@ export default function SecurityScanPage() {
                     />
                     <span>I confirm this target is in-scope for my bug bounty program and I'm authorized to test it.</span>
                   </label>
+                  {!bbSession && (
+                    <Button
+                      type="button"
+                      onClick={startAndImportSession}
+                      disabled={bbStarting || !bbScopeAck || !bbPastedCapture.trim()}
+                      className="bg-amber-600 text-white hover:bg-amber-700"
+                    >
+                      {bbStarting ? "Importing..." : "Create authenticated session"}
+                    </Button>
+                  )}
+                  {bbImportResult && (
+                    <div className="space-y-2">
+                      <div className={`rounded-md px-3 py-2 text-xs font-medium ${
+                        bbImportResult.sessionValid === true
+                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                          : bbImportResult.sessionValid === false
+                          ? "bg-yellow-50 text-yellow-800 border border-yellow-200"
+                          : "bg-slate-50 text-slate-700 border border-slate-200"
+                      }`}>
+                        {bbImportResult.sessionValid === true
+                          ? `Session validated — authentication confirmed${bbImportResult.statusCode ? ` (HTTP ${bbImportResult.statusCode})` : ""}`
+                          : bbImportResult.sessionValid === false
+                          ? `Session imported — server returned ${bbImportResult.statusCode ?? "error"} (may be expired)`
+                          : "Session imported — could not reach target for validation"}
+                      </div>
+                      {bbImportResult.warnings.length > 0 && (
+                        <div className="space-y-1">
+                          {bbImportResult.warnings.map((w) => (
+                            <div key={w} className="flex items-start gap-1 text-xs text-amber-700">
+                              <span className="shrink-0">⚠</span>
+                              <span>{w}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {bbSession && (
                     <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
                       <div className="font-semibold uppercase tracking-wide text-slate-500">Session status</div>
@@ -2987,7 +3060,7 @@ export default function SecurityScanPage() {
           </div>
           {needsOperatorApproval && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Deep, active, production, or non-safe scans run through Operator approval. After approval, Operator enqueues the same intelligent security scan worker with anomaly baseline checks.
+              Deep scans, non-safe mode, and production targets run through Operator approval. After approval, Operator enqueues the same intelligent security scan worker with anomaly baseline checks.
             </div>
           )}
           {operatorRequest && (

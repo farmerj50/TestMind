@@ -1,5 +1,6 @@
 import { Copy, MoreVertical, Pencil, Tags, Trash2, ArrowRightLeft, Lock, Unlock } from "lucide-react";
-import ActionMenu, { ActionItem } from "./ActionMenu";
+import ActionMenu from "./ActionMenu";
+import type { ActionItem } from "./ActionMenu";
 
 type SpecActionsMenuProps = {
   onAction: (id: string) => void;

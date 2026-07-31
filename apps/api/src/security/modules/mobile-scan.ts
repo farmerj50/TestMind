@@ -29,6 +29,7 @@
  */
 
 import { request } from "undici";
+import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
 
 export type MobileFinding = {
@@ -65,16 +66,6 @@ async function probe(
   } finally {
     clearTimeout(timer);
   }
-}
-
-function buildAuthHeaders(profile?: SecurityAuthProfile): Record<string, string> {
-  if (!profile || profile.type === "none") return {};
-  if (profile.type === "bearer" && profile.token) return { Authorization: `Bearer ${profile.token}` };
-  if (profile.type === "cookie" && profile.cookieValue) {
-    if (profile.cookieName === "__raw__") return { Cookie: profile.cookieValue };
-    return { Cookie: `${profile.cookieName || "session"}=${profile.cookieValue}` };
-  }
-  return {};
 }
 
 // ── Mobile-specific endpoint discovery ───────────────────────────────────────

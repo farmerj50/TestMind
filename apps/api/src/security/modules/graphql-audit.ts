@@ -13,6 +13,7 @@
  */
 
 import { request } from "undici";
+import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityScanPayload } from "../../runner/queue.js";
 import type { SecurityAuthProfile } from "../types.js";
 
@@ -72,19 +73,6 @@ function parseGqlResponse(raw: string): { data?: any; errors?: any[]; extensions
 
 function isGqlResponse(raw: string): boolean {
   return parseGqlResponse(raw) !== null;
-}
-
-function buildAuthHeaders(profile?: SecurityAuthProfile): Record<string, string> {
-  if (!profile || profile.type === "none") return {};
-  if (profile.type === "bearer" && profile.token) return { Authorization: `Bearer ${profile.token}` };
-  if (profile.type === "cookie" && profile.cookieValue) {
-    if (profile.cookieName === "__raw__") return { Cookie: profile.cookieValue };
-    return { Cookie: `${profile.cookieName || "session"}=${profile.cookieValue}` };
-  }
-  if (profile.type === "basic" && profile.username && profile.password) {
-    return { Authorization: `Basic ${Buffer.from(`${profile.username}:${profile.password}`).toString("base64")}` };
-  }
-  return {};
 }
 
 // ── 1. Endpoint detection ────────────────────────────────────────────────────

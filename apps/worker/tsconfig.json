@@ -10,15 +10,12 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmit": true,
-
-    // add these:
-    "jsx": "react-jsx",
     "baseUrl": "./src",
     "paths": {
-      "@/*": ["*"]
+      "@/*": ["*"],
+      "@testmind/generator": ["../../packages/testmind-generator/index"]
     }
   },
-  // widen include so TS sees .tsx as well
   "include": ["src"],
   "exclude": [
     "src/testmind/adapters/**/templates/**",
