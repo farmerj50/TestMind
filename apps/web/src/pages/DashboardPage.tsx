@@ -921,6 +921,12 @@ export default function DashboardPage() {
                           </Link>
                         </Button>
                         <Button asChild variant="outline" size="sm">
+                          <Link to={`/operator?projectId=${project.id}&mode=autonomous`}>
+                            <Bot className="mr-2 h-4 w-4" />
+                            Auto Run
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline" size="sm">
                           <Link to={`/projects/${project.id}`}>
                             <Pencil className="mr-2 h-4 w-4" />
                             View

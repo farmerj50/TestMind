@@ -167,6 +167,7 @@ export async function recordLlmRepairSuccess(input: {
       repairedSpec: result.patchedSpec,
       modelUsed: process.env.HEALING_LLM_MODEL ?? "gpt-4o-mini",
       repairReason: result.summary,
+      confidenceScore: 85,
     },
   });
 }

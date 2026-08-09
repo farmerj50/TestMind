@@ -1,5 +1,17 @@
 // apps/api/src/config/env.ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
+
+const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const cwdEnvPath = path.resolve(process.cwd(), ".env");
+const apiEnvPath = path.join(apiRoot, ".env");
+
+loadDotenv({ path: cwdEnvPath });
+if (path.normalize(cwdEnvPath) !== path.normalize(apiEnvPath)) {
+  loadDotenv({ path: apiEnvPath });
+}
 
 const EnvSchema = z.object({
   WEB_URL: z.string().optional(),
@@ -24,6 +36,7 @@ const EnvSchema = z.object({
   TM_SKIP_SERVER: z.string().optional(),
   ENABLE_DEBUG_ROUTES: z.string().optional(),
   ENABLE_AI_ANALYSIS: z.string().optional(),
+  TM_AUTONOMOUS_QA_ENABLED: z.string().optional(),
   START_RECORDER_HELPER: z.string().optional(),
   TESTMIND_APP_URL: z.string().optional().default(""),
 });
@@ -95,6 +108,7 @@ export const validatedEnv = {
   TM_SKIP_SERVER: parseBoolean(env.TM_SKIP_SERVER, false, "TM_SKIP_SERVER"),
   ENABLE_DEBUG_ROUTES: parseBoolean(env.ENABLE_DEBUG_ROUTES, false, "ENABLE_DEBUG_ROUTES"),
   ENABLE_AI_ANALYSIS: parseBoolean(env.ENABLE_AI_ANALYSIS, false, "ENABLE_AI_ANALYSIS"),
+  TM_AUTONOMOUS_QA_ENABLED: parseBoolean(env.TM_AUTONOMOUS_QA_ENABLED, false, "TM_AUTONOMOUS_QA_ENABLED"),
   START_RECORDER_HELPER: parseBoolean(env.START_RECORDER_HELPER, false, "START_RECORDER_HELPER"),
   TESTMIND_APP_URL: env.TESTMIND_APP_URL ?? "",
 };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -157,7 +158,9 @@ export default function OperatorPage() {
   const [projectId, setProjectId] = useState("");
   const [suiteId, setSuiteId] = useState("");
   const [environmentId, setEnvironmentId] = useState("");
-  const [jobType, setJobType] = useState<"qa" | "repair" | "discovery" | "security">("qa");
+  const [jobType, setJobType] = useState<"qa" | "repair" | "discovery" | "security" | "autonomous">("qa");
+  const [enableGitHubWriteback, setEnableGitHubWriteback] = useState(false);
+  const [searchParams] = useSearchParams();
   const [enableActive, setEnableActive] = useState(false);
   const [securityScanDepth, setSecurityScanDepth] = useState<"baseline" | "standard" | "deep">("standard");
   const [securitySafeMode, setSecuritySafeMode] = useState(true);
@@ -223,6 +226,11 @@ export default function OperatorPage() {
 
     fetchHistory();
     fetchApprovals();
+
+    // Pre-select autonomous mode from URL query param
+    if (searchParams.get("mode") === "autonomous") setJobType("autonomous");
+    const qProjectId = searchParams.get("projectId");
+    if (qProjectId) setProjectId(qProjectId);
 
     // poll history every 10 s, approvals every 5 s
     historyPollRef.current = window.setInterval(fetchHistory, 10_000);
@@ -298,24 +306,39 @@ export default function OperatorPage() {
 
   const startJob = async () => {
     if (!projectId) { setError("Select a project first."); return; }
+    if (jobType === "autonomous" && !baseUrl.trim()) { setError("Base URL is required for Full Autonomous Run."); return; }
     setError(null);
     setSubmitting(true);
     try {
       const res = await apiFetch<{ job: OperatorJob }>("/operator/jobs", {
         method: "POST",
-        body: JSON.stringify({
-          projectId,
-          type: jobType,
-          objective: objective.trim() || undefined,
-          context: {
-            ...(environmentId ? { environmentId } : {}),
-            ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
-            ...(jobType === "qa" && suiteId ? { suiteId } : {}),
-            ...(jobType === "security"
-              ? { enableActive, scanDepth: securityScanDepth, safeMode: securitySafeMode }
-              : {}),
-          },
-        }),
+        body: JSON.stringify(
+          jobType === "autonomous"
+            ? {
+                projectId,
+                type: "qa",
+                objective: objective.trim() || undefined,
+                context: {
+                  autonomous: true,
+                  baseUrl: baseUrl.trim(),
+                  enableGitHubWriteback,
+                  ...(environmentId ? { environmentId } : {}),
+                },
+              }
+            : {
+                projectId,
+                type: jobType,
+                objective: objective.trim() || undefined,
+                context: {
+                  ...(environmentId ? { environmentId } : {}),
+                  ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+                  ...(jobType === "qa" && suiteId ? { suiteId } : {}),
+                  ...(jobType === "security"
+                    ? { enableActive, scanDepth: securityScanDepth, safeMode: securitySafeMode }
+                    : {}),
+                },
+              }
+        ),
       });
       setJob(res.job);
       setHistory((prev) => [res.job, ...prev]);
@@ -445,6 +468,7 @@ export default function OperatorPage() {
                   <SelectItem value="repair">Repair — fix failing tests</SelectItem>
                   <SelectItem value="discovery">Discovery — find uncovered routes</SelectItem>
                   <SelectItem value="security">Security — scan for vulnerabilities</SelectItem>
+                  <SelectItem value="autonomous">Full Autonomous Run — scan → generate → test → fix</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -514,6 +538,25 @@ export default function OperatorPage() {
               />
             </div>
           </div>
+          {jobType === "autonomous" && (
+            <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm font-medium text-blue-800">
+                Full Autonomous Run: crawls the site, generates Playwright specs, runs them, auto-heals every failure, then verifies all tests pass.
+              </p>
+              <p className="text-xs text-blue-700">
+                <strong>Base URL is required</strong> — enter it in the URL field above. The job will use <code>TM_AUTONOMOUS_QA_ENABLED</code> on the server.
+              </p>
+              <label className="flex items-center gap-3 cursor-pointer select-none rounded border border-blue-200 bg-white px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={enableGitHubWriteback}
+                  onChange={(e) => setEnableGitHubWriteback(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                />
+                <span className="text-sm text-slate-700">Enable GitHub branch + PR after successful repair</span>
+              </label>
+            </div>
+          )}
           {jobType === "security" && (
             <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
               <div className="grid gap-3 md:grid-cols-2">
