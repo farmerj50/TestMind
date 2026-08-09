@@ -90,6 +90,7 @@ export async function recordRuleRepairSuccess(input: {
   fixDetails?: Record<string, unknown>;
 }) {
   const { attemptId, context, patchedSpec, summary, note, fixType, fixDetails } = input;
+  const originalSpec = context.specContent ?? "";
   await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
   await fs.writeFile(context.repoAbsolutePath, patchedSpec, "utf8");
   await mirrorPatchedSpecToRunTarget(context, patchedSpec);
@@ -97,7 +98,7 @@ export async function recordRuleRepairSuccess(input: {
   const diff = createTwoFilesPatch(
     context.repoRelativePath,
     context.repoRelativePath,
-    context.specContent ?? "",
+    originalSpec,
     patchedSpec
   );
   await prisma.testHealingAttempt.update({
@@ -112,6 +113,11 @@ export async function recordRuleRepairSuccess(input: {
         fixType,
         fixDetails: toJson(fixDetails ?? { note }),
       },
+      targetSpec: context.repoAbsolutePath,
+      originalSpec,
+      repairedSpec: patchedSpec,
+      repairReason: summary,
+      confidenceScore: 100,
     },
   });
 }
@@ -122,6 +128,7 @@ export async function recordLlmRepairSuccess(input: {
   result: Extract<RepairExecutionResult, { kind: "llm" }>;
 }) {
   const { attemptId, context, result } = input;
+  const originalSpec = context.specContent ?? "";
   await fs.mkdir(path.dirname(context.repoAbsolutePath), { recursive: true });
   await fs.writeFile(context.repoAbsolutePath, result.patchedSpec, "utf8");
   await mirrorPatchedSpecToRunTarget(context, result.patchedSpec);
@@ -130,7 +137,7 @@ export async function recordLlmRepairSuccess(input: {
   const diff = createTwoFilesPatch(
     context.repoRelativePath,
     context.repoRelativePath,
-    context.specContent ?? "",
+    originalSpec,
     result.patchedSpec
   );
 
@@ -155,6 +162,12 @@ export async function recordLlmRepairSuccess(input: {
           structuredFallbackReason: result.structuredFallbackReason,
         }),
       },
+      targetSpec: context.repoAbsolutePath,
+      originalSpec,
+      repairedSpec: result.patchedSpec,
+      modelUsed: process.env.HEALING_LLM_MODEL ?? "gpt-4o-mini",
+      repairReason: result.summary,
+      confidenceScore: 85,
     },
   });
 }

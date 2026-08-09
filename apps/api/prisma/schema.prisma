@@ -62,6 +62,7 @@ enum HealingStatus {
   succeeded
   failed
   skipped
+  needs_review
 }
 
 enum AgentSessionStatus {
@@ -175,6 +176,7 @@ model Project {
   authIntegrations     AuthIntegration[]
   mobileConfigs        MobileConfig[]
   apiCollections       ApiCollection[]
+  humanInterventionCandidates HumanInterventionCandidate[]
 }
 
 model GitAccount {
@@ -220,6 +222,7 @@ model TestRun {
 
   results            TestResult[]
   TestHealingAttempt TestHealingAttempt[]
+  humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([rerunOfId])
   @@index([projectId, createdAt])
@@ -296,6 +299,7 @@ model TestResult {
   message         String?
   createdAt       DateTime             @default(now())
   healingAttempts TestHealingAttempt[]
+  humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([runId, testCaseId])
 }
@@ -316,12 +320,50 @@ model TestHealingAttempt {
   prompt        Json?
   response      Json?
   artifactsPath String?
+  targetSpec    String?
+  originalSpec  String?       @db.Text
+  repairedSpec  String?       @db.Text
+  modelUsed     String?
+  repairReason  String?       @db.Text
+  confidenceScore Int?
+  executionBefore Json?
+  executionAfter  Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  humanInterventionCandidates HumanInterventionCandidate[]
 
   @@unique([testResultId, attempt])
   @@index([runId, testCaseId])
   @@index([testResultId])
+}
+
+model HumanInterventionCandidate {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runId            String?
+  run              TestRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  testResultId     String?
+  testResult       TestResult? @relation(fields: [testResultId], references: [id], onDelete: SetNull)
+  healingAttemptId String?
+  healingAttempt   TestHealingAttempt? @relation(fields: [healingAttemptId], references: [id], onDelete: SetNull)
+  operatorJobId    String?
+  operatorJob      OperatorJob? @relation(fields: [operatorJobId], references: [id], onDelete: SetNull)
+  operatorTaskId   String?
+  operatorTask     OperatorTask? @relation(fields: [operatorTaskId], references: [id], onDelete: SetNull)
+  source           String   @default("autonomous-qa")
+  reason           String   @db.Text
+  status           String   @default("open")
+  contextJson      Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([projectId, status])
+  @@index([runId])
+  @@index([testResultId])
+  @@index([healingAttemptId])
+  @@index([operatorJobId])
+  @@index([operatorTaskId])
 }
 
 model TestStep {
@@ -360,6 +402,7 @@ model AgentSession {
   instructions String?
   status       AgentSessionStatus @default(draft)
   meta         Json?
+  metrics      Json?
   pages        AgentPage[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
@@ -378,6 +421,7 @@ model AgentPage {
   status       AgentPageStatus @default(pending)
   summary      String?
   coverage     Json?
+  fingerprint  String?
   error        String?
   scenarios    AgentScenario[]
   createdAt    DateTime        @default(now())
@@ -672,6 +716,7 @@ model OperatorJob {
   artifacts OperatorArtifact[]
   decisions OperatorDecision[]
   approvals OperatorApproval[]
+  humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([projectId, createdAt])
   @@index([status])
@@ -700,6 +745,7 @@ model OperatorTask {
   artifacts OperatorArtifact[]
   decisions OperatorDecision[]
   approvals OperatorApproval[]
+  humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([jobId])
   @@index([parentTaskId])

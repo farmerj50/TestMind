@@ -17,7 +17,6 @@ import {
   Pencil,
   Play,
   Plus,
-  Sparkles,
   Trash2,
   TriangleAlert,
   XCircle,
@@ -29,7 +28,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { validateProject } from "../lib/validation";
 import ConnectGitHubCard from "../components/ConnectGitHubCard";
 import RunNowButton from "../components/RunNowButton";
-import AdapterDropdown, { AdapterId } from "../components/AdapterDropdown";
+import AdapterDropdown from "../components/AdapterDropdown";
+import type { AdapterId } from "../components/AdapterDropdown";
 import GenerateButton from "../components/GenerateButton";
 import GeneratedTestsPanel from "../components/GeneratedTestsPanel";
 import HowToHint from "../components/HowToHint";
@@ -918,6 +918,12 @@ export default function DashboardPage() {
                           <Link to={`/agent?projectId=${project.id}`}>
                             <Bot className="mr-2 h-4 w-4" />
                             Scan
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/operator?projectId=${project.id}&mode=autonomous`}>
+                            <Bot className="mr-2 h-4 w-4" />
+                            Auto Run
                           </Link>
                         </Button>
                         <Button asChild variant="outline" size="sm">

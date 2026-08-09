@@ -204,6 +204,7 @@ export const selfHealWorker = new Worker(
   'self-heal',
   async (job: Job<SelfHealPayload>) => {
     const { attemptId } = job.data;
+    const skipAutoRerun = job.data.skipAutoRerun === true;
 
     await prisma.testHealingAttempt.update({
       where: { id: attemptId },
@@ -242,8 +243,8 @@ export const selfHealWorker = new Worker(
           data: {
             summary,
             response: {
-              rerunQueued: true,
-              queuedAt: new Date().toISOString(),
+              rerunQueued: !skipAutoRerun,
+              queuedAt: skipAutoRerun ? null : new Date().toISOString(),
               targetSpec: context.repoRelativePath ?? null,
               testTitle: context.failure.testTitle ?? null,
               fixType,
@@ -251,6 +252,7 @@ export const selfHealWorker = new Worker(
             } as any,
           },
         });
+        if (skipAutoRerun) return;
         await triggerRerun(
           job.data.projectId,
           job.data.runId,
@@ -297,13 +299,15 @@ export const selfHealWorker = new Worker(
         data: {
           response: {
             mode: "llm",
-            rerunQueued: true,
-            queuedAt: new Date().toISOString(),
+            rerunQueued: !skipAutoRerun,
+            queuedAt: skipAutoRerun ? null : new Date().toISOString(),
             targetSpec: context.repoRelativePath ?? null,
             testTitle: context.failure.testTitle ?? null,
           },
         },
       });
+
+      if (skipAutoRerun) return;
 
       if (shouldQueueTargetedRerun(job.data.totalFailed)) {
         await triggerRerun(

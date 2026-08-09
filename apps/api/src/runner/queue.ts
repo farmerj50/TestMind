@@ -34,6 +34,7 @@ export type SelfHealPayload = {
   testTitle?: string | null;
   headed?: boolean;
   baseUrl?: string;
+  skipAutoRerun?: boolean;
 };
 
 export type SecurityScanPayload = {
@@ -88,7 +89,8 @@ export type ResumePhase =
   | { kind: 'wait_run'; runId: string; taskId: string; deadline: number }
   | { kind: 'approval_security'; approvalId: string; taskId: string; deadline: number; securityCtx: SecurityResumeCtx }
   | { kind: 'wait_scan'; scanId: string; taskId: string; deadline: number }
-  | { kind: 'wait_repairs'; remaining: string[]; taskMap: Record<string, string>; deadline: number };
+  | { kind: 'wait_repairs'; remaining: string[]; taskMap: Record<string, string>; deadline: number }
+  | { kind: 'autonomous_qa'; state: Record<string, any> };
 
 export type OperatorJobPayload = {
   operatorJobId: string;

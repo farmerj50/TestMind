@@ -4,6 +4,7 @@ import {
   severityForControl,
   type VulnerabilityClass,
 } from "../owasp.js";
+import { buildAuthHeaders } from "../auth-headers.js";
 import {
   hasErrorDisclosure,
   hasServerError,
@@ -24,23 +25,6 @@ import type {
   SecurityFindingEvidence,
   SecuritySeverity,
 } from "../types.js";
-
-function buildAuthHeaders(profile?: SecurityAuthProfile): Record<string, string> {
-  if (!profile || profile.type === "none") return {};
-  if (profile.type === "bearer" && profile.token) {
-    return { Authorization: `Bearer ${profile.token}` };
-  }
-  if (profile.type === "cookie" && profile.cookieValue) {
-    if (profile.cookieName === "__raw__") return { Cookie: profile.cookieValue };
-    return { Cookie: `${profile.cookieName || "session"}=${profile.cookieValue}` };
-  }
-  if (profile.type === "basic" && profile.username && profile.password) {
-    return {
-      Authorization: `Basic ${Buffer.from(`${profile.username}:${profile.password}`).toString("base64")}`,
-    };
-  }
-  return {};
-}
 
 function controlsForFixture(
   config: IntelligentSecurityScanConfig,
@@ -77,6 +61,17 @@ function findProfile(
 
 function hasMeaningfulBody(result: ProbeResult): boolean {
   return result.bodyLength > 40 || /[{[]/.test(result.body.trim());
+}
+
+function isStateChangingMethod(method?: string): boolean {
+  return !["GET", "HEAD"].includes((method ?? "GET").toUpperCase());
+}
+
+function hasAccessSignal(result: ProbeResult, method?: string): boolean {
+  return (
+    isSuccessStatus(result.status) &&
+    (hasMeaningfulBody(result) || result.status === 204 || isStateChangingMethod(method))
+  );
 }
 
 function bodyDifferenceRatio(a: ProbeResult, b: ProbeResult): number {
@@ -186,7 +181,7 @@ async function checkAuthRequired(
     return [];
   }
 
-  if (isSuccessStatus(unauth.status) && hasMeaningfulBody(unauth)) {
+  if (hasAccessSignal(unauth, fixture.method)) {
     const sameBody = authed.body === unauth.body && authed.bodyLength > 0;
     return [
       makeFinding({
@@ -242,9 +237,9 @@ async function checkObjectAuthorization(
 
   if (!isSuccessStatus(owner.status) || isDeniedStatus(other.status, expectedDenyStatuses)) return [];
 
-  if (isSuccessStatus(other.status) && hasMeaningfulBody(other)) {
+  if (hasAccessSignal(other, fixture.method)) {
     const sameBody = owner.body === other.body && owner.bodyLength > 0;
-    const otherHasValidBaseline = otherOwned ? isSuccessStatus(otherOwned.status) && hasMeaningfulBody(otherOwned) : false;
+    const otherHasValidBaseline = otherOwned ? hasAccessSignal(otherOwned, fixture.method) : false;
     return [
       makeFinding({
         vulnerabilityClass: "broken_object_level_authorization",
@@ -296,7 +291,7 @@ async function checkObjectMutation(
 
   if (!isSuccessStatus(baseline.status) || isDeniedStatus(mutated.status, expectedDenyStatuses)) return [];
 
-  if (isSuccessStatus(mutated.status) && hasMeaningfulBody(mutated) && baseline.body !== mutated.body) {
+  if (hasAccessSignal(mutated, fixture.method) && (baseline.body !== mutated.body || isStateChangingMethod(fixture.method))) {
     return [
       makeFinding({
         vulnerabilityClass: "broken_object_level_authorization",

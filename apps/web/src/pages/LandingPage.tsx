@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
+import SEOHead from "../components/SEOHead";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -206,12 +207,31 @@ export default function LandingPage() {
 
   useScrollToHash();
 
+  const softwareApplicationSchema = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "TestMind AI",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Web",
+    url: "https://www.testsmindai.com/",
+    description:
+      "TestMind AI autonomously discovers applications, generates Playwright tests, self-heals failures, runs API tests, and performs intelligent security scans.",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD", category: "Free" },
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--tm-bg)] text-slate-950">
-      <Hero />
-      <AutonomousQAEngineer />
-      <PainVsOutcome />
-      <PlatformFeatures />
+    <>
+      <SEOHead
+        title="TestMind AI — Autonomous QA & Test Automation"
+        description="TestMind AI autonomously discovers your app, generates Playwright tests, self-heals on failure, and runs security scans — all without manual scripting. Start free."
+        canonicalPath="/"
+        jsonLd={softwareApplicationSchema}
+      />
+      <div className="min-h-screen bg-[var(--tm-bg)] text-slate-950">
+        <Hero />
+        <AutonomousQAEngineer />
+        <PainVsOutcome />
+        <PlatformFeatures />
       <DemoSection />
       <WhyDifferent />
       <SupportedTechnologies />
@@ -227,6 +247,7 @@ export default function LandingPage() {
       <FinalCTA />
       <SiteFooter />
     </div>
+    </>
   );
 }
 

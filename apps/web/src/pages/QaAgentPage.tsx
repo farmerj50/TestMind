@@ -9,7 +9,7 @@ type Project = { id: string; name: string; repoUrl?: string | null };
 
 type QaTask = {
   id: string;
-  type: "execute" | "triage" | "repair" | "verify" | string;
+  type: "discover" | "execute" | "triage" | "repair" | "retest" | "verify" | string;
   status: "running" | "succeeded" | "failed" | string;
   testRunId?: string | null;
   error?: string | null;
@@ -27,12 +27,14 @@ type QaJob = {
   status: "queued" | "running" | "succeeded" | "failed" | string;
   runId?: string | null;
   error?: string;
+  autonomous?: boolean;
   createdAt: string;
   updatedAt: string;
   tasks?: QaTask[];
 };
 
 const TASK_LABELS: Record<string, string> = {
+  discover: "Scan and generate",
   execute: "Run suite",
   triage: "Classify failures",
   repair: "Self-heal",
@@ -64,6 +66,14 @@ function TaskRow({ task }: { task: QaTask }) {
     task.type === "triage" && Array.isArray(task.outputJson?.defects)
       ? task.outputJson!.defects
       : [];
+  const phase = typeof task.outputJson?.phase === "string" ? task.outputJson.phase : null;
+  const summary = typeof task.outputJson?.summary === "string" ? task.outputJson.summary : null;
+  const specCount =
+    typeof task.outputJson?.specCount === "number"
+      ? task.outputJson.specCount
+      : typeof task.outputJson?.specFileCount === "number"
+        ? task.outputJson.specFileCount
+        : null;
 
   return (
     <div className={`rounded-md border px-3 py-2 text-sm ${tone}`}>
@@ -123,6 +133,13 @@ function TaskRow({ task }: { task: QaTask }) {
       {task.error && (
         <div className="mt-1 text-xs opacity-80 truncate">Error: {task.error}</div>
       )}
+      {(phase || summary || specCount !== null) && (
+        <div className="mt-1 text-xs opacity-80 truncate">
+          {[phase, summary, specCount !== null ? `${specCount} spec${specCount === 1 ? "" : "s"}` : null]
+            .filter(Boolean)
+            .join(" | ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -144,12 +161,30 @@ export default function QaAgentPage() {
   const [suiteId, setSuiteId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [parallel, setParallel] = useState(false);
+  const [autonomousAvailable, setAutonomousAvailable] = useState(false);
+  const [autonomousMode, setAutonomousMode] = useState(false);
   const [job, setJob] = useState<QaJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [operatorAfterType, setOperatorAfterType] = useState<"none" | "qa" | "repair" | "discovery" | "security">("none");
   const [operatorJob, setOperatorJob] = useState<{ id: string; status: string; error?: string } | null>(null);
   const pollRef = useRef<number | null>(null);
   const opPollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    apiFetch<{ autonomousQaEnabled: boolean }>("/qa-agent/capabilities")
+      .then((res) => {
+        if (!mounted) return;
+        setAutonomousAvailable(Boolean(res.autonomousQaEnabled));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setAutonomousAvailable(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [apiFetch]);
 
   useEffect(() => {
     let mounted = true;
@@ -204,23 +239,31 @@ export default function QaAgentPage() {
 
   const startJob = async () => {
     if (!projectId) { setError("Pick a project first."); return; }
-    if (!suiteId) { setError("Pick a suite to run."); return; }
+    if (!suiteId && !autonomousMode) { setError("Pick a suite to run."); return; }
     setError(null);
     try {
       const res = await apiFetch<{ job: QaJob }>("/qa-agent/start", {
         method: "POST",
-        body: JSON.stringify({ projectId, suiteId, baseUrl: baseUrl.trim() || undefined, parallel }),
+        body: JSON.stringify({
+          projectId,
+          suiteId: suiteId || undefined,
+          baseUrl: baseUrl.trim() || undefined,
+          parallel,
+          autonomous: autonomousMode,
+          enableGitHubWriteback: false,
+        }),
       });
       setJob(res.job);
       if (pollRef.current) window.clearInterval(pollRef.current);
       const capturedProjectId = res.job.projectId;
+      const capturedAutonomous = res.job.autonomous === true;
       pollRef.current = window.setInterval(() => {
         apiFetch<{ job: QaJob }>(`/qa-agent/jobs/${res.job.id}`)
           .then((j) => {
             setJob(j.job);
             if (j.job.status === "succeeded" || j.job.status === "failed") {
               if (pollRef.current) window.clearInterval(pollRef.current);
-              if (operatorAfterType !== "none") {
+              if (!capturedAutonomous && operatorAfterType !== "none") {
                 apiFetch<{ job: { id: string; status: string } }>("/operator/jobs", {
                   method: "POST",
                   body: JSON.stringify({
@@ -289,7 +332,9 @@ export default function QaAgentPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Suite</label>
+              <label className="text-sm font-medium text-slate-700">
+                Suite {autonomousMode && <span className="font-normal text-slate-400">(optional)</span>}
+              </label>
               <Select value={suiteId} onValueChange={(id) => {
                 setSuiteId(id);
                 const suite = suites.find((s) => s.id === id);
@@ -316,10 +361,23 @@ export default function QaAgentPage() {
             </div>
           </div>
           <div className="flex flex-col gap-3">
+            <label
+              className="flex items-center gap-2 text-sm text-slate-700"
+              title={autonomousAvailable ? undefined : "Waiting for the API feature flag"}
+            >
+              <input
+                type="checkbox"
+                checked={autonomousMode}
+                onChange={(e) => setAutonomousMode(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+              />
+              Run full autonomous flow
+            </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={parallel} onChange={(e) => setParallel(e.target.checked)} />
               Run tests in parallel
             </label>
+            {!autonomousMode && (
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">
                 Auto-start Operator job when QA completes
@@ -347,6 +405,7 @@ export default function QaAgentPage() {
                 ))}
               </div>
             </div>
+            )}
           </div>
           <Button
             onClick={startJob}

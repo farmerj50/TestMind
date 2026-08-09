@@ -1131,7 +1131,7 @@ export const worker = new Worker(
         console.error(`[worker] finalizeLatestTestState failed for run ${runId}`, err);
       });
 
-      if (!ok && failed > 0) {
+      if (!ok && failed > 0 && !Boolean((runParams as any)?.disableAutoSelfHeal)) {
         scheduleSelfHealingForRun(runId).catch((err) => {
           console.error(`[worker] failed to schedule self-heal for run ${runId}`, err);
         });

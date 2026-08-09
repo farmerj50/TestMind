@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import {
   isWithinScope,
   probeScoped,
   toAbsoluteUrl,
 } from "../http-client.js";
+import { buildAuthHeaders } from "../auth-headers.js";
 import type {
   ApiSecurityFixture,
   ExpectedSecurityControl,
@@ -49,21 +51,28 @@ const DEFAULT_FORBIDDEN_FIELDS = [
   "adminNotes",
 ];
 
-const DEEP_HEURISTIC_ROUTES = [
+// Probed at every scan depth — common authenticated API paths that are worth
+// checking even when the crawler finds no explicit routes.
+const BASELINE_HEURISTIC_ROUTES = [
   "/api/me",
   "/api/user",
   "/api/users/me",
-  "/api/profile",
   "/api/account",
-  "/api/accounts",
+  "/api/profile",
   "/api/session",
   "/api/auth/session",
+  "/graphql",
+  "/api/graphql",
+];
+
+// Additional speculative paths probed only in "deep" mode. Paths already in
+// BASELINE_HEURISTIC_ROUTES are intentionally excluded to avoid double-probing.
+const DEEP_HEURISTIC_ROUTES = [
+  "/api/accounts",
   "/api/settings",
   "/api/billing",
   "/api/organizations",
   "/api/workspaces",
-  "/graphql",
-  "/api/graphql",
 ];
 
 export type ApiSecurityFixtureSuggestion = ApiSecurityFixture & {
@@ -222,6 +231,35 @@ function isLikelyScriptAsset(item: RouteInventoryItem) {
   }
 }
 
+function normalizeBody(body: string): string {
+  return body
+    .replace(/[a-f0-9]{8}-[a-f0-9-]{27,}/gi, "<uuid>")
+    .replace(/\b\d{10,}\b/g, "<number>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 20_000);
+}
+
+function responseFingerprint(result: {
+  status?: number;
+  body: string;
+  headers: Record<string, string>;
+}): string {
+  const normalized = normalizeBody(result.body);
+  const bodyHash = createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+  const contentType = (result.headers["content-type"] ?? "").split(";")[0].trim();
+  return `${result.status ?? 0}|${contentType}|${bodyHash}`;
+}
+
+function addBaselineHeuristicRoutes(
+  config: IntelligentSecurityScanConfig,
+  routes: Map<string, RouteInventoryItem>
+) {
+  for (const route of BASELINE_HEURISTIC_ROUTES) {
+    addRoute(routes, config, route, "GET", "heuristic");
+  }
+}
+
 function addDeepHeuristicRoutes(
   config: IntelligentSecurityScanConfig,
   routes: Map<string, RouteInventoryItem>
@@ -241,22 +279,53 @@ export async function discoverRouteInventory(
     addRoute(routes, config, fixture.route, fixture.method ?? "GET", "fixture");
   }
 
-  const base = await probeScoped(config, config.baseUrl, { method: "GET", timeoutMs: 8000 });
-  if (base.body) extractHtmlRoutes(config, base.body, routes);
+  // Auth-aware crawl — pass credentials so the crawler reaches authenticated content.
+  const firstProfile = config.authProfiles?.[0];
+  const crawlHeaders = firstProfile ? buildAuthHeaders(firstProfile) : {};
+  console.info(
+    `[route-inventory] crawling ${config.baseUrl} with profile="${firstProfile?.label ?? "none"}"`,
+  );
+
+  const base = await probeScoped(config, config.baseUrl, {
+    method: "GET",
+    headers: crawlHeaders,
+    timeoutMs: 8000,
+  });
+
+  // Detect login-page redirect: if the response body looks like a login form, the
+  // session is not working. Avoid populating the inventory with login-page assets.
+  const isLoginPage = /type=["']password["']|action=["'][^"']*(?:login|signin|sign-in|sso|auth)/i.test(
+    base.body,
+  );
+  if (isLoginPage) {
+    console.warn(
+      `[route-inventory] crawl at ${config.baseUrl} appears to have landed on a login page — session may be invalid`,
+    );
+  } else if (base.body) {
+    extractHtmlRoutes(config, base.body, routes);
+  }
 
   if (config.scanDepth === "deep") {
     const firstPass = [...routes.values()];
 
     for (const item of firstPass.filter(isLikelyScriptAsset).slice(0, 20)) {
-      const response = await probeScoped(config, item.url, { method: "GET", timeoutMs: 6000 });
+      const response = await probeScoped(config, item.url, {
+        method: "GET",
+        headers: crawlHeaders,
+        timeoutMs: 6000,
+      });
       if (response.status && response.status >= 200 && response.status < 300 && response.body) {
         extractScriptRoutes(config, response.body, routes);
       }
     }
 
-    for (const item of firstPass.filter((route) => route.method === "GET" && !isLikelyScriptAsset(route)).slice(0, 25)) {
+    for (const item of firstPass.filter((r) => r.method === "GET" && !isLikelyScriptAsset(r)).slice(0, 25)) {
       if (item.source === "base") continue;
-      const response = await probeScoped(config, item.url, { method: "GET", timeoutMs: 5000 });
+      const response = await probeScoped(config, item.url, {
+        method: "GET",
+        headers: crawlHeaders,
+        timeoutMs: 5000,
+      });
       if (response.status && response.status >= 200 && response.status < 300 && response.body) {
         extractHtmlRoutes(config, response.body, routes);
         extractScriptRoutes(config, response.body, routes);
@@ -266,6 +335,9 @@ export async function discoverRouteInventory(
     addDeepHeuristicRoutes(config, routes);
   }
 
+  // Baseline heuristics run at every depth (bounded set of common API paths).
+  addBaselineHeuristicRoutes(config, routes);
+
   for (const path of ["/openapi.json", "/swagger.json", "/api/openapi.json", "/api/swagger.json"]) {
     const response = await probeScoped(config, toAbsoluteUrl(config.baseUrl, path), {
       method: "GET",
@@ -274,6 +346,36 @@ export async function discoverRouteInventory(
     if (response.status && response.status >= 200 && response.status < 300 && response.body) {
       extractOpenApiRoutes(config, response.body, routes);
     }
+  }
+
+  // Soft-404 detection: probe a random nonexistent path to get the app's 404 fingerprint,
+  // then remove any heuristic routes whose response matches it (wildcard fallback pages).
+  const sentinel = `/__testmind_${Math.random().toString(36).slice(2)}`;
+  const sentinelResult = await probeScoped(config, toAbsoluteUrl(config.baseUrl, sentinel), {
+    method: "GET",
+    headers: crawlHeaders,
+    timeoutMs: 5000,
+  });
+  const sentinelFp = responseFingerprint(sentinelResult);
+
+  const heuristicItems = [...routes.entries()]
+    .filter(([, item]) => item.source === "heuristic")
+    .slice(0, config.scanDepth === "deep" ? 40 : 12);
+
+  for (let i = 0; i < heuristicItems.length; i += 4) {
+    const batch = heuristicItems.slice(i, i + 4);
+    await Promise.all(
+      batch.map(async ([key, item]) => {
+        const r = await probeScoped(config, item.url, {
+          method: "GET",
+          headers: crawlHeaders,
+          timeoutMs: 5000,
+        });
+        if (responseFingerprint(r) === sentinelFp) {
+          routes.delete(key);
+        }
+      }),
+    );
   }
 
   const limit = config.scanDepth === "deep" ? 150 : config.scanDepth === "baseline" ? 35 : 75;

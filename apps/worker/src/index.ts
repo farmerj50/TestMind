@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { prisma } from './prisma.js';
 import 'dotenv/config';
+import { crawlFingerprint, injectSpecHeader, type CrawlMetadata } from '@testmind/generator';
 const toPosix = (p: string) => p.replace(/\\/g, "/");
 const cleanPath = (p: string) => toPosix(p.replace(/^"(.*)"$/, "$1").trim());
 
@@ -134,11 +135,97 @@ const testRunWorker = new Worker(QUEUE_NAME, async job => {
 testRunWorker.on('ready', () => console.log('[worker] ready on queue', QUEUE_NAME));
 testRunWorker.on('error', (e) => console.error('[worker] connection error', e));
 
+// ── Lightweight HTTP crawler for agent sessions ───────────────────────────────
+
+function extractLinks(html: string, baseUrl: string): string[] {
+  const seen = new Set<string>();
+  const base = new URL(baseUrl);
+  const hrefRe = /href=["']([^"'#?][^"']*?)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = hrefRe.exec(html)) !== null) {
+    try {
+      const url = new URL(m[1], baseUrl);
+      if (url.hostname === base.hostname && url.pathname !== base.pathname) {
+        seen.add(url.pathname);
+      }
+    } catch { /* ignore */ }
+  }
+  return [...seen].slice(0, 40);
+}
+
+function extractForms(html: string): CrawlMetadata["forms"] {
+  const forms: CrawlMetadata["forms"] = [];
+  const formRe = /<form[^>]*action=["']([^"']*)["'][^>]*method=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
+  const inputRe = /name=["']([^"']+)["']/gi;
+  let fm: RegExpExecArray | null;
+  while ((fm = formRe.exec(html)) !== null) {
+    const fields: string[] = [];
+    let im: RegExpExecArray | null;
+    while ((im = inputRe.exec(fm[3])) !== null) fields.push(im[1]);
+    forms.push({ action: fm[1] || '/', method: (fm[2] || 'GET').toUpperCase(), fields });
+  }
+  return forms;
+}
+
+function extractApis(html: string): string[] {
+  const apis = new Set<string>();
+  const apiRe = /["'](\/api\/[^"'?#\s]+)["']/g;
+  let m: RegExpExecArray | null;
+  while ((m = apiRe.exec(html)) !== null) apis.add(m[1]);
+  return [...apis].slice(0, 20);
+}
+
+async function crawlSite(baseUrl: string, maxRoutes: number = 30): Promise<CrawlMetadata> {
+  const visited = new Set<string>();
+  const queue = ['/'];
+  const routes: string[] = [];
+  let forms: CrawlMetadata["forms"] = [];
+  let apis: string[] = [];
+
+  while (queue.length > 0 && routes.length < maxRoutes) {
+    const pathname = queue.shift()!;
+    if (visited.has(pathname)) continue;
+    visited.add(pathname);
+
+    try {
+      const res = await fetch(new URL(pathname, baseUrl).toString(), {
+        headers: { 'User-Agent': 'TestMind-Agent/1.0' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const ct = res.headers.get('content-type') ?? '';
+      if (!ct.includes('html')) continue;
+      const html = await res.text();
+      routes.push(pathname);
+      const newLinks = extractLinks(html, baseUrl);
+      for (const link of newLinks) {
+        if (!visited.has(link)) queue.push(link);
+      }
+      if (forms.length === 0) forms = extractForms(html);
+      if (apis.length === 0) apis = extractApis(html);
+    } catch {
+      // skip unreachable routes
+    }
+  }
+
+  const metadata: CrawlMetadata = {
+    routes,
+    forms,
+    apis,
+    authRequired: routes.some((r) => /login|signin|auth/i.test(r)),
+    crawlDepth: 2,
+    pageCount: routes.length,
+  };
+  metadata.fingerprint = crawlFingerprint(metadata);
+  return metadata;
+}
+
+// ── Agent worker ──────────────────────────────────────────────────────────────
+
 const agentWorker = new Worker('agent-sessions', async job => {
   console.log('[agent-worker] picked job', job.id, 'dataKeys=', Object.keys(job.data));
   const { sessionId } = job.data as { sessionId: string };
   try {
-    // mark running
     await prisma.agentSession.update({
       where: { id: sessionId },
       data: { status: 'running', updatedAt: new Date() },
@@ -148,87 +235,92 @@ const agentWorker = new Worker('agent-sessions', async job => {
       where: { id: sessionId },
       include: { pages: { include: { scenarios: true } } },
     });
-    if (!session) {
-      return;
-    }
-    // Ensure a page exists
+    if (!session) return;
+
     let page = session.pages[0];
     if (!page) {
       page = await prisma.agentPage.create({
         include: { scenarios: true },
-        data: {
-          sessionId: session.id,
-          path: '/',
-          url: session.baseUrl,
-          status: 'pending',
-          coverage: {},
-        },
+        data: { sessionId: session.id, path: '/', url: session.baseUrl, status: 'pending', coverage: {} },
       });
     }
 
-    // Seed a couple of safe, low‑brittleness scenarios if none exist
-    if (!page.scenarios.length) {
-      const baseSteps = [
-        { kind: 'goto', url: session.baseUrl },
-        { kind: 'expect-visible', selector: 'body' },
-      ];
-      const scenarios = [
-        {
-          title: 'Auto navigation',
-          coverageType: 'navigation',
-          steps: baseSteps,
-        },
-        {
-          title: 'Basic page health',
-          coverageType: 'smoke',
-          steps: [
-            { kind: 'goto', url: session.baseUrl },
-            { kind: 'expect-visible', selector: 'body' },
-            { kind: 'expect-visible', selector: 'main,body' },
-          ],
-        },
-      ];
-      await prisma.agentScenario.createMany({
-        data: scenarios.map((s) => ({
-          pageId: page.id,
-          title: s.title,
-          coverageType: s.coverageType,
-          status: 'suggested',
-          steps: s.steps as any,
-        })),
-      });
+    // Fingerprint check — skip regeneration if site hasn't changed
+    const prevFingerprint = (page.coverage as any)?.fingerprint as string | undefined;
+
+    const metadata = await crawlSite(session.baseUrl);
+    const newFingerprint = metadata.fingerprint!;
+
+    if (prevFingerprint && prevFingerprint === newFingerprint && page.scenarios.length > 0) {
+      console.log(`[agent-worker] crawl fingerprint unchanged (${newFingerprint}) — skipping regeneration`);
+      await prisma.agentSession.update({ where: { id: session.id }, data: { status: 'ready' } });
+      return;
     }
+
+    // Build scenarios from discovered routes
+    const specOutDir = path.join(GENERATED_ROOT, 'agent-sessions', sessionId, 'playwright-ts');
+    await fs.mkdir(specOutDir, { recursive: true });
+
+    const scenariosToCreate = metadata.routes.map((route) => {
+      const title = `Test ${route === '/' ? 'Home' : route.replace(/^\//, '').replace(/\//g, ' / ')}`;
+      const specContent = injectSpecHeader(
+        [
+          `import { test, expect } from '@playwright/test';`,
+          ``,
+          `test('${title}', async ({ page }) => {`,
+          `  await page.goto('${new URL(route, session.baseUrl).toString()}');`,
+          `  await expect(page.locator('body')).toBeVisible();`,
+          `});`,
+        ].join('\n'),
+        { target: session.baseUrl, crawlDepth: metadata.crawlDepth }
+      );
+      const fileName = `${route.replace(/^\//, '').replace(/\//g, '-') || 'home'}.spec.ts`;
+      const specPath = path.join(specOutDir, fileName);
+      return { title, specContent, specPath, route };
+    });
+
+    // Write spec files and create scenarios
+    if (page.scenarios.length > 0) {
+      await prisma.agentScenario.deleteMany({ where: { pageId: page.id } });
+    }
+
+    await Promise.all(scenariosToCreate.map((s) => fs.writeFile(s.specPath, s.specContent, 'utf8')));
+
+    await prisma.agentScenario.createMany({
+      data: scenariosToCreate.map((s) => ({
+        pageId: page.id,
+        title: s.title,
+        coverageType: 'navigation',
+        status: 'suggested',
+        specPath: s.specPath,
+        steps: [
+          { kind: 'goto', url: new URL(s.route, session.baseUrl).toString() },
+          { kind: 'expect-visible', selector: 'body' },
+        ] as any,
+      })),
+    });
 
     await prisma.agentPage.update({
       where: { id: page.id },
       data: {
         status: 'completed',
-        summary: 'Auto-generated by worker',
-        coverage: { auto: 1, smoke: 1 } as any,
+        summary: `Discovered ${metadata.routes.length} routes, generated ${scenariosToCreate.length} scenarios`,
+        coverage: metadata as any,
+        fingerprint: newFingerprint,
         error: null,
       },
     });
 
-    await prisma.agentSession.update({
-      where: { id: session.id },
-      data: { status: 'ready' },
-    });
+    await prisma.agentSession.update({ where: { id: session.id }, data: { status: 'ready' } });
+
+    console.log(`[agent-worker] session ${sessionId}: ${metadata.routes.length} routes, ${scenariosToCreate.length} specs → ${specOutDir}`);
   } catch (err: any) {
     console.error('[agent-worker] error', err);
-    // try to capture the last page if possible
     try {
-      const page = await prisma.agentPage.findFirst({ where: { sessionId }, orderBy: { createdAt: 'desc' } });
-      if (page) {
-        await prisma.agentPage.update({
-          where: { id: page.id },
-          data: { status: 'failed', error: err?.message || String(err) },
-        });
-      }
+      const pg = await prisma.agentPage.findFirst({ where: { sessionId }, orderBy: { createdAt: 'desc' } });
+      if (pg) await prisma.agentPage.update({ where: { id: pg.id }, data: { status: 'failed', error: err?.message || String(err) } });
     } catch {}
-    await prisma.agentSession.update({
-      where: { id: job.data.sessionId },
-      data: { status: 'failed' },
-    }).catch(() => {});
+    await prisma.agentSession.update({ where: { id: job.data.sessionId }, data: { status: 'failed' } }).catch(() => {});
   }
 }, { connection });
 

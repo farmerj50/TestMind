@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { useApi } from "../lib/api";
+import SEOHead from "../components/SEOHead";
 
 export default function PricingPage() {
   const tiers: Array<{
@@ -170,7 +171,13 @@ export default function PricingPage() {
   }
 
   return (
-    <div className="min-h-screen px-6 py-12 lg:px-12">
+    <>
+      <SEOHead
+        title="Pricing — TestMind AI"
+        description="Explore TestMind AI plans for solo testers and QA teams, including AI test generation, parallel execution, security scanning, and self-heal suggestions."
+        canonicalPath="/pricing"
+      />
+      <div className="min-h-screen px-6 py-12 lg:px-12">
       <div className="max-w-6xl mx-auto space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Pricing</h1>
@@ -232,5 +239,6 @@ export default function PricingPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
-import ActionMenu, { ActionItem } from "./ActionMenu";
+import ActionMenu from "./ActionMenu";
+import type { ActionItem } from "./ActionMenu";
 
 type FolderActionsMenuProps = {
   onAction: (id: string) => void;

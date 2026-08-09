@@ -698,6 +698,10 @@ async function writeScenarioFiles(opts: {
   scenarios: Array<AgentScenarioPayload & { id: string }>;
 }) {
   const slug = pageSlug(opts.pagePath);
+  const domain = (() => {
+    try { return new URL(opts.pageUrl).hostname.replace(/^www\./, "").replace(/[^a-z0-9]+/gi, "-").toLowerCase(); }
+    catch { return "site"; }
+  })();
   const files: Record<string, string> = {};
   const counters = new Map<string, number>();
 
@@ -708,10 +712,10 @@ async function writeScenarioFiles(opts: {
     counters.set(baseName, nextCount);
     const fileName =
       nextCount === 1 ? `${baseName}.spec.ts` : `${baseName}-${nextCount}.spec.ts`;
-    const relPath = path.join("scenarios", slug, fileName).replace(/\\/g, "/");
+    const relPath = `${domain}/scenarios/${slug}/${fileName}`;
     const content = emitSpecFile(opts.pagePath, [caseData] as any);
     for (const root of opts.roots) {
-      const baseDir = path.join(root, "scenarios", slug);
+      const baseDir = path.join(root, domain, "scenarios", slug);
       await fs.mkdir(baseDir, { recursive: true });
       const absPath = path.join(baseDir, fileName);
       await fs.writeFile(absPath, content, "utf8");

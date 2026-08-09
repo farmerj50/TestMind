@@ -1,4 +1,3 @@
-import React from "react";
 import { LogoLoader } from "./LogoLoader";
 
 type LoadingOverlayProps = {

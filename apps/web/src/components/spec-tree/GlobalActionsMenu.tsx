@@ -1,5 +1,6 @@
 import { Copy, FolderDown, FolderPlus, FolderUp, PlusSquare, Tags } from "lucide-react";
-import ActionMenu, { ActionItem } from "./ActionMenu";
+import ActionMenu from "./ActionMenu";
+import type { ActionItem } from "./ActionMenu";
 
 type GlobalActionsMenuProps = {
   onAction: (id: string) => void;

@@ -9,7 +9,8 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import ActionMenu, { ActionItem } from "./ActionMenu";
+import ActionMenu from "./ActionMenu";
+import type { ActionItem } from "./ActionMenu";
 
 type SuiteActionsMenuProps = {
   onAction: (id: string) => void;
