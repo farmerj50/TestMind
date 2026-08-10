@@ -288,6 +288,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
           id: true,
           projectId: true,
           status: true,
+          trigger: true,
           createdAt: true,
           startedAt: true,
           finishedAt: true,

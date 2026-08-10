@@ -194,6 +194,7 @@ type Run = {
 
 
   reportPath?: string | null;
+  trigger?: string | null;
 
 
 
@@ -1938,8 +1939,13 @@ const fetchMissingLocators = useCallback(
             )}
 </div>
 
-          <div className="text-xs text-slate-500">
-            Lifecycle: {run.lifecycleStatus ?? "unknown"} • Artifacts: {run.artifactsState ?? "unknown"}
+          <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+            <span>Lifecycle: {run.lifecycleStatus ?? "unknown"} • Artifacts: {run.artifactsState ?? "unknown"}</span>
+            {run.trigger && run.trigger !== "manual" && (
+              <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-violet-100 text-violet-700">
+                via {run.trigger}
+              </span>
+            )}
           </div>
 
 

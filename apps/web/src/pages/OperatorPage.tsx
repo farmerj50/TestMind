@@ -26,6 +26,12 @@ type OperatorTask = {
     testTitle?: string | null;
     testCaseKey?: string | null;
   } | null;
+  runSummary?: {
+    status: string;
+    passed: number;
+    failed: number;
+    total: number;
+  } | null;
 };
 
 type OperatorJob = {
@@ -812,14 +818,25 @@ export default function OperatorPage() {
                       </div>
                       <div className="flex items-center gap-3 pl-3">
                         {task.testRunId && (
-                          <a
-                            href={`/test-runs/${task.testRunId}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline text-xs"
-                          >
-                            View run →
-                          </a>
+                          <div className="flex items-center gap-2">
+                            {task.runSummary && (
+                              <span className="text-xs text-slate-500">
+                                <span className="text-emerald-600">{task.runSummary.passed} passed</span>
+                                {task.runSummary.failed > 0 && (
+                                  <span className="text-rose-600"> · {task.runSummary.failed} failed</span>
+                                )}
+                                <span> / {task.runSummary.total}</span>
+                              </span>
+                            )}
+                            <a
+                              href={`/test-runs/${task.testRunId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline text-xs"
+                            >
+                              View run →
+                            </a>
+                          </div>
                         )}
                         {task.error && (
                           <span className="text-xs text-rose-600 max-w-xs truncate" title={task.error}>
