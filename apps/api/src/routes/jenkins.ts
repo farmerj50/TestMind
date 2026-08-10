@@ -1,8 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
-import { decryptSecret } from "../lib/crypto.js";
+import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 import { enqueueOperatorJob } from "../runner/queue.js";
 import { validatedEnv } from "../config/env.js";
 import type { Prisma } from "@prisma/client";
@@ -407,5 +407,54 @@ export default async function jenkinsRoutes(app: FastifyInstance) {
 
     await enqueueOperatorJob(job.id);
     return reply.code(202).send({ jobId: job.id, type: jobType, status: "queued" });
+  });
+
+  // Generate (or regenerate) a CI webhook token for a project.
+  // Returns the plaintext token once — caller should store it securely.
+  app.post("/jenkins/token", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+    const { projectId } = (req.body ?? {}) as { projectId?: string };
+    if (!projectId) return reply.code(400).send({ error: "projectId required" });
+
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+    if (project.ownerId !== userId) return reply.code(403).send({ error: "Forbidden" });
+
+    // Token format: <projectId>_<random> — matches the verifyToken() parser above
+    const rawToken = `${projectId}_${randomBytes(24).toString("hex")}`;
+    await prisma.projectSecret.upsert({
+      where: { projectId_key: { projectId, key: "jenkins_api_token" } },
+      update: { value: encryptSecret(rawToken) },
+      create: {
+        projectId,
+        key: "jenkins_api_token",
+        name: "CI Webhook Token",
+        value: encryptSecret(rawToken),
+      },
+    });
+
+    return reply.send({ token: rawToken });
+  });
+
+  // Return whether a CI webhook token exists for a project (does not reveal the token).
+  app.get("/jenkins/token", async (req, reply) => {
+    const { userId } = getAuth(req);
+    if (!userId) return reply.code(401).send({ error: "Unauthorized" });
+
+    const { projectId } = req.query as { projectId?: string };
+    if (!projectId) return reply.code(400).send({ error: "projectId required" });
+
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+    if (project.ownerId !== userId) return reply.code(403).send({ error: "Forbidden" });
+
+    const secret = await prisma.projectSecret.findUnique({
+      where: { projectId_key: { projectId, key: "jenkins_api_token" } },
+      select: { id: true },
+    });
+
+    return reply.send({ exists: !!secret });
   });
 }

@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react";
 
 type Project = { id: string; name: string; repoUrl?: string | null };
 
@@ -37,8 +38,33 @@ type OperatorJob = {
   createdAt: string;
   startedAt?: string | null;
   finishedAt?: string | null;
+  contextJson?: Record<string, any> | null;
   tasks: OperatorTask[];
 };
+
+type Schedule = {
+  id: string;
+  projectId: string;
+  cron: string;
+  enabled: boolean;
+  lastRunAt?: string | null;
+  createdAt: string;
+};
+
+const PIPELINE_STEPS = [
+  { type: "discover", label: "Discovering site" },
+  { type: "execute",  label: "Running tests" },
+  { type: "triage",   label: "Triaging failures" },
+  { type: "repair",   label: "Repairing failures" },
+  { type: "retest",   label: "Re-running patched tests" },
+  { type: "verify",   label: "Verifying suite" },
+] as const;
+
+const CRON_PRESETS = [
+  { label: "Daily 2 AM", value: "0 2 * * *" },
+  { label: "Weekly Mon 9 AM", value: "0 9 * * 1" },
+  { label: "Daily midnight", value: "0 0 * * *" },
+];
 
 type OperatorApproval = {
   id: string;
@@ -182,6 +208,12 @@ export default function OperatorPage() {
   const approvalPollRef = useRef<number | null>(null);
   const [approvalLoading, setApprovalLoading] = useState<Record<string, boolean>>({});
 
+  // schedules
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [scheduleCron, setScheduleCron] = useState("0 9 * * 1");
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+  const [scheduleErr, setScheduleErr] = useState<string | null>(null);
+
   // ── helpers ──────────────────────────────────────────────────────────────
 
   const fetchHistory = useCallback(async () => {
@@ -201,6 +233,49 @@ export default function OperatorPage() {
       // silently ignore
     }
   }, [apiFetch]);
+
+  const fetchSchedules = useCallback(async (pid: string) => {
+    if (!pid) return;
+    try {
+      const res = await apiFetch<{ schedules: Schedule[] }>(`/schedules?projectId=${pid}`);
+      setSchedules(res.schedules ?? []);
+    } catch {
+      setSchedules([]);
+    }
+  }, [apiFetch]);
+
+  const createSchedule = async () => {
+    if (!projectId) { setScheduleErr("Select a project first."); return; }
+    if (!scheduleCron.trim()) { setScheduleErr("Cron expression required."); return; }
+    setScheduleSubmitting(true);
+    setScheduleErr(null);
+    try {
+      await apiFetch("/schedules", {
+        method: "POST",
+        body: JSON.stringify({ projectId, cron: scheduleCron.trim() }),
+      });
+      await fetchSchedules(projectId);
+    } catch (err: any) {
+      setScheduleErr(err?.message ?? "Failed to create schedule");
+    } finally {
+      setScheduleSubmitting(false);
+    }
+  };
+
+  const toggleSchedule = async (id: string, enabled: boolean) => {
+    try {
+      await apiFetch(`/schedules/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+      setSchedules((prev) => prev.map((s) => s.id === id ? { ...s, enabled } : s));
+    } catch { /* ignore */ }
+  };
+
+  const deleteSchedule = async (id: string, cron: string) => {
+    if (!confirm(`Delete schedule "${cron}"?`)) return;
+    try {
+      await apiFetch(`/schedules/${id}`, { method: "DELETE" });
+      setSchedules((prev) => prev.filter((s) => s.id !== id));
+    } catch { /* ignore */ }
+  };
 
   // ── mount / unmount ───────────────────────────────────────────────────────
 
@@ -231,6 +306,20 @@ export default function OperatorPage() {
     if (searchParams.get("mode") === "autonomous") setJobType("autonomous");
     const qProjectId = searchParams.get("projectId");
     if (qProjectId) setProjectId(qProjectId);
+
+    // Auto-load a specific job from URL (e.g. from the Dashboard Auto Run toast)
+    const qJobId = searchParams.get("jobId");
+    if (qJobId) {
+      apiFetch<{ job: OperatorJob }>(`/operator/jobs/${qJobId}`)
+        .then(({ job: j }) => {
+          if (!mounted) return;
+          setJob(j);
+          if (!["succeeded", "failed", "canceled"].includes(j.status)) {
+            startPolling(j.id);
+          }
+        })
+        .catch(() => {});
+    }
 
     // poll history every 10 s, approvals every 5 s
     historyPollRef.current = window.setInterval(fetchHistory, 10_000);
@@ -273,7 +362,10 @@ export default function OperatorPage() {
     const projectSuites = suites.filter((s) => s.projectId === projectId);
     if (projectSuites.length) setSuiteId(projectSuites[0].id);
     else setSuiteId("");
-  }, [projectId, projects, suites, apiFetch]);
+
+    // Load schedules for this project
+    fetchSchedules(projectId);
+  }, [projectId, projects, suites, apiFetch, fetchSchedules]);
 
   // ── active job polling ────────────────────────────────────────────────────
 
@@ -645,6 +737,45 @@ export default function OperatorPage() {
               </div>
             )}
 
+            {/* Autonomous pipeline checklist — visible only for autonomous runs */}
+            {job.contextJson?.autonomous === true && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Autonomous QA Pipeline</p>
+                {PIPELINE_STEPS.map((step) => {
+                  const stepTasks = job.tasks.filter((t) => t.type === step.type);
+                  const total = stepTasks.length;
+                  const done = stepTasks.filter((t) => t.status === "succeeded").length;
+                  const failed = stepTasks.filter((t) => t.status === "failed").length;
+                  const running = stepTasks.filter((t) => t.status === "running").length;
+                  const hasAny = total > 0;
+                  const allDone = hasAny && done === total;
+                  const hasFailed = failed > 0;
+                  const isRunning = running > 0;
+                  return (
+                    <div key={step.type} className="flex items-center gap-3 py-1.5">
+                      <span className="w-5 h-5 flex items-center justify-center shrink-0">
+                        {allDone ? (
+                          <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                        ) : hasFailed ? (
+                          <XCircle className="h-5 w-5 text-rose-500" />
+                        ) : isRunning ? (
+                          <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full border-2 border-slate-300" />
+                        )}
+                      </span>
+                      <span className={`text-sm ${allDone ? "text-emerald-700 font-medium" : hasFailed ? "text-rose-700" : isRunning ? "text-blue-700 font-medium" : "text-slate-500"}`}>
+                        {step.label}
+                      </span>
+                      {total > 1 && (
+                        <span className="ml-auto text-xs text-slate-400">{done}/{total}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {job.tasks.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tasks</p>
@@ -861,6 +992,88 @@ export default function OperatorPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Schedules ──────────────────────────────────────────────────────── */}
+      {projectId && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-slate-800 text-base">Scheduled runs</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {schedules.length > 0 && (
+              <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                {schedules.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between px-3 py-2.5 text-sm">
+                    <div>
+                      <code className="font-mono text-xs text-slate-700">{s.cron}</code>
+                      {s.lastRunAt && (
+                        <p className="text-xs text-slate-400 mt-0.5">Last run: {new Date(s.lastRunAt).toLocaleString()}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleSchedule(s.id, !s.enabled)}
+                        className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                          s.enabled
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            : "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                        }`}
+                      >
+                        {s.enabled ? "Enabled" : "Disabled"}
+                      </button>
+                      <button
+                        onClick={() => deleteSchedule(s.id, s.cron)}
+                        className="text-slate-400 hover:text-rose-600 transition-colors"
+                        title="Delete schedule"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {schedules.length === 0 && (
+              <p className="text-sm text-slate-500">No schedules yet.</p>
+            )}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-slate-700">Add schedule</p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {CRON_PRESETS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setScheduleCron(p.value)}
+                    className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                      scheduleCron === p.value
+                        ? "border-slate-800 bg-slate-800 text-white"
+                        : "border-slate-300 text-slate-600 hover:border-slate-500"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 items-center">
+                <Input
+                  value={scheduleCron}
+                  onChange={(e) => setScheduleCron(e.target.value)}
+                  placeholder="cron expression (e.g. 0 9 * * 1)"
+                  className="font-mono text-sm flex-1"
+                />
+                <Button
+                  size="sm"
+                  disabled={!scheduleCron.trim() || scheduleSubmitting}
+                  onClick={createSchedule}
+                >
+                  {scheduleSubmitting ? "Saving…" : "Save"}
+                </Button>
+              </div>
+              {scheduleErr && <p className="text-xs text-rose-600">{scheduleErr}</p>}
             </div>
           </CardContent>
         </Card>

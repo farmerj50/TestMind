@@ -68,6 +68,9 @@ export const securityQueue = createQueue<SecurityScanPayload>('security-scan');
 export const allureQueue = createQueue('allure-generate');
 export const operatorQueue = createQueue<OperatorJobPayload>('operator-jobs');
 
+export type ScheduleTriggerPayload = { scheduleId: string; projectId: string };
+export const scheduleQueue = createQueue<ScheduleTriggerPayload>('schedule-trigger');
+
 export type SecurityResumeCtx = {
   baseUrl: string;
   allowedHosts: string[];
