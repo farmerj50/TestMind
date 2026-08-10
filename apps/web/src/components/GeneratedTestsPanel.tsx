@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import Editor from "@monaco-editor/react";
+import { configureSpecEditor } from "../lib/monaco-spec-config";
 import { Button } from "../components/ui/button";
 import { useApi } from "../lib/api";
 
@@ -168,6 +169,7 @@ export default function GeneratedTestsPanel({ compact = false }: GeneratedTestsP
               language={lang}
               theme="vs-dark"
               value={content}
+              beforeMount={configureSpecEditor}
               options={{
                 readOnly: true,
                 minimap: { enabled: false },

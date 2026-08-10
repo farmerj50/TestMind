@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import {
   Activity,
@@ -22,6 +22,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useApi } from "../lib/api";
+import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -217,6 +218,7 @@ export default function DashboardPage() {
     (localStorage.getItem("tm-adapterId") as AdapterId) || "playwright-ts"
   );
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useUser();
   const { apiFetch } = useApi();
 
@@ -237,6 +239,7 @@ export default function DashboardPage() {
   const [formErrors, setFormErrors] = useState<{ name?: string; repoUrl?: string }>({});
   const [refreshKey, setRefreshKey] = useState(0);
   const [genRefresh, setGenRefresh] = useState(0);
+  const [launchingIds, setLaunchingIds] = useState<Set<string>>(new Set());
   const telemetrySentRef = useRef(false);
   const workspaceSetupRef = useRef<HTMLDivElement | null>(null);
 
@@ -399,6 +402,27 @@ export default function DashboardPage() {
       await loadProjects();
     } catch (e: any) {
       setErr(e.message || "Failed to create project");
+    }
+  }
+
+  async function triggerAutonomousRun(projectId: string, baseUrl: string) {
+    setLaunchingIds((prev) => new Set(prev).add(projectId));
+    try {
+      const { job } = await apiFetch<{ job: { id: string } }>("/operator/jobs", {
+        method: "POST",
+        body: JSON.stringify({ projectId, type: "qa", context: { autonomous: true, baseUrl } }),
+      });
+      toast.success("Autonomous QA started", {
+        action: { label: "Track →", onClick: () => navigate(`/operator?jobId=${job.id}`) },
+      });
+    } catch {
+      toast.error("Failed to start autonomous run");
+    } finally {
+      setLaunchingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(projectId);
+        return next;
+      });
     }
   }
 
@@ -920,12 +944,31 @@ export default function DashboardPage() {
                             Scan
                           </Link>
                         </Button>
-                        <Button asChild variant="outline" size="sm">
-                          <Link to={`/operator?projectId=${project.id}&mode=autonomous`}>
+                        {/^https?:\/\//i.test(project.repoUrl ?? "") ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={launchingIds.has(project.id)}
+                            onClick={() => triggerAutonomousRun(project.id, project.repoUrl!)}
+                          >
+                            {launchingIds.has(project.id) ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Bot className="mr-2 h-4 w-4" />
+                            )}
+                            Auto Run
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            title="Add an HTTP base URL in project settings to enable Auto Run"
+                          >
                             <Bot className="mr-2 h-4 w-4" />
                             Auto Run
-                          </Link>
-                        </Button>
+                          </Button>
+                        )}
                         <Button asChild variant="outline" size="sm">
                           <Link to={`/projects/${project.id}`}>
                             <Pencil className="mr-2 h-4 w-4" />

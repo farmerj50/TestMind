@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { useApi, API_BASE } from "../lib/api";
-import { Loader2, RefreshCw, Trash2, Copy, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, RefreshCw, Trash2, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
 
 type Project = { id: string; name: string };
 
@@ -156,6 +156,14 @@ export default function IntegrationsPage() {
     testRunId?: string | null;
   } | null>(null);
   const triggerPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // CI webhook card state
+  const [ciToken, setCiToken] = useState<string | null>(null);
+  const [ciTokenBusy, setCiTokenBusy] = useState(false);
+  const [ciTokenErr, setCiTokenErr] = useState<string | null>(null);
+  const [ciSnippetTab, setCiSnippetTab] = useState<"github" | "gitlab" | "shell">("github");
+  const [ciUrlCopied, setCiUrlCopied] = useState(false);
+  const [ciTokenCopied, setCiTokenCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -327,6 +335,48 @@ export default function IntegrationsPage() {
   }
 }`;
   }, [jenkinsEnvChoices]);
+
+  const ciSnippets = useMemo(() => {
+    const D = '$';
+    const url = `${API_BASE}/jenkins/run`;
+    return {
+      github: `- name: TestMind Autonomous QA
+  run: |
+    curl -s -X POST "${D}TESTMIND_WEBHOOK_URL" \\
+      -H "Authorization: Bearer ${D}TESTMIND_TOKEN" \\
+      -H "Content-Type: application/json" \\
+      -H "X-Request-ID: gha-${D}{{ github.run_id }}" \\
+      -d '{"workflow":"qa-execute","branch":"${D}{{ github.ref_name }}","sha":"${D}{{ github.sha }}"}'
+  env:
+    TESTMIND_WEBHOOK_URL: ${D}{{ secrets.TESTMIND_WEBHOOK_URL }}
+    TESTMIND_TOKEN: ${D}{{ secrets.TESTMIND_TOKEN }}
+# Store these in: Settings → Secrets and variables → Actions
+# TESTMIND_WEBHOOK_URL = ${url}
+# TESTMIND_TOKEN = <token from CI Webhook card above>`,
+
+      gitlab: `testmind-qa:
+  stage: test
+  script:
+    - |
+      curl -s -X POST "${D}TESTMIND_WEBHOOK_URL" \\
+        -H "Authorization: Bearer ${D}TESTMIND_TOKEN" \\
+        -H "Content-Type: application/json" \\
+        -H "X-Request-ID: gitlab-${D}CI_PIPELINE_ID" \\
+        -d "{\\"workflow\\":\\"qa-execute\\",\\"branch\\":\\"${D}CI_COMMIT_REF_NAME\\",\\"sha\\":\\"${D}CI_COMMIT_SHA\\"}"
+  variables:
+    TESTMIND_WEBHOOK_URL: ${url}
+    TESTMIND_TOKEN: ${D}TESTMIND_TOKEN_SECRET
+# Add TESTMIND_TOKEN_SECRET in: Settings → CI/CD → Variables`,
+
+      shell: `#!/bin/sh
+# Generic shell — works in any CI that can run curl
+curl -s -X POST "${url}" \\
+  -H "Authorization: Bearer ${D}TM_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Request-ID: run-${D}${D}" \\
+  -d '{"workflow":"qa-execute","branch":"'"${D}BRANCH"'","sha":"'"${D}GIT_SHA"'"}'`,
+    };
+  }, []);
 
   useEffect(() => {
     if (slackIntegration && !slackTouched.current) {
@@ -637,6 +687,23 @@ export default function IntegrationsPage() {
       setTmErr(err?.message ?? "Failed to disconnect integration");
     } finally {
       setProviderBusy(null);
+    }
+  }
+
+  async function generateCiToken() {
+    if (!projectId) { setCiTokenErr("Select a project first."); return; }
+    setCiTokenBusy(true);
+    setCiTokenErr(null);
+    try {
+      const { token } = await apiFetch<{ token: string }>("/jenkins/token", {
+        method: "POST",
+        body: JSON.stringify({ projectId }),
+      });
+      setCiToken(token);
+    } catch (err: any) {
+      setCiTokenErr(err?.message ?? "Failed to generate token");
+    } finally {
+      setCiTokenBusy(false);
     }
   }
 
@@ -1380,6 +1447,99 @@ export default function IntegrationsPage() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* CI Webhook card — one copy-paste to connect GitHub Actions, GitLab CI, etc. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>CI Webhook</CardTitle>
+          <CardDescription>
+            Trigger autonomous QA from GitHub Actions, GitLab CI, or any pipeline that can run curl.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-slate-700">Webhook URL</label>
+            <div className="mt-1 flex items-center gap-2 rounded-md border bg-slate-50 px-3 py-2">
+              <code className="flex-1 text-xs font-mono text-slate-700 break-all">{API_BASE}/jenkins/run</code>
+              <button
+                type="button"
+                className="shrink-0 text-slate-400 hover:text-slate-700"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${API_BASE}/jenkins/run`);
+                  setCiUrlCopied(true);
+                  setTimeout(() => setCiUrlCopied(false), 2000);
+                }}
+              >
+                {ciUrlCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-700">API Token</label>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!projectId || ciTokenBusy}
+                onClick={generateCiToken}
+              >
+                {ciTokenBusy && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                {ciToken ? "Regenerate" : "Generate Token"}
+              </Button>
+            </div>
+            {ciTokenErr && <p className="mt-1 text-xs text-rose-600">{ciTokenErr}</p>}
+            {ciToken ? (
+              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <p className="text-xs font-semibold text-amber-800">Save this token — it won't be shown again.</p>
+                <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-white px-3 py-2">
+                  <code className="flex-1 text-xs font-mono text-slate-800 break-all">{ciToken}</code>
+                  <button
+                    type="button"
+                    className="shrink-0 text-slate-400 hover:text-slate-700"
+                    onClick={() => {
+                      navigator.clipboard.writeText(ciToken);
+                      setCiTokenCopied(true);
+                      setTimeout(() => setCiTokenCopied(false), 2000);
+                    }}
+                  >
+                    {ciTokenCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">
+                {projectId
+                  ? "Generate a token to authenticate webhook calls from your CI pipeline."
+                  : "Select a project above to generate a token."}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-2 block">Integration snippets</label>
+            <div className="flex gap-1 border-b border-slate-200 mb-3">
+              {(["github", "gitlab", "shell"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setCiSnippetTab(tab)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-t border-b-2 transition-colors ${
+                    ciSnippetTab === tab
+                      ? "border-slate-900 text-slate-900"
+                      : "border-transparent text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {tab === "github" ? "GitHub Actions" : tab === "gitlab" ? "GitLab CI" : "Generic shell"}
+                </button>
+              ))}
+            </div>
+            <pre className="rounded-lg bg-slate-900 p-4 text-xs text-slate-100 overflow-x-auto whitespace-pre leading-5">
+              {ciSnippets[ciSnippetTab]}
+            </pre>
+          </div>
         </CardContent>
       </Card>
 

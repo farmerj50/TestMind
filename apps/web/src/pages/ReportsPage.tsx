@@ -12,6 +12,7 @@ type Run = {
   status: "queued" | "running" | "succeeded" | "failed";
   lifecycleStatus?: "queued" | "running" | "completed" | "failed";
   artifactsState?: "none" | "partial" | "complete";
+  trigger?: string | null;
   projectId?: string;
   createdAt: string;
   startedAt?: string | null;
@@ -107,6 +108,22 @@ const formatReason = (raw?: string | null) => {
     }
   }
   return trimmed.slice(0, 160);
+};
+
+const formatRunFailureReason = (run: { error?: string | null; summary?: string | null }) => {
+  if (run.error) return formatReason(run.error);
+  if (run.summary) {
+    try {
+      const s = JSON.parse(run.summary);
+      const failed = typeof s.failed === "number" ? s.failed : null;
+      const total = typeof s.parsedCount === "number" ? s.parsedCount : (typeof s.total === "number" ? s.total : null);
+      if (failed != null && total != null) return `${failed} of ${total} tests failed`;
+      if (failed != null) return `${failed} test${failed !== 1 ? "s" : ""} failed`;
+    } catch {
+      // fall through
+    }
+  }
+  return "Failure details unavailable";
 };
 
 function Pie({
@@ -439,7 +456,7 @@ export default function ReportsPage() {
     filteredRuns
       .filter((r) => r.status === "failed")
       .forEach((r) => {
-        const reason = formatReason(r.error || r.summary);
+        const reason = formatRunFailureReason(r);
         reasons[reason] = (reasons[reason] || 0) + 1;
       });
     return Object.entries(reasons)
@@ -845,13 +862,20 @@ export default function ReportsPage() {
               <div key={r.id} className="rounded-md border border-rose-100 bg-white p-3 shadow-sm">
                 <div className="flex items-center justify-between text-xs text-rose-700">
                   <span className="font-mono text-slate-800">{r.id.slice(0, 10)}</span>
-                  <span>{new Date(r.createdAt).toLocaleString()}</span>
+                  <div className="flex items-center gap-1.5">
+                    {r.trigger && r.trigger !== "manual" && (
+                      <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-violet-100 text-violet-700">
+                        {r.trigger}
+                      </span>
+                    )}
+                    <span>{new Date(r.createdAt).toLocaleString()}</span>
+                  </div>
                 </div>
                 {specHints[r.id] && (
                   <div className="text-[11px] text-slate-500">spec: {specHints[r.id]}</div>
                 )}
                 <div className="mt-1 text-xs text-rose-800">
-                  {formatReason(r.error || r.summary) || "Failure summary unavailable."}
+                  {formatRunFailureReason(r) || "Failure summary unavailable."}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                   {suiteHref(r.projectId) && (
@@ -939,12 +963,19 @@ export default function ReportsPage() {
                     )}
                   </div>
                 </div>
-                <span
-                  className="rounded-full px-2 py-0.5 text-xs font-medium"
-                  style={{ background: `${STATUS_COLORS[r.status]}22`, color: STATUS_COLORS[r.status] }}
-                >
-                  {r.status}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {r.trigger && r.trigger !== "manual" && (
+                    <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-violet-100 text-violet-700">
+                      {r.trigger}
+                    </span>
+                  )}
+                  <span
+                    className="rounded-full px-2 py-0.5 text-xs font-medium"
+                    style={{ background: `${STATUS_COLORS[r.status]}22`, color: STATUS_COLORS[r.status] }}
+                  >
+                    {r.status}
+                  </span>
+                </div>
               </div>
             ))}
             {filteredRuns.length === 0 && (

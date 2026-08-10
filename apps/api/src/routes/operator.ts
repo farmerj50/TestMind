@@ -17,6 +17,7 @@ async function hydrateOperatorTasks<T extends {
   inputJson?: Prisma.JsonValue | null;
   tasks: Array<{
     id: string;
+    testRunId?: string | null;
     inputJson?: Prisma.JsonValue | null;
     [key: string]: unknown;
   }>;
@@ -28,6 +29,7 @@ async function hydrateOperatorTasks<T extends {
       testTitle: string | null;
       testCaseKey: string | null;
     } | null;
+    runSummary: { status: string; passed: number; failed: number; total: number } | null;
   }>;
 }>> {
   const testResultIds = new Set<string>();
@@ -45,7 +47,16 @@ async function hydrateOperatorTasks<T extends {
     }
   }
 
-  const [results, cases] = await Promise.all([
+  const testRunIds = new Set<string>();
+  for (const job of jobs) {
+    for (const task of job.tasks) {
+      if (typeof task.testRunId === "string" && task.testRunId.trim()) {
+        testRunIds.add(task.testRunId);
+      }
+    }
+  }
+
+  const [results, cases, runs] = await Promise.all([
     testResultIds.size
       ? prisma.testResult.findMany({
           where: { id: { in: [...testResultIds] } },
@@ -62,10 +73,32 @@ async function hydrateOperatorTasks<T extends {
           select: { id: true, key: true, title: true },
         })
       : Promise.resolve([]),
+    testRunIds.size
+      ? prisma.testRun.findMany({
+          where: { id: { in: [...testRunIds] } },
+          select: { id: true, status: true, summary: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const resultById = new Map(results.map((row) => [row.id, row]));
   const caseById = new Map(cases.map((row) => [row.id, row]));
+
+  type RunSummaryRow = { status: string; passed: number; failed: number; total: number };
+  const runById = new Map<string, RunSummaryRow>(
+    runs.map((row) => {
+      let passed = 0, failed = 0, total = 0;
+      if (row.summary) {
+        try {
+          const s = JSON.parse(row.summary);
+          passed = typeof s.passed === "number" ? s.passed : 0;
+          failed = typeof s.failed === "number" ? s.failed : 0;
+          total = typeof s.parsedCount === "number" ? s.parsedCount : (typeof s.total === "number" ? s.total : passed + failed);
+        } catch { /* ignore */ }
+      }
+      return [row.id, { status: row.status, passed, failed, total }];
+    })
+  );
 
   return jobs.map((job) => ({
     ...job,
@@ -97,9 +130,12 @@ async function hydrateOperatorTasks<T extends {
             }
           : null;
 
+      const runSummary = typeof task.testRunId === "string" ? runById.get(task.testRunId) ?? null : null;
+
       return {
         ...task,
         resolvedTarget,
+        runSummary,
       };
     }),
   }));

@@ -55,6 +55,7 @@ import workflowsRoutes from './routes/workflows.js';
 import researchAgentRoutes from './routes/researchAgent.js';
 import researchAuthTestRoutes from './routes/researchAuthTest.js';
 import apiTestingRoutes from './routes/apiTesting.js';
+import schedulesRoutes from './routes/schedules.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
 
 
@@ -319,6 +320,7 @@ await registerWithLog("workflowsRoutes", () => app.register(workflowsRoutes, { p
 await registerWithLog("researchAgentRoutes", () => app.register(researchAgentRoutes, { prefix: "/" }));
 await registerWithLog("researchAuthTestRoutes", () => app.register(researchAuthTestRoutes, { prefix: "/" }));
 await registerWithLog("apiTestingRoutes", () => app.register(apiTestingRoutes, { prefix: "/" }));
+await registerWithLog("schedulesRoutes", () => app.register(schedulesRoutes, { prefix: "/" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
 
 const require = createRequire(import.meta.url);
@@ -2100,6 +2102,11 @@ const startWorkersOnce = () => {
   start(import("./runner/allure-worker.js"), "allure-generate");
   start(import("./runner/operator-worker.js"), "operator-jobs");
   start(import("./runner/api-test-worker.js"), "api-tests");
+
+  // Register repeatable BullMQ jobs for all enabled OperatorSchedules
+  import("./runner/scheduler.js").then(({ startScheduler }) =>
+    startScheduler().catch((err) => app.log.error({ err }, "[scheduler] startup failed"))
+  );
 };
 
 // Optional: auto-start local recorder helper (node recorder-helper.js) for in-app launch

@@ -177,6 +177,7 @@ model Project {
   mobileConfigs        MobileConfig[]
   apiCollections       ApiCollection[]
   humanInterventionCandidates HumanInterventionCandidate[]
+  operatorSchedules    OperatorSchedule[]
 }
 
 model GitAccount {
@@ -1025,4 +1026,18 @@ model ApiTestResult {
 
   @@index([runId])
   @@index([testCaseId])
+}
+
+model OperatorSchedule {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cron        String
+  enabled     Boolean   @default(true)
+  contextJson Json      @default("{}")
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([projectId])
 }

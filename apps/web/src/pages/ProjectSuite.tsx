@@ -1,6 +1,7 @@
 // src/pages/ProjectSuite.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
+import { configureSpecEditor } from "../lib/monaco-spec-config";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
@@ -2430,6 +2431,7 @@ export default function ProjectSuite() {
                 value={editorContent}
                 onChange={(value) => setEditorContent(value ?? "")}
                 options={{ minimap: { enabled: false }, fontSize: 14 }}
+                beforeMount={configureSpecEditor}
               />
             </div>
           </div>
