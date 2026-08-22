@@ -397,6 +397,7 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
             key: true,
             title: true,
             preconditions: true,
+            locators: true,
             steps: { orderBy: { idx: "asc" }, select: { action: true, expected: true, idx: true } },
           },
         });
@@ -445,9 +446,23 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         const extractUrl = (value?: string | null) => {
           const raw = (value ?? "").trim();
           if (!raw) return null;
+          // preconditions is JSON (e.g. `{"sourceUrl":"...","route":"/","specPath":"..."}`) for
+          // cases saved from the URL Test Builder — parse it directly rather than regex-scanning
+          // the raw string, which otherwise swallows the rest of the JSON (no whitespace between
+          // JSON.stringify'd fields) into what should have been just the URL.
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim()) {
+              return parsed.sourceUrl.trim();
+            }
+          } catch {
+            // not JSON — fall through to free-text extraction below
+          }
           const baseMatch = raw.match(/base\s*url\s*[:=]\s*([^\s]+)/i);
           if (baseMatch?.[1]) return baseMatch[1].trim();
-          const urlMatch = raw.match(/https?:\/\/[^\s)]+/i);
+          // Stop at JSON/free-text punctuation as well as whitespace, so a URL embedded in a
+          // larger string (JSON or prose) doesn't swallow trailing content.
+          const urlMatch = raw.match(/https?:\/\/[^\s")}\],]+/i);
           if (urlMatch?.[0]) return urlMatch[0].replace(/[.,]$/, "");
           return null;
         };
@@ -457,7 +472,22 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         const effectiveBaseUrl = baseUrlFromSteps || baseUrl;
         const isBaseUrlDirective = (line: string) => /base\s*url\s*[:=]/i.test(line);
         const filteredStepLines = stepLines.filter((line) => !isBaseUrlDirective(line));
-        const parsedSteps: Step[] = filteredStepLines.length ? filteredStepLines.map(parseStepLine) : [];
+        let parsedSteps: Step[] = filteredStepLines.length ? filteredStepLines.map(parseStepLine) : [];
+        // Cases saved from the URL Test Builder never populate the TestCase.steps relation
+        // (free-text action/expected pairs) — their steps live as a structured Step[] JSON blob
+        // in `locators` instead. Without this fallback every such case synthesizes down to a
+        // single bare `goto` with no other steps and no assertion (the "no steps yet" fallback
+        // below never triggers because the goto line makes `lines` non-empty).
+        if (parsedSteps.length === 0 && tc?.locators) {
+          try {
+            const fromLocators = JSON.parse(tc.locators);
+            if (Array.isArray(fromLocators) && fromLocators.every((s) => s && typeof s.kind === "string")) {
+              parsedSteps = fromLocators as Step[];
+            }
+          } catch {
+            // locators isn't a Step[] blob (e.g. a plain selector map) — ignore
+          }
+        }
 
         const toSimpleAction = (step: Step) => {
           const selector = (step as any).selector as string | undefined;
