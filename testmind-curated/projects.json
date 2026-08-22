@@ -1,3 +1,58 @@
 {
-  "projects": []
+  "projects": [
+    {
+      "id": "agent-cmn6hcpfz00017kjkr5vu7ls6",
+      "name": "Agent - etoro",
+      "root": "agent-cmn6hcpfz00017kjkr5vu7ls6",
+      "locked": []
+    },
+    {
+      "id": "cmndou4gi00017ka03cynt6el",
+      "name": "www.justicepath.com Suite",
+      "root": "project-cmkv5unun00017ky8tlgsnjzb/www-justicepath-com-suite",
+      "locked": []
+    },
+    {
+      "id": "cmng1g0bb00017kt0v97k28ww",
+      "name": "demo",
+      "root": "project-cmnfigi9300017k6k3o57hjde/demo",
+      "locked": []
+    },
+    {
+      "id": "cmo0pg28a002s7kwctj388om6",
+      "name": "etoro",
+      "root": "project-cmnfigi9300017k6k3o57hjde/etoro",
+      "locked": []
+    },
+    {
+      "id": "agent-cmpr1b1pv00017km0wrewug2i",
+      "name": "Agent - Chime_Bug_Bounty",
+      "root": "agent-cmpr1b1pv00017km0wrewug2i",
+      "locked": []
+    },
+    {
+      "id": "agent-cmr52pl5800017kz8nq8j9uxe",
+      "name": "Agent - panicroom",
+      "root": "agent-cmr52pl5800017kz8nq8j9uxe",
+      "locked": []
+    },
+    {
+      "id": "agent-cmr951jag00017kzspiw2k1ww",
+      "name": "Agent - Panicroom",
+      "root": "agent-cmr951jag00017kzspiw2k1ww",
+      "locked": []
+    },
+    {
+      "id": "agent-cmsly657000017k08t7fla845",
+      "name": "Agent - panicroom",
+      "root": "agent-cmsly657000017k08t7fla845",
+      "locked": []
+    },
+    {
+      "id": "cmt1nnfef00bx7kc8n4wmxej0",
+      "name": "panicroom",
+      "root": "project-cmsz6mx3700017kkcs5ve9od8/panicroom",
+      "locked": []
+    }
+  ]
 }

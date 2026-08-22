@@ -14,7 +14,19 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/tm':       { target: 'http://localhost:8787', changeOrigin: true },
-      '/projects': { target: 'http://localhost:8787', changeOrigin: true },
+      // /projects is both an SPA route (/projects, /projects/:id) and an API
+      // prefix. Browser navigation requests (Accept: text/html) must receive
+      // index.html so React Router can take over; only XHR/fetch calls (which
+      // carry Accept: application/json) should be forwarded to the API.
+      '/projects': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
       '/repos':    { target: 'http://localhost:8787', changeOrigin: true },
       '/me':       { target: 'http://localhost:8787', changeOrigin: true },
       '/_static':  { target: 'http://localhost:8787', changeOrigin: true },

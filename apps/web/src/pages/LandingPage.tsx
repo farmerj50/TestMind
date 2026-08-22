@@ -1177,7 +1177,7 @@ function FinalCTA() {
 
 function SiteFooter() {
   const links = [
-    ["Privacy Policy", "/documents"],
+    ["Privacy Policy", "/privacy"],
     ["Terms of Service", "/documents"],
     ["Responsible Security Testing Policy", "/documents"],
     ["Contact", "/contact"],
