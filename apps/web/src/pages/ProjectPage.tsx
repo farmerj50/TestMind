@@ -243,8 +243,27 @@ export default function ProjectPage() {
     }
   }
 
+  // The backend caps /tests/cases/bulk at 100 ids per request (a safety limit against
+  // one request updating an unbounded number of rows), but selections here can be much
+  // larger — batch into chunks so bulk actions work regardless of selection size.
+  const BULK_ACTION_BATCH_SIZE = 100;
+
+  async function runBulkActionBatched(action: string, value: string | undefined, ids: string[]) {
+    let updated = 0;
+    for (let i = 0; i < ids.length; i += BULK_ACTION_BATCH_SIZE) {
+      const batch = ids.slice(i, i + BULK_ACTION_BATCH_SIZE);
+      const res = await apiFetch<{ updated: number }>("/tests/cases/bulk", {
+        method: "POST",
+        body: JSON.stringify({ projectId: id, ids: batch, action, value }),
+      });
+      updated += res.updated ?? batch.length;
+    }
+    return updated;
+  }
+
   async function handleBulkAction(action: string, value?: string) {
     if (!id || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
     try {
       if (action === "createAndMoveSuite") {
         if (!value?.trim()) return;
@@ -253,22 +272,16 @@ export default function ProjectPage() {
           body: JSON.stringify({ projectId: id, name: value.trim() }),
         });
         await refreshSuites();
-        await apiFetch("/tests/cases/bulk", {
-          method: "POST",
-          body: JSON.stringify({ projectId: id, ids: [...selectedIds], action: "moveSuite", value: suite.id }),
-        });
-        toast.success(`Created "${value.trim()}" and moved ${selectedIds.size} case(s)`);
+        await runBulkActionBatched("moveSuite", suite.id, ids);
+        toast.success(`Created "${value.trim()}" and moved ${ids.length} case(s)`);
         setSelectedIds(new Set());
         await refreshCases();
         return;
       }
 
-      await apiFetch("/tests/cases/bulk", {
-        method: "POST",
-        body: JSON.stringify({ projectId: id, ids: [...selectedIds], action, value }),
-      });
+      await runBulkActionBatched(action, value, ids);
       const label = action === "delete" ? "Archived" : "Updated";
-      toast.success(`${label} ${selectedIds.size} case(s)`);
+      toast.success(`${label} ${ids.length} case(s)`);
       setSelectedIds(new Set());
       await refreshCases();
     } catch (e: any) {
