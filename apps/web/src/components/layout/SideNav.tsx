@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, FolderKanban as FolderTree, Bot, Link2, Clapperboard, PencilRuler, BarChart3, ListTree, Wand2, Shield, FolderOpen, BookOpen, Crosshair, Cpu, Server, SearchCode, GitBranch, Building2, FlaskConical } from "lucide-react";
+import { LayoutDashboard, FolderKanban as FolderTree, Bot, Link2, Clapperboard, PencilRuler, BarChart3, ListTree, Wand2, Shield, FolderOpen, BookOpen, Crosshair, Cpu, Server, SearchCode, GitBranch, Building2, FlaskConical, Puzzle, ScanSearch } from "lucide-react";
 
 function Item({
   to,
@@ -48,6 +48,7 @@ export default function SideNav() {
         <Item to="/projects" icon={FolderOpen} label="Projects" />
         <Item to="/recorder" icon={Clapperboard} label="Recorder" />
         <Item to="/test-builder" icon={PencilRuler} label="Test builder" />
+        <Item to="/url-test-builder" icon={ScanSearch} label="URL Test Builder" />
         <Item to="/reports" icon={BarChart3} label="Reports" />
 
         <Section label="Improve" />
@@ -66,6 +67,7 @@ export default function SideNav() {
 
         <Section label="Settings" />
         <Item to="/organizations" icon={Building2} label="Organizations" />
+        <Item to="/plugins" icon={Puzzle} label="Plugins" />
         <Item to="/integrations" icon={Link2} label="Integrations" />
         <Item to="/environments" icon={Server} label="Environments" />
       </div>

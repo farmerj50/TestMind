@@ -3,6 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useApi } from "../lib/api";
 import LandingPage from "../pages/LandingPage";
+import PrivacyPage from "../pages/PrivacyPage";
 import PricingPage from "../pages/PricingPage";
 import DashboardPage from "../pages/DashboardPage";
 import ContactPage from "../pages/ContactPage";
@@ -21,6 +22,7 @@ import ReportsPage from "../pages/ReportsPage";
 import DocumentsPage from "../pages/DocumentsPage";
 import AgentSessionsPage from "../pages/AgentSessionsPage";
 import AgentSessionDetailPage from "../pages/AgentSessionDetailPage";
+import PluginsPage from "../pages/PluginsPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { CopilotProvider } from "../context/CopilotContext";
 import AppLayout from "../components/layout/AppLayout";
@@ -38,6 +40,7 @@ import SuiteRedirectPage from "../pages/SuiteRedirectPage";
 import OrganizationsPage from "../pages/OrganizationsPage";
 import OrganizationDetailPage from "../pages/OrganizationDetailPage";
 import ApiTestingPage from "../pages/ApiTestingPage";
+import UrlBuilderPage from "../pages/UrlBuilderPage";
 
 function NotFound() {
   return (
@@ -127,6 +130,7 @@ export default function AppRoutes() {
         <Route index element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/contact" element={<ContactPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
       </Route>
 
       {/* App pages (app header + sidebar) */}
@@ -272,6 +276,15 @@ export default function AppRoutes() {
         />
 
         <Route
+          path="/plugins"
+          element={
+            <ProtectedRoute>
+              <PluginsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/environments"
           element={
             <ProtectedRoute>
@@ -293,6 +306,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <TestBuilderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/url-test-builder"
+          element={
+            <ProtectedRoute>
+              <UrlBuilderPage />
             </ProtectedRoute>
           }
         />

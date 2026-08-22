@@ -20,6 +20,13 @@ type TestCase = {
   steps: Step[];
 };
 
+export type PlaywrightSpecFile = {
+  page: string;
+  path: string;
+  content: string;
+  testCount: number;
+};
+
 type SharedLoginConfigSpec = {
   usernameSelector?: string;
   passwordSelector?: string;
@@ -368,18 +375,33 @@ function emitAction(step: Step, pagePath: string, locatorStore: LocatorStore): s
     case "expect-text":
       return `{
   const rawText = ${JSON.stringify(step.text)};
-  if (/justicepath/i.test(rawText) && ${JSON.stringify(pagePath)} !== "/") {
-    await ensurePageIdentity(page, ${JSON.stringify(pagePath)});
-    return;
-  }
   if (rawText.trim().toLowerCase() === "page") {
     await expect(page).toHaveURL(pathRegex(${JSON.stringify(pagePath)}), { timeout: 15000 });
     await ensurePageIdentity(page, ${JSON.stringify(pagePath)});
     return;
   }
+  // Generic completion/validation checks generated for happy-path/validation/upload
+  // tests (see generate-plan.ts) used to demand one exact literal word ("success",
+  // "required", "uploaded") be visible — real apps phrase these dozens of different
+  // ways ("Thanks!", "Check your email", "This field is required", "File attached"),
+  // so an exact match produced false failures even when the action clearly worked.
+  // Broaden these three known generic placeholders to a small set of common phrasings.
+  const GENERIC_COMPLETION_PATTERNS: Record<string, RegExp> = {
+    success: /success|thank(?:s| you)|confirm(?:ed|ation)?|complete[d]?|submitted|received|sent|done|check your (?:email|inbox)/i,
+    required: /required|cannot be (?:blank|empty)|please (?:enter|fill|provide|select)|is missing|invalid|this field/i,
+    uploaded: /uploaded|upload(?:ed)? (?:complete|successful)|file (?:added|attached|received)/i,
+  };
+  const genericPattern = GENERIC_COMPLETION_PATTERNS[rawText.trim().toLowerCase()];
+  if (genericPattern) {
+    await expect(page.getByText(genericPattern)).toBeVisible({ timeout: 10000 });
+    return;
+  }
   const normalized = rawText.trim().toLowerCase();
   const routeCandidate = normalized.startsWith("/") ? normalized : \`/\${normalized}\`;
-  const routeLike = /^[a-z0-9\\-/]+$/.test(normalized) && normalized !== "page";
+  // Only treat as a route when it explicitly looks like a path — starts with "/"
+  // or contains a "/" segment. Plain words like "success", "error", "valid" are
+  // assertion text, NOT route redirects.
+  const routeLike = normalized.startsWith("/") || (normalized.includes("/") && /^[a-z0-9\-/]+$/.test(normalized));
   if (routeLike) {
     await expect(page).toHaveURL(pathRegex(routeCandidate), { timeout: 15000 });
     await ensurePageIdentity(page, routeCandidate);
@@ -573,17 +595,25 @@ function emitTest(
   // injected — they don't test the login form, they test navigation. The name-
   // based heuristics below (/login/, /signin/) would otherwise fire because the
   // destination URL can contain "login" (e.g. "Navigate /home → /login").
-  const hasLoginFormFill = tc.steps.some(
-    (s) =>
-      s.kind === "fill" &&
-      typeof s.selector === "string" &&
-      /(user|email|pass)/i.test(s.selector)
-  );
+  // A form only actually needs the shared login flow if it has BOTH an identity field
+  // (username/email) AND a password field — matching on any single field name previously
+  // meant an email-only form (e.g. "forgot password") was misdetected as a login form,
+  // injecting sharedLogin() which then hangs waiting for a password field that never existed.
+  const fillSelectors = tc.steps
+    .filter((s): s is typeof s & { kind: "fill"; selector: string } => s.kind === "fill" && typeof s.selector === "string")
+    .map((s) => s.selector);
+  const hasLoginFormFill =
+    fillSelectors.some((sel) => /(user|email)/i.test(sel)) &&
+    fillSelectors.some((sel) => /pass/i.test(sel));
   const isDiscoveryNavTest =
     /^Navigate\s+\S+\s+→\s+/.test(tc.name.trim()) && !hasLoginFormFill;
 
+  // "Page loads" tests just verify the route loads — never inject sharedLogin
+  // even when the route name contains "login" or "auth".
+  const isPageLoadTest = /^Page loads?\s*:/i.test(tc.name.trim());
   const needsLogin =
     !isDiscoveryNavTest &&
+    !isPageLoadTest &&
     (/login/i.test(tc.name) ||
       /signin/i.test(tc.name) ||
       /sign in/i.test(tc.name) ||
@@ -653,8 +683,10 @@ ${emitAnnotations(pagePath, tc.name)}${body}
 });`.trim();
 }
 
-export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
-  const sharedSteps = parseSharedSteps();
+export function emitSpecFile(pagePath: string, tests: TestCase[], options?: { locatorStore?: unknown; baseUrl?: string }): string {
+  const sharedSteps = options?.locatorStore != null
+    ? { locatorStore: normalizeSharedSteps(options.locatorStore), login: undefined, baseUrl: options.baseUrl }
+    : parseSharedSteps();
   const loginConfig = resolveLoginConfig(sharedSteps);
   const locatorStore = sharedSteps.locatorStore;
   const uniqTitle = makeUniqTitleFactory();
@@ -664,7 +696,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[]): string {
     ? JSON.stringify(baseUrl)
     : "process.env.TM_BASE_URL ?? process.env.TEST_BASE_URL ?? process.env.BASE_URL ?? 'http://localhost:5173'";
   const cases = (tests ?? []).map((tc) =>
-    emitTest(tc, uniqTitle, pagePath, locatorStore, postLoginPath)
+    emitTest(tc, uniqTitle, derivePageKey(tc) || pagePath, locatorStore, postLoginPath)
   ).join("\n\n");
   const banner = `// Auto-generated for page ${pagePath} ${tests?.length ?? 0} test(s)`;
   const isPlaceholderIdentityText = (text?: string) =>
@@ -1117,14 +1149,40 @@ ${cases}
 `.trimStart();
 }
 
+export function specPathForPage(page: string): string {
+  const target = toRelativeTarget(page);
+  const base = target === "/"
+    ? "home"
+    : target
+        .replace(/[?#]/g, "_")
+        .replace(/\//g, "_")
+        .replace(/^_+|_+$/g, "")
+        .replace(/[^a-z0-9_-]+/gi, "_")
+        .replace(/_+/g, "_")
+        .toLowerCase() || "page";
+  return `${base}.spec.ts`;
+}
+
+export function emitSpecFilesByPage(
+  tests: TestCase[],
+  options?: { locatorStore?: unknown; baseUrl?: string },
+): PlaywrightSpecFile[] {
+  const grouped = groupByPage(tests ?? []);
+  return Array.from(grouped.entries()).map(([page, pageTests]) => ({
+    page,
+    path: specPathForPage(page),
+    content: emitSpecFile(page, pageTests, options),
+    testCount: pageTests.length,
+  }));
+}
+
 export const playwrightTSAdapter = {
   id: "playwright-ts",
   render(plan: TestPlan) {
     const grouped = groupByPage((plan as any).cases ?? []);
     return Array.from(grouped.entries()).map(([page, tests]) => {
-      const base = page === "/" ? "home" : page.replace(/\//g, "_").replace(/^_/, "");
       return {
-        path: `${base}.spec.ts`,
+        path: specPathForPage(page),
         content: emitSpecFile(page, tests),
       };
     });
@@ -1134,7 +1192,5 @@ export const playwrightTSAdapter = {
     return { pages: Array.from(grouped.keys()), count: (plan as any).cases?.length ?? 0 };
   },
 };
-
-
 
 

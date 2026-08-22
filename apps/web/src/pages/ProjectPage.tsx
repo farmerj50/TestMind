@@ -246,6 +246,23 @@ export default function ProjectPage() {
   async function handleBulkAction(action: string, value?: string) {
     if (!id || selectedIds.size === 0) return;
     try {
+      if (action === "createAndMoveSuite") {
+        if (!value?.trim()) return;
+        const { suite } = await apiFetch<{ suite: Suite }>("/tests/suites", {
+          method: "POST",
+          body: JSON.stringify({ projectId: id, name: value.trim() }),
+        });
+        await refreshSuites();
+        await apiFetch("/tests/cases/bulk", {
+          method: "POST",
+          body: JSON.stringify({ projectId: id, ids: [...selectedIds], action: "moveSuite", value: suite.id }),
+        });
+        toast.success(`Created "${value.trim()}" and moved ${selectedIds.size} case(s)`);
+        setSelectedIds(new Set());
+        await refreshCases();
+        return;
+      }
+
       await apiFetch("/tests/cases/bulk", {
         method: "POST",
         body: JSON.stringify({ projectId: id, ids: [...selectedIds], action, value }),

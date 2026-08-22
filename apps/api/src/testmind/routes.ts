@@ -20,6 +20,7 @@ import {
   ensureWithin,
   getCuratedProject,
 } from "./curated-store.js";
+import { GENERATED_ROOT } from "../lib/storageRoots.js";
 
 type GenerateCommon = {
   repoPath?: string;
@@ -53,21 +54,6 @@ const extractUserSuffix = (projectId: string) => {
   return m ? m[2] : null;
   };
 
-// Determine where generated specs live.
-// Priority: explicit env override -> repo-root/testmind-generated -> apps/web/testmind-generated
-const GENERATED_ROOT = (() => {
-  if (process.env.TM_GENERATED_ROOT) {
-    return path.resolve(process.env.TM_GENERATED_ROOT);
-  }
-  const candidates = [
-    path.join(REPO_ROOT, "testmind-generated"),
-    path.join(REPO_ROOT, "apps", "web", "testmind-generated"),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
-  }
-  return candidates[candidates.length - 1];
-})();
 type CuratedManifest = ReturnType<typeof readCuratedManifest>;
 
 type CuratedSuiteWithOwner = {
@@ -627,14 +613,19 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-      let sharedSteps: Record<string, any> | undefined;
-      if (projectId) {
-        const project = await prisma.project.findFirst({
-          where: { id: projectId, ownerId: userId },
-          select: { sharedSteps: true },
-        });
-        sharedSteps = (project?.sharedSteps ?? undefined) as Record<string, any> | undefined;
+      // projectId is required: without it, outRoot collapses to the shared
+      // adapter-user directory, which every project's "Generate tests" run also
+      // reads from — writing there without project scoping silently overwrites
+      // one project's specs with another's (see cross-project contamination fix).
+      if (!projectId) {
+        return reply.code(400).send({ error: "projectId is required" });
       }
+      const project = await prisma.project.findFirst({
+        where: { id: projectId, ownerId: userId },
+        select: { sharedSteps: true },
+      });
+      if (!project) return reply.code(404).send({ error: "Project not found" });
+      const sharedSteps = (project.sharedSteps ?? undefined) as Record<string, any> | undefined;
 
       const outRoot = adapterProjectDir(adapterId, userId, projectId);
       try {
@@ -702,14 +693,19 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
-      let sharedSteps: Record<string, any> | undefined;
-      if (projectId) {
-        const project = await prisma.project.findFirst({
-          where: { id: projectId, ownerId: userId },
-          select: { sharedSteps: true },
-        });
-        sharedSteps = (project?.sharedSteps ?? undefined) as Record<string, any> | undefined;
+      // projectId is required: without it, outRoot collapses to the shared
+      // adapter-user directory, which every project's "Generate tests" run also
+      // reads from — writing there without project scoping silently overwrites
+      // one project's specs with another's (see cross-project contamination fix).
+      if (!projectId) {
+        return reply.code(400).send({ error: "projectId is required" });
       }
+      const project = await prisma.project.findFirst({
+        where: { id: projectId, ownerId: userId },
+        select: { sharedSteps: true },
+      });
+      if (!project) return reply.code(404).send({ error: "Project not found" });
+      const sharedSteps = (project.sharedSteps ?? undefined) as Record<string, any> | undefined;
 
       const outRoot = adapterProjectDir(adapterId, userId, projectId);
       try {

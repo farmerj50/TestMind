@@ -45,13 +45,21 @@ function casesFromScans(input: any): any[] {
     const pagePath = safePath(scan.url);
 
     // 1) Smoke
+    // The "page loaded" assertion used to assert scan.title (or a heading) is literally
+    // visible via getByText — but <title> is metadata that's often never rendered in the body
+    // (SPAs commonly set a short per-route title like "Login" that appears nowhere on screen),
+    // which produced spurious failures unrelated to whether the page actually loaded. The
+    // generator special-cases the literal text "page" to mean "just verify we're on the right
+    // URL, then do a soft (non-throwing) identity check" instead of a hard text-visibility
+    // check — see emitAction's expect-text case in adapters/playwright-ts/generator.ts. That's
+    // what a generic smoke test should actually be asserting.
     push({
       id: `smoke:${scan.url}`,
       name: `Page loads: ${pagePath}`,
       group: { page: pagePath },
       steps: [
         { kind: "goto", url: scan.url },
-        { kind: "expect-text", text: scan.title || "Sign" },
+        { kind: "expect-text", text: "page" },
       ],
     });
 
