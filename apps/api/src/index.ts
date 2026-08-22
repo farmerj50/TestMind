@@ -29,7 +29,7 @@ import testBuilderRoutes from "./routes/testBuilder.js";
 import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
-import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
+import { GENERATED_ROOT, CURATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 import { generateAndWrite } from "./testmind/service.js";
 import { validateAndNormalizeProjectUrl } from "./lib/git-url.js";
 import { safeFetch } from "./lib/safe-fetch.js";
@@ -56,6 +56,7 @@ import researchAgentRoutes from './routes/researchAgent.js';
 import researchAuthTestRoutes from './routes/researchAuthTest.js';
 import apiTestingRoutes from './routes/apiTesting.js';
 import schedulesRoutes from './routes/schedules.js';
+import urlInspectorRoutes from './routes/url-inspector.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
 
 
@@ -69,6 +70,11 @@ const app = Fastify({
   pluginTimeout: 10_000,
 });
 await ensureStorageDirs();
+// Diagnostic: GENERATED_ROOT/CURATED_ROOT used to be computed independently in three different
+// files and could silently diverge depending on process.cwd() at boot (see the cross-project
+// spec/suite contamination fix). Logging the resolved paths on every boot makes any future
+// divergence visible immediately instead of silently splitting data again.
+console.log("[BOOT] storage roots", { GENERATED_ROOT, CURATED_ROOT });
 
 const registerWithLog = async (label: string, fn: () => unknown) => {
   console.log(`[BOOT] register ${label} start`);
@@ -321,6 +327,7 @@ await registerWithLog("researchAgentRoutes", () => app.register(researchAgentRou
 await registerWithLog("researchAuthTestRoutes", () => app.register(researchAuthTestRoutes, { prefix: "/" }));
 await registerWithLog("apiTestingRoutes", () => app.register(apiTestingRoutes, { prefix: "/" }));
 await registerWithLog("schedulesRoutes", () => app.register(schedulesRoutes, { prefix: "/" }));
+await registerWithLog("urlInspectorRoutes", () => app.register(urlInspectorRoutes, { prefix: "/" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
 
 const require = createRequire(import.meta.url);

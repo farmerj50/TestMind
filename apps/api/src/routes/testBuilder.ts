@@ -802,6 +802,15 @@ export default async function testBuilderRoutes(app: FastifyInstance): Promise<v
     const relPath = normalizeGeneratedRelPath(specPath);
     const sourceAbs = path.resolve(GENERATED_ROOT, relPath);
     ensureWithin(GENERATED_ROOT, sourceAbs);
+    // ensureWithin only guards against path traversal escaping GENERATED_ROOT — it does not
+    // verify the path belongs to this user/project. Generated dirs are always laid out as
+    // {adapterId}-{userId}/{projectId}/..., so require both segments match the caller before
+    // trusting a client-supplied specPath (otherwise a predictable path for another project
+    // could be curated into this one).
+    const [scopeSegment, projectSegment] = relPath.split("/");
+    if (!scopeSegment?.endsWith(`-${userId}`) || projectSegment !== projectId) {
+      return reply.code(403).send({ error: "Spec does not belong to this project" });
+    }
     if (!fsSync.existsSync(sourceAbs)) {
       return reply.code(404).send({ error: "Generated spec not found" });
     }

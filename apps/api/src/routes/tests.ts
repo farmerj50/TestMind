@@ -218,13 +218,18 @@ const withRunContract = <
 >(
   req: any,
   run: T
-) => ({
-  ...run,
-  lifecycleStatus: toLifecycleStatus(run.status),
-  artifactsState: toArtifactsState(run.artifactsJson),
-  errors: toStructuredErrors(run),
-  publicArtifacts: toPublicArtifacts(req, run.id, (run.artifactsJson ?? null) as Record<string, unknown> | null),
-});
+) => {
+  // Strip paramsJson (contains full sharedSteps) — never needed by the client and causes
+  // ERR_INSUFFICIENT_RESOURCES when 20 runs are returned and each carries the full locator library.
+  const { paramsJson: _ignored, ...rest } = run as any;
+  return {
+    ...rest,
+    lifecycleStatus: toLifecycleStatus(run.status),
+    artifactsState: toArtifactsState(run.artifactsJson),
+    errors: toStructuredErrors(run),
+    publicArtifacts: toPublicArtifacts(req, run.id, (run.artifactsJson ?? null) as Record<string, unknown> | null),
+  };
+};
 
 async function browsersAlreadyInstalled() {
   try {
@@ -366,6 +371,13 @@ async function startGeneratedRun(runId: string, projectId: string, userId: strin
         RUN_TESTS: "false", // we run tests explicitly below
         LOCAL_RUN: "1", // instruct runner to skip GitHub and run locally
       };
+      // Scope bot.ts's generation output by project so one project's "Generate tests"
+      // run can never wipe/overwrite another project's specs (see cross-project
+      // contamination fix — bot.ts previously wrote into a flat GENERATED_ROOT/{adapter}
+      // folder shared by every project and every user).
+      const ownerIdForSpecs = projectRecord?.ownerId ?? userId;
+      const generatedProjectRoot = path.join(GENERATED_ROOT, `${adapterId}-${ownerIdForSpecs}`, projectId);
+      env.TM_GENERATED_OUT_ROOT = generatedProjectRoot;
       const missingLocatorsPath = path.join(runDir, "missing-locators.json");
       await fs.rm(missingLocatorsPath, { force: true }).catch(() => {});
       env.TM_MISSING_LOCATORS_PATH = missingLocatorsPath;
@@ -527,27 +539,24 @@ ${lines.join("\n")}
 });
 `;
 
-        const ownerIdForSpecs = projectRecord?.ownerId ?? userId;
-        const generatedProjectRoot = path.join(GENERATED_ROOT, `${adapterId}-${ownerIdForSpecs}`, projectId);
         await fs.mkdir(generatedProjectRoot, { recursive: true });
         await fs.writeFile(path.join(manualSpecDir, `${fileBase}.spec.ts`), spec, "utf8");
         await fs.writeFile(path.join(generatedProjectRoot, `${fileBase}.spec.ts`), spec, "utf8");
       } else {
-        // 3) run your generator (writes to testmind-generated/*)
+        // 3) run your generator — bot.ts writes directly into generatedProjectRoot
+        // (via TM_GENERATED_OUT_ROOT above), so this project's specs can never be
+        // clobbered by, or clobber, another project's generation.
         await execa("pnpm", ["tsx", RUNNER_PATH], {
           cwd: REPO_ROOT,
           env,
           stdio: "inherit",
         });
-        const generatedFolder = path.join(GENERATED_ROOT, adapterId);
-        const userGeneratedDir = path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
-        await fs.rm(userGeneratedDir, { recursive: true, force: true }).catch(() => {});
-        await fs.mkdir(userGeneratedDir, { recursive: true });
-        await fs.cp(generatedFolder, userGeneratedDir, { recursive: true });
-        const webGeneratedDir = path.join(REPO_ROOT, "apps", "web", "testmind-generated", `${adapterId}-${userId}`);
-        await fs.rm(webGeneratedDir, { recursive: true, force: true }).catch(() => {});
-        await fs.mkdir(webGeneratedDir, { recursive: true });
-        await fs.cp(generatedFolder, webGeneratedDir, { recursive: true });
+        const webGeneratedProjectRoot = path.join(
+          REPO_ROOT, "apps", "web", "testmind-generated", `${adapterId}-${userId}`, projectId
+        );
+        await fs.rm(webGeneratedProjectRoot, { recursive: true, force: true }).catch(() => {});
+        await fs.mkdir(webGeneratedProjectRoot, { recursive: true });
+        await fs.cp(generatedProjectRoot, webGeneratedProjectRoot, { recursive: true }).catch(() => {});
       }
       // Ensure at least one spec exists in the run folder to avoid "No tests found"
       if (!manualSpecDir) {
@@ -611,7 +620,12 @@ export default defineConfig({
           projects.push(`{ name: 'manual', testDir: '${esc(manualDir)}' }`);
         }
         if (!caseId) {
+          // Project-scoped dirs are checked first — the shared adapter-user dir (no
+          // projectId) can hold another project's specs left over from the legacy
+          // /tm/generate debug route, so it's only a last-resort fallback.
           const generatedDirCandidates = [
+            path.join(REPO_ROOT, "apps", "web", "testmind-generated", `${adapterId}-${userId}`, projectId),
+            path.join(GENERATED_ROOT, `${adapterId}-${userId}`, projectId),
             path.join(REPO_ROOT, "apps", "web", "testmind-generated", `${adapterId}-${userId}`),
             path.join(GENERATED_ROOT, `${adapterId}-${userId}`),
           ];
@@ -658,7 +672,9 @@ export default defineConfig({
           const stderr = err?.stderr ?? err?.message ?? String(err);
           await fs.writeFile(path.join(runDir, "stdout.txt"), String(stdout), { flag: "a" });
           await fs.writeFile(path.join(runDir, "stderr.txt"), String(stderr), { flag: "a" });
-          throw err;
+          // Exit code 1 = some tests failed — the run completed normally, fall through to parse report.json.
+          // Any other exit code (2 = config error, 126/127 = not found, etc.) is a real crash.
+          if (err?.exitCode !== 1) throw err;
         }
       } catch (e: any) {
         const msg = String(e?.message || e);
@@ -710,10 +726,11 @@ export default defineConfig({
       }
 
       // 7) update DB with locations the UI can use
+      const failedCount = cases.filter((c) => c.status === "failed" || c.status === "error").length;
       await prisma.testRun.update({
         where: { id: runId },
         data: {
-          status: "succeeded",
+          status: failedCount > 0 ? "failed" : "succeeded",
           finishedAt: new Date(),
           summary: cases.length
             ? `Run complete. Parsed ${cases.length} tests.`
@@ -731,12 +748,14 @@ export default defineConfig({
       });
     } catch (e) {
       console.error("[startGeneratedRun] failed", { runId, projectId, error: e });
+      // Use shortMessage if available (ExecaError) to avoid storing full Playwright stdout in the error field.
+      const errText = ((e as any)?.shortMessage || (e as any)?.message || String(e)).slice(0, 1000);
       await prisma.testRun.update({
         where: { id: runId },
         data: {
           status: "failed",
           finishedAt: new Date(),
-          error: String(e),
+          error: errText,
         },
       });
       sendRunNotifications(runId).catch((err) => {

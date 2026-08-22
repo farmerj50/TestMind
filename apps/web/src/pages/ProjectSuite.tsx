@@ -28,7 +28,12 @@ type SpecFile = { path: string };
 type CaseItem = { title: string; line: number; specPath?: string };
 
 type TreeNode = { name: string; path?: string; children?: TreeNode[]; file?: SpecFile; suiteId?: string };
-type ProjectOption = { id: string; name: string };
+type ProjectOption = {
+  id: string;
+  name: string;
+  repoUrl?: string | null;
+  sharedSteps?: { baseUrl?: string | null } | null;
+};
 type SpecProjectOption = { id: string; name: string; type: "generated" | "curated"; locked?: string[] };
 type ReporterId = "json" | "allure";
 type SuiteFolderState = {
@@ -357,7 +362,8 @@ export default function ProjectSuite() {
     folderName: string;
   } | null>(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
-  const [baseUrl, setBaseUrl] = useState<string>(() => localStorage.getItem("tm:lastBaseUrl") || "");
+  // Populated per-project by the Base URL sync effect below, not a single global default.
+  const [baseUrl, setBaseUrl] = useState<string>("");
   const [headful, setHeadful] = useState(false);
   const [reporter, setReporter] = useState<ReporterId>("json");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -1654,6 +1660,25 @@ export default function ProjectSuite() {
     return () => { active = false; };
   }, [apiFetch]);
 
+  // Keep Base URL in sync with the selected project — it previously defaulted to
+  // whatever URL was last used for ANY project (a single global localStorage key),
+  // so switching projects could silently leave a different project's URL in the
+  // field and run/generate against the wrong site.
+  const baseUrlSyncedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!runProjectId || baseUrlSyncedForRef.current === runProjectId) return;
+    baseUrlSyncedForRef.current = runProjectId;
+    const proj = projects.find((p) => p.id === runProjectId);
+    const perProjectSaved = localStorage.getItem(`tm:baseUrl:${runProjectId}`);
+    const isHttpUrl = (v?: string | null) => !!v && /^https?:\/\//i.test(v.trim());
+    const resolved =
+      (isHttpUrl(perProjectSaved) ? perProjectSaved!.trim() : null) ??
+      (isHttpUrl(proj?.sharedSteps?.baseUrl) ? proj!.sharedSteps!.baseUrl!.trim() : null) ??
+      (isHttpUrl(proj?.repoUrl) ? proj!.repoUrl!.trim() : null) ??
+      "";
+    setBaseUrl(resolved);
+  }, [runProjectId, projects]);
+
   // load cases when a spec is selected (skip when viewing whole suite)
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -1756,7 +1781,7 @@ export default function ProjectSuite() {
       setRunError("Select a project to run against.");
       return;
     }
-    localStorage.setItem("tm:lastBaseUrl", baseUrl.trim());
+    localStorage.setItem(`tm:baseUrl:${runProjectId}`, baseUrl.trim());
 
     setRunning(true);
     setRunError(null);
@@ -1833,7 +1858,7 @@ export default function ProjectSuite() {
       setRunError("Select a project to run against.");
       return;
     }
-    localStorage.setItem("tm:lastBaseUrl", baseUrl.trim());
+    localStorage.setItem(`tm:baseUrl:${runProjectId}`, baseUrl.trim());
     setRunningSuite(true);
     setRunError(null);
     const mode = activeSuite?.type === "generated" ? "ai" : "regular";

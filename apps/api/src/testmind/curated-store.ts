@@ -1,9 +1,14 @@
 import fs from "fs";
 import path from "path";
+import { CURATED_ROOT } from "../lib/storageRoots.js";
 
-export const CURATED_ROOT = process.env.TM_CURATED_ROOT
-  ? path.resolve(process.env.TM_CURATED_ROOT)
-  : path.resolve(process.cwd(), "testmind-curated");
+export { CURATED_ROOT };
+
+// The old (buggy) definition resolved CURATED_ROOT relative to process.cwd() rather than the
+// repo root, so depending on how the API process was launched it could silently point at a
+// different directory than storageRoots.ts's repo-root-relative one (e.g. apps/api/testmind-curated
+// instead of <repoRoot>/testmind-curated). maybeMigrateLegacyCuratedRoot() below self-heals that
+// split by copying any data still sitting at the old cwd-relative location into the canonical one.
 const LEGACY_CURATED_ROOT = path.resolve(process.cwd(), "testmind-curated");
 const MIGRATION_MARKER = ".migrated-from-legacy";
 
@@ -43,7 +48,6 @@ function ensureManifestFile(): CuratedManifest {
 }
 
 function maybeMigrateLegacyCuratedRoot() {
-  if (!process.env.TM_CURATED_ROOT) return;
   if (path.resolve(CURATED_ROOT) === LEGACY_CURATED_ROOT) return;
   if (!fs.existsSync(LEGACY_CURATED_ROOT)) return;
 
