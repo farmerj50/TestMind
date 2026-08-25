@@ -30,14 +30,17 @@ import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
 import { GENERATED_ROOT, CURATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
-import { generateAndWrite } from "./testmind/service.js";
 import { validateAndNormalizeProjectUrl } from "./lib/git-url.js";
 import { safeFetch } from "./lib/safe-fetch.js";
-import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import {
   scoreSelectorConfidence,
   type ConfidenceBreakdownItem,
 } from "./lib/selector-confidence.js";
+import {
+  promoteLocator,
+  scheduleSpecRegeneration,
+  normalizeLocatorPath,
+} from "./lib/locator-promotion.js";
 
 // ✅ single source of truth for plan typing + limits
 import { getLimitsForPlan } from "./config/plans.js";
@@ -82,50 +85,8 @@ const registerWithLog = async (label: string, fn: () => unknown) => {
   console.log(`[BOOT] register ${label} done`);
 };
 
-const resolveRepoRoot = () =>
-  process.env.TM_LOCAL_REPO_ROOT
-    ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
-    : path.resolve(process.cwd(), "..", "..");
-
-const scheduleSpecRegeneration = (params: {
-  projectId: string;
-  userId: string;
-  baseUrl?: string;
-  sharedSteps: Record<string, any>;
-}) => {
-  const { projectId, userId, baseUrl, sharedSteps } = params;
-  const trimmedBaseUrl = typeof baseUrl === "string" ? baseUrl.trim() : "";
-  if (!trimmedBaseUrl) return;
-  setImmediate(async () => {
-    try {
-      // Shared locator/nav regeneration still targets the stable Playwright layer.
-      const adapterId = DEFAULT_FRAMEWORK_ID;
-      const repoRoot = resolveRepoRoot();
-      const outRoot = path.join(GENERATED_ROOT, `${adapterId}-${userId}`, projectId);
-      await generateAndWrite({
-        repoPath: repoRoot,
-        outRoot,
-        baseUrl: trimmedBaseUrl,
-        adapterId,
-        options: { sharedSteps },
-      });
-      const webOutRoot = path.join(
-        repoRoot,
-        "apps",
-        "web",
-        "testmind-generated",
-        `${adapterId}-${userId}`,
-        projectId
-      );
-      await fs.promises.rm(webOutRoot, { recursive: true, force: true }).catch(() => {});
-      await fs.promises.mkdir(path.dirname(webOutRoot), { recursive: true });
-      await fs.promises.cp(outRoot, webOutRoot, { recursive: true });
-      console.log(`[locators] regenerated specs for project ${projectId}`);
-    } catch (err) {
-      console.warn("[locators] regenerate specs failed", err);
-    }
-  });
-};
+// scheduleSpecRegeneration moved to ./lib/locator-promotion.ts (imported above) so the
+// self-heal live-selector-probe auto-promote hook can call the same write path in-process.
 
 app.addHook("onRequest", async (req) => {
   const origin = req.headers.origin;
@@ -681,17 +642,6 @@ const LocatorHealthUpdateSchema = z.object({
 });
 type LocatorHealthUpdateBody = z.infer<typeof LocatorHealthUpdateSchema>;
 
-const normalizeLocatorPath = (pathValue: string) => {
-  try {
-    const url = new URL(pathValue, "http://localhost");
-    const pathname = url.pathname || "/";
-    const search = url.search || "";
-    return `${pathname}${search}` || "/";
-  } catch {
-    return pathValue.startsWith("/") ? pathValue : `/${pathValue}`;
-  }
-};
-
 // small guard you can reuse
 function requireUser(req: any, reply: any) {
   const { userId } = getAuth(req);
@@ -1221,91 +1171,22 @@ app.post<{ Body: LocatorSaveBody }>("/locators", async (req, reply) => {
   const name = (elementName || nameInput || "").trim();
   if (!name) return reply.code(400).send({ error: "elementName is required" });
 
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, ownerId: userId },
-    select: { id: true, sharedSteps: true },
-  });
-  if (!project) return reply.code(404).send({ error: "Project not found" });
-
   const bucket = bucketInput ?? "locators";
   const rawPath = pagePath || urlPattern || "/";
-  const normalizedPath = normalizeLocatorPath(rawPath);
-  const sharedSteps = (project.sharedSteps ?? {}) as Record<string, any>;
 
-  let pages: Record<string, any> = {};
-  if (sharedSteps.pages && typeof sharedSteps.pages === "object") {
-    pages = { ...sharedSteps.pages };
-  } else if (sharedSteps.locators && typeof sharedSteps.locators === "object") {
-    pages = Object.entries(sharedSteps.locators as Record<string, any>).reduce(
-      (acc, [key, locators]) => {
-        acc[key] = { locators: { ...(locators as Record<string, string>) } };
-        return acc;
-      },
-      {} as Record<string, any>
-    );
-  }
-
-  const page = { ...(pages[normalizedPath] ?? {}) };
-  const bucketMap = { ...(page[bucket] ?? {}) };
-  bucketMap[name] = primary.trim();
-  page[bucket] = bucketMap;
-  pages[normalizedPath] = page;
-
-  const cleanFallbacks = Array.from(
-    new Set((fallbacks ?? []).map((v) => v.trim()).filter(Boolean))
-  ).filter((value) => value !== primary.trim());
-  const primaryConfidence = scoreSelectorConfidence(primary.trim());
-  const fallbackConfidence = cleanFallbacks.map((value) => ({
-    selector: value,
-    ...scoreSelectorConfidence(value),
-  }));
-
-  const locatorFallbacks: Record<string, any> = {
-    ...(sharedSteps.locatorFallbacks ?? {}),
-  };
-  const pageFallbacks = { ...(locatorFallbacks[normalizedPath] ?? {}) };
-  const bucketFallbacks = { ...(pageFallbacks[bucket] ?? {}) };
-  bucketFallbacks[name] = {
-    primary: primary.trim(),
-    fallbacks: cleanFallbacks,
-    metadata: {
-      ...(metadata ?? {}),
-      confidenceScore: primaryConfidence.score,
-      confidenceBreakdown: primaryConfidence.breakdown,
-      fallbackConfidence,
-    },
-    updatedBy: userId,
-    updatedAt: new Date().toISOString(),
-  };
-  pageFallbacks[bucket] = bucketFallbacks;
-  locatorFallbacks[normalizedPath] = pageFallbacks;
-
-  const now = new Date().toISOString();
-  const nextSharedSteps = {
-    ...sharedSteps,
-    pages,
-    locatorFallbacks,
-    locatorMeta: {
-      ...(sharedSteps.locatorMeta ?? {}),
-      updatedAt: now,
-      updatedBy: userId,
-    },
-  };
-
-  const updated = await prisma.project.update({
-    where: { id: projectId },
-    data: { sharedSteps: nextSharedSteps },
-    select: { sharedSteps: true },
-  });
-
-  scheduleSpecRegeneration({
+  const result = await promoteLocator({
     projectId,
     userId,
-    baseUrl: (sharedSteps as any)?.baseUrl,
-    sharedSteps: nextSharedSteps,
+    pagePath: rawPath,
+    bucket,
+    name,
+    primary,
+    fallbacks,
+    metadata,
   });
+  if (!result) return reply.code(404).send({ error: "Project not found" });
 
-  return reply.send({ sharedSteps: updated.sharedSteps });
+  return reply.send(result);
 });
 
 app.get<{ Params: { id: string } }>("/projects/:id/shared-locators", async (req, reply) => {
