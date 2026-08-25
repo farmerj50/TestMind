@@ -178,6 +178,25 @@ export default function ProjectPage() {
     });
   }, [visibleCases]);
 
+  // Paginate the case list — with hundreds of cases a single long scroll left a lot of
+  // empty space below and forced "select all" to mean "every case across the whole
+  // project" (needing >100-item batching for bulk actions). Paging keeps "select all"
+  // scoped to what's actually visible, which is what most bulk actions actually want.
+  const CASE_PAGE_SIZE = 50;
+  const [casePage, setCasePage] = useState(1);
+  const caseTotalPages = Math.max(1, Math.ceil(dedupedCases.length / CASE_PAGE_SIZE));
+  useEffect(() => {
+    if (casePage > caseTotalPages) setCasePage(caseTotalPages);
+  }, [casePage, caseTotalPages]);
+  const pagedCases = useMemo(
+    () => dedupedCases.slice((casePage - 1) * CASE_PAGE_SIZE, casePage * CASE_PAGE_SIZE),
+    [dedupedCases, casePage]
+  );
+  useEffect(() => {
+    setCasePage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, selectedSuiteId]);
+
   async function refreshCases(overrideFilters?: CaseFilters) {
     if (!id) return;
     const f = overrideFilters ?? filters;
@@ -280,7 +299,7 @@ export default function ProjectPage() {
       }
 
       await runBulkActionBatched(action, value, ids);
-      const label = action === "delete" ? "Archived" : "Updated";
+      const label = action === "delete" ? "Deleted" : "Updated";
       toast.success(`${label} ${ids.length} case(s)`);
       setSelectedIds(new Set());
       await refreshCases();
@@ -512,13 +531,19 @@ export default function ProjectPage() {
     [cases]
   );
 
-  const allVisibleSelected = dedupedCases.length > 0 && dedupedCases.every((c) => selectedIds.has(c.id));
+  // Scoped to the current page, not every case matching the filters — selecting "all"
+  // now means "everything shown," matching what bulk actions operate on.
+  const allVisibleSelected = pagedCases.length > 0 && pagedCases.every((c) => selectedIds.has(c.id));
 
   function toggleAll() {
     if (allVisibleSelected) {
-      setSelectedIds(new Set());
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        pagedCases.forEach((c) => next.delete(c.id));
+        return next;
+      });
     } else {
-      setSelectedIds(new Set(dedupedCases.map((c) => c.id)));
+      setSelectedIds((prev) => new Set([...prev, ...pagedCases.map((c) => c.id)]));
     }
   }
 
@@ -622,21 +647,30 @@ export default function ProjectPage() {
             />
 
             {/* Select-all header */}
-            {dedupedCases.length > 0 && (
-              <div className="flex items-center gap-2 px-1 py-1">
-                <Checkbox
-                  checked={allVisibleSelected}
-                  onCheckedChange={toggleAll}
-                  aria-label="Select all"
-                />
-                <span className="text-xs text-slate-500">
-                  {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
-                </span>
+            {pagedCases.length > 0 && (
+              <div className="flex items-center justify-between gap-2 px-1 py-1">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={allVisibleSelected}
+                    onCheckedChange={toggleAll}
+                    aria-label="Select all on this page"
+                  />
+                  <span className="text-xs text-slate-500">
+                    {selectedIds.size > 0
+                      ? `${selectedIds.size} selected`
+                      : `Select all on page${caseTotalPages > 1 ? ` (${pagedCases.length} of ${dedupedCases.length})` : ""}`}
+                  </span>
+                </div>
+                {dedupedCases.length > CASE_PAGE_SIZE && (
+                  <span className="text-xs text-slate-400">
+                    {dedupedCases.length} case{dedupedCases.length === 1 ? "" : "s"} total
+                  </span>
+                )}
               </div>
             )}
 
             <div className="space-y-2">
-              {dedupedCases.map((c) => (
+              {pagedCases.map((c) => (
                 <div
                   key={c.id}
                   className={`flex items-start gap-2 rounded border px-3 py-2 text-sm bg-white ${
@@ -700,6 +734,30 @@ export default function ProjectPage() {
                 <p className="text-sm text-slate-500 px-1">No cases match the current filters.</p>
               )}
             </div>
+
+            {caseTotalPages > 1 && (
+              <div className="flex items-center justify-between gap-2 px-1 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={casePage <= 1}
+                  onClick={() => setCasePage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="text-xs text-slate-500">
+                  Page {casePage} of {caseTotalPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={casePage >= caseTotalPages}
+                  onClick={() => setCasePage((p) => Math.min(caseTotalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
           </div>
         </Card>
 

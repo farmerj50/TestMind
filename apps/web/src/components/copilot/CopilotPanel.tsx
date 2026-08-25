@@ -19,9 +19,23 @@ import { useCopilot, type Message, type CopilotStats } from "../../context/Copil
 
 type QuickAction = { label: string; icon: React.ElementType; prompt: string };
 
-function getQuickActions(route: string, stats: CopilotStats | null): QuickAction[] {
+function getQuickActions(route: string, stats: CopilotStats | null, isViewerOnly: boolean): QuickAction[] {
   const failing = stats?.failing ?? 0;
   const hotspot = stats?.hotspot;
+
+  // Viewers (read-only org members) can't trigger fixes/generation anywhere else in the
+  // product — don't suggest actions here that imply they can, even though the buttons
+  // themselves are just chat prompts today. Keep the surface consistent with their access.
+  if (isViewerOnly) {
+    const actions: QuickAction[] = [];
+    if (failing > 0 && hotspot) {
+      actions.push({ label: `Why is ${hotspot} failing?`, icon: Search, prompt: `I have ${failing} failing tests with ${hotspot} as the biggest hotspot. Explain what's likely going wrong and why.` });
+    }
+    actions.push({ label: "Analyze failure patterns", icon: Search, prompt: `Analyze the current failure patterns across my test suite${failing > 0 ? ` (${failing} failing)` : ""}` });
+    actions.push({ label: "Explain this test run", icon: Layers, prompt: "Explain what this test run did and what the results mean" });
+    actions.push({ label: "What should the team check?", icon: FileCode2, prompt: "Based on the current failures, what should the team investigate first?" });
+    return actions.slice(0, 4);
+  }
 
   if (route.startsWith("/qa-agent")) {
     return [
@@ -194,10 +208,12 @@ function WelcomeState({
   stats,
   quickActions,
   onChip,
+  isViewerOnly,
 }: {
   stats: CopilotStats | null;
   quickActions: QuickAction[];
   onChip: (prompt: string) => void;
+  isViewerOnly: boolean;
 }) {
   return (
     <div className="space-y-5 pb-2">
@@ -217,7 +233,15 @@ function WelcomeState({
                   biggest failure cluster.
                 </>
               ) : "."}
-              {" "}Want me to analyze, triage, or start fixing them?
+              {" "}
+              {isViewerOnly
+                ? "Want me to explain what's going on?"
+                : "Want me to analyze, triage, or start fixing them?"}
+            </>
+          ) : isViewerOnly ? (
+            <>
+              I'm your TestMind Copilot. I can answer questions about test failures, explain
+              runs, and help you understand what the team is working on.
             </>
           ) : (
             <>
@@ -263,11 +287,11 @@ function WelcomeState({
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export function CopilotPanel() {
-  const { isOpen, messages, isStreaming, stats, close, send, clear, currentRoute } = useCopilot();
+  const { isOpen, messages, isStreaming, stats, close, send, clear, currentRoute, isViewerOnly } = useCopilot();
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const quickActions = getQuickActions(currentRoute, stats);
+  const quickActions = getQuickActions(currentRoute, stats, isViewerOnly);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -345,6 +369,7 @@ export function CopilotPanel() {
                 stats={stats}
                 quickActions={quickActions}
                 onChip={(prompt) => send(prompt)}
+                isViewerOnly={isViewerOnly}
               />
             ) : (
               messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
@@ -361,7 +386,7 @@ export function CopilotPanel() {
                 onInput={handleInput}
                 onKeyDown={handleKeyDown}
                 disabled={isStreaming}
-                placeholder="Ask me to fix, analyze, or generate tests…"
+                placeholder={isViewerOnly ? "Ask about failures, runs, or coverage…" : "Ask me to fix, analyze, or generate tests…"}
                 className="flex-1 resize-none bg-transparent text-sm text-white placeholder:text-slate-500 outline-none disabled:opacity-50 leading-relaxed"
                 style={{ maxHeight: "120px" }}
               />

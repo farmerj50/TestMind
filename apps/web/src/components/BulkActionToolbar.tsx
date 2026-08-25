@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button } from "./ui/button";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, Plus, Trash2, X } from "lucide-react";
 
 type Suite = { id: string; name: string };
 
@@ -25,6 +25,14 @@ export default function BulkActionToolbar({ selectedIds, suites, onAction, onCle
     setBusy(true);
     setShowSuites(false);
     try { await onAction(action, value); } finally { setBusy(false); }
+  }
+
+  async function fireDelete() {
+    const confirmed = confirm(
+      `Permanently delete ${count} case${count === 1 ? "" : "s"}? This cannot be undone. Use Archive instead if you just want to hide them.`
+    );
+    if (!confirmed) return;
+    await fire("delete");
   }
 
   function openCreateNew() {
@@ -129,6 +137,20 @@ export default function BulkActionToolbar({ selectedIds, suites, onAction, onCle
           </>
         )}
       </div>
+
+      <div className="h-4 w-px bg-slate-200" />
+
+      {/* Delete */}
+      <Button
+        size="sm"
+        variant="destructive"
+        disabled={busy}
+        onClick={fireDelete}
+        className="gap-1.5"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete
+      </Button>
 
       <div className="h-4 w-px bg-slate-200" />
 
