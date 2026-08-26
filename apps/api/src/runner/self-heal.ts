@@ -141,19 +141,42 @@ async function queueHealingAttemptForTarget(input: {
  * Schedule self-healing attempts for each failed test result in the run.
  * The actual healing work is handled by the self-heal worker.
  */
+// Reasons queueHealingAttemptForTarget can return that apply to the whole run, not just the
+// one target that was tried - retrying a different failing test in the same run would hit
+// the identical block, so there's no point continuing the loop below for these.
+const RUN_WIDE_BLOCK_REASONS = new Set([
+  "self_heal_disabled",
+  "self_heal_inflight",
+  "no_failed_results",
+  "max_patches_per_run",
+  "run_not_found",
+]);
+
 export async function scheduleSelfHealingForRun(runId: string) {
-  const nextFailure = await prisma.testResult.findFirst({
+  // Try every failing test in the run, not just the first by id - a run can have several
+  // distinct failures, and the first one alone may be blocked (e.g. it already exhausted
+  // MAX_ATTEMPTS_PER_SPEC) while a different failure in the same run has never been
+  // attempted. Stops at the first successfully queued attempt (only one heal runs at a
+  // time per run - queueHealingAttemptForTarget's own in-flight check enforces that) or at
+  // the first run-wide block, whichever comes first.
+  const failures = await prisma.testResult.findMany({
     where: { runId, status: TestResultStatus.failed },
     orderBy: { id: "asc" },
     select: { id: true, testCaseId: true, testCase: { select: { title: true } } },
   });
-  if (!nextFailure) return;
-  await queueHealingAttemptForTarget({
-    runId,
-    testResultId: nextFailure.id,
-    testCaseId: nextFailure.testCaseId,
-    testTitle: nextFailure.testCase?.title ?? null,
-  });
+
+  for (const failure of failures) {
+    const result = await queueHealingAttemptForTarget({
+      runId,
+      testResultId: failure.id,
+      testCaseId: failure.testCaseId,
+      testTitle: failure.testCase?.title ?? null,
+    });
+    if (result.status === "queued") return result;
+    if (RUN_WIDE_BLOCK_REASONS.has(result.reason)) return result;
+    // Per-test block (e.g. max_attempts_per_spec, synthetic_failure, target_not_failed) -
+    // move on and try the next failing test in this run instead of giving up entirely.
+  }
 }
 
 export async function scheduleSelfHealingForTarget(input: {
