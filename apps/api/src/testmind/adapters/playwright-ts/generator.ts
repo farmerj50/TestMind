@@ -198,7 +198,9 @@ function escapeQuotes(value: string): string {
   return value.replace(/"/g, '\\"');
 }
 
-function generateSelectorSuggestions(rawName: string, selectorRaw?: string, textRaw?: string): string[] {
+// Exported so the self-heal live-selector-probe rule can reuse the same pure candidate
+// generation this file already uses at generation time, rather than a second implementation.
+export function generateSelectorSuggestions(rawName: string, selectorRaw?: string, textRaw?: string): string[] {
   const candidates: string[] = [];
   const push = (value?: string | null) => {
     if (!value) return;

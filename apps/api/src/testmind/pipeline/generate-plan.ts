@@ -5,7 +5,9 @@ type Persona = "manual" | "sdet" | "automation";
 type PatternInput = any;
 const NAV_MAX = Number(process.env.TM_NAV_PER_PAGE || 20);
 
-function guessValue(name?: string, type?: string): string {
+// Exported so the self-heal live-selector-probe rule can synthesize a fill value using the
+// same name-based heuristic generation already uses, rather than a second guessing table.
+export function guessValue(name?: string, type?: string): string {
   const n = (name ?? "").toLowerCase();
   if (type === "email" || n.includes("email")) return "qa+auto@example.com";
   if (type === "password") return "P@ssw0rd1!";

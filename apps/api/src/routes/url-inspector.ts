@@ -62,7 +62,10 @@ async function assertSafeUrl(raw: string): Promise<URL> {
 type Warning = { code: string; message: string; severity: 'info' | 'warning' | 'error' };
 type ScanPhase = 'auth_required' | 'auth_failed' | 'partial' | 'ready';
 
-const AUTH_PATH_RE = /\/(login|signin|sign-in|auth|sso|oauth|account\/login)/i;
+// Exported so other code that needs the same "does this path look auth-gated" heuristic
+// (e.g. the self-heal live-page probe's fail-closed skip check) can reuse this single
+// pattern instead of duplicating it.
+export const AUTH_PATH_RE = /\/(login|signin|sign-in|auth|sso|oauth|account\/login)/i;
 const DEFAULT_URL_INSPECTOR_MAX_PAGES = 30;
 
 function boundedMaxPages(raw: unknown): number {

@@ -14,7 +14,9 @@ import {
   withTimeout,
 } from "./repair-policy.js";
 
-type RuleRepairResult = {
+// Exported so the live-selector-probe rule (a Tier 2 repair, evaluated between the
+// deterministic rule chain and the LLM fallback) can return the same result shape.
+export type RuleRepairResult = {
   kind: "rule";
   patchedSpec: string;
   summary: string;
@@ -76,7 +78,9 @@ function parseNavigateTargetFromTitle(title?: string | null) {
   return { from, to };
 }
 
-function findSelectedTestBlock(specContent: string, title?: string | null) {
+// Exported so the live-selector-probe rule can isolate the failing test's block the same
+// way the existing nav-locator rule does, instead of a second block-isolation implementation.
+export function findSelectedTestBlock(specContent: string, title?: string | null) {
   if (!title) return null;
   const starts = [`test("${title}"`, `test('${title}'`, `test(\`${title}\``]
     .map((needle) => specContent.indexOf(needle))
@@ -93,7 +97,7 @@ function findSelectedTestBlock(specContent: string, title?: string | null) {
   };
 }
 
-function replaceSelectedTestBlock(
+export function replaceSelectedTestBlock(
   specContent: string,
   selectedBlock: { start: number; end: number; block: string },
   nextBlock: string,
