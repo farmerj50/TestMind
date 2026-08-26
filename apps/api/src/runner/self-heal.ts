@@ -96,12 +96,17 @@ async function queueHealingAttemptForTarget(input: {
     return { status: "blocked", reason: "synthetic_failure" };
   }
 
+  // Scoped by testCaseId, not testResultId: every rerun creates a brand-new TestResult row,
+  // so a testResultId-scoped count always reads back as 0 for a fresh rerun and this cap
+  // never actually engages across a rerun chain - confirmed live (a single test case ran
+  // ~30 healing attempts across ~20 minutes before this fix, each one a real LLM call,
+  // because each rerun's new TestResult reset the per-attempt counter to zero).
   const attemptsSoFar = await prisma.testHealingAttempt.count({
-    where: { testResultId: targetFailure.id },
+    where: { testCaseId: targetFailure.testCaseId },
   });
   if (attemptsSoFar >= MAX_ATTEMPTS_PER_SPEC) {
     console.log(
-      `[self-heal] skipping testResult=${targetFailure.id}; exceeded max attempts (${MAX_ATTEMPTS_PER_SPEC})`
+      `[self-heal] skipping testCase=${targetFailure.testCaseId} (testResult=${targetFailure.id}); exceeded max attempts across rerun chain (${MAX_ATTEMPTS_PER_SPEC})`
     );
     return { status: "blocked", reason: "max_attempts_per_spec" };
   }

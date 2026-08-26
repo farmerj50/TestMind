@@ -153,7 +153,14 @@ export function classifyFailureContext(input: {
   // a sharedLogin helper, even when the failure is unrelated (e.g. getByText).
   const loginInMessage = /usernameSelector|passwordSelector|sharedLogin|Email Address|input\[type="email"\]|input\[name="email"\]/i.test(message);
   const loginInSpec = /usernameSelector|passwordSelector|sharedLogin/i.test(input.specContent || "");
-  const loginRelatedTitle = /login|sign.?in|auth|password|email/i.test(input.testTitle || "");
+  // Whole-word match only, and deliberately excludes bare "password"/"email" - those match
+  // plenty of non-login pages by page-name coincidence (forgot-password, reset-password,
+  // change-email, verify-email), which was misclassifying those failures as
+  // login_selector_timeout and routing them into tryLoginSelectorRepair (a fix for the
+  // *shared login helper*, unrelated to the actual failing page) before anything else got
+  // a real chance at the real problem. Confirmed live: "Form submits – /forgot-password"
+  // matched on "password" alone.
+  const loginRelatedTitle = /\b(log[ -]?in|sign[ -]?in|auth)\b/i.test(input.testTitle || "");
   if (loginInMessage || (loginInSpec && loginRelatedTitle)) {
     classes.add("login_selector_timeout");
   }
