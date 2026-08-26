@@ -1,7 +1,8 @@
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { requestSpecHeal, requestSpecPatchOps } from "../../runner/llm.js";
 import type { AiExecutionContext } from "./types.js";
-import { resolveRepairConfigForFramework, type AiRepairConfig } from "./policy.js";
+import { resolveRepairConfigForFramework, type AiRepairConfig, type LiveProbeConfig } from "./policy.js";
+import { tryLiveSelectorProbeRepair } from "./live-selector-probe-rule.js";
 import {
   applyHealOperations,
   buildHealPromptPayload,
@@ -661,6 +662,7 @@ export async function executeRepairAttempt(input: {
   projectId: string;
   adapterId?: string;
   config: AiRepairConfig;
+  liveProbe?: LiveProbeConfig;
 }): Promise<RepairExecutionResult> {
   const { context, projectId, config } = input;
   const effectiveAdapterId = input.adapterId || DEFAULT_FRAMEWORK_ID;
@@ -674,11 +676,23 @@ export async function executeRepairAttempt(input: {
     return connectionRefusedRule;
   }
 
+  // Tier 1: deterministic, synchronous, cheap.
   const ruleResult = tryRuleBasedRepair(context);
   if (ruleResult) {
     return ruleResult;
   }
 
+  // Tier 2: evidence-assisted, browser-driven, observational-only. Off by default; only
+  // ever fires for what Tier 1 didn't catch. Never throws into this function - any probe
+  // failure/timeout/auth-gate falls through to Tier 3 exactly as if Tier 2 didn't exist.
+  if (input.liveProbe?.enabled) {
+    const liveProbeResult = await tryLiveSelectorProbeRepair(context, input.liveProbe).catch(() => null);
+    if (liveProbeResult) {
+      return liveProbeResult;
+    }
+  }
+
+  // Tier 3: generative, network/model, most expensive.
   if (containsConnectionRefused(`${context.failure.message || ""}\n${context.failure.stderr || ""}\n${context.failure.stdout || ""}`)) {
     throw new Error("Infra-like connection failure did not match a safe repair rule");
   }

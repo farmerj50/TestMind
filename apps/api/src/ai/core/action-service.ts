@@ -137,6 +137,7 @@ export async function executeAutonomousRepairAction(input: {
     projectId: input.job.projectId,
     adapterId: input.job.adapterId,
     config: policy.repair,
+    liveProbe: policy.liveProbe,
   });
   return { context, policy, repairResult };
 }
