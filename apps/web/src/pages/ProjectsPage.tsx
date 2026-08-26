@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { useApi } from "../lib/api";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   ChevronDown,
   ChevronRight,
@@ -12,6 +14,7 @@ import {
   FolderTree,
   ClipboardList,
   ListTree,
+  Trash2,
 } from "lucide-react";
 
 type Project = { id: string; name: string; repoUrl?: string; plan?: string };
@@ -22,10 +25,12 @@ export default function ProjectsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
+  function loadProjects() {
     setLoading(true);
-    apiFetch<{ projects: Project[] }>("/projects")
+    return apiFetch<{ projects: Project[] }>("/projects")
       .then((res) => {
         const list = (res.projects || []).sort((a, b) => a.name.localeCompare(b.name));
         setProjects(list);
@@ -39,6 +44,11 @@ export default function ProjectsPage() {
       })
       .catch((err: any) => setError(err?.message ?? "Failed to load projects"))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiFetch]);
 
   const allExpanded = useMemo(
@@ -50,12 +60,73 @@ export default function ProjectsPage() {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.size === projects.length ? new Set() : new Set(projects.map((p) => p.id))
+    );
+  }
+
+  async function handleBulkDelete() {
+    const targets = projects.filter((p) => selectedIds.has(p.id));
+    if (!targets.length) return;
+    const preview = targets.slice(0, 8).map((p) => p.name).join(", ");
+    const more = targets.length > 8 ? ` and ${targets.length - 8} more` : "";
+    const confirmed = confirm(
+      `Delete ${targets.length} project${targets.length === 1 ? "" : "s"}? This permanently removes all their runs, cases, suites, and integrations. This cannot be undone.\n\n${preview}${more}`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    let deleted = 0;
+    const failures: string[] = [];
+    for (const p of targets) {
+      try {
+        await apiFetch(`/projects/${p.id}`, { method: "DELETE" });
+        deleted += 1;
+      } catch (err: any) {
+        failures.push(p.name);
+      }
+    }
+    setDeleting(false);
+    setSelectedIds(new Set());
+    await loadProjects();
+
+    if (failures.length === 0) {
+      toast.success(`Deleted ${deleted} project${deleted === 1 ? "" : "s"}`);
+    } else if (deleted === 0) {
+      toast.error(`Failed to delete ${failures.length} project(s): ${failures.join(", ")}`);
+    } else {
+      toast.error(`Deleted ${deleted}, failed on ${failures.length}: ${failures.join(", ")}`);
+    }
+  }
+
   return (
     <div className="p-6 space-y-4">
       <Card>
         <CardHeader className="flex items-center justify-between">
           <CardTitle className="text-slate-800">Projects (tree view)</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={deleting}
+                onClick={handleBulkDelete}
+                className="gap-1.5"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {deleting ? "Deleting…" : `Delete selected (${selectedIds.size})`}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -85,12 +156,30 @@ export default function ProjectsPage() {
           )}
           {!loading && projects.length > 0 && (
             <div className="rounded border border-slate-200 bg-white">
+              <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 text-xs text-slate-500">
+                <Checkbox
+                  checked={projects.length > 0 && selectedIds.size === projects.length}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all projects"
+                />
+                <span>
+                  {selectedIds.size > 0
+                    ? `${selectedIds.size} of ${projects.length} selected`
+                    : "Select all"}
+                </span>
+              </div>
               <ul className="divide-y">
                 {projects.map((p) => {
                   const isOpen = expanded[p.id] ?? false;
                   return (
                     <li key={p.id} className="p-3">
                       <div className="flex items-start gap-3">
+                        <Checkbox
+                          className="mt-1"
+                          checked={selectedIds.has(p.id)}
+                          onCheckedChange={() => toggleSelected(p.id)}
+                          aria-label={`Select ${p.name}`}
+                        />
                         <button
                           className="mt-0.5 text-slate-700 hover:text-slate-900"
                           onClick={() => toggle(p.id)}

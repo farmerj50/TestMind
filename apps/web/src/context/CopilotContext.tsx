@@ -29,6 +29,7 @@ type State = {
   messages: Message[];
   isStreaming: boolean;
   stats: CopilotStats | null;
+  isViewerOnly: boolean;
 };
 
 type Action =
@@ -39,7 +40,8 @@ type Action =
   | { type: "APPEND_DELTA"; delta: string }
   | { type: "FINISH_STREAM" }
   | { type: "CLEAR" }
-  | { type: "SET_STATS"; stats: CopilotStats };
+  | { type: "SET_STATS"; stats: CopilotStats }
+  | { type: "SET_VIEWER_ONLY"; isViewerOnly: boolean };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -70,6 +72,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, messages: [] };
     case "SET_STATS":
       return { ...state, stats: action.stats };
+    case "SET_VIEWER_ONLY":
+      return { ...state, isViewerOnly: action.isViewerOnly };
     default:
       return state;
   }
@@ -86,6 +90,7 @@ type CopilotContextValue = {
   send: (content: string) => Promise<void>;
   clear: () => void;
   currentRoute: string;
+  isViewerOnly: boolean;
 };
 
 const CopilotContext = createContext<CopilotContextValue | null>(null);
@@ -101,6 +106,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     messages: [],
     isStreaming: false,
     stats: null,
+    isViewerOnly: false,
   });
   const { apiFetch, apiFetchRaw } = useApi();
   const location = useLocation();
@@ -114,15 +120,30 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
         type Summary = { counts: { failed: number; total: number }; healedCount?: number };
         type Project = { id: string; name: string };
 
-        const [summary, projectsRes] = await Promise.all([
+        type OrgMembership = { role: "owner" | "admin" | "member" | "viewer" };
+
+        const [summary, projectsRes, orgMemberships] = await Promise.all([
           apiFetch<Summary>("/reports/summary"),
           apiFetch<{ projects: Project[] }>("/projects"),
+          apiFetch<OrgMembership[]>("/orgs").catch(() => [] as OrgMembership[]),
         ]);
 
         if (cancelled) return;
 
         const projects = projectsRes.projects ?? [];
         let hotspot: string | null = null;
+
+        // A "customer"/pure-viewer user owns no projects directly (GET /projects only ever
+        // returns projects where ownerId === this user) and holds nothing above "viewer" in
+        // every org they belong to. Anyone who owns a project, or has elevated org access
+        // anywhere, keeps the full action set.
+        const isViewerOnly =
+          projects.length === 0 &&
+          orgMemberships.length > 0 &&
+          orgMemberships.every((m) => m.role === "viewer");
+        if (!cancelled) {
+          dispatch({ type: "SET_VIEWER_ONLY", isViewerOnly });
+        }
 
         // Find the project with the most failures (up to 5 concurrent calls)
         if (projects.length > 0) {
@@ -244,7 +265,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
 
   return (
     <CopilotContext.Provider
-      value={{ ...state, open, close, toggle, send, clear, currentRoute: location.pathname }}
+      value={{ ...state, open, close, toggle, send, clear, currentRoute: location.pathname, isViewerOnly: state.isViewerOnly }}
     >
       {children}
     </CopilotContext.Provider>

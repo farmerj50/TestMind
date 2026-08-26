@@ -1176,8 +1176,15 @@ export async function testRoutes(app: FastifyInstance) {
       const r = await prisma.testCase.updateMany({ where: { id: { in: ids } }, data: { suiteId: value ?? null } });
       updated = r.count;
     } else if (action === "delete") {
-      // Soft delete — archive instead of destroy
-      const r = await prisma.testCase.updateMany({ where: { id: { in: ids } }, data: { status: "archived" } });
+      // Permanent delete — "Archive" (setStatus) already covers the soft-delete case, so
+      // this actually removes the cases. Same FK cleanup order as DELETE /tests/cases/:id.
+      const [, , , , r] = await prisma.$transaction([
+        prisma.testHealingAttempt.deleteMany({ where: { testCaseId: { in: ids } } }),
+        prisma.testResult.deleteMany({ where: { testCaseId: { in: ids } } }),
+        prisma.testStep.deleteMany({ where: { caseId: { in: ids } } }),
+        prisma.testCaseRun.deleteMany({ where: { caseId: { in: ids } } }),
+        prisma.testCase.deleteMany({ where: { id: { in: ids } } }),
+      ]);
       updated = r.count;
     }
 
@@ -1438,7 +1445,17 @@ export async function testRoutes(app: FastifyInstance) {
     });
     if (!ownerOk) return reply.code(403).send({ error: "Forbidden" });
 
-    await prisma.testCase.delete({ where: { id: req.params.id } });
+    // None of TestResult/TestHealingAttempt/TestStep/TestCaseRun cascade on delete, so a
+    // bare testCase.delete() fails with a P2003 foreign key violation as soon as the case
+    // has any run history. Clean up dependents first, in FK order (healing attempts
+    // reference testResult, so they must go before results).
+    await prisma.$transaction([
+      prisma.testHealingAttempt.deleteMany({ where: { testCaseId: req.params.id } }),
+      prisma.testResult.deleteMany({ where: { testCaseId: req.params.id } }),
+      prisma.testStep.deleteMany({ where: { caseId: req.params.id } }),
+      prisma.testCaseRun.deleteMany({ where: { caseId: req.params.id } }),
+      prisma.testCase.delete({ where: { id: req.params.id } }),
+    ]);
     reply.code(204).send();
   });
 
