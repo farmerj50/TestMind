@@ -106,9 +106,9 @@ test("tryLiveSelectorProbeRepair patches both fill and click sites when both res
   assert.equal(result?.kind, "rule");
   assert.equal(result?.fixType, "rule_fixed");
   assert.ok(result?.patchedSpec.includes(
-    `await page.fill("[name=\\"forgot-email-input\\"]", "qa+auto@example.com");`
+    `await page.locator("[name=\\"forgot-email-input\\"]").first().fill("qa+auto@example.com");`
   ));
-  assert.ok(result?.patchedSpec.includes(`await page.click("button[type=\\"submit\\"]");`));
+  assert.ok(result?.patchedSpec.includes(`await page.locator("button[type=\\"submit\\"]").first().click();`));
   assert.ok(!result?.patchedSpec.includes("// Missing locator fields.forgot-email-input"));
   assert.ok(!result?.patchedSpec.includes("// Missing locator buttons.button-type-submit"));
   // the unrelated second test in the file must be untouched
@@ -138,7 +138,7 @@ test("tryLiveSelectorProbeRepair applies a partial patch when only one site reso
   );
 
   assert.ok(result);
-  assert.ok(result?.patchedSpec.includes("page.fill"));
+  assert.ok(result?.patchedSpec.includes(".first().fill("));
   // the unresolved site keeps its original placeholder untouched
   assert.ok(result?.patchedSpec.includes("// Missing locator buttons.button-type-submit"));
   const fixDetails = result?.fixDetails as any;
@@ -161,12 +161,54 @@ test("tryLiveSelectorProbeRepair excludes non-unique (matchCount > 1) selectors 
 
   assert.ok(result);
   // still patched into the spec for the one-off repair
-  assert.ok(result?.patchedSpec.includes(`await page.click("button");`));
+  assert.ok(result?.patchedSpec.includes(`await page.locator("button").first().click();`));
   const fixDetails = result?.fixDetails as any;
   assert.equal(fixDetails.resolved.length, 2);
   // but only the unique one is eligible for shared-locator promotion
   assert.equal(fixDetails.pendingLocatorPromotion.length, 1);
   assert.equal(fixDetails.pendingLocatorPromotion[0].name, "forgot-email-input");
+});
+
+test("tryLiveSelectorProbeRepair orders the generic fallback candidates (input, button) by step kind", async () => {
+  // Regression test for a real finding from manual validation against a live site: the
+  // shared generateSelectorSuggestions always appends "input" before "button", so a click
+  // target whose specific candidates all fail to resolve could land on the page's one
+  // <input> before ever trying <button>. Confirmed live against bes-app.com's
+  // forgot-password page (a submit <button> with no type="submit" attribute, one bare
+  // <input> on the page) before this fix existed.
+  let capturedTargets: any[] = [];
+  await tryLiveSelectorProbeRepair(
+    baseContext(),
+    {},
+    {
+      probe: async (_url, targets) => {
+        capturedTargets = targets;
+        return okOutcome([
+          { key: "fields.forgot-email-input", selector: null, matchCount: null },
+          { key: "buttons.button-type-submit", selector: null, matchCount: null },
+        ]);
+      },
+    }
+  );
+
+  const fillTarget = capturedTargets.find((t) => t.key === "fields.forgot-email-input");
+  const clickTarget = capturedTargets.find((t) => t.key === "buttons.button-type-submit");
+
+  // Both "input" and "button" are present in each list (generateSelectorSuggestions always
+  // pushes both as a last resort) - what matters is their relative order per kind.
+  assert.ok(fillTarget.candidates.includes("input"));
+  assert.ok(fillTarget.candidates.includes("button"));
+  assert.ok(
+    fillTarget.candidates.indexOf("input") < fillTarget.candidates.indexOf("button"),
+    "fill target should try input before button"
+  );
+
+  assert.ok(clickTarget.candidates.includes("input"));
+  assert.ok(clickTarget.candidates.includes("button"));
+  assert.ok(
+    clickTarget.candidates.indexOf("button") < clickTarget.candidates.indexOf("input"),
+    "click target should try button before input"
+  );
 });
 
 test("tryLiveSelectorProbeRepair returns null and never calls the probe when the page path looks auth-gated", async () => {

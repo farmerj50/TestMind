@@ -103,6 +103,24 @@ function extractMissingLocatorSites(blockText: string): ExtractedSite[] {
   return sites;
 }
 
+// generateSelectorSuggestions's last-resort fallback candidates ("input", "button") are
+// pushed in a fixed order regardless of step kind, because that function's only other
+// consumer is a human-reviewed suggestions sidecar file where order doesn't matter. Tier 2
+// is the first caller that blindly takes the first resolving candidate, so a click target
+// can otherwise land on the page's one <input> before ever trying <button> - confirmed live
+// against a real page (a submit <button> with no type="submit" attribute, one bare <input>
+// on the page) during manual validation. Reordering only the generic tail, kind-aware,
+// fixes this without touching the shared generator.ts function or its other consumer.
+const GENERIC_FALLBACK_CANDIDATES = new Set(["input", "button"]);
+
+function reorderCandidatesForKind(candidates: string[], kind: ProbeTarget["kind"]): string[] {
+  const specific = candidates.filter((c) => !GENERIC_FALLBACK_CANDIDATES.has(c));
+  const generic = candidates.filter((c) => GENERIC_FALLBACK_CANDIDATES.has(c));
+  const genericOrder = kind === "click" ? ["button", "input"] : ["input", "button"];
+  const orderedGeneric = genericOrder.filter((c) => generic.includes(c));
+  return [...specific, ...orderedGeneric];
+}
+
 function buildPageUrl(baseUrl: string, pagePath: string): string | null {
   try {
     return new URL(pagePath, baseUrl).toString();
@@ -154,7 +172,10 @@ export async function tryLiveSelectorProbeRepair(
   const targets: ProbeTarget[] = sites.map((site) => ({
     key: `${site.bucket}.${site.name}`,
     kind: site.kind,
-    candidates: generateSelectorSuggestions(site.name, site.rawSelectorText, undefined),
+    candidates: reorderCandidatesForKind(
+      generateSelectorSuggestions(site.name, site.rawSelectorText, undefined),
+      site.kind
+    ),
   }));
 
   const totalBudgetMs = options?.totalBudgetMs;
@@ -188,8 +209,13 @@ export async function tryLiveSelectorProbeRepair(
 
     const replacement =
       site.kind === "fill"
-        ? `await page.fill(${JSON.stringify(result.selectedSelector)}, ${JSON.stringify(guessValue(site.name))});`
-        : `await page.click(${JSON.stringify(result.selectedSelector)});`;
+        // .first() matches this codebase's existing convention for resolved-but-possibly-
+        // ambiguous locators (see findFirstWorkingLocator's generated code) - required here
+        // because matchCount > 1 candidates are deliberately still applied for the one-off
+        // repair even though they're excluded from promotion; without .first() a non-unique
+        // selector would throw a Playwright strict-mode violation at rerun time.
+        ? `await page.locator(${JSON.stringify(result.selectedSelector)}).first().fill(${JSON.stringify(guessValue(site.name))});`
+        : `await page.locator(${JSON.stringify(result.selectedSelector)}).first().click();`;
 
     const withPatch = nextBlock.replace(site.commentText, replacement);
     if (withPatch === nextBlock) continue; // comment text not found (shouldn't happen); skip this site
