@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeLocatorPromotion, normalizeLocatorPath } from "./locator-promotion.js";
+import { computeLocatorPromotion, normalizeLocatorPath, selectPromotableEntries } from "./locator-promotion.js";
 
 test("normalizeLocatorPath strips query/hash-insensitive host, keeps pathname+search", () => {
   assert.equal(normalizeLocatorPath("/forgot-password"), "/forgot-password");
@@ -104,4 +104,86 @@ test("computeLocatorPromotion never lets primary also appear as its own fallback
   const fb = next.locatorFallbacks["/x"].locators.n;
   assert.equal(fb.primary, "#a");
   assert.deepEqual(fb.fallbacks, ["#b"]);
+});
+
+function entry(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    projectId: "project_1",
+    pagePath: "/forgot-password",
+    bucket: "fields" as const,
+    name: "forgot-email-input",
+    selector: "[name=\"forgot-email-input\"]",
+    fallbacks: [],
+    matchCount: 1,
+    ...overrides,
+  };
+}
+
+test("selectPromotableEntries promotes an entry whose test case passed on the rerun", () => {
+  const attempts = [{ id: "attempt_1", testCaseId: "case_1", fixDetails: { pendingLocatorPromotion: [entry()] } }];
+  const result = selectPromotableEntries(attempts, new Set(["case_1"]));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].healingAttemptId, "attempt_1");
+  assert.equal(result[0].entry.name, "forgot-email-input");
+});
+
+test("selectPromotableEntries excludes an attempt whose test case did NOT pass on the rerun", () => {
+  // This is the exact-test invariant: a targeted rerun that only re-executed some tests
+  // must not promote fixes for a test it didn't itself re-verify, even if that test's
+  // healing attempt succeeded on the original run.
+  const attempts = [{ id: "attempt_1", testCaseId: "case_1", fixDetails: { pendingLocatorPromotion: [entry()] } }];
+  const result = selectPromotableEntries(attempts, new Set(["case_2"]));
+  assert.equal(result.length, 0);
+});
+
+test("selectPromotableEntries excludes non-unique (matchCount !== 1) entries even when the test case passed", () => {
+  // Defense in depth: this check is independent of live-selector-probe-rule.ts's own
+  // matchCount filter - shared-state mutation should never trust its producer completely.
+  const attempts = [
+    { id: "attempt_1", testCaseId: "case_1", fixDetails: { pendingLocatorPromotion: [entry({ matchCount: 2 })] } },
+  ];
+  const result = selectPromotableEntries(attempts, new Set(["case_1"]));
+  assert.equal(result.length, 0);
+});
+
+test("selectPromotableEntries excludes matchCount: null entries", () => {
+  const attempts = [
+    { id: "attempt_1", testCaseId: "case_1", fixDetails: { pendingLocatorPromotion: [entry({ matchCount: null })] } },
+  ];
+  const result = selectPromotableEntries(attempts, new Set(["case_1"]));
+  assert.equal(result.length, 0);
+});
+
+test("selectPromotableEntries handles attempts with no pendingLocatorPromotion (e.g. rule-based, non-Tier-2 fixes) safely", () => {
+  const attempts = [
+    { id: "attempt_1", testCaseId: "case_1", fixDetails: { rule: "missing-nav-locator" } },
+    { id: "attempt_2", testCaseId: "case_2", fixDetails: null },
+    { id: "attempt_3", testCaseId: "case_3", fixDetails: undefined },
+  ];
+  const result = selectPromotableEntries(attempts, new Set(["case_1", "case_2", "case_3"]));
+  assert.equal(result.length, 0);
+});
+
+test("selectPromotableEntries handles multiple attempts and multiple entries per attempt independently", () => {
+  const attempts = [
+    {
+      id: "attempt_1",
+      testCaseId: "case_1",
+      fixDetails: {
+        pendingLocatorPromotion: [
+          entry({ name: "email-field", matchCount: 1 }),
+          entry({ name: "ambiguous-button", bucket: "locators", matchCount: 3 }),
+        ],
+      },
+    },
+    {
+      id: "attempt_2",
+      testCaseId: "case_2",
+      fixDetails: { pendingLocatorPromotion: [entry({ name: "other-field", matchCount: 1 })] },
+    },
+  ];
+  // only case_1's rerun result is known to have passed; case_2 wasn't re-verified
+  const result = selectPromotableEntries(attempts, new Set(["case_1"]));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].entry.name, "email-field");
 });

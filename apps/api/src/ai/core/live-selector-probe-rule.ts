@@ -20,17 +20,9 @@ import {
 } from "../../testmind/runtime/live-page-probe.js";
 import { generateSelectorSuggestions } from "../../testmind/adapters/playwright-ts/generator.js";
 import { guessValue } from "../../testmind/pipeline/generate-plan.js";
-import type { LocatorBucket } from "../../lib/locator-promotion.js";
+import type { LocatorBucket, PendingLocatorPromotion } from "../../lib/locator-promotion.js";
 
-export type PendingLocatorPromotion = {
-  projectId: string;
-  pagePath: string;
-  bucket: LocatorBucket;
-  name: string;
-  selector: string;
-  fallbacks: string[];
-  matchCount: number | null;
-};
+export type { PendingLocatorPromotion };
 
 export type LiveSelectorProbeOptions = {
   navigationTimeoutMs?: number;
