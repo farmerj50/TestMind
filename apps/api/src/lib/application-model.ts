@@ -78,6 +78,27 @@ function sha1(value: string): string {
   return createHash("sha1").update(value).digest("hex");
 }
 
+/**
+ * Canonicalizes a route hint before it's used as a pages{} key, so URL noise
+ * (trailing slash, query string, scheme+host) doesn't get misread as pages
+ * appearing/disappearing. discover.ts's FormMeta.routeHint is not guaranteed to already be
+ * normalized - callers should run every routeHint through this before grouping.
+ */
+export function normalizeRouteHint(raw: string): string {
+  let value = raw.trim();
+  try {
+    // Strips scheme+host if present, keeps only pathname (drops query/hash).
+    const url = new URL(value, "http://localhost");
+    value = url.pathname || "/";
+  } catch {
+    // Not URL-parseable even with a base - fall back to stripping a query string manually.
+    value = value.split("?")[0].split("#")[0];
+  }
+  if (!value.startsWith("/")) value = `/${value}`;
+  if (value.length > 1 && value.endsWith("/")) value = value.slice(0, -1);
+  return value;
+}
+
 function stableFieldKey(f: ApplicationModelFieldMeta): string {
   return JSON.stringify([f.name, f.type ?? "", f.required ?? false, f.pattern ?? "", f.label ?? ""]);
 }

@@ -20,7 +20,11 @@ import {
   recordOperatorDecisions,
   type FailureClassification,
 } from '../lib/operator-decisions.js';
-import { computeApplicationModelUpdate, normalizeApplicationModel } from '../lib/application-model.js';
+import {
+  computeApplicationModelUpdate,
+  normalizeApplicationModel,
+  normalizeRouteHint,
+} from '../lib/application-model.js';
 import {
   getOctokitForProject,
   pushSpecFilesToBranch,
@@ -1647,7 +1651,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
-    select: { repoUrl: true, ownerId: true, sharedSteps: true },
+    select: { repoUrl: true, ownerId: true, sharedSteps: true, applicationModel: true },
   });
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string | undefined =
@@ -1671,6 +1675,29 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   // ── Step 1: Playwright crawl ───────────────────────────────────────────────
   const { routes, forms, scans } = await discoverSite(baseUrl, [], { cookieString, maxPages });
+
+  // ── Project Memory: read prior application-model facts, diff against this cycle's forms.
+  // Forms without a routeHint can't be attributed to a page and are skipped. Log/diff only -
+  // does not change the crawl itself (see the plan: this is deliberately not a skip/
+  // deprioritize decision, that belongs to a later autonomous-rediscovery phase).
+  const formsByRoute: Record<string, Array<{ selector: string; action?: string; fields: typeof forms[number]['fields'] }>> = {};
+  for (const f of forms) {
+    if (!f.routeHint) continue;
+    const route = normalizeRouteHint(f.routeHint);
+    (formsByRoute[route] ??= []).push({ selector: f.selector, action: f.action, fields: f.fields });
+  }
+  const applicationModelUpdate = computeApplicationModelUpdate(
+    normalizeApplicationModel(project?.applicationModel),
+    formsByRoute,
+    new Date().toISOString()
+  );
+  console.log(
+    `[operator-worker] discovery application-model diff for project ${opJob.projectId}:`,
+    `new=${applicationModelUpdate.diff.newPages.length}`,
+    `changed=${applicationModelUpdate.diff.changedPages.length}`,
+    `unchanged=${applicationModelUpdate.diff.unchangedPages.length}`,
+    `missing=${applicationModelUpdate.diff.missingPages.length}`
+  );
 
   const checkedRoutes: Array<{ route: string; status: number; reachable: boolean }> = scans.map((s) => {
     const route = (() => { try { return new URL(s.url).pathname || '/'; } catch { return s.url; } })();
@@ -1723,7 +1750,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   await prisma.project.update({
     where: { id: opJob.projectId },
-    data: { sharedSteps: mergedSharedSteps as any },
+    data: { sharedSteps: mergedSharedSteps as any, applicationModel: applicationModelUpdate.next as any },
   });
 
   // ── Step 4: Write spec files to disk (with the seeded store active) ───────
@@ -1775,6 +1802,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     specFileCount: specCount,
     outDir,
     summary: `Discovered ${checkedRoutes.length} routes; generated ${savedCount} new tests across ${specCount} spec files`,
+    applicationModelDiff: applicationModelUpdate.diff,
   };
 
   await prisma.operatorTask.update({

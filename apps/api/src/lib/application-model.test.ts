@@ -5,8 +5,27 @@ import {
   computePageSignature,
   computeApplicationModelUpdate,
   normalizeApplicationModel,
+  normalizeRouteHint,
   type ApplicationModelForm,
 } from "./application-model.js";
+
+test("normalizeRouteHint collapses trailing slash, query string, and scheme+host variants to the same key", () => {
+  const variants = [
+    "/checkout",
+    "/checkout/",
+    "/checkout?utm_source=x",
+    "https://www.example.com/checkout",
+    "checkout",
+  ];
+  const normalized = variants.map(normalizeRouteHint);
+  for (const n of normalized) assert.equal(n, "/checkout");
+});
+
+test("normalizeRouteHint keeps root as / and is a no-op for an already-normal path", () => {
+  assert.equal(normalizeRouteHint("/"), "/");
+  assert.equal(normalizeRouteHint(""), "/");
+  assert.equal(normalizeRouteHint("/settings"), "/settings");
+});
 
 test("computeFormSignature is stable regardless of field order", () => {
   const a = computeFormSignature([
