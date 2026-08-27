@@ -527,7 +527,7 @@ function tryMalformedSelectorRepair(context: AiExecutionContext, specContent: st
   };
 }
 
-function tryRuleBasedRepair(context: AiExecutionContext): RuleRepairResult | null {
+export function tryRuleBasedRepair(context: AiExecutionContext): RuleRepairResult | null {
   const specContent = context.specContent;
   if (!specContent) return null;
 
@@ -617,40 +617,43 @@ function tryRuleBasedRepair(context: AiExecutionContext): RuleRepairResult | nul
   }
 
   if (containsStrictMode(context.failure.message)) {
-    const hrefMatch = context.failure.message?.match(/href="([^"]+)"/);
-    if (hrefMatch) {
-      const href = hrefMatch[1];
-      const locatorLinePattern =
-        /(page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\))/m;
-      const locatorMatch = specContent.match(locatorLinePattern);
-      if (locatorMatch) {
-        const original = locatorMatch[0];
-        const patchedSpec = specContent.replace(original, `page.locator('a[href="${href}"]').first()`);
+    const selectedBlock = findSelectedTestBlock(specContent, context.failure.testTitle);
+    if (selectedBlock) {
+      const hrefMatch = context.failure.message?.match(/href="([^"]+)"/);
+      if (hrefMatch) {
+        const href = hrefMatch[1];
+        const locatorLinePattern =
+          /(page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;()]*\))/m;
+        const locatorMatch = selectedBlock.block.match(locatorLinePattern);
+        if (locatorMatch) {
+          const original = locatorMatch[0];
+          const nextBlock = selectedBlock.block.replace(original, `page.locator('a[href="${href}"]').first()`);
+          return {
+            kind: "rule",
+            patchedSpec: replaceSelectedTestBlock(specContent, selectedBlock, nextBlock),
+            summary: `Auto-fixed strict-mode locator via href=${href}`,
+            note: "rule-based strict-mode href",
+            fixType: "rule_fixed",
+            fixDetails: { rule: "strict-mode-href", href },
+          };
+        }
+      }
+
+      const locatorPattern =
+        /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;()]*\)(?!\s*\.(first|nth|filter|locator))/m;
+      const match = selectedBlock.block.match(locatorPattern);
+      if (match) {
+        const target = match[0];
+        const nextBlock = selectedBlock.block.replace(target, `${target}.first()`);
         return {
           kind: "rule",
-          patchedSpec,
-          summary: `Auto-fixed strict-mode locator via href=${href}`,
-          note: "rule-based strict-mode href",
+          patchedSpec: replaceSelectedTestBlock(specContent, selectedBlock, nextBlock),
+          summary: "Auto-selected first match for strict-mode locator",
+          note: "rule-based strict-mode",
           fixType: "rule_fixed",
-          fixDetails: { rule: "strict-mode-href", href },
+          fixDetails: { rule: "strict-mode-first" },
         };
       }
-    }
-
-    const locatorPattern =
-      /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\)(?!\s*\.(first|nth|filter|locator))/m;
-    const match = specContent.match(locatorPattern);
-    if (match) {
-      const target = match[0];
-      const patchedSpec = specContent.replace(target, `${target}.first()`);
-      return {
-        kind: "rule",
-        patchedSpec,
-        summary: "Auto-selected first match for strict-mode locator",
-        note: "rule-based strict-mode",
-        fixType: "rule_fixed",
-        fixDetails: { rule: "strict-mode-first" },
-      };
     }
   }
 
