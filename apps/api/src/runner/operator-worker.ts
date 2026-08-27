@@ -16,6 +16,12 @@ import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
 import {
+  deriveDecisionsForFailureClassifications,
+  recordOperatorDecisions,
+  type FailureClassification,
+} from '../lib/operator-decisions.js';
+import { computeApplicationModelUpdate, normalizeApplicationModel } from '../lib/application-model.js';
+import {
   getOctokitForProject,
   pushSpecFilesToBranch,
   ensurePullRequest,
@@ -583,6 +589,11 @@ async function continueAutonomousAfterFailedRun(
   });
 
   await createInterventionsForClassifications(opJob, runId, triageTask.id, classifications);
+  await recordOperatorDecisions({
+    jobId: opJob.id,
+    taskId: triageTask.id,
+    decisions: deriveDecisionsForFailureClassifications(classifications),
+  });
 
   const selfHealableIds = classifications
     .filter((c) => c.type === 'self-heal')
@@ -886,6 +897,11 @@ async function waitAutonomousFullSuiteVerify(opJob: OpJobCtx, reDelay: ReDelayFn
   const runId = state.runId ?? state.initialRunId;
   const classifications = await classifyRunFailures(runId);
   await createInterventionsForClassifications(opJob, runId, state.taskId ?? null, classifications);
+  await recordOperatorDecisions({
+    jobId: opJob.id,
+    taskId: state.taskId ?? null,
+    decisions: deriveDecisionsForFailureClassifications(classifications),
+  });
   throw new Error('Autonomous QA full-suite verification failed');
 }
 
@@ -1106,7 +1122,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const classifications = await classifyRunFailures(run.id);
 
   // Persist triage output so the UI and rollup can surface it
-  await prisma.operatorTask.create({
+  const triageTask = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
       type: 'triage',
@@ -1118,6 +1134,11 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
         classifications,
       },
     },
+  });
+  await recordOperatorDecisions({
+    jobId: opJob.id,
+    taskId: triageTask.id,
+    decisions: deriveDecisionsForFailureClassifications(classifications),
   });
 
   const selfHealable = classifications.filter((c) => c.type === 'self-heal');
@@ -1326,7 +1347,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
  *   "blocked"    → infra/env/network — needs env owner
  *   "defect"     → likely product regression — route to dev
  */
-async function classifyRunFailures(runId: string) {
+async function classifyRunFailures(runId: string): Promise<FailureClassification[]> {
   const failedResults = await prisma.testResult.findMany({
     where: { runId, status: 'failed' },
     include: { testCase: { select: { id: true, title: true } } },
