@@ -245,11 +245,33 @@ function validatePatchedFeature(after: string): string | null {
   return null;
 }
 
+/**
+ * Extracts the quoted text/pattern from a failure message's "Locator: <expr>" line, e.g.
+ * "Locator: getByText('JusticePath — Accessible Legal Help')" ->
+ * "JusticePath — Accessible Legal Help". Returns null when the message doesn't have this
+ * shape (most failure types don't - timeouts, navigation errors, etc.).
+ *
+ * Deliberately extracts just the quoted content, not the whole `getByText(...)` expression:
+ * Playwright's runtime error shows the RESOLVED locator, but generated specs often route
+ * through a variable (`getByText(rawText)`) rather than an inline literal - the quoted text
+ * itself is what's actually guaranteed to appear verbatim in the source (e.g.
+ * `const rawText = "...";`), not the call expression around it.
+ */
+function extractFailingLocatorExpression(message?: string | null): string | null {
+  if (!message) return null;
+  const match = message.match(/Locator:\s*(.+)/);
+  const expr = match?.[1]?.trim();
+  if (!expr) return null;
+  const quoted = expr.match(/['"`]([^'"`]+)['"`]/);
+  return quoted?.[1] || expr;
+}
+
 export function validatePatchedSpec(
   before: string,
   after: string,
   adapterId: string = DEFAULT_FRAMEWORK_ID,
-  limits: PatchLimits
+  limits: PatchLimits,
+  failureMessage?: string | null
 ): string | null {
   const cleaned = stripMarkdownCodeFence(after);
   if (!cleaned.trim()) return "Patched spec is empty.";
@@ -265,6 +287,18 @@ export function validatePatchedSpec(
   const changedLines = changedLineCount(before, cleaned);
   if (changedLines > limits.maxChangedLines) {
     return `Patched spec changed too many lines (${changedLines}).`;
+  }
+
+  // Catches a real, observed LLM failure mode: the model edits something that LOOKS
+  // related to the failure (e.g. a test.step's human-readable title) while leaving the
+  // actual locator expression that caused the failure completely untouched, then reports
+  // success. If the failure message names a specific locator and that exact expression is
+  // present, unchanged, in both the original and patched spec, the patch provably didn't
+  // touch the code responsible for the failure - reject it rather than accept a fix that's
+  // guaranteed to fail identically on rerun.
+  const failingLocatorText = extractFailingLocatorExpression(failureMessage);
+  if (failingLocatorText && before.includes(failingLocatorText) && cleaned.includes(failingLocatorText)) {
+    return `Patched spec still references the exact failing locator text, unchanged: "${failingLocatorText}"`;
   }
 
   if (adapterId === "cucumber-js") {

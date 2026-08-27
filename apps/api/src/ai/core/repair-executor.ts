@@ -763,10 +763,16 @@ export async function executeRepairAttempt(input: {
     }
 
     patchedSpec = stripMarkdownCodeFence(patchedSpec);
-    const validationError = validatePatchedSpec(context.specContent, patchedSpec, effectiveAdapterId, {
-      maxChangedLines: effectiveConfig.maxChangedLines,
-      maxBytesDelta: effectiveConfig.maxBytesDelta,
-    });
+    const validationError = validatePatchedSpec(
+      context.specContent,
+      patchedSpec,
+      effectiveAdapterId,
+      {
+        maxChangedLines: effectiveConfig.maxChangedLines,
+        maxBytesDelta: effectiveConfig.maxBytesDelta,
+      },
+      context.failure.message
+    );
     if (!validationError) {
       return {
         kind: "llm",
