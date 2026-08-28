@@ -11,7 +11,7 @@
  */
 
 import { createHmac } from "node:crypto";
-import { request } from "undici";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type JwtFinding = {
   type: "dynamic";
@@ -257,41 +257,37 @@ function analyzeJwt(token: string, source: string): JwtFinding[] {
 // ── Blank token test ─────────────────────────────────────────────────────────
 
 async function testBlankToken(
+  scope: ProbeScope,
   baseUrl: string,
   candidateUrl: string,
 ): Promise<JwtFinding[]> {
-  const ctrl = new AbortController();
-  setTimeout(() => ctrl.abort(), 6_000);
-  try {
-    const res = await request(candidateUrl, {
-      method: "GET",
-      headers: { Authorization: "Bearer " },
-      signal: ctrl.signal as any,
-    });
-    await res.body.text().catch(() => "");
-    if (res.statusCode < 400) {
-      return [
-        {
-          type: "dynamic",
-          severity: "high",
-          title: "Blank Bearer token accepted without rejection",
-          description:
-            `${candidateUrl} returned HTTP ${res.statusCode} for a request with an empty ` +
-            `'Authorization: Bearer ' header. Some middleware implementations skip validation ` +
-            `when the token value is empty rather than returning 401.`,
-          location: candidateUrl,
-          tool: "jwt-analyzer",
-          evidence: {
-            vulnerabilityClass: "broken_authentication",
-            owaspCategory: "A07:2021 Identification and Authentication Failures",
-            responseStatus: res.statusCode,
-          },
-          suggestion: "Validate that the token value is present and non-empty before attempting signature verification. Return 401 for any malformed Authorization header.",
-          status: "open",
+  const res = await probeScoped(scope, candidateUrl, {
+    method: "GET",
+    headers: { Authorization: "Bearer " },
+    timeoutMs: 6_000,
+  });
+  if (!res.error && res.status !== undefined && res.status < 400) {
+    return [
+      {
+        type: "dynamic",
+        severity: "high",
+        title: "Blank Bearer token accepted without rejection",
+        description:
+          `${candidateUrl} returned HTTP ${res.status} for a request with an empty ` +
+          `'Authorization: Bearer ' header. Some middleware implementations skip validation ` +
+          `when the token value is empty rather than returning 401.`,
+        location: candidateUrl,
+        tool: "jwt-analyzer",
+        evidence: {
+          vulnerabilityClass: "broken_authentication",
+          owaspCategory: "A07:2021 Identification and Authentication Failures",
+          responseStatus: res.status,
         },
-      ];
-    }
-  } catch {}
+        suggestion: "Validate that the token value is present and non-empty before attempting signature verification. Return 401 for any malformed Authorization header.",
+        status: "open",
+      },
+    ];
+  }
   return [];
 }
 
@@ -300,6 +296,7 @@ async function testBlankToken(
 export async function runJwtAnalysis(
   baseUrl: string,
   authProfiles: any[],
+  scope: ProbeScope,
 ): Promise<JwtFinding[]> {
   const findings: JwtFinding[] = [];
 
@@ -315,7 +312,7 @@ export async function runJwtAnalysis(
   const candidatePaths = ["/api/me", "/api/user", "/api/account", "/api/graphql"];
   for (const p of candidatePaths) {
     const url = `${baseUrl.replace(/\/+$/, "")}${p}`;
-    const blankFindings = await testBlankToken(baseUrl, url);
+    const blankFindings = await testBlankToken(scope, baseUrl, url);
     findings.push(...blankFindings);
     if (blankFindings.length) break; // one finding is enough
   }

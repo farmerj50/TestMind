@@ -28,9 +28,9 @@
  * 10. Overly broad CORS for mobile app origins — capacitor://, ionic://, file://
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type MobileFinding = {
   type: "dynamic";
@@ -47,25 +47,13 @@ export type MobileFinding = {
 // ── HTTP probe ────────────────────────────────────────────────────────────────
 
 async function probe(
+  scope: ProbeScope,
   url: string,
   opts: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number } = {}
-): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> } | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 10_000);
-  try {
-    const res = await request(url, {
-      method: opts.method ?? "GET",
-      headers: opts.headers,
-      body: opts.body,
-      signal: ctrl.signal as any,
-    });
-    const body = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body, headers: res.headers as any };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+): Promise<{ status: number; body: string; headers: Record<string, string> } | null> {
+  const res = await probeScoped(scope, url, opts);
+  if (res.error || res.status === undefined) return null;
+  return { status: res.status, body: res.body, headers: res.headers };
 }
 
 // ── Mobile-specific endpoint discovery ───────────────────────────────────────
@@ -92,6 +80,7 @@ const SENSITIVE_PATTERNS = [
 // ── Individual checks ─────────────────────────────────────────────────────────
 
 async function checkMobileEndpoints(
+  scope: ProbeScope,
   base: string,
   authHeaders: Record<string, string>,
 ): Promise<MobileFinding[]> {
@@ -101,7 +90,7 @@ async function checkMobileEndpoints(
   await Promise.all(
     MOBILE_API_PATHS.map(async (path) => {
       const url = `${base}${path}`;
-      const r = await probe(url, { headers: authHeaders });
+      const r = await probe(scope, url, { headers: authHeaders });
       if (!r || r.status === 404 || r.status === 405) return;
       live.push(url);
 
@@ -158,6 +147,7 @@ async function checkMobileEndpoints(
 }
 
 async function checkMobileCorsOrigins(
+  scope: ProbeScope,
   base: string,
   authHeaders: Record<string, string>,
 ): Promise<MobileFinding[]> {
@@ -170,7 +160,7 @@ async function checkMobileCorsOrigins(
   ];
 
   for (const origin of mobileOrigins) {
-    const r = await probe(base, { headers: { ...authHeaders, Origin: origin } });
+    const r = await probe(scope, base, { headers: { ...authHeaders, Origin: origin } });
     if (!r) continue;
     const acao = r.headers["access-control-allow-origin"] as string | undefined;
     const acac = r.headers["access-control-allow-credentials"] as string | undefined;
@@ -207,6 +197,7 @@ async function checkMobileCorsOrigins(
 }
 
 async function checkMobileOAuthImplicit(
+  scope: ProbeScope,
   base: string,
   authHeaders: Record<string, string>,
 ): Promise<MobileFinding[]> {
@@ -218,7 +209,7 @@ async function checkMobileOAuthImplicit(
 
   for (const path of oauthCallbackPaths) {
     const url = `${base}${path}?access_token=test_probe_token&token_type=Bearer&expires_in=3600`;
-    const r = await probe(url, { headers: authHeaders });
+    const r = await probe(scope, url, { headers: authHeaders });
     if (!r || r.status === 404) continue;
 
     if (r.status === 200 || r.status === 302) {
@@ -281,6 +272,7 @@ async function checkInsecureHttpTransport(base: string): Promise<MobileFinding[]
 }
 
 async function checkDeepLinkBypass(
+  scope: ProbeScope,
   base: string,
   authHeaders: Record<string, string>,
 ): Promise<MobileFinding[]> {
@@ -295,10 +287,10 @@ async function checkDeepLinkBypass(
   for (const path of deepLinkPaths) {
     const url = `${base}${path}`;
     // Test without auth — if it returns 200 with session-sensitive data, it may be a bypass
-    const noAuth = await probe(url);
+    const noAuth = await probe(scope, url);
     if (!noAuth || noAuth.status === 404 || noAuth.status === 401 || noAuth.status === 403) continue;
 
-    const withAuth = await probe(url, { headers: authHeaders });
+    const withAuth = await probe(scope, url, { headers: authHeaders });
     if (!withAuth) continue;
 
     // If no-auth and with-auth return the same status and similar body lengths, it's suspicious
@@ -341,6 +333,7 @@ async function checkDeepLinkBypass(
 export async function runMobileScan(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<MobileFinding[]> {
   const findings: MobileFinding[] = [];
   const base = baseUrl.replace(/\/+$/, "");
@@ -354,11 +347,11 @@ export async function runMobileScan(
     httpTransportFindings,
     deepLinkFindings,
   ] = await Promise.all([
-    checkMobileEndpoints(base, authHeaders),
-    checkMobileCorsOrigins(base, authHeaders),
-    checkMobileOAuthImplicit(base, authHeaders),
+    checkMobileEndpoints(scope, base, authHeaders),
+    checkMobileCorsOrigins(scope, base, authHeaders),
+    checkMobileOAuthImplicit(scope, base, authHeaders),
     checkInsecureHttpTransport(base),
-    checkDeepLinkBypass(base, authHeaders),
+    checkDeepLinkBypass(scope, base, authHeaders),
   ]);
 
   findings.push(

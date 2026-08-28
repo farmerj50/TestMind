@@ -25,9 +25,9 @@
  *                                   on SSRF + CORS chain it becomes exfil
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type CorsFinding = {
   type: "dynamic";
@@ -52,16 +52,15 @@ type CorsProbeResult = {
 } | null;
 
 async function corsProbe(
+  scope: ProbeScope,
   url: string,
   origin: string,
   method = "GET",
   authHeaders: Record<string, string> = {},
   timeoutMs = 10_000,
 ): Promise<CorsProbeResult> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await request(url, {
+    const res = await probeScoped(scope, url, {
       method,
       headers: {
         Origin: origin,
@@ -69,16 +68,13 @@ async function corsProbe(
         "User-Agent": "Mozilla/5.0 (compatible; security-scanner)",
         ...authHeaders,
       },
-      signal: ctrl.signal as any,
+      timeoutMs,
     });
-    await res.body.text().catch(() => ""); // drain
-    const h = res.headers as Record<string, string | string[] | undefined>;
-    const first = (k: string) => {
-      const v = h[k];
-      return Array.isArray(v) ? v[0] : v ?? null;
-    };
+    if (res.error || res.status === undefined) return null;
+    const h = res.headers;
+    const first = (k: string) => h[k] ?? null;
     return {
-      status: res.statusCode,
+      status: res.status,
       acao: first("access-control-allow-origin"),
       acac: first("access-control-allow-credentials"),
       acah: first("access-control-allow-headers"),
@@ -86,8 +82,6 @@ async function corsProbe(
     };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -101,14 +95,14 @@ const API_PATHS_TO_CHECK = [
   "/api/settings", "/api/preferences",
 ];
 
-async function findCorsEndpoint(base: string, authHeaders: Record<string, string>): Promise<string[]> {
+async function findCorsEndpoint(scope: ProbeScope, base: string, authHeaders: Record<string, string>): Promise<string[]> {
   const live: string[] = [];
   const baseline = `${base}/nonexistent-cors-check-${Math.floor(Math.random() * 999999)}`;
   const candidates = [base, ...API_PATHS_TO_CHECK.map((p) => `${base}${p}`)];
 
   await Promise.all(
     candidates.map(async (url) => {
-      const res = await corsProbe(url, "https://example.com", "GET", authHeaders, 6_000);
+      const res = await corsProbe(scope, url, "https://example.com", "GET", authHeaders, 6_000);
       // We care even about 401/403 — CORS headers are set before auth on many stacks
       if (res && res.status !== 404 && url !== baseline) live.push(url);
     })
@@ -119,11 +113,12 @@ async function findCorsEndpoint(base: string, authHeaders: Record<string, string
 // ── Individual checks ─────────────────────────────────────────────────────────
 
 async function checkOriginReflection(
+  scope: ProbeScope,
   url: string,
   authHeaders: Record<string, string>,
 ): Promise<CorsFinding | null> {
   const attackerOrigin = "https://evil-attacker.com";
-  const res = await corsProbe(url, attackerOrigin, "GET", authHeaders);
+  const res = await corsProbe(scope, url, attackerOrigin, "GET", authHeaders);
   if (!res) return null;
 
   if (res.acao === attackerOrigin) {
@@ -166,10 +161,11 @@ async function checkOriginReflection(
 }
 
 async function checkNullOrigin(
+  scope: ProbeScope,
   url: string,
   authHeaders: Record<string, string>,
 ): Promise<CorsFinding | null> {
-  const res = await corsProbe(url, "null", "GET", authHeaders);
+  const res = await corsProbe(scope, url, "null", "GET", authHeaders);
   if (!res) return null;
 
   const acaoIsNull = res.acao === "null";
@@ -208,10 +204,11 @@ async function checkNullOrigin(
 }
 
 async function checkWildcardWithCredentials(
+  scope: ProbeScope,
   url: string,
   authHeaders: Record<string, string>,
 ): Promise<CorsFinding | null> {
-  const res = await corsProbe(url, "https://example.com", "GET", authHeaders);
+  const res = await corsProbe(scope, url, "https://example.com", "GET", authHeaders);
   if (!res) return null;
 
   if (res.acao === "*" && res.acac?.toLowerCase() === "true") {
@@ -245,13 +242,14 @@ async function checkWildcardWithCredentials(
 }
 
 async function checkSubdomainBypass(
+  scope: ProbeScope,
   url: string,
   parsedBase: URL,
   authHeaders: Record<string, string>,
 ): Promise<CorsFinding | null> {
   // Test if the server accepts any subdomain of the target
   const attackSubdomain = `https://evil.${parsedBase.hostname}`;
-  const res = await corsProbe(url, attackSubdomain, "GET", authHeaders);
+  const res = await corsProbe(scope, url, attackSubdomain, "GET", authHeaders);
   if (!res) return null;
 
   if (res.acao === attackSubdomain) {
@@ -286,6 +284,7 @@ async function checkSubdomainBypass(
 }
 
 async function checkRegexAnchorBypass(
+  scope: ProbeScope,
   url: string,
   parsedBase: URL,
   authHeaders: Record<string, string>,
@@ -293,7 +292,7 @@ async function checkRegexAnchorBypass(
   // e.g. evilexample.targetdomain.com passes startsWith check on "targetdomain.com"
   const domain = parsedBase.hostname;
   const attackOrigin = `https://evil${domain}`;
-  const res = await corsProbe(url, attackOrigin, "GET", authHeaders);
+  const res = await corsProbe(scope, url, attackOrigin, "GET", authHeaders);
   if (!res) return null;
 
   if (res.acao === attackOrigin) {
@@ -327,12 +326,13 @@ async function checkRegexAnchorBypass(
 }
 
 async function checkHttpDowngrade(
+  scope: ProbeScope,
   url: string,
   parsedBase: URL,
   authHeaders: Record<string, string>,
 ): Promise<CorsFinding | null> {
   const httpOrigin = `http://${parsedBase.hostname}`;
-  const res = await corsProbe(url, httpOrigin, "GET", authHeaders);
+  const res = await corsProbe(scope, url, httpOrigin, "GET", authHeaders);
   if (!res) return null;
 
   if (res.acao === httpOrigin && parsedBase.protocol === "https:") {
@@ -366,6 +366,7 @@ async function checkHttpDowngrade(
 }
 
 async function checkInternalOrigins(
+  scope: ProbeScope,
   url: string,
   authHeaders: Record<string, string>,
 ): Promise<CorsFinding[]> {
@@ -381,7 +382,7 @@ async function checkInternalOrigins(
 
   const findings: CorsFinding[] = [];
   for (const origin of internalOrigins) {
-    const res = await corsProbe(url, origin, "GET", authHeaders, 5_000);
+    const res = await corsProbe(scope, url, origin, "GET", authHeaders, 5_000);
     if (!res) continue;
 
     if (res.acao === origin) {
@@ -420,6 +421,7 @@ async function checkInternalOrigins(
 export async function runCorsAudit(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<CorsFinding[]> {
   const findings: CorsFinding[] = [];
   const base = baseUrl.replace(/\/+$/, "");
@@ -428,18 +430,18 @@ export async function runCorsAudit(
   const authHeaders = buildAuthHeaders(primaryProfile);
 
   // Discover live API endpoints to probe
-  const endpoints = await findCorsEndpoint(base, authHeaders);
+  const endpoints = await findCorsEndpoint(scope, base, authHeaders);
 
   for (const url of endpoints.slice(0, 8)) {
     const [reflection, nullOrigin, wildcard, subdomain, regexAnchor, httpDowngrade, internal] =
       await Promise.all([
-        checkOriginReflection(url, authHeaders),
-        checkNullOrigin(url, authHeaders),
-        checkWildcardWithCredentials(url, authHeaders),
-        checkSubdomainBypass(url, parsedBase, authHeaders),
-        checkRegexAnchorBypass(url, parsedBase, authHeaders),
-        checkHttpDowngrade(url, parsedBase, authHeaders),
-        checkInternalOrigins(url, authHeaders),
+        checkOriginReflection(scope, url, authHeaders),
+        checkNullOrigin(scope, url, authHeaders),
+        checkWildcardWithCredentials(scope, url, authHeaders),
+        checkSubdomainBypass(scope, url, parsedBase, authHeaders),
+        checkRegexAnchorBypass(scope, url, parsedBase, authHeaders),
+        checkHttpDowngrade(scope, url, parsedBase, authHeaders),
+        checkInternalOrigins(scope, url, authHeaders),
       ]);
 
     if (reflection) findings.push(reflection);

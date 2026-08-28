@@ -5,7 +5,7 @@ import { redis } from "./redis.js";
 import type { SecurityScanPayload } from "./queue.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { request } from "undici";
-import { probeScoped, isWithinScope } from "../security/http-client.js";
+import { probeScoped, isWithinScope, type ProbeScope } from "../security/http-client.js";
 import net from "node:net";
 import path from "node:path";
 import fs from "node:fs";
@@ -904,8 +904,6 @@ async function runDeps(
 
 // ── DAST probes ──────────────────────────────────────────────────────────────
 
-type ProbeScope = { allowedHosts: string[]; allowedPorts: number[] };
-
 /**
  * Fire a single HTTP probe, return { status, body, headers } or null on error.
  * Delegates to probeScoped (http-client.ts) instead of an unscoped raw request() -
@@ -1278,6 +1276,9 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     const effectiveScope = deriveEffectiveScope(payload);
     payload.allowedHosts = effectiveScope.allowedHosts;
     payload.allowedPorts = effectiveScope.allowedPorts;
+    // Single scope object passed to every scanner module below, instead of each call site
+    // re-deriving {allowedHosts, allowedPorts} from payload independently.
+    const scope: ProbeScope = { allowedHosts: effectiveScope.allowedHosts, allowedPorts: effectiveScope.allowedPorts };
     const sourceContext = resolveSourceScanContext(payload);
 
     await updateJob(payload.jobId, { status: "running", phase: "recon" });
@@ -1358,7 +1359,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
       if (specRecord) {
         try {
           const parsedSpec = parseApiSpec(specRecord.specJson);
-          allFindings.push(...(await runOpenApiScan(parsedSpec, payload.baseUrl, authProfiles)));
+          allFindings.push(...(await runOpenApiScan(parsedSpec, payload.baseUrl, authProfiles, scope)));
         } catch (err: any) {
           console.warn(`[security-worker] OpenAPI scan failed for spec ${payload.apiSpecId}:`, err?.message);
         }
@@ -1368,7 +1369,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     // JS bundle analysis: extract hidden API endpoints from the SPA's JavaScript bundles.
     // Run before the advanced modules so discovered endpoints can enrich the IDOR scan.
     await updateJob(payload.jobId, { phase: "js_analysis" });
-    const jsResult = await runJsEndpointExtraction(payload.baseUrl, authProfiles).catch((e) => {
+    const jsResult = await runJsEndpointExtraction(payload.baseUrl, authProfiles, scope).catch((e) => {
       console.warn("[security-worker] JS extraction error:", e?.message);
       return { findings: [] as any[], discoveredEndpoints: [] as string[] };
     });
@@ -1385,13 +1386,13 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     // All independent — run in parallel to keep wall-clock time bounded.
     await updateJob(payload.jobId, { phase: "advanced_analysis" });
     const [jwtFindings, idorFindings, raceFindings, nucleiFindings] = await Promise.all([
-      runJwtAnalysis(payload.baseUrl, authProfiles).catch((e) => {
+      runJwtAnalysis(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] JWT analysis error:", e?.message); return [];
       }),
-      runIdorScan(payload.baseUrl, authProfiles).catch((e) => {
+      runIdorScan(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] IDOR scan error:", e?.message); return [];
       }),
-      runRaceConditionScan(payload.baseUrl, authProfiles).catch((e) => {
+      runRaceConditionScan(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] Race condition scan error:", e?.message); return [];
       }),
       runNucleiScan(payload.baseUrl, authProfiles, payload.scanDepth ?? "standard").catch((e) => {
@@ -1406,10 +1407,10 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     // CORS audit tests 7 distinct attack patterns against discovered API endpoints.
     await updateJob(payload.jobId, { phase: "business_logic_cors" });
     const [bizLogicFindings, corsFindings] = await Promise.all([
-      runBusinessLogicScan(payload.baseUrl, authProfiles).catch((e) => {
+      runBusinessLogicScan(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] Business logic scan error:", e?.message); return [];
       }),
-      runCorsAudit(payload.baseUrl, authProfiles).catch((e) => {
+      runCorsAudit(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] CORS audit error:", e?.message); return [];
       }),
     ]);
@@ -1418,10 +1419,10 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     // Mobile security: runs in parallel with perf baseline — independent checks
     await updateJob(payload.jobId, { phase: "mobile_scan" });
     const [perfFindings2, mobileFindings] = await Promise.all([
-      runPerfBaseline(payload.baseUrl, authProfiles).catch((e) => {
+      runPerfBaseline(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] Perf baseline error:", e?.message); return [];
       }),
-      runMobileScan(payload.baseUrl, authProfiles).catch((e) => {
+      runMobileScan(payload.baseUrl, authProfiles, scope).catch((e) => {
         console.warn("[security-worker] Mobile scan error:", e?.message); return [];
       }),
     ]);

@@ -14,9 +14,9 @@
  * lives in a single webpack bundle.
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type JsEndpointFinding = {
   type: "dynamic";
@@ -32,18 +32,10 @@ export type JsEndpointFinding = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function fetchText(url: string, headers: Record<string, string> = {}, timeoutMs = 15_000): Promise<string | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await request(url, { method: "GET", headers, signal: ctrl.signal as any });
-    if (res.statusCode >= 400) return null;
-    return await res.body.text().catch(() => null);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+async function fetchText(scope: ProbeScope, url: string, headers: Record<string, string> = {}, timeoutMs = 15_000): Promise<string | null> {
+  const res = await probeScoped(scope, url, { method: "GET", headers, timeoutMs });
+  if (res.error || res.status === undefined || res.status >= 400) return null;
+  return res.body;
 }
 
 // ── JS URL discovery from HTML ────────────────────────────────────────────────
@@ -149,6 +141,7 @@ export type JsExtractionResult = {
 export async function runJsEndpointExtraction(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<JsExtractionResult> {
   const findings: JsEndpointFinding[] = [];
   const base = baseUrl.replace(/\/+$/, "");
@@ -156,8 +149,8 @@ export async function runJsEndpointExtraction(
   const authHeaders = buildAuthHeaders(primaryProfile);
 
   // 1. Fetch the HTML entry point
-  const html = await fetchText(base, authHeaders, 20_000) ??
-               await fetchText(`${base}/`, authHeaders, 20_000);
+  const html = await fetchText(scope, base, authHeaders, 20_000) ??
+               await fetchText(scope, `${base}/`, authHeaders, 20_000);
 
   if (!html) {
     findings.push({
@@ -195,7 +188,7 @@ export async function runJsEndpointExtraction(
   let bundlesFetched = 0;
 
   for (const jsUrl of jsUrls.slice(0, 10)) {
-    const content = await fetchText(jsUrl, {}, 30_000);
+    const content = await fetchText(scope, jsUrl, {}, 30_000);
     if (!content) continue;
     bundlesFetched++;
     const extracted = extractEndpoints(content);

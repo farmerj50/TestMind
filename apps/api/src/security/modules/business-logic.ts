@@ -17,9 +17,9 @@
  *  10. Limit boundary testing     — probe just above/below declared limits
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type BizLogicFinding = {
   type: "dynamic";
@@ -38,29 +38,17 @@ export type BizLogicFinding = {
 type ProbeResult = { status: number; body: string; ms: number } | null;
 
 async function probe(
+  scope: ProbeScope,
   method: string,
   url: string,
   headers: Record<string, string> = {},
   body?: string,
   timeoutMs = 10_000,
 ): Promise<ProbeResult> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const t0 = Date.now();
-  try {
-    const res = await request(url, {
-      method,
-      headers: { Accept: "application/json", ...headers },
-      body,
-      signal: ctrl.signal as any,
-    });
-    const text = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body: text, ms: Date.now() - t0 };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const result = await probeScoped(scope, url, { method, headers: { Accept: "application/json", ...headers }, body, timeoutMs });
+  if (result.error || result.status === undefined) return null;
+  return { status: result.status, body: result.body, ms: Date.now() - t0 };
 }
 
 // ── Financial endpoint discovery ─────────────────────────────────────────────
@@ -136,6 +124,7 @@ function isServerError(res: ProbeResult): boolean {
 }
 
 async function testAmountPayloads(
+  scope: ProbeScope,
   url: string,
   method: string,
   headers: Record<string, string>,
@@ -153,7 +142,7 @@ async function testAmountPayloads(
       body = JSON.stringify({ amount: payload.value });
     }
 
-    const res = await probe(method, url, { ...headers, "Content-Type": "application/json" }, body);
+    const res = await probe(scope, method, url, { ...headers, "Content-Type": "application/json" }, body);
     if (!res) continue;
 
     if (isSuccessResponse(res)) {
@@ -210,6 +199,7 @@ async function testAmountPayloads(
 }
 
 async function testMassAssignment(
+  scope: ProbeScope,
   url: string,
   method: string,
   headers: Record<string, string>,
@@ -217,7 +207,7 @@ async function testMassAssignment(
   const findings: BizLogicFinding[] = [];
   const payload = Object.fromEntries(MASS_ASSIGNMENT_FIELDS.map((f) => [f.key, f.value]));
 
-  const res = await probe(method, url, { ...headers, "Content-Type": "application/json" }, JSON.stringify(payload));
+  const res = await probe(scope, method, url, { ...headers, "Content-Type": "application/json" }, JSON.stringify(payload));
   if (!res) return findings;
 
   if (isSuccessResponse(res)) {
@@ -256,6 +246,7 @@ async function testMassAssignment(
 }
 
 async function testParameterPollution(
+  scope: ProbeScope,
   url: string,
   method: string,
   headers: Record<string, string>,
@@ -263,12 +254,12 @@ async function testParameterPollution(
   // Send both a valid and a negative amount — which one wins?
   // We build the raw string manually since TS objects deduplicate keys at compile time.
   const body = '{"amount":1,"amount":-999}'; // last-wins in most JSON parsers
-  const res = await probe(method, url, { ...headers, "Content-Type": "application/json" }, body);
+  const res = await probe(scope, method, url, { ...headers, "Content-Type": "application/json" }, body);
   if (!res || !isSuccessResponse(res)) return [];
 
   // Also test query-string pollution for GET endpoints
   const qs = `${url}${url.includes("?") ? "&" : "?"}amount=1&amount=-999`;
-  const resQs = await probe("GET", qs, headers);
+  const resQs = await probe(scope, "GET", qs, headers);
 
   if (resQs && isSuccessResponse(resQs)) {
     return [
@@ -302,6 +293,7 @@ async function testParameterPollution(
 // ── GraphQL-specific business logic ──────────────────────────────────────────
 
 async function testGraphQLBusinessLogic(
+  scope: ProbeScope,
   base: string,
   authHeaders: Record<string, string>,
 ): Promise<BizLogicFinding[]> {
@@ -311,7 +303,7 @@ async function testGraphQLBusinessLogic(
 
   for (const mutation of FINANCIAL_GQL_MUTATIONS) {
     const amountFindings = await testAmountPayloads(
-      endpoint, "POST", headers, true, `GraphQL ${mutation.name}`, mutation.query
+      scope, endpoint, "POST", headers, true, `GraphQL ${mutation.name}`, mutation.query
     );
     findings.push(...amountFindings);
     if (amountFindings.some((f) => f.severity === "critical")) break; // escalate early
@@ -324,6 +316,7 @@ async function testGraphQLBusinessLogic(
 export async function runBusinessLogicScan(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<BizLogicFinding[]> {
   const findings: BizLogicFinding[] = [];
   const base = baseUrl.replace(/\/+$/, "");
@@ -333,22 +326,22 @@ export async function runBusinessLogicScan(
   const authHeaders = buildAuthHeaders(primaryProfile);
 
   // 1. GraphQL financial mutations (Chime-style)
-  const gqlFindings = await testGraphQLBusinessLogic(base, authHeaders);
+  const gqlFindings = await testGraphQLBusinessLogic(scope, base, authHeaders);
   findings.push(...gqlFindings);
 
   // 2. REST financial endpoints
   for (const path of FINANCIAL_REST_PATHS) {
     const url = `${base}${path}`;
-    const check = await probe("GET", url, authHeaders, undefined, 5_000);
+    const check = await probe(scope, "GET", url, authHeaders, undefined, 5_000);
     if (!check || check.status === 404 || check.status === 405) continue;
 
-    const amountFindings = await testAmountPayloads(url, "POST", authHeaders, false, path);
+    const amountFindings = await testAmountPayloads(scope, url, "POST", authHeaders, false, path);
     findings.push(...amountFindings);
 
-    const massFindings = await testMassAssignment(url, "POST", authHeaders);
+    const massFindings = await testMassAssignment(scope, url, "POST", authHeaders);
     findings.push(...massFindings);
 
-    const pollutionFindings = await testParameterPollution(url, "POST", authHeaders);
+    const pollutionFindings = await testParameterPollution(scope, url, "POST", authHeaders);
     findings.push(...pollutionFindings);
   }
 

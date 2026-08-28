@@ -17,8 +17,9 @@
  *   - Flags interesting endpoints (admin, internal, staging, api, dev, test)
  */
 
-import { request } from "undici";
 import { lookup as dnsLookup } from "node:dns/promises";
+import { probeScoped, type ProbeScope } from "../http-client.js";
+import { safeFetch } from "../../lib/safe-fetch.js";
 
 export type SubdomainFinding = {
   type: "recon";
@@ -44,45 +45,40 @@ async function resolvesTo(hostname: string): Promise<string | null> {
 }
 
 async function httpAlive(
+  scope: ProbeScope,
   url: string,
   timeoutMs = 8_000,
 ): Promise<{ status: number; title: string | null; server: string | null } | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await request(url, {
-      method: "GET",
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; security-scanner)" },
-      signal: ctrl.signal as any,
-    });
-    const body = await res.body.text().catch(() => "");
-    const titleMatch = body.match(/<title[^>]*>([^<]{1,120})<\/title>/i);
-    return {
-      status: res.statusCode,
-      title: titleMatch?.[1]?.trim() ?? null,
-      server: String(res.headers.server ?? ""),
-    };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await probeScoped(scope, url, {
+    method: "GET",
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; security-scanner)" },
+    timeoutMs,
+  });
+  if (res.error || res.status === undefined) return null;
+  const titleMatch = res.body.match(/<title[^>]*>([^<]{1,120})<\/title>/i);
+  return {
+    status: res.status,
+    title: titleMatch?.[1]?.trim() ?? null,
+    server: res.headers.server ?? "",
+  };
 }
 
 // ── crt.sh Certificate Transparency lookup ────────────────────────────────────
 
 async function queryCrtSh(domain: string): Promise<string[]> {
   const url = `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`;
-  const ctrl = new AbortController();
-  setTimeout(() => ctrl.abort(), 15_000);
+  // crt.sh is always the same fixed, trusted external host — domain only ever appears in
+  // the query string, never as the request target — so this goes through safeFetch (the
+  // general outbound-request guard) rather than probeScoped (which is for requests to the
+  // scan's own declared target and would incorrectly reject a legitimate external API call).
   try {
-    const res = await request(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: ctrl.signal as any,
-    });
-    if (res.statusCode !== 200) return [];
-    const text = await res.body.text();
+    const res = await safeFetch(
+      url,
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) },
+      { allowedHosts: ["crt.sh"] }
+    );
+    if (res.status !== 200) return [];
+    const text = await res.text();
     const records: any[] = JSON.parse(text);
     const names = new Set<string>();
     for (const r of records) {
@@ -178,6 +174,11 @@ export async function runSubdomainEnum(baseUrl: string): Promise<SubdomainEnumRe
   const findings: SubdomainFinding[] = [];
   const parsedBase = new URL(baseUrl);
   const rootDomain = parsedBase.hostname.split(".").slice(-2).join(".");
+  // Subdomain enum inherently probes many different hostnames under the target's root
+  // domain (that's the point) - isWithinScope's suffix matching (hostname === host ||
+  // hostname.endsWith(`.${host}`)) means scoping to just the root domain allows every
+  // discovered subdomain while still rejecting anything outside it.
+  const scope: ProbeScope = { allowedHosts: [rootDomain], allowedPorts: [] };
 
   findings.push({
     type: "recon",
@@ -220,10 +221,10 @@ export async function runSubdomainEnum(baseUrl: string): Promise<SubdomainEnumRe
   const probeResults = await Promise.all(
     probeTargets.map(async (sub) => {
       const url = `https://${sub}`;
-      const result = await httpAlive(url);
+      const result = await httpAlive(scope, url);
       if (!result) {
         // try http fallback
-        const fallback = await httpAlive(`http://${sub}`, 5_000);
+        const fallback = await httpAlive(scope, `http://${sub}`, 5_000);
         return fallback ? { sub, url: `http://${sub}`, ...fallback } : null;
       }
       return { sub, url, ...result };

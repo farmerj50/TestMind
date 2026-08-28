@@ -12,10 +12,10 @@
  *                             that should be ownership-gated
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityScanPayload } from "../../runner/queue.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,27 +36,20 @@ type ProbeResult = { status: number; body: string; headers: Record<string, strin
 // ── Low-level helpers ────────────────────────────────────────────────────────
 
 async function gqlProbe(
+  scope: ProbeScope,
   url: string,
   body: unknown,
   headers: Record<string, string> = {},
   timeoutMs = 10_000,
 ): Promise<ProbeResult> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await request(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", ...headers },
-      body: JSON.stringify(body),
-      signal: ctrl.signal as any,
-    });
-    const text = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body: text, headers: res.headers as any };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await probeScoped(scope, url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json", ...headers },
+    body: JSON.stringify(body),
+    timeoutMs,
+  });
+  if (res.error || res.status === undefined) return null;
+  return { status: res.status, body: res.body, headers: res.headers };
 }
 
 function parseGqlResponse(raw: string): { data?: any; errors?: any[]; extensions?: any } | null {
@@ -107,13 +100,14 @@ const INTROSPECTION_QUERY = `
 `.trim();
 
 export async function detectGraphQLEndpoint(
+  scope: ProbeScope,
   baseUrl: string,
   authHeaders: Record<string, string> = {},
 ): Promise<string | null> {
   const base = baseUrl.replace(/\/+$/, "");
   for (const p of GQL_PATHS) {
     const url = `${base}${p}`;
-    const res = await gqlProbe(url, { query: "{ __typename }" }, authHeaders, 6000);
+    const res = await gqlProbe(scope, url, { query: "{ __typename }" }, authHeaders, 6000);
     if (res && isGqlResponse(res.body)) return url;
   }
   return null;
@@ -135,10 +129,11 @@ type GqlSchema = {
 };
 
 export async function fetchIntrospection(
+  scope: ProbeScope,
   endpoint: string,
   authHeaders: Record<string, string>,
 ): Promise<{ schema: GqlSchema | null; enabled: boolean }> {
-  const res = await gqlProbe(endpoint, { query: INTROSPECTION_QUERY }, authHeaders);
+  const res = await gqlProbe(scope, endpoint, { query: INTROSPECTION_QUERY }, authHeaders);
   if (!res) return { schema: null, enabled: false };
   const parsed = parseGqlResponse(res.body);
   if (!parsed) return { schema: null, enabled: false };
@@ -178,6 +173,7 @@ const COMMON_FINANCIAL_QUERIES = [
 ];
 
 async function testUnauthenticatedAccess(
+  scope: ProbeScope,
   endpoint: string,
   operations: Array<{ name: string; kind: "query" | "mutation" }>,
   schema: GqlSchema | null,
@@ -193,7 +189,7 @@ async function testUnauthenticatedAccess(
     : COMMON_FINANCIAL_QUERIES;
 
   for (const op of toTest) {
-    const res = await gqlProbe(endpoint, { query: op.query }, {}); // no auth headers
+    const res = await gqlProbe(scope, endpoint, { query: op.query }, {}); // no auth headers
     if (!res) continue;
     const parsed = parseGqlResponse(res.body);
     if (!parsed) continue;
@@ -245,6 +241,7 @@ const ID_PROBE_TEMPLATES = (id: string) => [
 ];
 
 async function testCrossAccountBOLA(
+  scope: ProbeScope,
   endpoint: string,
   profileA: SecurityAuthProfile,
   profileB: SecurityAuthProfile,
@@ -255,7 +252,7 @@ async function testCrossAccountBOLA(
   const harvestQueries = COMMON_FINANCIAL_QUERIES;
   const harvestedIds: string[] = [];
   for (const op of harvestQueries) {
-    const res = await gqlProbe(endpoint, { query: op.query }, buildAuthHeaders(profileA));
+    const res = await gqlProbe(scope, endpoint, { query: op.query }, buildAuthHeaders(profileA));
     if (res?.body) harvestedIds.push(...extractIds(res.body));
     if (harvestedIds.length >= 10) break;
   }
@@ -267,7 +264,7 @@ async function testCrossAccountBOLA(
   for (const id of harvestedIds.slice(0, 10)) {
     for (const queryStr of ID_PROBE_TEMPLATES(id)) {
       const opName = queryStr.match(/query \{ (\w+)/)?.[1] ?? "unknown";
-      const res = await gqlProbe(endpoint, { query: queryStr }, headersB, 8000);
+      const res = await gqlProbe(scope, endpoint, { query: queryStr }, headersB, 8000);
       if (!res) continue;
       const parsed = parseGqlResponse(res.body);
       if (!parsed?.data) continue;
@@ -307,12 +304,13 @@ async function testCrossAccountBOLA(
 // ── 5. Query batching ────────────────────────────────────────────────────────
 
 async function testQueryBatching(
+  scope: ProbeScope,
   endpoint: string,
   authHeaders: Record<string, string>,
 ): Promise<GqlFinding[]> {
   // Send an array of 5 identical introspection probes — if all succeed, batching is on.
   const batch = Array.from({ length: 5 }, () => ({ query: "{ __typename }" }));
-  const res = await gqlProbe(endpoint, batch, authHeaders, 12_000);
+  const res = await gqlProbe(scope, endpoint, batch, authHeaders, 12_000);
   if (!res) return [];
   let parsed: unknown;
   try { parsed = JSON.parse(res.body); } catch { return []; }
@@ -355,13 +353,14 @@ const SENSITIVE_FIELD_PATTERNS = [
 ];
 
 async function testSensitiveFieldLeak(
+  scope: ProbeScope,
   endpoint: string,
   authHeaders: Record<string, string>,
 ): Promise<GqlFinding[]> {
   // Probe common "me/user" operations and check for sensitive fields in the response.
   const findings: GqlFinding[] = [];
   for (const op of COMMON_FINANCIAL_QUERIES.slice(0, 3)) {
-    const res = await gqlProbe(endpoint, { query: op.query }, authHeaders, 8000);
+    const res = await gqlProbe(scope, endpoint, { query: op.query }, authHeaders, 8000);
     if (!res?.body) continue;
     for (const pattern of SENSITIVE_FIELD_PATTERNS) {
       if (pattern.test(res.body)) {
@@ -403,9 +402,10 @@ export async function runGraphQLAudit(
   const authProfiles: SecurityAuthProfile[] = payload.authProfiles ?? [];
   const primaryProfile = authProfiles[0];
   const authHeaders = buildAuthHeaders(primaryProfile);
+  const scope: ProbeScope = { allowedHosts: payload.allowedHosts ?? [], allowedPorts: payload.allowedPorts ?? [] };
 
   // 1. Detect endpoint
-  const endpoint = await detectGraphQLEndpoint(payload.baseUrl, authHeaders);
+  const endpoint = await detectGraphQLEndpoint(scope, payload.baseUrl, authHeaders);
   if (!endpoint) {
     // No GraphQL endpoint found — not a finding, just nothing to audit
     return [];
@@ -423,7 +423,7 @@ export async function runGraphQLAudit(
   });
 
   // 2. Introspection
-  const { schema, enabled: introspectionEnabled } = await fetchIntrospection(endpoint, authHeaders);
+  const { schema, enabled: introspectionEnabled } = await fetchIntrospection(scope, endpoint, authHeaders);
   if (introspectionEnabled && schema) {
     findings.push({
       type: "dynamic",
@@ -449,24 +449,24 @@ export async function runGraphQLAudit(
   const operations = schema ? extractOperations(schema) : [];
 
   // 3. Auth enforcement
-  const authFindings = await testUnauthenticatedAccess(endpoint, operations, schema);
+  const authFindings = await testUnauthenticatedAccess(scope, endpoint, operations, schema);
   findings.push(...authFindings);
 
   // 4. Sensitive field leak (primary profile)
   if (primaryProfile) {
-    const leakFindings = await testSensitiveFieldLeak(endpoint, authHeaders);
+    const leakFindings = await testSensitiveFieldLeak(scope, endpoint, authHeaders);
     findings.push(...leakFindings);
   }
 
   // 5. Query batching
-  const batchFindings = await testQueryBatching(endpoint, authHeaders);
+  const batchFindings = await testQueryBatching(scope, endpoint, authHeaders);
   findings.push(...batchFindings);
 
   // 6. Cross-account BOLA (requires ≥2 auth profiles)
   if (authProfiles.length >= 2) {
     const profileA = authProfiles[0];
     const profileB = authProfiles[1];
-    const bolaFindings = await testCrossAccountBOLA(endpoint, profileA, profileB);
+    const bolaFindings = await testCrossAccountBOLA(scope, endpoint, profileA, profileB);
     findings.push(...bolaFindings);
   } else if (primaryProfile) {
     // Single profile — note that cross-account testing is not possible yet
