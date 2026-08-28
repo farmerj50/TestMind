@@ -6,6 +6,7 @@ import type { SecurityScanPayload } from "./queue.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { request } from "undici";
 import { probeScoped, isWithinScope, type ProbeScope } from "../security/http-client.js";
+import { shouldDowngradeToPassive } from "../lib/security-approval-policy.js";
 import net from "node:net";
 import path from "node:path";
 import fs from "node:fs";
@@ -1169,6 +1170,17 @@ async function runDynamic(job: SecurityScanPayload): Promise<FindingInput[]> {
   const scope: ProbeScope = { allowedHosts: job.allowedHosts ?? [], allowedPorts: job.allowedPorts ?? [] };
   const passive = await runPassiveDynamic(job.baseUrl, scope);
   if (!job.enableActive) return passive;
+
+  if (shouldDowngradeToPassive(job)) {
+    // Downgrade to passive-only rather than throw - a queued job silently completing with
+    // reduced coverage is safer here than a hard failure, since this is a safety net, not
+    // the main gate.
+    console.warn(
+      `[security-worker] job ${job.jobId}: active checks require production approval and none was granted - downgrading to passive-only.`
+    );
+    return passive;
+  }
+
   const active = await runActiveDynamic(job.baseUrl, scope);
   return [...passive, ...active];
 }

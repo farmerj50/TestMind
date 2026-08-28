@@ -34,6 +34,7 @@ import {
   buildRepairPrBody,
 } from './github-writeback.js';
 import { validatedEnv } from '../config/env.js';
+import { requiresAutonomousScanApproval } from '../lib/security-approval-policy.js';
 
 export { createStepRunner };
 
@@ -1869,11 +1870,12 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     },
   });
 
-  const needsSecurityApproval =
-    Boolean(securityCtx.enableActive) ||
-    securityCtx.scanDepth === 'deep' ||
-    securityCtx.safeMode === false ||
-    securityCtx.environment === 'prod';
+  const needsSecurityApproval = requiresAutonomousScanApproval({
+    environment: securityCtx.environment,
+    scanDepth: securityCtx.scanDepth,
+    enableActive: Boolean(securityCtx.enableActive),
+    safeMode: securityCtx.safeMode,
+  });
 
   if (needsSecurityApproval && opJob.requestedBy) {
     const approval = await prisma.operatorApproval.create({
@@ -1909,13 +1911,14 @@ async function startSecurityScan(
   projectId: string,
   taskId: string,
   securityCtx: SecurityResumeCtx,
-  reDelay: ReDelayFn
+  reDelay: ReDelayFn,
+  approvalGranted = false
 ) {
   const scan = await prisma.securityScanJob.create({
     data: { projectId, status: 'queued', config: securityCtx as any },
   });
 
-  await enqueueSecurityScan({ jobId: scan.id, projectId, ...securityCtx });
+  await enqueueSecurityScan({ jobId: scan.id, projectId, ...securityCtx, approvalGranted });
 
   const deadline = Date.now() + securityCtx.maxDurationMinutes * 60 * 1000 + 60_000;
   await checkOrDelayScan(scan.id, taskId, jobId, deadline, reDelay);
@@ -1933,7 +1936,7 @@ async function checkOrDelayApproval(
 
   if (approval?.status === 'approved') {
     await prisma.operatorJob.update({ where: { id: opJob.id }, data: { status: 'running' } });
-    await startSecurityScan(opJob.id, opJob.projectId, phase.taskId, phase.securityCtx, reDelay);
+    await startSecurityScan(opJob.id, opJob.projectId, phase.taskId, phase.securityCtx, reDelay, true);
     return;
   }
 

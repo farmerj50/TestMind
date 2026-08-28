@@ -48,6 +48,8 @@ export type SecurityScanPayload = {
   environment?: string;
   scanDepth?: "baseline" | "standard" | "deep";
   safeMode?: boolean;
+  sourceMode?: "auto" | "url_only" | "code_assisted";
+  sourceRoot?: string;
   authProfiles?: Array<Record<string, any>>;
   apiFixtures?: Array<Record<string, any>>;
   expectedControls?: string[];
@@ -56,6 +58,11 @@ export type SecurityScanPayload = {
   apiSpecId?: string;
   authSessionId?: string;
   mobileConfigId?: string;
+  // Set to true only by operator-worker.ts's autonomous approval flow, immediately after
+  // confirming an OperatorApproval row has status "approved" for this scan. Every other
+  // caller (security.ts, ci.ts, mobile.ts) omits this - security-worker.ts's defense-in-depth
+  // backstop uses its absence to know a prod-active scan hasn't gone through human approval.
+  approvalGranted?: boolean;
 };
 
 function createQueue<T = any>(name: string) {
@@ -80,6 +87,8 @@ export type SecurityResumeCtx = {
   environment?: string;
   scanDepth?: "baseline" | "standard" | "deep";
   safeMode?: boolean;
+  sourceMode?: "auto" | "url_only" | "code_assisted";
+  sourceRoot?: string;
   authProfiles?: Array<Record<string, any>>;
   apiFixtures?: Array<Record<string, any>>;
   expectedControls?: string[];

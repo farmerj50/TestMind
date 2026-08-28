@@ -24,6 +24,7 @@ import { buildHtmlReport } from "../security/compliance-report.js";
 import { generateBugBountyReport } from "../security/bug-bounty-report.js";
 import { safeFetch } from "../lib/safe-fetch.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
+import { requiresProductionApproval } from "../lib/security-approval-policy.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -128,6 +129,7 @@ const startSchema = z.object({
   environment: z.enum(["dev", "qa", "stage", "prod"]).default("qa"),
   scanDepth: z.enum(["baseline", "standard", "deep"]).default("standard"),
   safeMode: z.boolean().default(true),
+  sourceMode: z.enum(["auto", "url_only", "code_assisted"]).default("auto"),
   useSavedSetup: z.boolean().default(true),
   authSessionId: z.string().optional(),
   apiSpecId: z.string().optional(),
@@ -402,7 +404,12 @@ export default async function securityRoutes(app: FastifyInstance) {
     const authProfiles = testSetup.authProfiles;
     const approvalRequired =
       body.environment === "prod" || body.scanDepth === "deep" || body.enableActive || body.safeMode === false;
-    if (body.environment === "prod" && (body.scanDepth === "deep" || body.enableActive || body.safeMode === false)) {
+    if (requiresProductionApproval({
+      environment: body.environment,
+      scanDepth: body.scanDepth,
+      enableActive: body.enableActive,
+      safeMode: body.safeMode,
+    })) {
       return reply.code(409).send({
         error:
           "Deep, active, or non-safe production security validation requires Operator approval. Use Operator > Security for this target.",
@@ -423,6 +430,7 @@ export default async function securityRoutes(app: FastifyInstance) {
           environment: body.environment,
           scanDepth: body.scanDepth,
           safeMode: body.safeMode,
+          sourceMode: body.sourceMode,
           approvalRequired,
           useSavedSetup: body.useSavedSetup,
           authProfiles: authProfiles.map((profile) => redactAuthProfileForStorage(profile)),
@@ -446,6 +454,7 @@ export default async function securityRoutes(app: FastifyInstance) {
         environment: body.environment,
         scanDepth: body.scanDepth,
         safeMode: body.safeMode,
+        sourceMode: body.sourceMode,
         authProfiles,
         apiFixtures: testSetup.apiFixtures,
         expectedControls: testSetup.expectedControls,
