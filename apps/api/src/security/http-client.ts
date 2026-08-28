@@ -9,6 +9,11 @@ export type ProbeOptions = {
   timeoutMs?: number;
   profile?: string;
   label?: string;
+  maxRedirects?: number;
+  // Set to false to get the raw 3xx response back without following it at all (e.g. the
+  // open-redirect probe, which needs to inspect the Location header itself). Defaults to
+  // true: follow up to maxRedirects hops, re-validating scope on each one.
+  followRedirects?: boolean;
 };
 
 export type ProbeResult = {
@@ -76,6 +81,16 @@ function normalizeHeaders(headers: Record<string, string | string[] | undefined>
   return out;
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function emptyResult(method: string, url: string, profile: string | undefined, error: string): ProbeResult {
+  return { method, url, profile, body: "", bodyLength: 0, bodySnippet: "", headers: {}, error };
+}
+
+// Follows redirects manually (undici's bare request() does not auto-follow), re-validating
+// isWithinScope on every hop before it's requested — not just the initial URL. Without this,
+// an in-scope target that 302s to an out-of-scope/internal address would have let the
+// redirect target be requested unchecked. Mirrors safe-fetch.ts's safeFetch loop shape.
 export async function probeScoped(
   config: Pick<IntelligentSecurityScanConfig, "allowedHosts" | "allowedPorts">,
   url: string,
@@ -83,33 +98,52 @@ export async function probeScoped(
 ): Promise<ProbeResult> {
   const method = (opts.method ?? "GET").toUpperCase();
   const profile = opts.profile;
+  const followRedirects = opts.followRedirects ?? true;
+  const maxRedirects = Number.isFinite(opts.maxRedirects) ? Math.max(0, Math.trunc(opts.maxRedirects as number)) : 5;
 
-  if (!isWithinScope(url, config.allowedHosts, config.allowedPorts)) {
-    return {
-      method,
-      url,
-      profile,
-      body: "",
-      bodyLength: 0,
-      bodySnippet: "",
-      headers: {},
-      error: "URL is outside allowed security scan scope.",
-    };
-  }
+  let currentUrl = url;
+  for (let hop = 0; ; hop++) {
+    if (!isWithinScope(currentUrl, config.allowedHosts, config.allowedPorts)) {
+      return emptyResult(method, currentUrl, profile, "URL is outside allowed security scan scope.");
+    }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
-  try {
-    const response = await request(url, {
-      method,
-      headers: opts.headers,
-      body: opts.body,
-      signal: controller.signal as any,
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
+    let response: Awaited<ReturnType<typeof request>>;
+    try {
+      response = await request(currentUrl, {
+        method,
+        headers: opts.headers,
+        body: opts.body,
+        signal: controller.signal as any,
+      });
+    } catch (err: any) {
+      clearTimeout(timer);
+      return emptyResult(method, currentUrl, profile, err?.message ?? String(err));
+    }
+    clearTimeout(timer);
+
+    if (REDIRECT_STATUSES.has(response.statusCode) && followRedirects) {
+      const location = response.headers.location;
+      const locationStr = Array.isArray(location) ? location[0] : location;
+      await response.body.text().catch(() => ""); // drain before following
+      if (locationStr) {
+        if (hop >= maxRedirects) {
+          return emptyResult(method, currentUrl, profile, "Too many redirects while probing scoped URL.");
+        }
+        try {
+          currentUrl = new URL(locationStr, currentUrl).toString();
+          continue; // re-validate scope for the redirect target at the top of the loop
+        } catch {
+          return emptyResult(method, currentUrl, profile, "Redirect target is not a valid URL.");
+        }
+      }
+    }
+
     const body = await response.body.text().catch(() => "");
     return {
       method,
-      url,
+      url: currentUrl,
       profile,
       status: response.statusCode,
       body,
@@ -117,19 +151,6 @@ export async function probeScoped(
       bodySnippet: snippet(body),
       headers: normalizeHeaders(response.headers),
     };
-  } catch (err: any) {
-    return {
-      method,
-      url,
-      profile,
-      body: "",
-      bodyLength: 0,
-      bodySnippet: "",
-      headers: {},
-      error: err?.message ?? String(err),
-    };
-  } finally {
-    clearTimeout(timer);
   }
 }
 

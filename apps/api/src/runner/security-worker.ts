@@ -5,6 +5,7 @@ import { redis } from "./redis.js";
 import type { SecurityScanPayload } from "./queue.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { request } from "undici";
+import { probeScoped, isWithinScope } from "../security/http-client.js";
 import net from "node:net";
 import path from "node:path";
 import fs from "node:fs";
@@ -29,6 +30,11 @@ import { runNucleiScan } from "../security/modules/nuclei-scan.js";
 import { runJsEndpointExtraction } from "../security/modules/js-endpoint-extractor.js";
 import { runSubdomainEnum } from "../security/modules/subdomain-enum.js";
 import { runBusinessLogicScan } from "../security/modules/business-logic.js";
+import {
+  detectCodeReviewSourceStatus,
+  resolveCodeReviewRoot,
+  runCodeReviewScan,
+} from "../security/modules/code-review.js";
 import { runCorsAudit } from "../security/modules/cors-audit.js";
 import { runPerfBaseline } from "../security/modules/perf-baseline.js";
 import { runMobileScan } from "../security/modules/mobile-scan.js";
@@ -235,6 +241,7 @@ async function refreshExpiredProfiles(
   profiles: SecurityAuthProfile[],
   projectId: string,
   baseUrl: string,
+  scope: ProbeScope,
 ): Promise<void> {
   for (const profile of profiles) {
     if (!profile.sessionId) continue;
@@ -247,15 +254,8 @@ async function refreshExpiredProfiles(
           ? profile.cookieValue
           : `${profile.cookieName || "session"}=${profile.cookieValue}`;
       }
-      const liveCheck = await new Promise<{ status: number } | null>((resolve) => {
-        const ctrl = new AbortController();
-        setTimeout(() => ctrl.abort(), 5_000);
-        import("undici").then(({ request }) =>
-          request(`${baseUrl}/api/me`, { method: "GET", headers: testHeaders, signal: ctrl.signal as any })
-            .then(async (r) => { await r.body.text().catch(() => ""); resolve({ status: r.statusCode }); })
-            .catch(() => resolve(null))
-        );
-      });
+      const liveResult = await probeScoped(scope, `${baseUrl}/api/me`, { method: "GET", headers: testHeaders, timeoutMs: 5_000 });
+      const liveCheck = liveResult.status !== undefined ? { status: liveResult.status } : null;
       if (liveCheck && liveCheck.status !== 401 && liveCheck.status !== 403) continue;
 
       // Token expired — fetch provider config and re-auth
@@ -318,16 +318,11 @@ async function loadApprovedBehaviorBaseline(projectId: string, scopeKey: string)
   return getSecurityBehaviorBaseline(store, scopeKey);
 }
 
+// Consolidated onto the shared isWithinScope (http-client.ts) — this local copy diverged
+// from it (no subdomain-suffix matching), the exact kind of duplicated-security-check
+// drift this migration is meant to eliminate.
 function withinScope(urlStr: string, allowedHosts: string[], allowedPorts: number[]) {
-  try {
-    const u = new URL(urlStr);
-    const hostOk = allowedHosts.length === 0 || allowedHosts.includes(u.hostname);
-    const port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
-    const portOk = allowedPorts.length === 0 || allowedPorts.includes(port);
-    return hostOk && portOk;
-  } catch {
-    return false;
-  }
+  return isWithinScope(urlStr, allowedHosts, allowedPorts);
 }
 
 async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
@@ -344,11 +339,15 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
     return findings;
   }
   try {
-    const res = await request(job.baseUrl, { method: "GET" });
+    const scope: ProbeScope = { allowedHosts: job.allowedHosts ?? [], allowedPorts: job.allowedPorts ?? [] };
+    const res = await probeScoped(scope, job.baseUrl, { method: "GET" });
+    if (res.error || res.status === undefined) {
+      throw new Error(res.error || "Request failed");
+    }
     findings.push({
       type: "recon",
       severity: "info",
-      title: `Reachable (${res.statusCode})`,
+      title: `Reachable (${res.status})`,
       description: `Fetched ${job.baseUrl}`,
       location: job.baseUrl,
       tool: "undici",
@@ -393,7 +392,7 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
 
     // Simple crawl (same host, shallow)
     try {
-      const body = await res.body.text();
+      const body = res.body;
       findings.push(
         ...detectDirectoryListing({
           body,
@@ -475,13 +474,139 @@ async function runRecon(job: SecurityScanPayload): Promise<FindingInput[]> {
   return findings;
 }
 
-async function runStatic(job: SecurityScanPayload): Promise<FindingInput[]> {
+type SourceScanContext = {
+  requestedMode: "auto" | "url_only" | "code_assisted";
+  effectiveMode: "url_only" | "code_and_url" | "source_unavailable";
+  codeReviewAvailable: boolean;
+  sourceRoot?: string;
+  sourceFileCount: number;
+  reason: string;
+};
+
+function requestedSourceMode(payload: SecurityScanPayload): SourceScanContext["requestedMode"] {
+  return payload.sourceMode === "url_only" || payload.sourceMode === "code_assisted" ? payload.sourceMode : "auto";
+}
+
+function configuredSourceRoot(payload: SecurityScanPayload): string | null {
+  const payloadRoot = typeof payload.sourceRoot === "string" ? payload.sourceRoot.trim() : "";
+  if (payloadRoot) return payloadRoot;
+
+  const envRoot = process.env.TESTMIND_SECURITY_SOURCE_ROOT?.trim();
+  if (envRoot) return envRoot;
+
+  if (process.env.TESTMIND_SECURITY_ALLOW_CWD_SOURCE === "1") {
+    return process.cwd();
+  }
+
+  return null;
+}
+
+function resolveSourceScanContext(payload: SecurityScanPayload): SourceScanContext {
+  const requestedMode = requestedSourceMode(payload);
+  if (requestedMode === "url_only") {
+    return {
+      requestedMode,
+      effectiveMode: "url_only",
+      codeReviewAvailable: false,
+      sourceFileCount: 0,
+      reason: "url_only_requested",
+    };
+  }
+
+  const root = configuredSourceRoot(payload);
+  if (!root) {
+    return {
+      requestedMode,
+      effectiveMode: "url_only",
+      codeReviewAvailable: false,
+      sourceFileCount: 0,
+      reason: "source_root_not_configured",
+    };
+  }
+
+  const sourceStatus = detectCodeReviewSourceStatus({ root });
+  if (!sourceStatus.available) {
+    return {
+      requestedMode,
+      effectiveMode: "source_unavailable",
+      codeReviewAvailable: false,
+      sourceRoot: sourceStatus.root,
+      sourceFileCount: 0,
+      reason: "source_files_not_found",
+    };
+  }
+
+  return {
+    requestedMode,
+    effectiveMode: "code_and_url",
+    codeReviewAvailable: true,
+    sourceRoot: sourceStatus.root,
+    sourceFileCount: sourceStatus.availablePaths.length,
+    reason: "source_available",
+  };
+}
+
+async function runStatic(
+  job: SecurityScanPayload,
+  sourceContext = resolveSourceScanContext(job)
+): Promise<FindingInput[]> {
   const findings: FindingInput[] = [];
-  const repoRoot = path.resolve(process.cwd());
+  if (!sourceContext.codeReviewAvailable || !sourceContext.sourceRoot) {
+    findings.push({
+      type: "static_analysis",
+      severity: sourceContext.requestedMode === "code_assisted" ? "low" : "info",
+      title:
+        sourceContext.requestedMode === "url_only"
+          ? "Static source review skipped for URL-only scan"
+          : "Static source review skipped because no source root is configured",
+      description:
+        sourceContext.requestedMode === "url_only"
+          ? "This scan is using URL-only coverage. Runtime API, OpenAPI, JS bundle, auth matrix, and DAST checks still run."
+          : "No trusted source root was provided for this scan. Set TESTMIND_SECURITY_SOURCE_ROOT, pass sourceRoot from a trusted worker, or enable TESTMIND_SECURITY_ALLOW_CWD_SOURCE=1 for local development.",
+      location: job.baseUrl,
+      tool: "code-review",
+      evidence: {
+        vulnerabilityClass: "scan_coverage",
+        owaspCategory: "A05:2021",
+        owaspApiCategory: "API9:2023",
+        sourceMode: sourceContext.requestedMode,
+        effectiveMode: sourceContext.effectiveMode,
+        reason: sourceContext.reason,
+      },
+    });
+    return findings;
+  }
+
+  const repoRoot = resolveCodeReviewRoot(sourceContext.sourceRoot);
   const pkgJson = path.join(repoRoot, "package.json");
   const exists = fs.existsSync(pkgJson);
 
-  // Try semgrep if available
+  try {
+    const reviewFindings = runCodeReviewScan({ root: repoRoot });
+    if (reviewFindings.length === 0) {
+      findings.push({
+        type: "static_analysis",
+        severity: "info",
+        title: "Code review found no issues",
+        description: "Built-in repository code-review checks completed with no findings.",
+        location: repoRoot,
+        tool: "code-review",
+      });
+    } else {
+      findings.push(...reviewFindings);
+    }
+  } catch (err: any) {
+    findings.push({
+      type: "static_analysis",
+      severity: "info",
+      title: "Code review scan failed",
+      description: err?.message ?? String(err),
+      location: repoRoot,
+      tool: "code-review",
+    });
+  }
+
+  // Try semgrep if available.
   const semgrepBin = process.env.SEMGREP_BIN || "semgrep";
   if (exists) {
     try {
@@ -525,7 +650,6 @@ async function runStatic(job: SecurityScanPayload): Promise<FindingInput[]> {
           });
         }
       }
-      return findings;
     } catch (err: any) {
       findings.push({
         type: "static_analysis",
@@ -550,11 +674,112 @@ async function runStatic(job: SecurityScanPayload): Promise<FindingInput[]> {
   return findings;
 }
 
-async function runDeps(job: SecurityScanPayload): Promise<FindingInput[]> {
+function normalizeAuditSeverity(value: unknown): FindingInput["severity"] {
+  const severity = String(value ?? "").toLowerCase();
+  if (severity === "critical") return "critical";
+  if (severity === "high") return "high";
+  if (severity === "medium" || severity === "moderate") return "medium";
+  if (severity === "low") return "low";
+  if (severity === "info") return "info";
+  return "medium";
+}
+
+function auditEntries(parsed: any): Array<[string, any]> {
+  const vulnerabilities = parsed?.vulnerabilities;
+  if (vulnerabilities && typeof vulnerabilities === "object" && !Array.isArray(vulnerabilities)) {
+    return Object.entries(vulnerabilities);
+  }
+
+  const advisories = parsed?.advisories;
+  if (advisories && typeof advisories === "object" && !Array.isArray(advisories)) {
+    return Object.entries(advisories).map(([id, advisory]) => {
+      const name = (advisory as any)?.module_name ?? (advisory as any)?.name ?? id;
+      return [name, advisory];
+    });
+  }
+
+  return [];
+}
+
+function auditCountSummary(parsed: any) {
+  const counts = parsed?.metadata?.vulnerabilities;
+  if (!counts || typeof counts !== "object") return null;
+  const parts = ["critical", "high", "moderate", "medium", "low", "info"]
+    .map((key) => {
+      const value = Number((counts as Record<string, unknown>)[key] ?? 0);
+      return value > 0 ? `${value} ${key}` : null;
+    })
+    .filter(Boolean);
+  return parts.length ? parts.join(", ") : null;
+}
+
+function auditViaSummary(vuln: any) {
+  const via = vuln?.via;
+  if (!Array.isArray(via)) {
+    return typeof via === "string" ? via : "";
+  }
+
+  return via
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      return entry?.title ?? entry?.source ?? entry?.name ?? entry?.url;
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+function auditDescription(name: string, vuln: any) {
+  const title = vuln?.title ?? vuln?.name;
+  const range = vuln?.range ? `Range: ${vuln.range}.` : "";
+  const effects = Array.isArray(vuln?.effects) && vuln.effects.length ? `Effects: ${vuln.effects.join(", ")}.` : "";
+  const via = auditViaSummary(vuln);
+  const viaText = via ? `Via: ${via}.` : "";
+  return [`Affected: ${name}.`, title && title !== name ? String(title) : "", range, effects, viaText]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 800);
+}
+
+async function runDeps(
+  job: SecurityScanPayload,
+  sourceContext = resolveSourceScanContext(job)
+): Promise<FindingInput[]> {
   const findings: FindingInput[] = [];
-  const repoRoot = path.resolve(process.cwd());
+  if (!sourceContext.codeReviewAvailable || !sourceContext.sourceRoot) {
+    findings.push({
+      type: "dependency",
+      severity: sourceContext.requestedMode === "code_assisted" ? "low" : "info",
+      title:
+        sourceContext.requestedMode === "url_only"
+          ? "Dependency audit skipped for URL-only scan"
+          : "Dependency audit skipped because no source root is configured",
+      description:
+        sourceContext.requestedMode === "url_only"
+          ? "Dependency checks need repository files or lockfiles. URL-only API checks still run."
+          : "No trusted source root was provided for this scan, so package-manager audit cannot run.",
+      location: job.baseUrl,
+      tool: "sca",
+      evidence: {
+        vulnerabilityClass: "scan_coverage",
+        owaspCategory: "A06:2021",
+        owaspApiCategory: "API8:2023",
+        sourceMode: sourceContext.requestedMode,
+        effectiveMode: sourceContext.effectiveMode,
+        reason: sourceContext.reason,
+      },
+    });
+    return findings;
+  }
+
+  const repoRoot = resolveCodeReviewRoot(sourceContext.sourceRoot);
   const lockfiles = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
-  const searchRoots = [repoRoot, path.resolve(repoRoot, ".."), path.resolve(repoRoot, "..", "..")];
+  const searchRoots = [
+    repoRoot,
+    path.join(repoRoot, "apps", "api"),
+    path.join(repoRoot, "apps", "web"),
+    path.resolve(repoRoot, ".."),
+    path.resolve(repoRoot, "..", ".."),
+  ];
 
   let lockfilePath: string | null = null;
   for (const root of searchRoots) {
@@ -577,59 +802,78 @@ async function runDeps(job: SecurityScanPayload): Promise<FindingInput[]> {
     return findings;
   }
 
+  let auditTool = "npm-audit";
   try {
     const lockName = path.basename(lockfilePath).toLowerCase();
-    if (lockName === "pnpm-lock.yaml") {
+    const isPnpm = lockName === "pnpm-lock.yaml";
+    const isYarn = lockName === "yarn.lock";
+    auditTool = isPnpm ? "pnpm-audit" : "npm-audit";
+    if (isYarn) {
       findings.push({
         type: "dependency",
         severity: "info",
-        title: "pnpm lockfile detected",
-        description: "pnpm lockfile found. Integrate pnpm audit or provide a package-lock.json for npm audit.",
+        title: "yarn lockfile detected",
+        description: "yarn.lock found. Configure a yarn audit-compatible scanner for this workspace.",
         location: lockfilePath,
         tool: "sca",
       });
       return findings;
     }
 
-    const npmBin = process.env.NPM_BIN || (process.platform === "win32" ? "npm.cmd" : "npm");
-
+    const auditBin = isPnpm
+      ? process.env.PNPM_BIN || (process.platform === "win32" ? "pnpm.cmd" : "pnpm")
+      : process.env.NPM_BIN || (process.platform === "win32" ? "npm.cmd" : "npm");
+    const auditArgs = isPnpm
+      ? ["audit", "--json", "--audit-level", "moderate"]
+      : ["audit", "--json", "--production"];
     const audit = await new Promise<{ stdout: string }>((resolve, reject) => {
       execFile(
-        npmBin,
-        ["audit", "--json", "--production"],
+        auditBin,
+        auditArgs,
         {
           cwd: path.dirname(lockfilePath),
-          maxBuffer: 5 * 1024 * 1024,
+          maxBuffer: 15 * 1024 * 1024,
           shell: process.platform === "win32",
         },
         (err, stdout) => {
-          // npm audit exits non-zero when vulns found; ignore code
+          // npm/pnpm audit exit non-zero when vulns are found; ignore that code.
           if (err && (err as any).code !== 1) return reject(err);
           resolve({ stdout: stdout || "{}" });
         }
       );
     });
     const parsed = JSON.parse(audit.stdout);
-    const advisories = parsed?.vulnerabilities || {};
-    const entries = Object.entries(advisories);
+    const entries = auditEntries(parsed);
     if (entries.length === 0) {
+      const countSummary = auditCountSummary(parsed);
+      if (countSummary) {
+        findings.push({
+          type: "dependency",
+          severity: "medium",
+          title: "Dependency vulnerabilities reported",
+          description: `Audit reported ${countSummary}, but did not include package-level advisory details in JSON output.`,
+          location: lockfilePath,
+          tool: auditTool,
+        });
+        return findings;
+      }
       findings.push({
         type: "dependency",
         severity: "info",
         title: "No dependency vulnerabilities found",
-        description: "npm audit reported no issues.",
+        description: `${auditTool} reported no issues.`,
         location: lockfilePath,
-        tool: "npm-audit",
+        tool: auditTool,
       });
     } else {
       for (const [name, vuln] of entries.slice(0, 50)) {
         findings.push({
           type: "dependency",
-          severity: (vuln as any)?.severity || "medium",
+          severity: normalizeAuditSeverity((vuln as any)?.severity),
           title: `Vulnerability: ${name}`,
-          description: `Affected: ${name}. ${ (vuln as any)?.via ? JSON.stringify((vuln as any)?.via).slice(0,200) : "" }`,
+          description: auditDescription(name, vuln),
           location: lockfilePath,
-          tool: "npm-audit",
+          tool: auditTool,
         });
       }
     }
@@ -638,10 +882,10 @@ async function runDeps(job: SecurityScanPayload): Promise<FindingInput[]> {
       findings.push({
         type: "dependency",
         severity: "info",
-        title: "npm not available",
-        description: `Failed to run npm audit. Ensure npm is on PATH or set NPM_BIN.`,
+        title: `${auditTool === "pnpm-audit" ? "pnpm" : "npm"} not available`,
+        description: `Failed to run ${auditTool}. Ensure the package manager is on PATH or set PNPM_BIN/NPM_BIN.`,
         location: lockfilePath,
-        tool: "npm-audit",
+        tool: auditTool,
       });
       return findings;
     }
@@ -651,7 +895,7 @@ async function runDeps(job: SecurityScanPayload): Promise<FindingInput[]> {
       title: "Audit failed",
       description: err?.message ?? String(err),
       location: lockfilePath,
-      tool: "npm-audit",
+      tool: auditTool,
     });
   }
 
@@ -660,27 +904,23 @@ async function runDeps(job: SecurityScanPayload): Promise<FindingInput[]> {
 
 // ── DAST probes ──────────────────────────────────────────────────────────────
 
-/** Fire a single HTTP probe, return { status, body, headers } or null on error */
+type ProbeScope = { allowedHosts: string[]; allowedPorts: number[] };
+
+/**
+ * Fire a single HTTP probe, return { status, body, headers } or null on error.
+ * Delegates to probeScoped (http-client.ts) instead of an unscoped raw request() -
+ * this is the DAST pipeline's own choke point for outbound requests, so every scope
+ * check (including redirect-hop re-validation) lives in one place. Keeps the original
+ * { status, body, headers } | null return shape so existing call sites are unchanged.
+ */
 async function probe(
+  scope: ProbeScope,
   url: string,
-  opts: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number } = {}
+  opts: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number; followRedirects?: boolean } = {}
 ) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
-  try {
-    const res = await request(url, {
-      method: opts.method ?? "GET",
-      headers: opts.headers,
-      body: opts.body,
-      signal: controller.signal as any,
-    });
-    const bodyText = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body: bodyText, headers: res.headers };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const result = await probeScoped(scope, url, opts);
+  if (result.error || result.status === undefined) return null;
+  return { status: result.status, body: result.body, headers: result.headers };
 }
 
 async function grabBanner(host: string, port: number, timeoutMs = 1200): Promise<string | null> {
@@ -717,7 +957,7 @@ async function grabBanner(host: string, port: number, timeoutMs = 1200): Promise
  * Tests: auth-required endpoints, open redirect indicators, CORS misconfiguration,
  * error disclosure, clickjacking, HTTPS enforcement.
  */
-async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
+async function runPassiveDynamic(baseUrl: string, scope: ProbeScope): Promise<FindingInput[]> {
   const findings: FindingInput[] = [];
   const base = baseUrl.replace(/\/$/, "");
 
@@ -734,7 +974,7 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
   }
 
   // 2. CORS misconfiguration — send Origin: evil.example.com
-  const corsRes = await probe(base, { headers: { Origin: "https://evil.example.com" } });
+  const corsRes = await probe(scope, base, { headers: { Origin: "https://evil.example.com" } });
   if (corsRes) {
     const acao = corsRes.headers["access-control-allow-origin"] as string | undefined;
     if (acao === "*" || acao === "https://evil.example.com") {
@@ -750,7 +990,7 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
   }
 
   // 3. Error disclosure — request a path that likely 404s and check for stack traces
-  const optionsRes = await probe(base, { method: "OPTIONS" });
+  const optionsRes = await probe(scope, base, { method: "OPTIONS" });
   if (optionsRes) {
     findings.push(
       ...extractHttpMethodFindings({
@@ -764,7 +1004,7 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
     );
   }
 
-  const errRes = await probe(`${base}/__tm_dast_probe_404__`);
+  const errRes = await probe(scope, `${base}/__tm_dast_probe_404__`);
   if (errRes) {
     const body = errRes.body.toLowerCase();
     const stackLeaks = ["traceback", "stack trace", "at node:", "error: ", "exception in"].some(
@@ -788,7 +1028,7 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
     "/openapi.json", "/metrics", "/actuator/health", "/admin",
   ];
   for (const p of sensitivePaths) {
-    const r = await probe(`${base}${p}`);
+    const r = await probe(scope, `${base}${p}`);
     if (r && r.status === 200) {
       findings.push({
         type: "dynamic",
@@ -803,7 +1043,7 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
 
   // 5. Clickjacking — check X-Frame-Options or CSP frame-ancestors (already in recon;
   //    add here as dynamic confirmation with actual framing attempt indicator)
-  const frameRes = await probe(base);
+  const frameRes = await probe(scope, base);
   if (frameRes) {
     const xfo = frameRes.headers["x-frame-options"] as string | undefined;
     const csp = frameRes.headers["content-security-policy"] as string | undefined;
@@ -829,7 +1069,7 @@ async function runPassiveDynamic(baseUrl: string): Promise<FindingInput[]> {
  * Active dynamic checks — mutate state or inject payloads.
  * Only run when enableActive=true (caller must ensure approval was obtained).
  */
-async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
+async function runActiveDynamic(baseUrl: string, scope: ProbeScope): Promise<FindingInput[]> {
   const findings: FindingInput[] = [];
   const base = baseUrl.replace(/\/$/, "");
 
@@ -841,7 +1081,10 @@ async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
     `${base}/?return=https://evil.example.com`,
   ];
   for (const url of redirectPayloads) {
-    const r = await probe(url);
+    // followRedirects: false - this check needs the raw 3xx response to inspect its
+    // Location header, not the followed destination (which would also just get
+    // scope-blocked now, since evil.example.com is never in scope).
+    const r = await probe(scope, url, { followRedirects: false });
     if (r && r.status >= 301 && r.status <= 303) {
       const loc = r.headers["location"] as string | undefined;
       if (loc?.includes("evil.example.com")) {
@@ -865,7 +1108,7 @@ async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
     `${base}/?query=${xssPayload}`,
   ];
   for (const url of xssUrls) {
-    const r = await probe(url);
+    const r = await probe(scope, url);
     if (r && r.body.includes('<script>alert(1)</script>')) {
       findings.push({
         type: "dynamic",
@@ -882,7 +1125,7 @@ async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
   const sqliPayloads = ["'", "1' OR '1'='1", `" OR ""="`];
   for (const payload of sqliPayloads) {
     const url = `${base}/?id=${encodeURIComponent(payload)}`;
-    const r = await probe(url);
+    const r = await probe(scope, url);
     if (r) {
       const body = r.body.toLowerCase();
       const sqlErrors = ["sql", "syntax error", "unclosed quotation", "mysql", "pg_query", "ora-"];
@@ -908,7 +1151,7 @@ async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
     `${base}/?page=${traversalPayload}`,
   ];
   for (const url of traversalUrls) {
-    const r = await probe(url);
+    const r = await probe(scope, url);
     if (r && r.body.includes("root:x:0:0")) {
       findings.push({
         type: "dynamic",
@@ -925,9 +1168,10 @@ async function runActiveDynamic(baseUrl: string): Promise<FindingInput[]> {
 }
 
 async function runDynamic(job: SecurityScanPayload): Promise<FindingInput[]> {
-  const passive = await runPassiveDynamic(job.baseUrl);
+  const scope: ProbeScope = { allowedHosts: job.allowedHosts ?? [], allowedPorts: job.allowedPorts ?? [] };
+  const passive = await runPassiveDynamic(job.baseUrl, scope);
   if (!job.enableActive) return passive;
-  const active = await runActiveDynamic(job.baseUrl);
+  const active = await runActiveDynamic(job.baseUrl, scope);
   return [...passive, ...active];
 }
 
@@ -959,7 +1203,83 @@ export const securityWorker = new Worker(
   { connection: redis }
 );
 
+// isWithinScope treats an empty allowedHosts/allowedPorts as "allow everything" - a
+// reasonable default for the utility itself, but ci.ts/mobile.ts/security.ts all pass []
+// today, making every probeScoped check in this pipeline a no-op. Derive a real default
+// here, once, for every caller: constrain to the job's own declared target host rather
+// than leaving scope unrestricted. This is what actually closes the SSRF-pivot gap (a
+// scan of example.com being redirected/tricked into fetching an unrelated internal
+// address) while still allowing a legitimately internal baseUrl to be scanned at all.
+function deriveEffectiveScope(payload: SecurityScanPayload): { allowedHosts: string[]; allowedPorts: number[] } {
+  if (payload.allowedHosts?.length) {
+    return { allowedHosts: payload.allowedHosts, allowedPorts: payload.allowedPorts ?? [] };
+  }
+  try {
+    const hostname = new URL(payload.baseUrl).hostname.toLowerCase();
+    return { allowedHosts: [hostname], allowedPorts: payload.allowedPorts ?? [] };
+  } catch {
+    return { allowedHosts: payload.allowedHosts ?? [], allowedPorts: payload.allowedPorts ?? [] };
+  }
+}
+
+function routeSourceCounts(routeInventory: Array<{ source?: string }>) {
+  return routeInventory.reduce<Record<string, number>>((acc, route) => {
+    const source = route.source ?? "unknown";
+    acc[source] = (acc[source] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function buildScanCoverageFinding(params: {
+  payload: SecurityScanPayload;
+  sourceContext: SourceScanContext;
+  routeInventory: Array<{ source?: string }>;
+  routeContracts: unknown[];
+  authProfiles: unknown[];
+  jsEndpointCount: number;
+  apiSpecAttached: boolean;
+}): FindingInput {
+  const modeLabel = params.sourceContext.codeReviewAvailable ? "URL and code-assisted" : "URL-only";
+  return {
+    type: "recon",
+    severity: "info",
+    title: `Scan coverage: ${modeLabel}`,
+    description: params.sourceContext.codeReviewAvailable
+      ? "This scan combined repository source review, dependency audit, and URL-based API probing."
+      : "This scan ran without trusted repository source. URL-based crawl, route inventory, OpenAPI discovery, JS endpoint extraction, auth matrix, and DAST modules still ran.",
+    location: params.payload.baseUrl,
+    tool: "scan-coverage",
+    evidence: {
+      vulnerabilityClass: "scan_coverage",
+      owaspCategory: "A05:2021",
+      owaspApiCategory: "API9:2023",
+      sourceMode: params.sourceContext.requestedMode,
+      effectiveMode: params.sourceContext.effectiveMode,
+      sourceAvailable: params.sourceContext.codeReviewAvailable,
+      sourceFileCount: params.sourceContext.sourceFileCount,
+      sourceReason: params.sourceContext.reason,
+      urlCoverage: {
+        baseUrl: params.payload.baseUrl,
+        allowedHosts: params.payload.allowedHosts,
+        allowedPorts: params.payload.allowedPorts,
+        routeInventory: params.routeInventory.length,
+        routeContracts: params.routeContracts.length,
+        routeSources: routeSourceCounts(params.routeInventory),
+        authProfiles: params.authProfiles.length,
+        apiSpecAttached: params.apiSpecAttached,
+        jsEndpoints: params.jsEndpointCount,
+        scanDepth: params.payload.scanDepth ?? "standard",
+      },
+    },
+  };
+}
+
 async function runScanPipeline(payload: SecurityScanPayload) {
+    const effectiveScope = deriveEffectiveScope(payload);
+    payload.allowedHosts = effectiveScope.allowedHosts;
+    payload.allowedPorts = effectiveScope.allowedPorts;
+    const sourceContext = resolveSourceScanContext(payload);
+
     await updateJob(payload.jobId, { status: "running", phase: "recon" });
 
     const allFindings: FindingInput[] = [];
@@ -969,8 +1289,8 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     // after, but is also independent of static analysis and deps.
     const [reconFindings, staticFindings, depsFindings, subdomainResult] = await Promise.all([
       runRecon(payload).catch((e) => { console.warn("[security-worker] recon error:", e?.message); return [] as FindingInput[]; }),
-      runStatic(payload).catch((e) => { console.warn("[security-worker] static error:", e?.message); return [] as FindingInput[]; }),
-      runDeps(payload).catch((e) => { console.warn("[security-worker] deps error:", e?.message); return [] as FindingInput[]; }),
+      runStatic(payload, sourceContext).catch((e) => { console.warn("[security-worker] static error:", e?.message); return [] as FindingInput[]; }),
+      runDeps(payload, sourceContext).catch((e) => { console.warn("[security-worker] deps error:", e?.message); return [] as FindingInput[]; }),
       runSubdomainEnum(payload.baseUrl).catch((e) => {
         console.warn("[security-worker] subdomain enum error:", e?.message);
         return { findings: [] as any[], liveSubdomains: [] as string[] };
@@ -1056,7 +1376,10 @@ async function runScanPipeline(payload: SecurityScanPayload) {
 
     // Mid-scan re-auth: before firing the expensive parallel modules, check whether any
     // bearer token profiles have gone stale (target returns 401) and re-auth if so.
-    await refreshExpiredProfiles(authProfiles, payload.projectId, payload.baseUrl);
+    await refreshExpiredProfiles(authProfiles, payload.projectId, payload.baseUrl, {
+      allowedHosts: payload.allowedHosts ?? [],
+      allowedPorts: payload.allowedPorts ?? [],
+    });
 
     // Advanced modules: JWT analysis, IDOR engine, race condition testing, and Nuclei.
     // All independent — run in parallel to keep wall-clock time bounded.
@@ -1125,6 +1448,17 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     const approvedBaseline = await loadApprovedBehaviorBaseline(payload.projectId, baselineCandidate.scopeKey);
     const driftResult = compareSecurityBehaviorBaseline(approvedBaseline, baselineCandidate);
     allFindings.push(...driftResult.findings);
+    allFindings.push(
+      buildScanCoverageFinding({
+        payload,
+        sourceContext,
+        routeInventory,
+        routeContracts,
+        authProfiles,
+        jsEndpointCount: jsResult.discoveredEndpoints?.length ?? 0,
+        apiSpecAttached: Boolean(payload.apiSpecId),
+      })
+    );
 
     const finalFindings = dedupeFindings(allFindings);
 
@@ -1158,6 +1492,22 @@ async function runScanPipeline(payload: SecurityScanPayload) {
           authProfiles: payload.authProfiles?.length ?? 0,
           scanDepth: payload.scanDepth ?? "standard",
           environment: payload.environment ?? "qa",
+        },
+        coverage: {
+          mode: sourceContext.codeReviewAvailable ? "code_and_url" : "url_only",
+          sourceMode: sourceContext.requestedMode,
+          sourceAvailable: sourceContext.codeReviewAvailable,
+          sourceConfigured: Boolean(sourceContext.sourceRoot),
+          sourceFileCount: sourceContext.sourceFileCount,
+          sourceReason: sourceContext.reason,
+          url: {
+            baseUrl: payload.baseUrl,
+            allowedHosts: payload.allowedHosts,
+            allowedPorts: payload.allowedPorts,
+            apiSpecAttached: Boolean(payload.apiSpecId),
+            authProfiles: authProfiles.length,
+            jsEndpoints: jsResult.discoveredEndpoints?.length ?? 0,
+          },
         },
         routeInventory: {
           routes: routeInventory.length,
