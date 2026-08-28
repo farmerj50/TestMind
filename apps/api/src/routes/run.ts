@@ -36,6 +36,7 @@ import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRo
 import { sendRunNotifications } from "../notifications/runNotifications.js";
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { finalizeLatestTestState } from "../runner/finalize-latest-test-state.js";
+import { requireRunOwner } from "../lib/run-access.js";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -774,27 +775,6 @@ async function appendMissingLocators(
 }
 
 export default async function runRoutes(app: FastifyInstance) {
-  async function requireRunOwner(req: any, reply: any, runId: string) {
-    const { userId } = getAuth(req);
-    if (!userId) {
-      reply.code(401).send({ error: "Unauthorized" });
-      return null;
-    }
-    const run = await prisma.testRun.findUnique({
-      where: { id: runId },
-      select: {
-        id: true,
-        projectId: true,
-        project: { select: { ownerId: true } },
-      },
-    });
-    if (!run || run.project.ownerId !== userId) {
-      reply.code(404).send({ error: "Run not found" });
-      return null;
-    }
-    return { runId: run.id, projectId: run.projectId, userId };
-  }
-
   // POST /runner/run
   app.post("/run", async (req, reply) => {
     const { userId } = getAuth(req);
