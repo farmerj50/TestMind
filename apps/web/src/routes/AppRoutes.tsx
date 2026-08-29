@@ -32,6 +32,7 @@ import ProjectSuite from "../pages/ProjectSuite";
 import QaAgentPage from "../pages/QaAgentPage";
 import OperatorPage from "../pages/OperatorPage";
 import SecurityScanPage from "../pages/SecurityScanPage";
+import LiveSecurityTestPage from "../pages/LiveSecurityTestPage";
 import ResearchAgentPage from "../pages/ResearchAgentPage";
 import WorkflowsPage from "../pages/WorkflowsPage";
 import ProjectsPage from "../pages/ProjectsPage";
@@ -213,6 +214,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <SecurityScanPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/security/live"
+          element={
+            <ProtectedRoute>
+              <LiveSecurityTestPage />
             </ProtectedRoute>
           }
         />

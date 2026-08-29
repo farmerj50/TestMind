@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { useApi, apiUrl } from "../lib/api";
+import { LiveBrowserView } from "../components/security/LiveBrowserView";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
@@ -47,6 +48,7 @@ type SecurityTestSetup = {
   owaspCategories?: string[];
   complianceFrameworks?: string[];
 };
+type ScanSourceMode = "auto" | "url_only" | "code_assisted";
 type SecurityJob = {
   id: string;
   projectId: string;
@@ -132,6 +134,23 @@ type SecurityFindingDetail = {
 
 const DEFAULT_EXPECTED_CONTROLS =
   "auth_required,object_owner_required,no_sensitive_fields,input_validation";
+const SOURCE_MODES: Array<{ value: ScanSourceMode; label: string; description: string }> = [
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Use configured source when available; otherwise scan the URL only.",
+  },
+  {
+    value: "url_only",
+    label: "URL only",
+    description: "Run black-box URL, API, auth, DAST, and JS analysis without repo access.",
+  },
+  {
+    value: "code_assisted",
+    label: "Code-assisted",
+    description: "Include source review and dependency audit when a trusted source root is configured.",
+  },
+];
 const SECURITY_CONTROLS = [
   "auth_required",
   "object_owner_required",
@@ -427,6 +446,7 @@ export default function SecurityScanPage() {
   const [environment, setEnvironment] = useState<"dev" | "qa" | "stage" | "prod">("qa");
   const [scanDepth, setScanDepth] = useState<"baseline" | "standard" | "deep">("standard");
   const [safeMode, setSafeMode] = useState(true);
+  const [sourceMode, setSourceMode] = useState<ScanSourceMode>("auto");
   const [riskMode, setRiskMode] = useState<(typeof RISK_MODES)[number]["value"]>("safe");
   const [scanIntent, setScanIntent] = useState<(typeof SCAN_INTENTS)[number]["value"]>("full");
   const [owaspCategories, setOwaspCategories] = useState<string[]>([]);
@@ -883,13 +903,6 @@ export default function SecurityScanPage() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(payload));
     }
-  }
-
-  function liveCoords(e: { clientX: number; clientY: number; currentTarget: HTMLElement }) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * LIVE_VIEWPORT.width;
-    const y = ((e.clientY - rect.top) / rect.height) * LIVE_VIEWPORT.height;
-    return { x, y };
   }
 
   function captureLiveSession() {
@@ -1390,6 +1403,7 @@ export default function SecurityScanPage() {
       environment,
       scanDepth,
       safeMode,
+      sourceMode,
       authProfiles: setup.authProfiles,
       apiFixtures: setup.apiFixtures,
       expectedControls: setup.expectedControls,
@@ -1739,6 +1753,13 @@ export default function SecurityScanPage() {
                     Close live view
                   </Button>
                 )}
+                {bbSession && bbSession.status === "captured" && (
+                  <Link to={`/security/live?authSessionId=${bbSession.id}`}>
+                    <Button type="button" className="bg-emerald-600 text-white hover:bg-emerald-700">
+                      Start Live Security Test
+                    </Button>
+                  </Link>
+                )}
               </div>
               {bbSession && (
                 <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
@@ -1753,29 +1774,7 @@ export default function SecurityScanPage() {
                     Log in (and complete MFA) inside this live view. Click into it first, then type and click as
                     normal. When you're authenticated, click "I'm logged in" to capture the session.
                   </p>
-                  <div
-                    className="relative w-full overflow-hidden rounded border border-slate-300 bg-slate-900"
-                    style={{ aspectRatio: `${LIVE_VIEWPORT.width} / ${LIVE_VIEWPORT.height}` }}
-                    tabIndex={0}
-                    onMouseMove={(e) => sendLiveInput({ type: "mouse", event: "move", ...liveCoords(e) })}
-                    onMouseDown={(e) => sendLiveInput({ type: "mouse", event: "down", ...liveCoords(e) })}
-                    onMouseUp={(e) => sendLiveInput({ type: "mouse", event: "up", ...liveCoords(e) })}
-                    onWheel={(e) =>
-                      sendLiveInput({ type: "mouse", event: "wheel", ...liveCoords(e), deltaX: e.deltaX, deltaY: e.deltaY })
-                    }
-                    onKeyDown={(e) => {
-                      if (["Tab"].includes(e.key)) e.preventDefault();
-                      sendLiveInput({ type: "key", event: "down", key: e.key });
-                    }}
-                    onContextMenu={(e) => e.preventDefault()}
-                  >
-                    <img
-                      ref={liveImgRef}
-                      alt="Live session view"
-                      draggable={false}
-                      className="h-full w-full select-none"
-                    />
-                  </div>
+                  <LiveBrowserView viewport={LIVE_VIEWPORT} imgRef={liveImgRef} sendInput={sendLiveInput} />
                   <Button type="button" onClick={captureLiveSession} className="bg-emerald-600 text-white hover:bg-emerald-700">
                     I'm logged in — capture session
                   </Button>
@@ -2248,7 +2247,7 @@ export default function SecurityScanPage() {
           <CardTitle className="text-slate-800">Configure scan</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Project</label>
               <Select value={projectId} onValueChange={setProjectId}>
@@ -2272,6 +2271,24 @@ export default function SecurityScanPage() {
                 placeholder="https://app.yoursite.com"
                 className="bg-white"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Source coverage</label>
+              <Select value={sourceMode} onValueChange={(v) => setSourceMode(v as ScanSourceMode)}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOURCE_MODES.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                {SOURCE_MODES.find((mode) => mode.value === sourceMode)?.description}
+              </p>
             </div>
           </div>
 
@@ -3152,6 +3169,30 @@ export default function SecurityScanPage() {
                     {k}: {v as any}
                   </span>
                 ))}
+              </div>
+            )}
+            {job.summary?.coverage && (
+              <div className="space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Scan coverage
+                </div>
+                <div className="flex gap-2 text-xs text-slate-700 flex-wrap">
+                  <span className="bg-slate-100 rounded px-2 py-1">
+                    mode: {job.summary.coverage.mode === "code_and_url" ? "code + URL" : "URL only"}
+                  </span>
+                  <span className="bg-slate-100 rounded px-2 py-1">
+                    source: {job.summary.coverage.sourceAvailable ? "available" : "not used"}
+                  </span>
+                  <span className="bg-slate-100 rounded px-2 py-1">
+                    routes: {job.summary.routeInventory?.routes ?? 0}
+                  </span>
+                  <span className="bg-slate-100 rounded px-2 py-1">
+                    JS endpoints: {job.summary.coverage.url?.jsEndpoints ?? 0}
+                  </span>
+                  <span className="bg-slate-100 rounded px-2 py-1">
+                    auth profiles: {job.summary.coverage.url?.authProfiles ?? 0}
+                  </span>
+                </div>
               </div>
             )}
             {job.summary?.owaspCounts && Object.keys(job.summary.owaspCounts).length > 0 && (
