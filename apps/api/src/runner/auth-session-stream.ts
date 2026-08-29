@@ -6,6 +6,7 @@ import type WebSocket from "ws";
 import { chromium, type Browser, type BrowserContext, type Page, type CDPSession } from "playwright";
 import { prisma } from "../prisma.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
+import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js";
 
 // Bug Bounty mode: streams a live, server-side Chromium tab to the browser via
 // CDP screencast frames over a WebSocket, and forwards the user's mouse/keyboard
@@ -318,19 +319,6 @@ async function startCapture(
   return capture;
 }
 
-const SPECIAL_KEYS: Record<string, { code: string; windowsVirtualKeyCode: number }> = {
-  Enter: { code: "Enter", windowsVirtualKeyCode: 13 },
-  Backspace: { code: "Backspace", windowsVirtualKeyCode: 8 },
-  Tab: { code: "Tab", windowsVirtualKeyCode: 9 },
-  Escape: { code: "Escape", windowsVirtualKeyCode: 27 },
-  Delete: { code: "Delete", windowsVirtualKeyCode: 46 },
-  ArrowLeft: { code: "ArrowLeft", windowsVirtualKeyCode: 37 },
-  ArrowUp: { code: "ArrowUp", windowsVirtualKeyCode: 38 },
-  ArrowRight: { code: "ArrowRight", windowsVirtualKeyCode: 39 },
-  ArrowDown: { code: "ArrowDown", windowsVirtualKeyCode: 40 },
-  " ": { code: "Space", windowsVirtualKeyCode: 32 },
-};
-
 async function handleClientMessage(capture: ActiveCapture, raw: string) {
   let msg: any;
   try {
@@ -341,39 +329,9 @@ async function handleClientMessage(capture: ActiveCapture, raw: string) {
   const cdp = capture.cdp;
   try {
     if (msg.type === "mouse") {
-      const x = Number(msg.x) || 0;
-      const y = Number(msg.y) || 0;
-      if (msg.event === "move") {
-        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-      } else if (msg.event === "down") {
-        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: msg.button || "left", clickCount: 1 });
-      } else if (msg.event === "up") {
-        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: msg.button || "left", clickCount: 1 });
-      } else if (msg.event === "wheel") {
-        await cdp.send("Input.dispatchMouseEvent", {
-          type: "mouseWheel",
-          x,
-          y,
-          deltaX: Number(msg.deltaX) || 0,
-          deltaY: Number(msg.deltaY) || 0,
-        });
-      }
-    } else if (msg.type === "key" && msg.event === "down") {
-      const key = String(msg.key ?? "");
-      if (key.length === 1) {
-        // Dispatch a real keyDown/keyUp pair (with `text` set) rather than Input.insertText.
-        // insertText bypasses keydown/keyup entirely, which behavioral bot-detection (and some
-        // CSRF/anti-automation form handlers) can use to flag the submission as non-human even
-        // though the field visually fills in correctly.
-        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", text: key, unmodifiedText: key, key });
-        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key });
-      } else {
-        const mapped = SPECIAL_KEYS[key];
-        if (mapped) {
-          await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: mapped.code, windowsVirtualKeyCode: mapped.windowsVirtualKeyCode });
-          await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: mapped.code, windowsVirtualKeyCode: mapped.windowsVirtualKeyCode });
-        }
-      }
+      await dispatchMouseInput(cdp, msg);
+    } else if (msg.type === "key") {
+      await dispatchKeyInput(cdp, msg);
     } else if (msg.type === "capture") {
       await captureStorageState(capture);
     }

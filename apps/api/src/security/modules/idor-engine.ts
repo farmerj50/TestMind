@@ -12,6 +12,7 @@
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
 import { probeScoped, type ProbeScope } from "../http-client.js";
+import { UUID_PATTERN, CUID_PATTERN } from "../http-exchange.js";
 
 export type IdorFinding = {
   type: "dynamic";
@@ -40,9 +41,9 @@ async function httpGet(
 
 // ── ID extraction ────────────────────────────────────────────────────────────
 
-// Extracts IDs embedded in JSON responses
-const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const CUID_PATTERN = /\bc[a-z0-9]{24,}\b/g;
+// Extracts IDs embedded in JSON responses. UUID_PATTERN/CUID_PATTERN are shared with
+// http-exchange.ts's URL-candidate detection so the two never define the same ID shapes
+// differently.
 const NUMERIC_ID_PATTERN = /"(?:id|userId|accountId|transferId|transactionId|cardId|paymentId)"\s*:\s*"?(\d{4,})"?/g;
 
 function harvestIds(body: string): { uuids: string[]; cuids: string[]; numerics: string[] } {
