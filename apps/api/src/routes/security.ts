@@ -9,6 +9,7 @@ import {
 } from "../lib/security-finding-detail.js";
 import { redactAuthProfileForStorage } from "../security/redaction.js";
 import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/auth-session-stream.js";
+import { issueLiveTestTicket, registerLiveSecuritySessionRoutes, closeLiveSession } from "../runner/live-security-session.js";
 import {
   callAuthBypassEndpoint,
   buildStorageStateFromCookieString,
@@ -1102,6 +1103,39 @@ export default async function securityRoutes(app: FastifyInstance) {
   });
 
   registerAuthSessionStreamRoutes(app);
+
+  // ── Live Security Testing (v0.1 POC) ─────────────────────────────────────────
+
+  app.post("/security/auth-sessions/:id/live-test-ticket", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({
+      where: { id, project: { ownerId: userId } },
+    });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+    if (session.status !== "captured" || !session.storagePath) {
+      return reply.code(400).send({ error: "Session has not completed authentication capture yet" });
+    }
+    if (!session.scopeAcknowledged) {
+      return reply.code(400).send({ error: "Scope must be acknowledged before starting live testing" });
+    }
+    return { ticket: issueLiveTestTicket(id) };
+  });
+
+  app.post("/security/auth-sessions/:id/live-test-stop", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({
+      where: { id, project: { ownerId: userId } },
+    });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+    await closeLiveSession(id);
+    return { ok: true };
+  });
+
+  registerLiveSecuritySessionRoutes(app);
 
   // ── API Spec (OpenAPI / Swagger import) ──────────────────────────────────────
 
