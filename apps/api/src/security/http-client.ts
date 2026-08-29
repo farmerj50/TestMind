@@ -2,6 +2,10 @@ import { request } from "undici";
 import { redactText, snippet } from "./redaction.js";
 import type { IntelligentSecurityScanConfig, SecurityProbeEvidence } from "./types.js";
 
+// Canonical scope-config shape, so every module that needs "what hosts/ports may this
+// scan touch" imports the same type instead of each defining its own equivalent.
+export type ProbeScope = Pick<IntelligentSecurityScanConfig, "allowedHosts" | "allowedPorts">;
+
 export type ProbeOptions = {
   method?: string;
   headers?: Record<string, string>;
@@ -92,7 +96,7 @@ function emptyResult(method: string, url: string, profile: string | undefined, e
 // an in-scope target that 302s to an out-of-scope/internal address would have let the
 // redirect target be requested unchecked. Mirrors safe-fetch.ts's safeFetch loop shape.
 export async function probeScoped(
-  config: Pick<IntelligentSecurityScanConfig, "allowedHosts" | "allowedPorts">,
+  config: ProbeScope,
   url: string,
   opts: ProbeOptions = {}
 ): Promise<ProbeResult> {
