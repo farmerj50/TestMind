@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import type WebSocket from "ws";
-import { chromium, type Browser, type BrowserContext, type Page, type CDPSession } from "playwright";
+// patchright, not playwright — see auth-session-stream.ts for why (Runtime.enable CDP
+// leak fix; scoped to the two files that attach a live CDP session).
+import { chromium, type Browser, type BrowserContext, type Page, type CDPSession } from "patchright";
 import { prisma } from "../prisma.js";
 import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js";
 import { runIdMutationExperiment } from "../security/experiment.js";

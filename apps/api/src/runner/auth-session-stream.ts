@@ -3,7 +3,12 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type WebSocket from "ws";
-import { chromium, type Browser, type BrowserContext, type Page, type CDPSession } from "playwright";
+// patchright (not playwright) — a maintained fork that patches the Runtime.enable CDP
+// leak and other automation markers Cloudflare/DataDome-class bot management key on.
+// Scoped to just this file and live-security-session.ts, the two that actively attach a
+// CDP session to a live-streamed page; discover.ts/agent/service.ts stay on plain
+// playwright since they don't need stealth. Same API surface — drop-in import swap only.
+import { chromium, type Browser, type BrowserContext, type Page, type CDPSession } from "patchright";
 import { prisma } from "../prisma.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
 import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js";

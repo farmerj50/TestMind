@@ -1,4 +1,8 @@
-import type { CDPSession } from "playwright";
+// patchright, not playwright — shared by the two files (auth-session-stream.ts,
+// live-security-session.ts) that both attach a patchright CDP session; must match their
+// CDPSession type exactly since patchright's Protocol.CommandParameters isn't structurally
+// identical to playwright-core's.
+import type { CDPSession } from "patchright";
 
 // Shared by auth-session-stream.ts (Bug Bounty auth capture) and live-security-session.ts
 // (Live Security Testing) — both forward a remote browser's mouse/keyboard input into a
