@@ -49,6 +49,8 @@ type SecurityTestSetup = {
   complianceFrameworks?: string[];
 };
 type ScanSourceMode = "auto" | "url_only" | "code_assisted";
+type OpenSourceToolId = "semgrep" | "dependency-audit" | "nuclei" | "zap-baseline" | "zap-full";
+type AuthCaptureExecutionMode = "headless" | "headed";
 type SecurityJob = {
   id: string;
   projectId: string;
@@ -57,6 +59,7 @@ type SecurityJob = {
   summary?: any;
   config?: {
     authProfiles?: Array<{ label: string; role?: string | null; type?: string }>;
+    openSourceToolIds?: string[];
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -151,6 +154,57 @@ const SOURCE_MODES: Array<{ value: ScanSourceMode; label: string; description: s
     description: "Include source review and dependency audit when a trusted source root is configured.",
   },
 ];
+
+const OPEN_SOURCE_TOOL_OPTIONS: Array<{
+  id: OpenSourceToolId;
+  label: string;
+  scope: string;
+  risk: "Low" | "Medium" | "High";
+  requiresSource?: boolean;
+  requiresDeepApproval?: boolean;
+}> = [
+  {
+    id: "semgrep",
+    label: "Semgrep",
+    scope: "Code SAST",
+    risk: "Low",
+    requiresSource: true,
+  },
+  {
+    id: "dependency-audit",
+    label: "Dependency audit",
+    scope: "SCA",
+    risk: "Low",
+    requiresSource: true,
+  },
+  {
+    id: "nuclei",
+    label: "Nuclei",
+    scope: "DAST templates",
+    risk: "Medium",
+  },
+  {
+    id: "zap-baseline",
+    label: "OWASP ZAP baseline",
+    scope: "Passive DAST",
+    risk: "Low",
+  },
+  {
+    id: "zap-full",
+    label: "OWASP ZAP full",
+    scope: "Active DAST",
+    risk: "High",
+    requiresDeepApproval: true,
+  },
+];
+
+const DEFAULT_OPEN_SOURCE_TOOL_IDS: OpenSourceToolId[] = [
+  "semgrep",
+  "dependency-audit",
+  "nuclei",
+  "zap-baseline",
+];
+
 const SECURITY_CONTROLS = [
   "auth_required",
   "object_owner_required",
@@ -396,9 +450,9 @@ export default function SecurityScanPage() {
   const [authMode, setAuthMode] = useState<AuthMode>("enterprise");
   const [bbLoginUrl, setBbLoginUrl] = useState("");
   const [bbScopeAck, setBbScopeAck] = useState(false);
-  const [bbAllowInteractiveChallengeHandling, setBbAllowInteractiveChallengeHandling] = useState(false);
   const [bbProxyUrl, setBbProxyUrl] = useState("");
   const [bbInputMode, setBbInputMode] = useState<"live" | "paste">("live");
+  const [bbExecutionMode, setBbExecutionMode] = useState<AuthCaptureExecutionMode>("headed");
   const [bbPastedCapture, setBbPastedCapture] = useState("");
   const [bbDetectedFormat, setBbDetectedFormat] = useState<"raw_http" | "curl" | "cookies" | null>(null);
   const [bbImportResult, setBbImportResult] = useState<{ sessionValid: boolean | null; statusCode?: number; warnings: string[] } | null>(null);
@@ -450,6 +504,9 @@ export default function SecurityScanPage() {
   const [riskMode, setRiskMode] = useState<(typeof RISK_MODES)[number]["value"]>("safe");
   const [scanIntent, setScanIntent] = useState<(typeof SCAN_INTENTS)[number]["value"]>("full");
   const [owaspCategories, setOwaspCategories] = useState<string[]>([]);
+  const [openSourceToolIds, setOpenSourceToolIds] = useState<OpenSourceToolId[]>([
+    ...DEFAULT_OPEN_SOURCE_TOOL_IDS,
+  ]);
   const [complianceFrameworks] = useState<string[]>(["OWASP ASVS", "SOC 2", "ISO 27001"]);
   const [expectedControls, setExpectedControls] = useState(DEFAULT_EXPECTED_CONTROLS);
   const [authProfiles, setAuthProfiles] = useState<AuthProfileConfig[]>([]);
@@ -480,6 +537,17 @@ export default function SecurityScanPage() {
   const [findingLoading, setFindingLoading] = useState<{ explain?: boolean; test?: boolean }>({});
   const [baselineApproving, setBaselineApproving] = useState(false);
   const needsOperatorApproval = environment === "prod" || scanDepth === "deep" || safeMode === false;
+  const zapFullAllowed = scanDepth === "deep" && enableActive && safeMode === false;
+  const sourceToolsAllowed = sourceMode !== "url_only";
+  const effectiveOpenSourceToolIds = useMemo(
+    () =>
+      openSourceToolIds.filter((toolId) => {
+        const tool = OPEN_SOURCE_TOOL_OPTIONS.find((candidate) => candidate.id === toolId);
+        if (tool?.requiresSource && !sourceToolsAllowed) return false;
+        return toolId !== "zap-full" || zapFullAllowed;
+      }),
+    [openSourceToolIds, sourceToolsAllowed, zapFullAllowed]
+  );
   const stopPolling = () => {
     if (pollRef.current) {
       window.clearInterval(pollRef.current);
@@ -746,6 +814,7 @@ export default function SecurityScanPage() {
       });
       setBbSession(res.session);
       pollBbSession(res.session.id);
+      await openLiveView(res.session);
     } catch (err: any) {
       setError(err?.message ?? "Failed to start Bug Bounty session");
     } finally {
@@ -847,19 +916,21 @@ export default function SecurityScanPage() {
     setLiveViewConnecting(false);
   }
 
-  async function openLiveView() {
-    if (!bbSession) return;
+  async function openLiveView(sessionOverride?: SecurityAuthSession) {
+    const session = sessionOverride ?? bbSession;
+    if (!session) return;
     setError(null);
     setLiveViewConnecting(true);
     try {
-      const res = await apiFetch<{ ticket: string }>(`/security/auth-sessions/${bbSession.id}/stream-ticket`, {
+      const res = await apiFetch<{ ticket: string }>(`/security/auth-sessions/${session.id}/stream-ticket`, {
         method: "POST",
         body: JSON.stringify({
-          allowInteractiveChallengeHandling: bbAllowInteractiveChallengeHandling,
+          executionMode: bbExecutionMode,
+          allowInteractiveChallengeHandling: false,
           ...(bbProxyUrl.trim() ? { proxyUrl: bbProxyUrl.trim() } : {}),
         }),
       });
-      const httpBase = apiUrl(`/security/auth-sessions/${bbSession.id}/stream`);
+      const httpBase = apiUrl(`/security/auth-sessions/${session.id}/stream`);
       const wsUrl = `${httpBase.replace(/^http/, "ws")}?ticket=${encodeURIComponent(res.ticket)}`;
       const ws = new WebSocket(wsUrl);
       liveWsRef.current = ws;
@@ -1073,6 +1144,7 @@ export default function SecurityScanPage() {
     setSafeMode(config.safeMode);
     setEnableActive(config.enableActive);
     if (mode === "deep") setScanDepth("deep");
+    else setOpenSourceToolIds((prev) => prev.filter((id) => id !== "zap-full"));
   };
 
   const applyScanIntent = (intent: (typeof SCAN_INTENTS)[number]["value"]) => {
@@ -1088,6 +1160,15 @@ export default function SecurityScanPage() {
       prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
     );
     setSetupDirty(true);
+  };
+
+  const toggleOpenSourceTool = (toolId: OpenSourceToolId) => {
+    const tool = OPEN_SOURCE_TOOL_OPTIONS.find((candidate) => candidate.id === toolId);
+    if (tool?.requiresSource && !sourceToolsAllowed) return;
+    if (toolId === "zap-full" && !zapFullAllowed) return;
+    setOpenSourceToolIds((prev) =>
+      prev.includes(toolId) ? prev.filter((id) => id !== toolId) : [...prev, toolId]
+    );
   };
 
   const syncAuthProfiles = (next: AuthProfileConfig[]) => {
@@ -1384,6 +1465,7 @@ export default function SecurityScanPage() {
     }
     setError(null);
     setOperatorRequest(null);
+    const selectedOpenSourceToolIds = effectiveOpenSourceToolIds;
 
     const scanContext = {
       projectId,
@@ -1409,6 +1491,7 @@ export default function SecurityScanPage() {
       expectedControls: setup.expectedControls,
       owaspCategories: setup.owaspCategories,
       complianceFrameworks: setup.complianceFrameworks,
+      openSourceToolIds: selectedOpenSourceToolIds,
     };
 
     try {
@@ -1666,6 +1749,38 @@ export default function SecurityScanPage() {
                 (including MFA) yourself — once you're authenticated, the session is captured automatically and
                 reused for the scan.
               </p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBbExecutionMode("headed");
+                  }}
+                  className={`rounded-md border p-3 text-left text-sm transition ${
+                    bbExecutionMode === "headed"
+                      ? "border-amber-500 bg-white text-slate-900 shadow-sm"
+                      : "border-slate-300 bg-white/70 text-slate-700 hover:border-slate-400"
+                  }`}
+                >
+                  <div className="font-semibold">Headed manual browser</div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    Opens a Chrome window. Type credentials there; the preview is read-only.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBbExecutionMode("headless")}
+                  className={`rounded-md border p-3 text-left text-sm transition ${
+                    bbExecutionMode === "headless"
+                      ? "border-amber-500 bg-white text-slate-900 shadow-sm"
+                      : "border-slate-300 bg-white/70 text-slate-700 hover:border-slate-400"
+                  }`}
+                >
+                  <div className="font-semibold">Headless live preview</div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    Uses the embedded preview for input when a native window is not needed.
+                  </div>
+                </button>
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-700">Login URL</label>
@@ -1711,19 +1826,6 @@ export default function SecurityScanPage() {
                 />
                 <span>I confirm this target is in-scope for my bug bounty program and I'm authorized to test it.</span>
               </label>
-              <label className="flex items-start gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={bbAllowInteractiveChallengeHandling}
-                  onChange={(e) => setBbAllowInteractiveChallengeHandling(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  Allow interactive challenge handling in the live view (sends IP-trust headers such as
-                  X-Forwarded-For, to test IP-reputation misconfigurations). Only use this if testing IP-trust
-                  handling is explicitly in scope for your engagement.
-                </span>
-              </label>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -1742,10 +1844,14 @@ export default function SecurityScanPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={openLiveView}
+                    onClick={() => openLiveView()}
                     disabled={liveViewConnecting}
                   >
-                    {liveViewConnecting ? "Connecting..." : "Watch live & log in"}
+                    {liveViewConnecting
+                      ? "Connecting..."
+                      : bbExecutionMode === "headed"
+                        ? "Open headed browser"
+                        : "Watch live & log in"}
                   </Button>
                 )}
                 {liveViewOpen && (
@@ -1771,10 +1877,16 @@ export default function SecurityScanPage() {
               {liveViewOpen && (
                 <div className="space-y-2 rounded border border-amber-300 bg-black/5 p-3">
                   <p className="text-xs text-amber-800">
-                    Log in (and complete MFA) inside this live view. Click into it first, then type and click as
-                    normal. When you're authenticated, click "I'm logged in" to capture the session.
+                    {bbExecutionMode === "headed"
+                      ? "Log in and complete MFA inside the Chrome window that opened. This preview is observation-only. When you're authenticated, click \"I'm logged in\" to capture the session."
+                      : "Log in and complete MFA inside this live view. Click into it first, then type and click as normal. When you're authenticated, click \"I'm logged in\" to capture the session."}
                   </p>
-                  <LiveBrowserView viewport={LIVE_VIEWPORT} imgRef={liveImgRef} sendInput={sendLiveInput} />
+                  <LiveBrowserView
+                    viewport={LIVE_VIEWPORT}
+                    imgRef={liveImgRef}
+                    sendInput={sendLiveInput}
+                    interactive={bbExecutionMode === "headless"}
+                  />
                   <Button type="button" onClick={captureLiveSession} className="bg-emerald-600 text-white hover:bg-emerald-700">
                     I'm logged in — capture session
                   </Button>
@@ -2394,7 +2506,16 @@ export default function SecurityScanPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Scan depth</label>
-              <Select value={scanDepth} onValueChange={(v) => setScanDepth(v as typeof scanDepth)}>
+              <Select
+                value={scanDepth}
+                onValueChange={(v) => {
+                  const nextDepth = v as typeof scanDepth;
+                  setScanDepth(nextDepth);
+                  if (nextDepth !== "deep") {
+                    setOpenSourceToolIds((prev) => prev.filter((id) => id !== "zap-full"));
+                  }
+                }}
+              >
                 <SelectTrigger className="bg-white">
                   <SelectValue />
                 </SelectTrigger>
@@ -2441,6 +2562,94 @@ export default function SecurityScanPage() {
               <p className="text-xs text-slate-500">
                 {RISK_MODES.find((m) => m.value === riskMode)?.description}
               </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">Open-source tool round</div>
+                <p className="text-xs text-slate-500">
+                  TestMind controls scope, auth context, guardrails, and finding normalization.{" "}
+                  {effectiveOpenSourceToolIds.length} selected.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOpenSourceToolIds([...DEFAULT_OPEN_SOURCE_TOOL_IDS])}
+                >
+                  Recommended
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOpenSourceToolIds([])}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {OPEN_SOURCE_TOOL_OPTIONS.map((tool) => {
+                const disabled = Boolean(
+                  (tool.requiresSource && !sourceToolsAllowed) ||
+                  (tool.requiresDeepApproval && !zapFullAllowed)
+                );
+                const checked = !disabled && openSourceToolIds.includes(tool.id);
+                return (
+                  <label
+                    key={tool.id}
+                    className={`flex min-h-[74px] items-start gap-3 rounded-md border px-3 py-2 text-sm ${
+                      checked
+                        ? "border-blue-200 bg-white text-slate-900 shadow-sm"
+                        : disabled
+                          ? "border-slate-200 bg-slate-100 text-slate-400"
+                          : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => toggleOpenSourceTool(tool.id)}
+                    />
+                    <span className="min-w-0 flex-1 space-y-1">
+                      <span className="block font-medium">{tool.label}</span>
+                      <span className="flex flex-wrap gap-1">
+                        <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">
+                          {tool.scope}
+                        </span>
+                        <span
+                          className={`rounded border px-1.5 py-0.5 text-[11px] ${
+                            tool.risk === "High"
+                              ? "border-amber-300 bg-amber-50 text-amber-800"
+                              : tool.risk === "Medium"
+                                ? "border-blue-200 bg-blue-50 text-blue-800"
+                                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          }`}
+                        >
+                          {tool.risk} risk
+                        </span>
+                        {tool.requiresSource && (
+                          <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">
+                            source
+                          </span>
+                        )}
+                        {tool.requiresDeepApproval && (
+                          <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">
+                            deep approval
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -3111,7 +3320,8 @@ export default function SecurityScanPage() {
                     graphql_audit: "GraphQL audit",
                     openapi_scan: "OpenAPI endpoint scan",
                     js_analysis: "JavaScript bundle analysis",
-                    advanced_analysis: "JWT · IDOR · Race conditions · Nuclei",
+                    open_source_tools: "Open-source security tools",
+                    advanced_analysis: "JWT · IDOR · Race conditions",
                     business_logic_cors: "Business logic · CORS audit",
                     mobile_scan: "Mobile security · Performance baseline",
                     anomaly_baseline: "Anomaly baseline",
@@ -3192,6 +3402,25 @@ export default function SecurityScanPage() {
                   <span className="bg-slate-100 rounded px-2 py-1">
                     auth profiles: {job.summary.coverage.url?.authProfiles ?? 0}
                   </span>
+                </div>
+              </div>
+            )}
+            {job.summary?.openSourceTools && (
+              <div className="space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Open-source tools
+                </div>
+                <div className="flex gap-2 text-xs text-slate-700 flex-wrap">
+                  {(job.summary.openSourceTools.selected ?? []).map((toolId: string) => {
+                    const executed = (job.summary.openSourceTools.executed ?? []).find(
+                      (tool: any) => tool.id === toolId
+                    );
+                    return (
+                      <span key={toolId} className="bg-slate-100 rounded px-2 py-1">
+                        {toolId}: {executed ? `${executed.findingCount ?? 0} findings` : "not run"}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}

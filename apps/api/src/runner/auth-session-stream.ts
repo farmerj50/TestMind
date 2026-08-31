@@ -22,12 +22,14 @@ import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js
 const TICKET_TTL_MS = 60_000;
 const IDLE_TIMEOUT_MS = 10 * 60_000;
 const VIEWPORT = { width: 1280, height: 800 };
+type AuthCaptureExecutionMode = "headless" | "headed";
 
 type Ticket = {
   sessionId: string;
   expiresAt: number;
   allowInteractiveChallengeHandling: boolean;
   proxyUrl?: string;
+  executionMode: AuthCaptureExecutionMode;
 };
 const tickets = new Map<string, Ticket>();
 
@@ -35,21 +37,28 @@ export function issueStreamTicket(
   sessionId: string,
   allowInteractiveChallengeHandling = false,
   proxyUrl?: string,
+  executionMode: AuthCaptureExecutionMode = "headed",
 ): string {
   const ticket = crypto.randomBytes(24).toString("hex");
-  tickets.set(ticket, { sessionId, expiresAt: Date.now() + TICKET_TTL_MS, allowInteractiveChallengeHandling, proxyUrl });
+  tickets.set(ticket, {
+    sessionId,
+    expiresAt: Date.now() + TICKET_TTL_MS,
+    allowInteractiveChallengeHandling,
+    proxyUrl,
+    executionMode,
+  });
   return ticket;
 }
 
 function consumeStreamTicket(
   sessionId: string,
   ticket: string,
-): { ok: boolean; allowInteractiveChallengeHandling: boolean; proxyUrl?: string } {
+): { ok: boolean; allowInteractiveChallengeHandling: boolean; proxyUrl?: string; executionMode: AuthCaptureExecutionMode } {
   const entry = tickets.get(ticket);
-  if (!entry) return { ok: false, allowInteractiveChallengeHandling: false };
+  if (!entry) return { ok: false, allowInteractiveChallengeHandling: false, executionMode: "headed" };
   tickets.delete(ticket);
   const ok = entry.expiresAt >= Date.now() && entry.sessionId === sessionId;
-  return { ok, allowInteractiveChallengeHandling: entry.allowInteractiveChallengeHandling, proxyUrl: entry.proxyUrl };
+  return { ok, allowInteractiveChallengeHandling: entry.allowInteractiveChallengeHandling, proxyUrl: entry.proxyUrl, executionMode: entry.executionMode };
 }
 
 // Spoofed client-IP headers used to probe whether the target's bot/IP-reputation
@@ -74,12 +83,26 @@ type ActiveCapture = {
   page: Page;
   cdp: CDPSession;
   sockets: Set<WebSocket>;
+  executionMode: AuthCaptureExecutionMode;
   pollHandle: NodeJS.Timeout;
   idleHandle: NodeJS.Timeout;
   closed: boolean;
 };
 
 const active = new Map<string, ActiveCapture>();
+
+type CaptureSessionInput = {
+  id: string;
+  projectId?: string | null;
+  baseUrl: string | null;
+  loginUrl: string | null;
+  successPattern: string | null;
+};
+
+type CaptureBrowserLaunch = {
+  browser: Browser;
+  context?: BrowserContext;
+};
 
 function broadcast(capture: ActiveCapture, payload: unknown) {
   const msg = JSON.stringify(payload);
@@ -96,6 +119,76 @@ async function setSessionStatus(sessionId: string, data: Record<string, unknown>
   }
 }
 
+function sanitizeProfilePart(value: string): string {
+  const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  return sanitized.slice(0, 96) || "unknown";
+}
+
+function headedProfileDirs(session: CaptureSessionInput): string[] {
+  const profileBase = path.join(AUTH_SESSION_ROOT, "browser-profiles");
+  let hostname = "unknown-host";
+  try {
+    hostname = new URL(session.baseUrl || session.loginUrl || "").hostname.toLowerCase();
+  } catch {}
+  const projectPart = sanitizeProfilePart(session.projectId || "local");
+  const hostPart = sanitizeProfilePart(hostname);
+  const hostDigest = crypto
+    .createHash("sha256")
+    .update(`${session.projectId || "local"}|${hostname}`)
+    .digest("hex")
+    .slice(0, 12);
+  return [
+    path.join(profileBase, `${projectPart}-${hostPart}-${hostDigest}`),
+    path.join(profileBase, "sessions", sanitizeProfilePart(session.id)),
+  ];
+}
+
+async function launchCaptureBrowser(
+  session: CaptureSessionInput,
+  executionMode: AuthCaptureExecutionMode,
+  proxyUrl?: string,
+): Promise<CaptureBrowserLaunch> {
+  const launchOptions = {
+    headless: executionMode === "headless",
+    args: [
+      ...(executionMode === "headless" ? ["--disable-blink-features=AutomationControlled", "--no-sandbox"] : []),
+      ...(proxyUrl ? ["--ignore-certificate-errors"] : []),
+    ],
+    ...(proxyUrl ? { proxy: { server: proxyUrl } } : {}),
+  };
+
+  if (executionMode === "headed") {
+    for (const userDataDir of headedProfileDirs(session)) {
+      await fs.mkdir(userDataDir, { recursive: true });
+      try {
+        const context = await chromium.launchPersistentContext(userDataDir, {
+          ...launchOptions,
+          channel: "chrome",
+          viewport: VIEWPORT,
+        } as any);
+        return { browser: context.browser()!, context };
+      } catch (err: any) {
+        console.warn(
+          `[auth-session-stream] system Chrome persistent profile unavailable for session ${session.id}: ${err?.message ?? err}`,
+        );
+      }
+      try {
+        const context = await chromium.launchPersistentContext(userDataDir, {
+          ...launchOptions,
+          viewport: VIEWPORT,
+        } as any);
+        return { browser: context.browser()!, context };
+      } catch (err: any) {
+        console.warn(
+          `[auth-session-stream] bundled Chromium persistent profile unavailable for session ${session.id}: ${err?.message ?? err}`,
+        );
+      }
+    }
+  }
+
+  return { browser: await chromium.launch(launchOptions as any) };
+}
+
 async function closeCapture(sessionId: string, finalStatus?: { status: string; error?: string | null }) {
   const capture = active.get(sessionId);
   if (!capture || capture.closed) return;
@@ -106,6 +199,9 @@ async function closeCapture(sessionId: string, finalStatus?: { status: string; e
   for (const ws of capture.sockets) {
     try { ws.close(); } catch {}
   }
+  try {
+    await capture.context.close();
+  } catch {}
   try {
     await capture.browser.close();
   } catch {}
@@ -123,39 +219,37 @@ async function captureStorageState(capture: ActiveCapture) {
 }
 
 async function startCapture(
-  session: {
-    id: string;
-    baseUrl: string | null;
-    loginUrl: string | null;
-    successPattern: string | null;
-  },
+  session: CaptureSessionInput,
   allowInteractiveChallengeHandling: boolean,
   proxyUrl?: string,
+  executionMode: AuthCaptureExecutionMode = "headed",
 ): Promise<ActiveCapture> {
   const startUrl = session.loginUrl || session.baseUrl;
   if (!startUrl) throw new Error("Session has no baseUrl/loginUrl to navigate to");
+  const useManagedBrowserPatches = executionMode === "headless";
+  const includeIpTrustHeaders =
+    useManagedBrowserPatches &&
+    allowInteractiveChallengeHandling &&
+    process.env.TESTMIND_ALLOW_IP_TRUST_HEADERS === "1";
 
-  const browser = await chromium.launch({
-    headless: false,
-    args: [
-      "--disable-blink-features=AutomationControlled",
-      "--no-sandbox",
-      // When routing through an intercepting proxy (e.g. Burp Suite), Playwright Chromium
-      // uses its own bundled cert store — NOT the Windows/system store — so it rejects the
-      // proxy's self-signed CA even if the user has installed it system-wide. Suppress that
-      // check only when a proxy is explicitly configured; the proxy itself does cert inspection.
-      ...(proxyUrl ? ["--ignore-certificate-errors"] : []),
-    ],
-    ...(proxyUrl ? { proxy: { server: proxyUrl } } : {}),
-  });
+  const launched = await launchCaptureBrowser(session, executionMode, proxyUrl);
+  const browser = launched.browser;
   if (proxyUrl) {
     console.log(`[auth-session-stream] outbound proxy set for session ${session.id}: ${proxyUrl} (cert errors suppressed)`);
   }
-  const context = await browser.newContext({
-    viewport: VIEWPORT,
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-  });
+  const context =
+    launched.context ??
+    (await browser.newContext(
+      useManagedBrowserPatches
+        ? {
+            viewport: VIEWPORT,
+            userAgent:
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+          }
+        : {
+            viewport: VIEWPORT,
+          },
+    ));
   // Suppress the full set of automation fingerprinting signals that bot managers check.
   // This mirrors what Burp's "Bypass Bot Detection" extension does: normalize every
   // browser property that Playwright-launched Chromium leaves in an obviously-automated
@@ -164,113 +258,122 @@ async function startCapture(
   // not in Node — hence globalThis (= window in the browser) and no-TypeScript-lib browser
   // globals. The casts to `any` are purely to satisfy tsc; at runtime these are real browser
   // objects.
-  await context.addInitScript(() => {
-    const win = globalThis as any;
+  if (useManagedBrowserPatches) {
+    await context.addInitScript(() => {
+      const win = globalThis as any;
 
-    // 1. webdriver — the most obvious signal; --disable-blink-features=AutomationControlled
-    //    isn't fully reliable on recent Chromium, so remove it JS-side too.
-    Object.defineProperty(Navigator.prototype, "webdriver", { get: () => undefined });
+      // 1. webdriver — the most obvious signal; --disable-blink-features=AutomationControlled
+      //    isn't fully reliable on recent Chromium, so remove it JS-side too.
+      Object.defineProperty(Navigator.prototype, "webdriver", { get: () => undefined });
 
-    // 2. window.chrome — absent in Playwright-launched Chromium; many scripts check for
-    //    chrome.runtime before deciding whether to show bot-detection challenges.
-    if (!win.chrome) {
-      win.chrome = {
-        runtime: { connect: () => {}, sendMessage: () => {}, onMessage: { addListener: () => {} } },
-        loadTimes: () => null,
-        csi: () => null,
-        app: {},
-      };
-    }
+      // 2. window.chrome — absent in Playwright-launched Chromium; many scripts check for
+      //    chrome.runtime before deciding whether to show bot-detection challenges.
+      if (!win.chrome) {
+        win.chrome = {
+          runtime: { connect: () => {}, sendMessage: () => {}, onMessage: { addListener: () => {} } },
+          loadTimes: () => null,
+          csi: () => null,
+          app: {},
+        };
+      }
 
-    // 3. navigator.plugins — empty in Playwright Chromium; real Chrome has at least three.
-    Object.defineProperty(Navigator.prototype, "plugins", {
-      get: () => {
-        const list = [
-          { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
-          { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "" },
-          { name: "Native Client", filename: "internal-nacl-plugin", description: "" },
-        ];
-        return Object.assign(list, {
-          namedItem: (name: string) => list.find((p) => p.name === name) ?? null,
-          refresh: () => {},
-          item: (i: number) => list[i] ?? null,
-          length: list.length,
-          [Symbol.iterator]: [][Symbol.iterator],
-        });
-      },
-    });
+      // 3. navigator.plugins — empty in Playwright Chromium; real Chrome has at least three.
+      Object.defineProperty(Navigator.prototype, "plugins", {
+        get: () => {
+          const list = [
+            { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+            { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "" },
+            { name: "Native Client", filename: "internal-nacl-plugin", description: "" },
+          ];
+          return Object.assign(list, {
+            namedItem: (name: string) => list.find((p) => p.name === name) ?? null,
+            refresh: () => {},
+            item: (i: number) => list[i] ?? null,
+            length: list.length,
+            [Symbol.iterator]: [][Symbol.iterator],
+          });
+        },
+      });
 
-    // 4. navigator.languages — must be non-empty and match the Accept-Language header.
-    Object.defineProperty(Navigator.prototype, "languages", { get: () => ["en-US", "en"] });
+      // 4. navigator.languages — must be non-empty and match the Accept-Language header.
+      Object.defineProperty(Navigator.prototype, "languages", { get: () => ["en-US", "en"] });
 
-    // 5. navigator.userAgentData (Client Hints API) — checked by modern bot managers
-    //    (Akamai Bot Manager, PerimeterX, DataDome, etc.) as a high-signal automation tell.
-    const uaBrands = [
-      { brand: "Chromium", version: "148" },
-      { brand: "Google Chrome", version: "148" },
-      { brand: "Not:A-Brand", version: "99" },
-    ];
-    const uaData = {
-      brands: uaBrands,
-      mobile: false,
-      platform: "Windows",
-      getHighEntropyValues: async (_hints: string[]) => ({
-        architecture: "x86",
-        bitness: "64",
+      // 5. navigator.userAgentData (Client Hints API) — checked by modern bot managers
+      //    (Akamai Bot Manager, PerimeterX, DataDome, etc.) as a high-signal automation tell.
+      const uaBrands = [
+        { brand: "Chromium", version: "148" },
+        { brand: "Google Chrome", version: "148" },
+        { brand: "Not:A-Brand", version: "99" },
+      ];
+      const uaData = {
         brands: uaBrands,
-        fullVersionList: [
-          { brand: "Chromium", version: "148.0.0.0" },
-          { brand: "Google Chrome", version: "148.0.0.0" },
-          { brand: "Not:A-Brand", version: "99.0.0.0" },
-        ],
         mobile: false,
-        model: "",
         platform: "Windows",
-        platformVersion: "10.0.0",
-        uaFullVersion: "148.0.0.0",
-        wow64: false,
-      }),
-      toJSON: () => ({ brands: uaBrands, mobile: false, platform: "Windows" }),
-    };
-    Object.defineProperty(Navigator.prototype, "userAgentData", { get: () => uaData });
-
-    // 6. permissions.query — headless Chrome returns detectable values for "notifications";
-    //    normalise to what a real browser would report.
-    const origQuery = win.navigator?.permissions?.query?.bind(win.navigator.permissions);
-    if (origQuery) {
-      win.navigator.permissions.query = (params: any) => {
-        if (params?.name === "notifications") {
-          return Promise.resolve({ state: win.Notification?.permission ?? "default" });
-        }
-        return origQuery(params);
+        getHighEntropyValues: async (_hints: string[]) => ({
+          architecture: "x86",
+          bitness: "64",
+          brands: uaBrands,
+          fullVersionList: [
+            { brand: "Chromium", version: "148.0.0.0" },
+            { brand: "Google Chrome", version: "148.0.0.0" },
+            { brand: "Not:A-Brand", version: "99.0.0.0" },
+          ],
+          mobile: false,
+          model: "",
+          platform: "Windows",
+          platformVersion: "10.0.0",
+          uaFullVersion: "148.0.0.0",
+          wow64: false,
+        }),
+        toJSON: () => ({ brands: uaBrands, mobile: false, platform: "Windows" }),
       };
-    }
-  });
+      Object.defineProperty(Navigator.prototype, "userAgentData", { get: () => uaData });
 
-  // Only inject headers on top-level navigations, not on every request.
-  // context.extraHTTPHeaders applies to XHR/fetch calls the page's own JS makes too —
-  // non-CORS-safelisted headers on those requests fail CORS preflight and break the page's
-  // real API calls (the "something went wrong" login failure seen earlier on justicepathlaw).
-  await context.route("**/*", (route) => {
-    const request = route.request();
-    if (!request.isNavigationRequest()) return route.continue();
-    return route.continue({
-      headers: {
-        ...request.headers(),
-        "Accept-Language": "en-US,en;q=0.9",
-        // Sec-CH-UA client hint headers — Chrome sends these on all navigation requests;
-        // their absence is a fingerprinting signal for some bot managers.
-        "Sec-CH-UA": '"Chromium";v="148", "Google Chrome";v="148", "Not:A-Brand";v="99"',
-        "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": '"Windows"',
-        ...(allowInteractiveChallengeHandling ? IP_TRUST_HEADERS : {}),
-      },
+      // 6. permissions.query — headless Chrome returns detectable values for "notifications";
+      //    normalise to what a real browser would report.
+      const origQuery = win.navigator?.permissions?.query?.bind(win.navigator.permissions);
+      if (origQuery) {
+        win.navigator.permissions.query = (params: any) => {
+          if (params?.name === "notifications") {
+            return Promise.resolve({ state: win.Notification?.permission ?? "default" });
+          }
+          return origQuery(params);
+        };
+      }
     });
-  });
-  if (allowInteractiveChallengeHandling) {
+
+    // Only inject headers on top-level navigations, not on every request.
+    // context.extraHTTPHeaders applies to XHR/fetch calls the page's own JS makes too —
+    // non-CORS-safelisted headers on those requests fail CORS preflight and break the page's
+    // real API calls (the "something went wrong" login failure seen earlier on justicepathlaw).
+    await context.route("**/*", (route) => {
+      const request = route.request();
+      if (!request.isNavigationRequest()) return route.continue();
+      return route.continue({
+        headers: {
+          ...request.headers(),
+          "Accept-Language": "en-US,en;q=0.9",
+          // Sec-CH-UA client hint headers — Chrome sends these on all navigation requests;
+          // their absence is a fingerprinting signal for some bot managers.
+          "Sec-CH-UA": '"Chromium";v="148", "Google Chrome";v="148", "Not:A-Brand";v="99"',
+          "Sec-CH-UA-Mobile": "?0",
+          "Sec-CH-UA-Platform": '"Windows"',
+          ...(includeIpTrustHeaders ? IP_TRUST_HEADERS : {}),
+        },
+      });
+    });
+  }
+  if (allowInteractiveChallengeHandling && !includeIpTrustHeaders) {
+    console.warn(
+      `[auth-session-stream] IP-trust headers requested for session ${session.id}, but TESTMIND_ALLOW_IP_TRUST_HEADERS is not enabled`,
+    );
+  } else if (includeIpTrustHeaders) {
     console.warn(`[auth-session-stream] IP-trust headers enabled for session ${session.id} — authorized-engagement-only mode`);
   }
   const page = await context.newPage();
+  if (executionMode === "headed") {
+    await page.bringToFront().catch(() => {});
+  }
   const cdp = await context.newCDPSession(page);
 
   const capture: ActiveCapture = {
@@ -280,6 +383,7 @@ async function startCapture(
     page,
     cdp,
     sockets: new Set(),
+    executionMode,
     pollHandle: setInterval(() => {}, 60_000),
     idleHandle: setTimeout(() => {}, IDLE_TIMEOUT_MS),
     closed: false,
@@ -334,8 +438,10 @@ async function handleClientMessage(capture: ActiveCapture, raw: string) {
   const cdp = capture.cdp;
   try {
     if (msg.type === "mouse") {
+      if (capture.executionMode === "headed") return;
       await dispatchMouseInput(cdp, msg);
     } else if (msg.type === "key") {
+      if (capture.executionMode === "headed") return;
       await dispatchKeyInput(cdp, msg);
     } else if (msg.type === "capture") {
       await captureStorageState(capture);
@@ -354,7 +460,7 @@ export function registerAuthSessionStreamRoutes(app: FastifyInstance) {
       socket.close(4001, "invalid or expired ticket");
       return;
     }
-    const { ok: ticketOk, allowInteractiveChallengeHandling, proxyUrl } = consumeStreamTicket(id, ticket);
+    const { ok: ticketOk, allowInteractiveChallengeHandling, proxyUrl, executionMode } = consumeStreamTicket(id, ticket);
     if (!ticketOk) {
       socket.close(4001, "invalid or expired ticket");
       return;
@@ -369,7 +475,7 @@ export function registerAuthSessionStreamRoutes(app: FastifyInstance) {
     let capture = active.get(id);
     if (!capture) {
       try {
-        capture = await startCapture(session, allowInteractiveChallengeHandling, proxyUrl);
+        capture = await startCapture(session, allowInteractiveChallengeHandling, proxyUrl, executionMode);
         await setSessionStatus(id, { status: "pending", error: null });
       } catch (err: any) {
         const message = err?.message ?? String(err);
@@ -382,7 +488,7 @@ export function registerAuthSessionStreamRoutes(app: FastifyInstance) {
 
     const liveCapture = capture;
     liveCapture.sockets.add(socket);
-    socket.send(JSON.stringify({ type: "ready", url: liveCapture.page.url() }));
+    socket.send(JSON.stringify({ type: "ready", url: liveCapture.page.url(), executionMode: liveCapture.executionMode }));
 
     socket.on("message", (data: WebSocket.RawData) => {
       handleClientMessage(liveCapture, data.toString());

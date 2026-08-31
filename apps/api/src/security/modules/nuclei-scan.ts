@@ -19,6 +19,7 @@
  */
 
 import { execFile, type ExecFileOptions } from "node:child_process";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { SecurityAuthProfile } from "../types.js";
 
@@ -40,14 +41,13 @@ export type NucleiResult = {
 
 async function findNucleiBinary(): Promise<string | null> {
   // Common install locations beyond PATH
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
   const candidates = [
     "nuclei",
     "nuclei.exe",
-    process.env.HOME ? `${process.env.HOME}/go/bin/nuclei` : null,
-    process.env.HOME ? `${process.env.HOME}/go/bin/nuclei.exe` : null,
+    homeDir ? path.join(homeDir, "go", "bin", "nuclei") : null,
+    homeDir ? path.join(homeDir, "go", "bin", "nuclei.exe") : null,
     "/usr/local/bin/nuclei",
-    "C:/Users/gabby/go/bin/nuclei.exe",
-    "C:/Users/gabby/go/bin/nuclei",
   ].filter(Boolean) as string[];
 
   for (const candidate of candidates) {
@@ -219,9 +219,10 @@ export async function runNucleiScan(
 
   const args = [
     "-u", targetUrl,
-    "-json",               // machine-readable output
+    "-jsonl",              // machine-readable output
     "-silent",             // suppress progress output
     "-no-color",
+    "-fhr",                // follow redirects only on the same host
     "-timeout", "10",      // per-request timeout seconds
     "-rate-limit", "30",   // requests per second — stay polite
     "-concurrency", "10",

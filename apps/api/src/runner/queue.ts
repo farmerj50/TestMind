@@ -55,6 +55,7 @@ export type SecurityScanPayload = {
   expectedControls?: string[];
   owaspCategories?: string[];
   complianceFrameworks?: string[];
+  openSourceToolIds?: string[];
   apiSpecId?: string;
   authSessionId?: string;
   mobileConfigId?: string;
@@ -94,6 +95,7 @@ export type SecurityResumeCtx = {
   expectedControls?: string[];
   owaspCategories?: string[];
   complianceFrameworks?: string[];
+  openSourceToolIds?: string[];
 };
 
 /** Checkpoint stored in BullMQ job data so a re-queued job can resume without re-running from scratch. */

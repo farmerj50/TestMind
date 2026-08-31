@@ -35,6 +35,7 @@ import {
 } from './github-writeback.js';
 import { validatedEnv } from '../config/env.js';
 import { requiresAutonomousScanApproval } from '../lib/security-approval-policy.js';
+import { normalizeOpenSourceToolIds } from '../security/open-source-tools.js';
 
 export { createStepRunner };
 
@@ -1858,6 +1859,9 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     expectedControls: Array.isArray(ctx.expectedControls) ? ctx.expectedControls : [],
     owaspCategories: Array.isArray(ctx.owaspCategories) ? ctx.owaspCategories : [],
     complianceFrameworks: Array.isArray(ctx.complianceFrameworks) ? ctx.complianceFrameworks : [],
+    openSourceToolIds: normalizeOpenSourceToolIds(
+      Array.isArray(ctx.openSourceToolIds) ? ctx.openSourceToolIds : undefined
+    ),
   };
 
   const task = await prisma.operatorTask.create({

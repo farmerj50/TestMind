@@ -21,6 +21,7 @@ import {
 } from "../security/enterprise-bypass.js";
 import { authenticateAuth0, authenticateFirebase, authenticateCognito, authenticateClerk } from "../security/provider-auth.js";
 import { parseApiSpec, specSummary } from "../security/openapi-parser.js";
+import { normalizeOpenSourceToolIds } from "../security/open-source-tools.js";
 import { buildHtmlReport } from "../security/compliance-report.js";
 import { generateBugBountyReport } from "../security/bug-bounty-report.js";
 import { safeFetch } from "../lib/safe-fetch.js";
@@ -139,6 +140,7 @@ const startSchema = z.object({
   expectedControls: z.array(expectedSecurityControlSchema).default([]),
   owaspCategories: z.array(z.string()).default([]),
   complianceFrameworks: z.array(z.string()).default([]),
+  openSourceToolIds: z.array(z.string()).optional(),
 });
 
 const contractSuggestionSchema = z.object({
@@ -395,6 +397,7 @@ export default async function securityRoutes(app: FastifyInstance) {
     }
 
     const savedSetup = body.useSavedSetup ? await getSavedSecuritySetup(project.id) : emptySecurityTestSetup();
+    const openSourceToolIds = normalizeOpenSourceToolIds(body.openSourceToolIds);
     const testSetup = mergeSecurityTestSetup(savedSetup, {
       authProfiles: [...(body.authProfiles as SecurityAuthProfile[]), ...sessionAuthProfiles],
       apiFixtures: body.apiFixtures as ApiSecurityFixture[],
@@ -439,6 +442,7 @@ export default async function securityRoutes(app: FastifyInstance) {
           expectedControls: testSetup.expectedControls,
           owaspCategories: testSetup.owaspCategories,
           complianceFrameworks: testSetup.complianceFrameworks,
+          openSourceToolIds,
         } as any,
       },
     });
@@ -461,6 +465,7 @@ export default async function securityRoutes(app: FastifyInstance) {
         expectedControls: testSetup.expectedControls,
         owaspCategories: testSetup.owaspCategories,
         complianceFrameworks: testSetup.complianceFrameworks,
+        openSourceToolIds,
         apiSpecId: body.apiSpecId,
       });
     } catch (err) {
@@ -1080,6 +1085,7 @@ export default async function securityRoutes(app: FastifyInstance) {
   const streamTicketSchema = z.object({
     allowInteractiveChallengeHandling: z.boolean().default(false),
     proxyUrl: z.string().url().optional(),
+    executionMode: z.enum(["headless", "headed"]).default("headed"),
   });
 
   app.post("/security/auth-sessions/:id/stream-ticket", async (req, reply) => {
@@ -1096,10 +1102,14 @@ export default async function securityRoutes(app: FastifyInstance) {
     // allowInteractiveChallengeHandling requires the same in-scope acknowledgement already
     // collected at session start.
     const parsed = streamTicketSchema.safeParse(req.body ?? {});
+    const executionMode = parsed.success ? parsed.data.executionMode : "headed";
     const allowInteractiveChallengeHandling =
-      (parsed.success && parsed.data.allowInteractiveChallengeHandling) && session.scopeAcknowledged;
+      executionMode === "headless" &&
+      process.env.TESTMIND_ALLOW_IP_TRUST_HEADERS === "1" &&
+      (parsed.success && parsed.data.allowInteractiveChallengeHandling) &&
+      session.scopeAcknowledged;
     const proxyUrl = parsed.success ? parsed.data.proxyUrl : undefined;
-    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl) };
+    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl, executionMode) };
   });
 
   registerAuthSessionStreamRoutes(app);

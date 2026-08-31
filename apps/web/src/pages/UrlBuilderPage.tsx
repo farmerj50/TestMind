@@ -451,7 +451,7 @@ export default function UrlBuilderPage() {
               <form
                 onSubmit={(e) => { e.preventDefault(); handleScan(); }}
                 className="rounded-md border border-slate-200 bg-slate-50 dark:bg-slate-800/30 p-3 space-y-2"
-                autoComplete="on"
+                autoComplete="off"
               >
                 <p className="text-xs text-slate-500">TestMind will log in before scanning. Credentials are used once and never stored.</p>
                 <div className="flex gap-2">
@@ -460,8 +460,8 @@ export default function UrlBuilderPage() {
                     placeholder="Email or username"
                     value={authUsername}
                     onChange={(e) => setAuthUsername(e.target.value)}
-                    autoComplete="username"
-                    name="username"
+                    autoComplete="off"
+                    name="testmind-scan-username"
                   />
                   <Input
                     className="flex-1 text-sm"
@@ -469,8 +469,8 @@ export default function UrlBuilderPage() {
                     placeholder="Password"
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
-                    autoComplete="current-password"
-                    name="password"
+                    autoComplete="new-password"
+                    name="testmind-scan-password"
                   />
                 </div>
                 <button
@@ -677,7 +677,7 @@ export default function UrlBuilderPage() {
                 </div>
                 <form
                   onSubmit={(e) => { e.preventDefault(); handleAuthScan(); }}
-                  autoComplete="on"
+                  autoComplete="off"
                   className="flex flex-wrap gap-2 items-end"
                 >
                   <Input
@@ -685,8 +685,8 @@ export default function UrlBuilderPage() {
                     placeholder="Email or username"
                     value={authUsername}
                     onChange={(e) => setAuthUsername(e.target.value)}
-                    autoComplete="username"
-                    name="username"
+                    autoComplete="off"
+                    name="testmind-scan-username"
                   />
                   <Input
                     className="flex-1 min-w-[140px] text-sm"
@@ -694,8 +694,8 @@ export default function UrlBuilderPage() {
                     placeholder="Password"
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
-                    autoComplete="current-password"
-                    name="password"
+                    autoComplete="new-password"
+                    name="testmind-scan-password"
                   />
                   <Button
                     type="submit"
@@ -723,7 +723,7 @@ export default function UrlBuilderPage() {
                 </div>
                 <form
                   onSubmit={(e) => { e.preventDefault(); handleAuthScan(); }}
-                  autoComplete="on"
+                  autoComplete="off"
                   className="flex flex-wrap gap-2 items-end"
                 >
                   <Input
@@ -731,8 +731,8 @@ export default function UrlBuilderPage() {
                     placeholder="Email or username"
                     value={authUsername}
                     onChange={(e) => setAuthUsername(e.target.value)}
-                    autoComplete="username"
-                    name="username"
+                    autoComplete="off"
+                    name="testmind-scan-username"
                   />
                   <Input
                     className="flex-1 min-w-[140px] text-sm"
@@ -740,8 +740,8 @@ export default function UrlBuilderPage() {
                     placeholder="Password"
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
-                    autoComplete="current-password"
-                    name="password"
+                    autoComplete="new-password"
+                    name="testmind-scan-password"
                   />
                   <Button
                     type="submit"

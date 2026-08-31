@@ -7,11 +7,13 @@ import { runRaceConditionScan } from "./modules/race-condition.js";
 import { runJwtAnalysis } from "./modules/jwt-analyzer.js";
 import { runIdorScan } from "./modules/idor-engine.js";
 import { runNucleiScan } from "./modules/nuclei-scan.js";
+import { runZapScan } from "./modules/zap-scan.js";
 import { runJsEndpointExtraction } from "./modules/js-endpoint-extractor.js";
 import { runBusinessLogicScan } from "./modules/business-logic.js";
 import { runCorsAudit } from "./modules/cors-audit.js";
 import { runPerfBaseline } from "./modules/perf-baseline.js";
 import { runMobileScan } from "./modules/mobile-scan.js";
+import { isOpenSourceToolSelected, type OpenSourceSecurityToolId } from "./open-source-tools.js";
 import type { ParsedApiSpec } from "./openapi-parser.js";
 import type { ProbeScope } from "./http-client.js";
 import type {
@@ -30,6 +32,7 @@ export type SecurityScannerPhase =
   | "graphql_audit"
   | "openapi_scan"
   | "js_analysis"
+  | "open_source_tools"
   | "advanced_analysis"
   | "business_logic_cors"
   | "mobile_scan"
@@ -57,6 +60,8 @@ export type SecurityScannerModule = {
   phase: SecurityScannerPhase;
   category: SecurityScannerCategory;
   risk: SecurityScannerRisk;
+  source?: "testmind" | "open_source";
+  toolId?: OpenSourceSecurityToolId;
   supports: (ctx: SecurityScannerContext) => boolean;
   run: (ctx: SecurityScannerContext) => Promise<SecurityScannerRunResult>;
   continueOnError?: boolean;
@@ -68,6 +73,8 @@ export type SecurityScannerExecutionResult = {
   phase: SecurityScannerPhase;
   category: SecurityScannerCategory;
   risk: SecurityScannerRisk;
+  source: "testmind" | "open_source";
+  toolId?: OpenSourceSecurityToolId;
   durationMs: number;
   findings: SecurityAgentFinding[];
   metadata?: Record<string, unknown>;
@@ -90,6 +97,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "intelligent_validation",
     category: "api",
     risk: "medium",
+    source: "testmind",
     supports: (ctx) => Boolean(ctx.validationConfig.apiFixtures?.length),
     run: async (ctx) => findingsOnly(await runIntelligentValidation(ctx.validationConfig)),
   },
@@ -99,6 +107,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "graphql_audit",
     category: "api",
     risk: "medium",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runGraphQLAudit(ctx.payloadWithAuth)) as SecurityAgentFinding[]),
   },
@@ -108,6 +117,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "openapi_scan",
     category: "api",
     risk: "medium",
+    source: "testmind",
     supports: (ctx) => Boolean(ctx.apiSpec),
     run: async (ctx) => findingsOnly((await runOpenApiScan(ctx.apiSpec!, ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -118,6 +128,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "js_analysis",
     category: "passive",
     risk: "low",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => {
       const result = await runJsEndpointExtraction(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope);
@@ -137,6 +148,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "advanced_analysis",
     category: "api",
     risk: "low",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runJwtAnalysis(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -147,6 +159,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "advanced_analysis",
     category: "active",
     risk: "medium",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runIdorScan(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -157,6 +170,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "advanced_analysis",
     category: "active",
     risk: "high",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runRaceConditionScan(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -164,11 +178,60 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
   {
     id: "nuclei",
     name: "Nuclei scanner",
-    phase: "advanced_analysis",
+    phase: "open_source_tools",
     category: "active",
     risk: "medium",
-    supports: () => true,
+    source: "open_source",
+    toolId: "nuclei",
+    supports: (ctx) => isOpenSourceToolSelected(ctx.payload.openSourceToolIds, "nuclei"),
     run: async (ctx) => findingsOnly((await runNucleiScan(ctx.payload.baseUrl, ctx.authProfiles, ctx.payload.scanDepth ?? "standard")) as SecurityAgentFinding[]),
+    continueOnError: true,
+  },
+  {
+    id: "zap-baseline",
+    name: "OWASP ZAP baseline",
+    phase: "open_source_tools",
+    category: "passive",
+    risk: "low",
+    source: "open_source",
+    toolId: "zap-baseline",
+    supports: (ctx) => isOpenSourceToolSelected(ctx.payload.openSourceToolIds, "zap-baseline"),
+    run: async (ctx) =>
+      findingsOnly(
+        await runZapScan(
+          ctx.payload.baseUrl,
+          ctx.authProfiles,
+          ctx.payload.scanDepth ?? "standard",
+          ctx.scope,
+          "baseline"
+        )
+      ),
+    continueOnError: true,
+  },
+  {
+    id: "zap-full",
+    name: "OWASP ZAP full active",
+    phase: "open_source_tools",
+    category: "active",
+    risk: "high",
+    source: "open_source",
+    toolId: "zap-full",
+    supports: (ctx) =>
+      isOpenSourceToolSelected(ctx.payload.openSourceToolIds, "zap-full") &&
+      ctx.payload.scanDepth === "deep" &&
+      ctx.payload.enableActive === true &&
+      ctx.payload.safeMode === false &&
+      ctx.payload.approvalGranted === true,
+    run: async (ctx) =>
+      findingsOnly(
+        await runZapScan(
+          ctx.payload.baseUrl,
+          ctx.authProfiles,
+          ctx.payload.scanDepth ?? "deep",
+          ctx.scope,
+          "full"
+        )
+      ),
     continueOnError: true,
   },
   {
@@ -177,6 +240,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "business_logic_cors",
     category: "active",
     risk: "high",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runBusinessLogicScan(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -187,6 +251,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "business_logic_cors",
     category: "api",
     risk: "low",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runCorsAudit(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -197,6 +262,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "mobile_scan",
     category: "passive",
     risk: "low",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runPerfBaseline(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -207,6 +273,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "mobile_scan",
     category: "active",
     risk: "medium",
+    source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runMobileScan(ctx.payload.baseUrl, ctx.authProfiles, ctx.scope)) as SecurityAgentFinding[]),
     continueOnError: true,
@@ -217,6 +284,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     phase: "anomaly_baseline",
     category: "api",
     risk: "medium",
+    source: "testmind",
     supports: (ctx) => ctx.routeContracts.length > 0,
     run: async (ctx) => {
       const result = await runAnomalyBaseline(ctx.intelligentConfig, ctx.routeContracts);
@@ -251,6 +319,8 @@ export async function runSecurityScannerPhase(
           phase: scanner.phase,
           category: scanner.category,
           risk: scanner.risk,
+          source: scanner.source ?? "testmind",
+          toolId: scanner.toolId,
           durationMs: Date.now() - started,
           findings: result.findings,
           metadata: result.metadata,
@@ -265,6 +335,8 @@ export async function runSecurityScannerPhase(
           phase: scanner.phase,
           category: scanner.category,
           risk: scanner.risk,
+          source: scanner.source ?? "testmind",
+          toolId: scanner.toolId,
           durationMs: Date.now() - started,
           findings: [],
           metadata: { error },

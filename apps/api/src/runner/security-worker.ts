@@ -28,6 +28,11 @@ import {
 } from "../security/modules/code-review.js";
 import { authenticateProvider } from "../security/provider-auth.js";
 import {
+  OPEN_SOURCE_SECURITY_TOOLS,
+  isOpenSourceToolSelected,
+  normalizeOpenSourceToolIds,
+} from "../security/open-source-tools.js";
+import {
   buildRouteContracts,
   discoverRouteInventory,
 } from "../security/modules/route-inventory.js";
@@ -59,6 +64,8 @@ type FindingInput = SecurityAgentFinding & {
   suggestion?: string;
   status?: string;
 };
+
+type OpenSourceToolSelection = ReturnType<typeof normalizeOpenSourceToolIds>;
 
 const DEFAULT_HEADERS = [
   { name: "content-security-policy", severity: "high" },
@@ -576,6 +583,7 @@ async function runStatic(
   const repoRoot = resolveCodeReviewRoot(sourceContext.sourceRoot);
   const pkgJson = path.join(repoRoot, "package.json");
   const exists = fs.existsSync(pkgJson);
+  const semgrepSelected = isOpenSourceToolSelected(job.openSourceToolIds, "semgrep");
 
   try {
     const reviewFindings = runCodeReviewScan({ root: repoRoot });
@@ -601,6 +609,8 @@ async function runStatic(
       tool: "code-review",
     });
   }
+
+  if (!semgrepSelected) return findings;
 
   // Try semgrep if available.
   const semgrepBin = process.env.SEMGREP_BIN || "semgrep";
@@ -741,6 +751,10 @@ async function runDeps(
   sourceContext = resolveSourceScanContext(job)
 ): Promise<FindingInput[]> {
   const findings: FindingInput[] = [];
+  if (!isOpenSourceToolSelected(job.openSourceToolIds, "dependency-audit")) {
+    return findings;
+  }
+
   if (!sourceContext.codeReviewAvailable || !sourceContext.sourceRoot) {
     findings.push({
       type: "dependency",
@@ -1248,11 +1262,61 @@ function summarizeScannerRegistry(results: SecurityScannerExecutionResult[]) {
       phase: result.phase,
       category: result.category,
       risk: result.risk,
+      source: result.source,
+      toolId: result.toolId ?? null,
       durationMs: result.durationMs,
       findingCount: result.findings.length,
       error: result.error ?? null,
     })),
   };
+}
+
+function openSourceToolFindingCount(toolId: string, findings: FindingInput[]) {
+  return findings.filter((finding) => {
+    const tool = finding.tool ?? "";
+    if (toolId === "semgrep") return tool === "semgrep";
+    if (toolId === "dependency-audit") return ["npm-audit", "pnpm-audit", "sca"].includes(tool);
+    if (toolId === "nuclei") return tool === "nuclei";
+    if (toolId === "zap-baseline") return tool === "owasp-zap" && (finding.evidence as any)?.scannerMode === "baseline";
+    if (toolId === "zap-full") return tool === "owasp-zap" && (finding.evidence as any)?.scannerMode === "full";
+    return false;
+  }).length;
+}
+
+function summarizeOpenSourceToolRound(
+  selectedToolIds: OpenSourceToolSelection,
+  results: SecurityScannerExecutionResult[],
+  findings: FindingInput[]
+) {
+  return selectedToolIds.map((toolId) => {
+    const scannerResult = results.find((result) => result.source === "open_source" && result.toolId === toolId);
+    const tool = OPEN_SOURCE_SECURITY_TOOLS.find((candidate) => candidate.id === toolId);
+    if (scannerResult) {
+      return {
+        id: toolId,
+        scannerId: scannerResult.scannerId,
+        name: scannerResult.scannerName,
+        phase: scannerResult.phase,
+        risk: scannerResult.risk,
+        findingCount: scannerResult.findings.length,
+        error: scannerResult.error ?? null,
+      };
+    }
+    return {
+      id: toolId,
+      scannerId: toolId,
+      name: tool?.name ?? toolId,
+      phase:
+        toolId === "semgrep"
+          ? "static_analysis"
+          : toolId === "dependency-audit"
+            ? "dependency"
+            : "open_source_tools",
+      risk: tool?.risk ?? "low",
+      findingCount: openSourceToolFindingCount(toolId, findings),
+      error: null,
+    };
+  });
 }
 
 function buildScanCoverageFinding(params: {
@@ -1263,6 +1327,7 @@ function buildScanCoverageFinding(params: {
   authProfiles: unknown[];
   jsEndpointCount: number;
   apiSpecAttached: boolean;
+  openSourceToolIds: OpenSourceToolSelection;
 }): FindingInput {
   const modeLabel = params.sourceContext.codeReviewAvailable ? "URL and code-assisted" : "URL-only";
   return {
@@ -1294,12 +1359,15 @@ function buildScanCoverageFinding(params: {
         apiSpecAttached: params.apiSpecAttached,
         jsEndpoints: params.jsEndpointCount,
         scanDepth: params.payload.scanDepth ?? "standard",
+        openSourceTools: params.openSourceToolIds,
       },
     },
   };
 }
 
 async function runScanPipeline(payload: SecurityScanPayload) {
+    const openSourceToolIds = normalizeOpenSourceToolIds(payload.openSourceToolIds);
+    payload.openSourceToolIds = openSourceToolIds;
     const effectiveScope = deriveEffectiveScope(payload);
     payload.allowedHosts = effectiveScope.allowedHosts;
     payload.allowedPorts = effectiveScope.allowedPorts;
@@ -1434,7 +1502,14 @@ async function runScanPipeline(payload: SecurityScanPayload) {
       allowedPorts: payload.allowedPorts ?? [],
     });
 
-    // Advanced modules: JWT analysis, IDOR engine, race condition testing, and Nuclei.
+    // Open-source engines run as subordinate scanners: TestMind owns scope,
+    // selection, normalization, and final reporting.
+    await updateJob(payload.jobId, { phase: "open_source_tools" });
+    const openSourceResults = await runSecurityScannerPhase(scannerContext, "open_source_tools");
+    scannerResults.push(...openSourceResults);
+    allFindings.push(...findingsFromScannerResults(openSourceResults));
+
+    // Advanced modules: JWT analysis, IDOR engine, and race condition testing.
     // All independent — run in parallel to keep wall-clock time bounded.
     await updateJob(payload.jobId, { phase: "advanced_analysis" });
     const advancedResults = await runSecurityScannerPhase(scannerContext, "advanced_analysis");
@@ -1493,6 +1568,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
         authProfiles,
         jsEndpointCount: discoveredJsEndpoints.length,
         apiSpecAttached: Boolean(payload.apiSpecId),
+        openSourceToolIds,
       })
     );
 
@@ -1530,6 +1606,11 @@ async function runScanPipeline(payload: SecurityScanPayload) {
           environment: payload.environment ?? "qa",
         },
         scannerRegistry: summarizeScannerRegistry(scannerResults),
+        openSourceTools: {
+          selected: openSourceToolIds,
+          available: OPEN_SOURCE_SECURITY_TOOLS,
+          executed: summarizeOpenSourceToolRound(openSourceToolIds, scannerResults, finalFindings),
+        },
         coverage: {
           mode: sourceContext.codeReviewAvailable ? "code_and_url" : "url_only",
           sourceMode: sourceContext.requestedMode,
@@ -1575,7 +1656,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
           finalFindings as any[],
           {
             phases: ["recon", "static_analysis", "dependency", "dynamic", "intelligent_validation",
-                     "graphql_audit", "js_analysis", "advanced_analysis", "business_logic_cors",
+                     "graphql_audit", "js_analysis", "open_source_tools", "advanced_analysis", "business_logic_cors",
                      "mobile_scan", "anomaly_baseline"],
             authProfileCount: payload.authProfiles?.length ?? 0,
           }

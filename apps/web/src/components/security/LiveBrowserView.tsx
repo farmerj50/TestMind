@@ -10,9 +10,10 @@ export type LiveBrowserViewProps = {
   imgRef: React.RefObject<HTMLImageElement | null>;
   sendInput: (payload: Record<string, unknown>) => void;
   className?: string;
+  interactive?: boolean;
 };
 
-export function LiveBrowserView({ viewport, imgRef, sendInput, className }: LiveBrowserViewProps) {
+export function LiveBrowserView({ viewport, imgRef, sendInput, className, interactive = true }: LiveBrowserViewProps) {
   function coords(e: { clientX: number; clientY: number; currentTarget: HTMLElement }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * viewport.width;
@@ -24,15 +25,19 @@ export function LiveBrowserView({ viewport, imgRef, sendInput, className }: Live
     <div
       className={className ?? "relative w-full overflow-hidden rounded border border-slate-300 bg-slate-900"}
       style={{ aspectRatio: `${viewport.width} / ${viewport.height}` }}
-      tabIndex={0}
-      onMouseMove={(e) => sendInput({ type: "mouse", event: "move", ...coords(e) })}
-      onMouseDown={(e) => sendInput({ type: "mouse", event: "down", ...coords(e) })}
-      onMouseUp={(e) => sendInput({ type: "mouse", event: "up", ...coords(e) })}
-      onWheel={(e) => sendInput({ type: "mouse", event: "wheel", ...coords(e), deltaX: e.deltaX, deltaY: e.deltaY })}
-      onKeyDown={(e) => {
-        if (["Tab"].includes(e.key)) e.preventDefault();
-        sendInput({ type: "key", event: "down", key: e.key });
-      }}
+      tabIndex={interactive ? 0 : -1}
+      onMouseMove={interactive ? (e) => sendInput({ type: "mouse", event: "move", ...coords(e) }) : undefined}
+      onMouseDown={interactive ? (e) => sendInput({ type: "mouse", event: "down", ...coords(e) }) : undefined}
+      onMouseUp={interactive ? (e) => sendInput({ type: "mouse", event: "up", ...coords(e) }) : undefined}
+      onWheel={interactive ? (e) => sendInput({ type: "mouse", event: "wheel", ...coords(e), deltaX: e.deltaX, deltaY: e.deltaY }) : undefined}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (["Tab"].includes(e.key)) e.preventDefault();
+              sendInput({ type: "key", event: "down", key: e.key });
+            }
+          : undefined
+      }
       onContextMenu={(e) => e.preventDefault()}
     >
       <img ref={imgRef} alt="Live session view" draggable={false} className="h-full w-full select-none" />
