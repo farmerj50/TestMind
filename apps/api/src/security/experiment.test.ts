@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { runIdMutationExperiment } from "./experiment.js";
+import { runIdMutationExperiment, runReplayExperiment } from "./experiment.js";
 import type { SecurityHttpExchange } from "./http-exchange.js";
 
 // Regression tests for the four invariants documented in experiment.ts / the plan's Context
@@ -57,6 +57,18 @@ test("runIdMutationExperiment succeeds for a valid GET baseline and a server-det
     // Baseline was {id:"8721",ownerId:413}; mutated request (id=9999) hits the server's
     // generic branch returning {id:"9999",ownerId:900} — both keys should show as changed.
     assert.deepEqual(result.diff.changedKeys.sort(), ["id", "ownerId"]);
+  });
+});
+
+test("runReplayExperiment replays a captured GET baseline without changing the URL", async () => {
+  await withLocalServer(async (base, port, requestLog) => {
+    const exchange = makeExchange({ request: { method: "GET", url: `${base}/api/orders/8721`, headers: {} } });
+    const scope = { allowedHosts: ["127.0.0.1"], allowedPorts: [port] };
+    const result = await runReplayExperiment(exchange, scope);
+
+    assert.equal(result.mutatedResult.status, 200);
+    assert.equal(result.mutatedResult.url, `${base}/api/orders/8721`);
+    assert.deepEqual(requestLog, ["/api/orders/8721"]);
   });
 });
 

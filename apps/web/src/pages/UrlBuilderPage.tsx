@@ -77,6 +77,7 @@ type ScanResult = {
     authFailureReason?: "AUTH_ENTRY_NOT_FOUND" | "LOGIN_FORM_NOT_FOUND" | "CREDENTIALS_REJECTED" | "MFA_REQUIRED" | "AUTH_TIMEOUT";
     authEntryUsed?: string;
     authTransitions?: number;
+    loginRouteDiscovered?: string | null;
   };
 };
 
@@ -159,6 +160,9 @@ export default function UrlBuilderPage() {
   const [authPassword, setAuthPassword] = useState("");
   const [authOtp, setAuthOtp] = useState("");
   const [showOtp, setShowOtp] = useState(false);
+  // Non-blocking "we found a login page while crawling" suggestion — dismissible,
+  // separate from showAuth so dismissing it doesn't also collapse the auth_required panel.
+  const [dismissedLoginSuggestion, setDismissedLoginSuggestion] = useState(false);
 
   // Live auth log shown during scanning
   const [authLog, setAuthLog] = useState<string[]>([]);
@@ -253,6 +257,7 @@ export default function UrlBuilderPage() {
 
     setPageState("scanning");
     startProgressAnimation();
+    setDismissedLoginSuggestion(false);
     if (authUsername.trim() && authPassword) {
       startAuthAnimation(trimmed, authUsername.trim());
     }
@@ -532,6 +537,18 @@ export default function UrlBuilderPage() {
                   </div>
                 );
               })}
+              {/* The checklist above is a fixed-timer animation (22s total) that can finish
+                  well before the real scan does, especially for larger sites — AI generation
+                  runs per discovered route. Without this, a fully-checked list with no motion
+                  reads as frozen/finished rather than "still working". */}
+              {progress.failed === null && progress.done.length === PROGRESS_STEPS.length && (
+                <div className="flex items-start gap-3 text-sm pt-1 border-t border-slate-100 dark:border-slate-800 mt-1">
+                  <Loader2 className="h-4 w-4 text-blue-500 mt-0.5 animate-spin shrink-0" />
+                  <span className="text-blue-600 font-medium">
+                    Still working — larger sites with more routes can take a bit longer…
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -637,6 +654,61 @@ export default function UrlBuilderPage() {
                   : ` (+${Math.max(0, result.generation.testCases.length - preScanResult.generation.testCases.length)} additional scenarios)`}
               </span>
             </div>
+          )}
+
+          {/* Non-blocking suggestion: the crawl found a login page even though the
+              requested URL scanned fine on its own — offer to also cover it. */}
+          {resultPhase === "ready" && result.auth?.loginRouteDiscovered && !dismissedLoginSuggestion && (
+            <Card className="border-sky-300 bg-sky-50 dark:bg-sky-900/20">
+              <CardContent className="pt-4 space-y-3">
+                <div className="flex items-center gap-2 text-sky-700 dark:text-sky-400 font-medium text-sm">
+                  <KeyRound className="h-4 w-4 shrink-0" />
+                  <span>
+                    Found a login page at <code>{result.auth.loginRouteDiscovered}</code> while scanning.
+                    Add credentials to also cover the authenticated experience.
+                  </span>
+                  <button
+                    type="button"
+                    className="ml-auto shrink-0 text-xs underline text-sky-600"
+                    onClick={() => setDismissedLoginSuggestion(true)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleAuthScan(); }}
+                  autoComplete="on"
+                  className="flex flex-wrap gap-2 items-end"
+                >
+                  <Input
+                    className="flex-1 min-w-[160px] text-sm"
+                    placeholder="Email or username"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    autoComplete="username"
+                    name="username"
+                  />
+                  <Input
+                    className="flex-1 min-w-[140px] text-sm"
+                    type="password"
+                    placeholder="Password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    autoComplete="current-password"
+                    name="password"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={!authUsername.trim() || !authPassword || isScanning}
+                    className="shrink-0"
+                  >
+                    {isScanning ? <Loader2 className="h-4 w-4 animate-spin" /> : "Scan with authentication"}
+                  </Button>
+                </form>
+                <p className="text-xs text-sky-600/80">Credentials are used once and never stored.</p>
+              </CardContent>
+            </Card>
           )}
 
           {/* Inline credential panel for auth_required or auth_failed */}

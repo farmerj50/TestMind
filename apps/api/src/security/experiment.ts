@@ -13,6 +13,33 @@ export type ExperimentResult = {
   diff: ExchangeDiff;
 };
 
+function requireGetBaseline(exchange: SecurityHttpExchange) {
+  if (!exchange?.id || !exchange.request || !exchange.response) {
+    throw new Error("Experiment requires a captured baseline with both a request and a response.");
+  }
+  if (exchange.request.method.toUpperCase() !== "GET") {
+    throw new Error("Live security experiments are GET-only in this version.");
+  }
+}
+
+export async function runReplayExperiment(
+  exchange: SecurityHttpExchange,
+  scope: ProbeScope
+): Promise<ExperimentResult> {
+  requireGetBaseline(exchange);
+
+  const replayResult = await probeScoped(scope, exchange.request.url, {
+    method: "GET",
+    headers: exchange.request.headers,
+  });
+
+  return {
+    baseline: exchange,
+    mutatedResult: replayResult,
+    diff: computeDifferential(exchange, replayResult),
+  };
+}
+
 // The four invariants this function enforces (see the plan's Context section):
 //   1. No captured baseline -> no experiment: `exchange` must be a real captured record with
 //      a response already on it — this function never accepts a client-supplied URL/headers.
@@ -27,12 +54,7 @@ export async function runIdMutationExperiment(
   newValue: string,
   scope: ProbeScope
 ): Promise<ExperimentResult> {
-  if (!exchange?.id || !exchange.request || !exchange.response) {
-    throw new Error("Experiment requires a captured baseline with both a request and a response.");
-  }
-  if (exchange.request.method.toUpperCase() !== "GET") {
-    throw new Error("Mutation experiments are GET-only in this version.");
-  }
+  requireGetBaseline(exchange);
 
   const validCandidates = detectResourceIdCandidates(exchange.request.url);
   const isServerDetected = validCandidates.some(

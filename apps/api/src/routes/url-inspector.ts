@@ -78,6 +78,22 @@ function effectiveScanUrl(scan: RouteScan): string {
   return scan.finalUrl || scan.url;
 }
 
+// Looks for a login form among ALL crawled routes, not just the one the user typed —
+// a public marketing/app site can scan fully successfully while still having a /login
+// or /signup route the crawler happened to discover. A password-type field is a more
+// reliable signal than the URL path alone (catches logins at non-standard paths too).
+function findDiscoveredLoginRoute(scans: RouteScan[]): string | null {
+  for (const scan of scans) {
+    const hasPasswordField =
+      scan.forms?.some((form) => form.fields.some((f) => f.type === 'password')) ?? false;
+    const path = scanPathname(scan);
+    if (hasPasswordField || AUTH_PATH_RE.test(path)) {
+      return path;
+    }
+  }
+  return null;
+}
+
 function scanPathname(scan: RouteScan): string {
   try {
     return new URL(effectiveScanUrl(scan)).pathname || '/';
@@ -358,6 +374,22 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
       phase = 'auth_failed';
     }
 
+    // The root URL scanned fine on its own, but the crawl may have turned up a login
+    // form on a different route — surface it as a non-blocking suggestion rather than
+    // silently generating public-route-only tests. Only when the scan is otherwise
+    // 'ready': auth_required/auth_failed/partial already communicate a credential ask.
+    let loginRouteDiscovered: string | null = null;
+    if (!authCreds && loginOutcome !== 'success' && phase === 'ready') {
+      loginRouteDiscovered = findDiscoveredLoginRoute(scans);
+      if (loginRouteDiscovered) {
+        warnings.push({
+          code: 'LOGIN_DISCOVERED',
+          message: `TestMind found a login page at ${loginRouteDiscovered}. Add credentials to also cover the authenticated experience.`,
+          severity: 'info',
+        });
+      }
+    }
+
     const interactiveElements = scans.reduce((sum, scan) => sum + scan.fields.length + scan.buttons.length, 0);
     const formCount = scans.reduce((sum, scan) => sum + (scan.forms?.length ?? 0), 0);
     const buttonCount = scans.reduce((sum, scan) => sum + scan.buttons.length, 0);
@@ -568,7 +600,7 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
         coverageMatrix: p.coverageMatrix,
       })),
       duplicatesRemoved,
-      auth: { loginOutcome, authFailureReason, authEntryUsed, authTransitions },
+      auth: { loginOutcome, authFailureReason, authEntryUsed, authTransitions, loginRouteDiscovered },
     });
   });
 

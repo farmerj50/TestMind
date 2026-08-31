@@ -18,32 +18,27 @@ import {
   extractVersionDisclosureFindings,
   normalizeHeaderValue,
 } from "./security-heuristics.js";
-import { runIntelligentValidation } from "../security/modules/intelligent-validation.js";
-import { runAnomalyBaseline } from "../security/modules/anomaly-baseline.js";
-import { runGraphQLAudit } from "../security/modules/graphql-audit.js";
-import { runOpenApiScan } from "../security/modules/openapi-scan.js";
 import { parseApiSpec } from "../security/openapi-parser.js";
-import { runRaceConditionScan } from "../security/modules/race-condition.js";
-import { runJwtAnalysis } from "../security/modules/jwt-analyzer.js";
-import { runIdorScan } from "../security/modules/idor-engine.js";
 import { buildComplianceReport } from "../security/compliance-report.js";
-import { runNucleiScan } from "../security/modules/nuclei-scan.js";
-import { runJsEndpointExtraction } from "../security/modules/js-endpoint-extractor.js";
 import { runSubdomainEnum } from "../security/modules/subdomain-enum.js";
-import { runBusinessLogicScan } from "../security/modules/business-logic.js";
 import {
   detectCodeReviewSourceStatus,
   resolveCodeReviewRoot,
   runCodeReviewScan,
 } from "../security/modules/code-review.js";
-import { runCorsAudit } from "../security/modules/cors-audit.js";
-import { runPerfBaseline } from "../security/modules/perf-baseline.js";
-import { runMobileScan } from "../security/modules/mobile-scan.js";
 import { authenticateProvider } from "../security/provider-auth.js";
 import {
   buildRouteContracts,
   discoverRouteInventory,
 } from "../security/modules/route-inventory.js";
+import {
+  findingsFromScannerResults,
+  runSecurityScannerPhase,
+  scannerMetadata,
+  type AnomalyBaselineScannerMetadata,
+  type SecurityScannerExecutionResult,
+  type SecurityScannerContext,
+} from "../security/scanner-registry.js";
 import {
   SECURITY_BASELINE_PROVIDER,
   buildSecurityBehaviorBaseline,
@@ -1240,6 +1235,26 @@ function routeSourceCounts(routeInventory: Array<{ source?: string }>) {
   }, {});
 }
 
+function summarizeScannerRegistry(results: SecurityScannerExecutionResult[]) {
+  return {
+    total: results.length,
+    byPhase: results.reduce<Record<string, number>>((acc, result) => {
+      acc[result.phase] = (acc[result.phase] || 0) + 1;
+      return acc;
+    }, {}),
+    modules: results.map((result) => ({
+      id: result.scannerId,
+      name: result.scannerName,
+      phase: result.phase,
+      category: result.category,
+      risk: result.risk,
+      durationMs: result.durationMs,
+      findingCount: result.findings.length,
+      error: result.error ?? null,
+    })),
+  };
+}
+
 function buildScanCoverageFinding(params: {
   payload: SecurityScanPayload;
   sourceContext: SourceScanContext;
@@ -1296,6 +1311,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     await updateJob(payload.jobId, { status: "running", phase: "recon" });
 
     const allFindings: FindingInput[] = [];
+    const scannerResults: SecurityScannerExecutionResult[] = [];
 
     // Recon, SAST, and SCA are all independent — run them in parallel to cut wall-clock
     // time. Dynamic probing depends on knowing the live target is reachable, so it runs
@@ -1355,37 +1371,61 @@ async function runScanPipeline(payload: SecurityScanPayload) {
         ? { ...intelligentConfig, apiFixtures: syntheticFixtures }
         : intelligentConfig;
 
-    allFindings.push(...(await runIntelligentValidation(validationConfig)));
+    let apiSpec: ReturnType<typeof parseApiSpec> | null = null;
+    if (payload.apiSpecId) {
+      const specRecord = await prisma.apiSpec.findUnique({ where: { id: payload.apiSpecId } });
+      if (specRecord) {
+        try {
+          apiSpec = parseApiSpec(specRecord.specJson);
+        } catch (err: any) {
+          console.warn(`[security-worker] OpenAPI spec parse failed for spec ${payload.apiSpecId}:`, err?.message);
+        }
+      }
+    }
+
+    const scannerContext: SecurityScannerContext = {
+      payload,
+      payloadWithAuth: intelligentConfig as SecurityScanPayload & { authProfiles?: SecurityAuthProfile[] },
+      scope,
+      authProfiles,
+      intelligentConfig,
+      validationConfig,
+      routeContracts,
+      apiSpec,
+    };
+
+    const validationResults = await runSecurityScannerPhase(scannerContext, "intelligent_validation");
+    scannerResults.push(...validationResults);
+    allFindings.push(...findingsFromScannerResults(validationResults));
 
     // GraphQL-specific audit — runs after intelligent validation so auth profiles are
     // already resolved. Detects endpoint, tries introspection, tests auth enforcement,
     // cross-account BOLA, batching abuse, and sensitive field exposure.
     await updateJob(payload.jobId, { phase: "graphql_audit" });
-    allFindings.push(...(await runGraphQLAudit(intelligentConfig)));
+    const graphqlResults = await runSecurityScannerPhase(scannerContext, "graphql_audit");
+    scannerResults.push(...graphqlResults);
+    allFindings.push(...findingsFromScannerResults(graphqlResults));
 
     // OpenAPI spec-driven scan — if a spec was attached to this scan job, load it from
     // the DB and run targeted probes against every declared endpoint.
     if (payload.apiSpecId) {
       await updateJob(payload.jobId, { phase: "openapi_scan" });
-      const specRecord = await prisma.apiSpec.findUnique({ where: { id: payload.apiSpecId } });
-      if (specRecord) {
-        try {
-          const parsedSpec = parseApiSpec(specRecord.specJson);
-          allFindings.push(...(await runOpenApiScan(parsedSpec, payload.baseUrl, authProfiles, scope)));
-        } catch (err: any) {
-          console.warn(`[security-worker] OpenAPI scan failed for spec ${payload.apiSpecId}:`, err?.message);
-        }
-      }
+      const openApiResults = await runSecurityScannerPhase(scannerContext, "openapi_scan");
+      scannerResults.push(...openApiResults);
+      allFindings.push(...findingsFromScannerResults(openApiResults));
     }
 
     // JS bundle analysis: extract hidden API endpoints from the SPA's JavaScript bundles.
     // Run before the advanced modules so discovered endpoints can enrich the IDOR scan.
     await updateJob(payload.jobId, { phase: "js_analysis" });
-    const jsResult = await runJsEndpointExtraction(payload.baseUrl, authProfiles, scope).catch((e) => {
-      console.warn("[security-worker] JS extraction error:", e?.message);
-      return { findings: [] as any[], discoveredEndpoints: [] as string[] };
-    });
-    allFindings.push(...(jsResult.findings as any));
+    const jsResults = await runSecurityScannerPhase(scannerContext, "js_analysis");
+    scannerResults.push(...jsResults);
+    allFindings.push(...findingsFromScannerResults(jsResults));
+    const jsMetadata = scannerMetadata<{ discoveredEndpoints?: string[]; discoveredEndpointCount?: number }>(
+      jsResults,
+      "js-endpoint-extractor"
+    );
+    const discoveredJsEndpoints = Array.isArray(jsMetadata?.discoveredEndpoints) ? jsMetadata.discoveredEndpoints : [];
 
     // Mid-scan re-auth: before firing the expensive parallel modules, check whether any
     // bearer token profiles have gone stale (target returns 401) and re-auth if so.
@@ -1397,51 +1437,34 @@ async function runScanPipeline(payload: SecurityScanPayload) {
     // Advanced modules: JWT analysis, IDOR engine, race condition testing, and Nuclei.
     // All independent — run in parallel to keep wall-clock time bounded.
     await updateJob(payload.jobId, { phase: "advanced_analysis" });
-    const [jwtFindings, idorFindings, raceFindings, nucleiFindings] = await Promise.all([
-      runJwtAnalysis(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] JWT analysis error:", e?.message); return [];
-      }),
-      runIdorScan(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] IDOR scan error:", e?.message); return [];
-      }),
-      runRaceConditionScan(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] Race condition scan error:", e?.message); return [];
-      }),
-      runNucleiScan(payload.baseUrl, authProfiles, payload.scanDepth ?? "standard").catch((e) => {
-        console.warn("[security-worker] Nuclei scan error:", e?.message); return [];
-      }),
-    ]);
-    allFindings.push(...jwtFindings, ...idorFindings, ...raceFindings, ...(nucleiFindings as any));
+    const advancedResults = await runSecurityScannerPhase(scannerContext, "advanced_analysis");
+    scannerResults.push(...advancedResults);
+    allFindings.push(...findingsFromScannerResults(advancedResults));
 
     // Business logic + CORS: two independent modules, run in parallel.
     // Business logic probes financial mutation endpoints for invalid inputs (negative amounts,
     // overflow, zero-value, mass assignment, parameter pollution).
     // CORS audit tests 7 distinct attack patterns against discovered API endpoints.
     await updateJob(payload.jobId, { phase: "business_logic_cors" });
-    const [bizLogicFindings, corsFindings] = await Promise.all([
-      runBusinessLogicScan(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] Business logic scan error:", e?.message); return [];
-      }),
-      runCorsAudit(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] CORS audit error:", e?.message); return [];
-      }),
-    ]);
-    allFindings.push(...bizLogicFindings, ...corsFindings);
+    const businessLogicCorsResults = await runSecurityScannerPhase(scannerContext, "business_logic_cors");
+    scannerResults.push(...businessLogicCorsResults);
+    allFindings.push(...findingsFromScannerResults(businessLogicCorsResults));
 
     // Mobile security: runs in parallel with perf baseline — independent checks
     await updateJob(payload.jobId, { phase: "mobile_scan" });
-    const [perfFindings2, mobileFindings] = await Promise.all([
-      runPerfBaseline(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] Perf baseline error:", e?.message); return [];
-      }),
-      runMobileScan(payload.baseUrl, authProfiles, scope).catch((e) => {
-        console.warn("[security-worker] Mobile scan error:", e?.message); return [];
-      }),
-    ]);
-    allFindings.push(...perfFindings2, ...mobileFindings);
+    const mobileResults = await runSecurityScannerPhase(scannerContext, "mobile_scan");
+    scannerResults.push(...mobileResults);
+    allFindings.push(...findingsFromScannerResults(mobileResults));
 
-    const anomalyResult = await runAnomalyBaseline(intelligentConfig, routeContracts);
-    allFindings.push(...anomalyResult.findings);
+    await updateJob(payload.jobId, { phase: "anomaly_baseline" });
+    const anomalyResults = await runSecurityScannerPhase(scannerContext, "anomaly_baseline");
+    scannerResults.push(...anomalyResults);
+    allFindings.push(...findingsFromScannerResults(anomalyResults));
+    const anomalyMetadata = scannerMetadata<AnomalyBaselineScannerMetadata>(anomalyResults, "anomaly-baseline");
+    const anomalyResult = {
+      snapshots: anomalyMetadata?.snapshots ?? [],
+      authMatrix: anomalyMetadata?.authMatrix ?? [],
+    };
     const deepDiagnostic = buildDeepAnomalyDiagnostic(
       payload,
       routeInventory,
@@ -1468,7 +1491,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
         routeInventory,
         routeContracts,
         authProfiles,
-        jsEndpointCount: jsResult.discoveredEndpoints?.length ?? 0,
+        jsEndpointCount: discoveredJsEndpoints.length,
         apiSpecAttached: Boolean(payload.apiSpecId),
       })
     );
@@ -1506,6 +1529,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
           scanDepth: payload.scanDepth ?? "standard",
           environment: payload.environment ?? "qa",
         },
+        scannerRegistry: summarizeScannerRegistry(scannerResults),
         coverage: {
           mode: sourceContext.codeReviewAvailable ? "code_and_url" : "url_only",
           sourceMode: sourceContext.requestedMode,
@@ -1519,7 +1543,7 @@ async function runScanPipeline(payload: SecurityScanPayload) {
             allowedPorts: payload.allowedPorts,
             apiSpecAttached: Boolean(payload.apiSpecId),
             authProfiles: authProfiles.length,
-            jsEndpoints: jsResult.discoveredEndpoints?.length ?? 0,
+            jsEndpoints: discoveredJsEndpoints.length,
           },
         },
         routeInventory: {
