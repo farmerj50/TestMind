@@ -13,6 +13,7 @@ import CaseFilterBar, { type CaseFilters, EMPTY_FILTERS } from "../components/Ca
 import BulkActionToolbar from "../components/BulkActionToolbar";
 import CreateCaseModal, { type CreateCasePayload } from "../components/CreateCaseModal";
 import ImportCaseModal, { type ImportRow } from "../components/ImportCaseModal";
+import { Pencil, Trash2 } from "lucide-react";
 
 type TestRunStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -231,6 +232,37 @@ export default function ProjectPage() {
       await refreshSuites();
     } catch (e: any) {
       toast.error(e?.message || "Failed to create suite");
+    }
+  }
+
+  async function handleRenameSuite(suite: Suite) {
+    const name = prompt("Rename suite", suite.name);
+    if (!name || !name.trim() || name.trim() === suite.name) return;
+    try {
+      await apiFetch(`/tests/suites/${suite.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      toast.success("Suite renamed");
+      await refreshSuites();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to rename suite");
+    }
+  }
+
+  async function handleDeleteSuite(suite: Suite) {
+    const confirmed = confirm(
+      `Delete suite "${suite.name}"? Cases in it are not deleted — they become unassigned.`
+    );
+    if (!confirmed) return;
+    try {
+      await apiFetch(`/tests/suites/${suite.id}`, { method: "DELETE" });
+      toast.success("Suite deleted");
+      if (selectedSuiteId === suite.id) setSelectedSuiteId(null);
+      await refreshSuites();
+      await refreshCases();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete suite");
     }
   }
 
@@ -612,17 +644,35 @@ export default function ProjectPage() {
             </div>
             <div className="space-y-2">
               {suites.map((s) => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => setSelectedSuiteId(s.id)}
-                  className={`w-full rounded border px-3 py-2 text-left text-sm bg-white ${
+                  className={`group flex items-center rounded border bg-white ${
                     selectedSuiteId === s.id
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  {s.name}
-                </button>
+                  <button
+                    onClick={() => setSelectedSuiteId(s.id)}
+                    className="flex-1 truncate px-3 py-2 text-left text-sm"
+                  >
+                    {s.name}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRenameSuite(s); }}
+                    title="Rename suite"
+                    className="hidden shrink-0 p-1.5 text-slate-400 hover:text-slate-700 group-hover:block"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteSuite(s); }}
+                    title="Delete suite"
+                    className="hidden shrink-0 p-1.5 mr-1 text-slate-400 hover:text-rose-600 group-hover:block"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
               {suites.length === 0 && (
                 <p className="text-sm text-slate-500">No suites yet.</p>
