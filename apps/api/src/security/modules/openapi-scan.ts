@@ -14,10 +14,10 @@
  *   6. Response schema leak — flag endpoints returning schema fields matching sensitive patterns
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { NormalizedEndpoint, NormalizedParam, ParsedApiSpec } from "../openapi-parser.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,29 +38,17 @@ export type OpenApiScanFinding = {
 type ProbeResult = { status: number; body: string; ms: number } | null;
 
 async function httpProbe(
+  scope: ProbeScope,
   method: string,
   url: string,
   headers: Record<string, string> = {},
   body?: string,
   timeoutMs = 10_000,
 ): Promise<ProbeResult> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const t0 = Date.now();
-  try {
-    const res = await request(url, {
-      method,
-      headers: { "Accept": "application/json", ...headers },
-      body,
-      signal: ctrl.signal as any,
-    });
-    const text = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body: text, ms: Date.now() - t0 };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await probeScoped(scope, url, { method, headers: { Accept: "application/json", ...headers }, body, timeoutMs });
+  if (res.error || res.status === undefined) return null;
+  return { status: res.status, body: res.body, ms: Date.now() - t0 };
 }
 
 // ── URL construction ─────────────────────────────────────────────────────────
@@ -108,6 +96,7 @@ function endpointUrl(baseUrl: string, endpoint: NormalizedEndpoint): string {
 // ── 1. Auth enforcement ───────────────────────────────────────────────────────
 
 async function checkAuthEnforcement(
+  scope: ProbeScope,
   baseUrl: string,
   endpoint: NormalizedEndpoint,
 ): Promise<OpenApiScanFinding[]> {
@@ -115,6 +104,7 @@ async function checkAuthEnforcement(
   const url = endpointUrl(baseUrl, endpoint);
   const body = buildMinimalBody(endpoint.params);
   const res = await httpProbe(
+    scope,
     endpoint.method,
     url,
     body ? { "Content-Type": "application/json" } : {},
@@ -157,6 +147,7 @@ async function checkAuthEnforcement(
 const ALL_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 async function checkMethodTampering(
+  scope: ProbeScope,
   baseUrl: string,
   endpoint: NormalizedEndpoint,
   authHeaders: Record<string, string>,
@@ -167,7 +158,7 @@ async function checkMethodTampering(
 
   for (const method of ALL_METHODS) {
     if (method === endpoint.method) continue;
-    const res = await httpProbe(method, fullUrl, authHeaders);
+    const res = await httpProbe(scope, method, fullUrl, authHeaders);
     if (!res) continue;
     if (res.status < 400) {
       findings.push({
@@ -242,6 +233,7 @@ const INJECTION_PAYLOADS = [
 ] as const;
 
 async function checkInjection(
+  scope: ProbeScope,
   baseUrl: string,
   endpoint: NormalizedEndpoint,
   authHeaders: Record<string, string>,
@@ -271,7 +263,7 @@ async function checkInjection(
       continue;
     }
 
-    const res = await httpProbe(endpoint.method, url, headers, body, 8000);
+    const res = await httpProbe(scope, endpoint.method, url, headers, body, 8000);
     if (!res) continue;
     if (res.status === 500 || payload.pattern.test(res.body)) {
       findings.push({
@@ -308,6 +300,7 @@ async function checkInjection(
 // ── 5. Required field skip ────────────────────────────────────────────────────
 
 async function checkRequiredFieldSkip(
+  scope: ProbeScope,
   baseUrl: string,
   endpoint: NormalizedEndpoint,
   authHeaders: Record<string, string>,
@@ -319,6 +312,7 @@ async function checkRequiredFieldSkip(
   const url = endpointUrl(baseUrl, endpoint);
   // Send completely empty body
   const res = await httpProbe(
+    scope,
     endpoint.method,
     url,
     { ...authHeaders, "Content-Type": "application/json" },
@@ -362,6 +356,7 @@ export async function runOpenApiScan(
   spec: ParsedApiSpec,
   targetBaseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<OpenApiScanFinding[]> {
   const findings: OpenApiScanFinding[] = [];
   const primaryProfile = authProfiles[0];
@@ -395,22 +390,22 @@ export async function runOpenApiScan(
 
   for (const ep of endpoints) {
     // 1. Auth enforcement
-    findings.push(...(await checkAuthEnforcement(base, ep)));
+    findings.push(...(await checkAuthEnforcement(scope, base, ep)));
 
     // 2. IDOR flag
     if (hasIdParam(ep)) findings.push(idorNote(ep));
 
     // 3. Injection (only on non-destructive methods or when auth is present)
     if (authHeaders && Object.keys(authHeaders).length > 0) {
-      findings.push(...(await checkInjection(base, ep, authHeaders)));
+      findings.push(...(await checkInjection(scope, base, ep, authHeaders)));
     }
 
     // 4. Required field skip
-    findings.push(...(await checkRequiredFieldSkip(base, ep, authHeaders)));
+    findings.push(...(await checkRequiredFieldSkip(scope, base, ep, authHeaders)));
 
     // 5. Method tampering (light — only test 2 methods per endpoint to keep time bounded)
     if (ep.method === "GET" || ep.method === "POST") {
-      findings.push(...(await checkMethodTampering(base, ep, authHeaders)));
+      findings.push(...(await checkMethodTampering(scope, base, ep, authHeaders)));
     }
   }
 

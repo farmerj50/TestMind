@@ -12,6 +12,8 @@ import { parseResults, type ParsedCase } from './result-parsers.js';
 import { normalizeSpecFileKey } from './persist-run-results.js';
 import { scheduleSelfHealingForRun } from './self-heal.js';
 import { finalizeLatestTestState } from './finalize-latest-test-state.js';
+import { readSelfHealPolicy } from '../ai/core/policy.js';
+import { promoteVerifiedLiveSelectors } from '../lib/locator-promotion.js';
 import type { RunPayload } from './queue.js';
 import { analyzeFailure } from './ai-analysis.js';
 import type { LocatorBucket } from '../testmind/runtime/locator-store.js';
@@ -20,6 +22,8 @@ import { decryptSecret } from '../lib/crypto.js';
 import { runAdapter } from '../testmind/service.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
+
+const SELF_HEAL_POLICY = readSelfHealPolicy();
 
 type RunStatus = "queued" | "running" | "succeeded" | "failed";
 type ResultStatus = "passed" | "failed" | "skipped" | "error";
@@ -1112,7 +1116,7 @@ export const worker = new Worker(
       }
       const runRecord = await prisma.testRun.findUnique({
         where: { id: runId },
-        select: { trigger: true },
+        select: { trigger: true, rerunOfId: true },
       });
       await prisma.testRun.update({
         where: { id: runId },
@@ -1134,6 +1138,22 @@ export const worker = new Worker(
       if (!ok && failed > 0 && !Boolean((runParams as any)?.disableAutoSelfHeal)) {
         scheduleSelfHealingForRun(runId).catch((err) => {
           console.error(`[worker] failed to schedule self-heal for run ${runId}`, err);
+        });
+      }
+
+      // Tier 2 auto-promote: independently gated from live-probe repair itself (see
+      // policy.ts's liveProbe.autoPromoteEnabled) so "verified repairs" and "shared-locator
+      // promotion" can be enabled separately. Only fires for a self-heal rerun that actually
+      // passed - promoteVerifiedLiveSelectors re-derives which specific test cases the rerun
+      // itself verified, it does not trust "this run succeeded" alone.
+      if (ok && SELF_HEAL_POLICY.liveProbe.autoPromoteEnabled && runRecord?.trigger === "self-heal" && runRecord?.rerunOfId) {
+        promoteVerifiedLiveSelectors({
+          originalRunId: runRecord.rerunOfId,
+          rerunId: runId,
+          projectId: project.id,
+          userId: project.ownerId,
+        }).catch((err) => {
+          console.error(`[worker] tier2 auto-promote failed for run ${runId}`, err);
         });
       }
     } catch (err: any) {

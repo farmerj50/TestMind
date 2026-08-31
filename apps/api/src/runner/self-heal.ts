@@ -96,12 +96,17 @@ async function queueHealingAttemptForTarget(input: {
     return { status: "blocked", reason: "synthetic_failure" };
   }
 
+  // Scoped by testCaseId, not testResultId: every rerun creates a brand-new TestResult row,
+  // so a testResultId-scoped count always reads back as 0 for a fresh rerun and this cap
+  // never actually engages across a rerun chain - confirmed live (a single test case ran
+  // ~30 healing attempts across ~20 minutes before this fix, each one a real LLM call,
+  // because each rerun's new TestResult reset the per-attempt counter to zero).
   const attemptsSoFar = await prisma.testHealingAttempt.count({
-    where: { testResultId: targetFailure.id },
+    where: { testCaseId: targetFailure.testCaseId },
   });
   if (attemptsSoFar >= MAX_ATTEMPTS_PER_SPEC) {
     console.log(
-      `[self-heal] skipping testResult=${targetFailure.id}; exceeded max attempts (${MAX_ATTEMPTS_PER_SPEC})`
+      `[self-heal] skipping testCase=${targetFailure.testCaseId} (testResult=${targetFailure.id}); exceeded max attempts across rerun chain (${MAX_ATTEMPTS_PER_SPEC})`
     );
     return { status: "blocked", reason: "max_attempts_per_spec" };
   }
@@ -136,19 +141,42 @@ async function queueHealingAttemptForTarget(input: {
  * Schedule self-healing attempts for each failed test result in the run.
  * The actual healing work is handled by the self-heal worker.
  */
+// Reasons queueHealingAttemptForTarget can return that apply to the whole run, not just the
+// one target that was tried - retrying a different failing test in the same run would hit
+// the identical block, so there's no point continuing the loop below for these.
+const RUN_WIDE_BLOCK_REASONS = new Set([
+  "self_heal_disabled",
+  "self_heal_inflight",
+  "no_failed_results",
+  "max_patches_per_run",
+  "run_not_found",
+]);
+
 export async function scheduleSelfHealingForRun(runId: string) {
-  const nextFailure = await prisma.testResult.findFirst({
+  // Try every failing test in the run, not just the first by id - a run can have several
+  // distinct failures, and the first one alone may be blocked (e.g. it already exhausted
+  // MAX_ATTEMPTS_PER_SPEC) while a different failure in the same run has never been
+  // attempted. Stops at the first successfully queued attempt (only one heal runs at a
+  // time per run - queueHealingAttemptForTarget's own in-flight check enforces that) or at
+  // the first run-wide block, whichever comes first.
+  const failures = await prisma.testResult.findMany({
     where: { runId, status: TestResultStatus.failed },
     orderBy: { id: "asc" },
     select: { id: true, testCaseId: true, testCase: { select: { title: true } } },
   });
-  if (!nextFailure) return;
-  await queueHealingAttemptForTarget({
-    runId,
-    testResultId: nextFailure.id,
-    testCaseId: nextFailure.testCaseId,
-    testTitle: nextFailure.testCase?.title ?? null,
-  });
+
+  for (const failure of failures) {
+    const result = await queueHealingAttemptForTarget({
+      runId,
+      testResultId: failure.id,
+      testCaseId: failure.testCaseId,
+      testTitle: failure.testCase?.title ?? null,
+    });
+    if (result.status === "queued") return result;
+    if (RUN_WIDE_BLOCK_REASONS.has(result.reason)) return result;
+    // Per-test block (e.g. max_attempts_per_spec, synthetic_failure, target_not_failed) -
+    // move on and try the next failing test in this run instead of giving up entirely.
+  }
 }
 
 export async function scheduleSelfHealingForTarget(input: {

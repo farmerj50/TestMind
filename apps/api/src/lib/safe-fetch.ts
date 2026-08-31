@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-type SafeFetchPolicy = {
+export type SafeFetchPolicy = {
   allowHttp?: boolean;
   allowPrivateHosts?: boolean;
   allowedHosts?: string[];
@@ -64,7 +64,10 @@ const resolveHostAddresses = async (
   return results.map((entry) => entry.address);
 };
 
-async function validateUrl(rawUrl: string, policy: SafeFetchPolicy): Promise<URL> {
+// Exported so other server-side outbound-navigation code (e.g. the self-heal live-page
+// probe, which drives a real headless browser rather than fetch()) can reuse the same
+// loopback/private/link-local destination checks instead of duplicating the threat model.
+export async function validateUrl(rawUrl: string, policy: SafeFetchPolicy = {}): Promise<URL> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);

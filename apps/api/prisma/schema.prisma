@@ -157,6 +157,7 @@ model Project {
   org       Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   sharedSteps Json?   @default("{}")
+  applicationModel Json? @default("{}")
 
   testRuns         TestRun[]
   suites           TestSuite[]

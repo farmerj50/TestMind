@@ -9,6 +9,7 @@ import {
 } from "../lib/security-finding-detail.js";
 import { redactAuthProfileForStorage } from "../security/redaction.js";
 import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/auth-session-stream.js";
+import { issueLiveTestTicket, registerLiveSecuritySessionRoutes, closeLiveSession } from "../runner/live-security-session.js";
 import {
   callAuthBypassEndpoint,
   buildStorageStateFromCookieString,
@@ -20,10 +21,12 @@ import {
 } from "../security/enterprise-bypass.js";
 import { authenticateAuth0, authenticateFirebase, authenticateCognito, authenticateClerk } from "../security/provider-auth.js";
 import { parseApiSpec, specSummary } from "../security/openapi-parser.js";
+import { normalizeOpenSourceToolIds } from "../security/open-source-tools.js";
 import { buildHtmlReport } from "../security/compliance-report.js";
 import { generateBugBountyReport } from "../security/bug-bounty-report.js";
 import { safeFetch } from "../lib/safe-fetch.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
+import { requiresProductionApproval } from "../lib/security-approval-policy.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -128,6 +131,7 @@ const startSchema = z.object({
   environment: z.enum(["dev", "qa", "stage", "prod"]).default("qa"),
   scanDepth: z.enum(["baseline", "standard", "deep"]).default("standard"),
   safeMode: z.boolean().default(true),
+  sourceMode: z.enum(["auto", "url_only", "code_assisted"]).default("auto"),
   useSavedSetup: z.boolean().default(true),
   authSessionId: z.string().optional(),
   apiSpecId: z.string().optional(),
@@ -136,6 +140,7 @@ const startSchema = z.object({
   expectedControls: z.array(expectedSecurityControlSchema).default([]),
   owaspCategories: z.array(z.string()).default([]),
   complianceFrameworks: z.array(z.string()).default([]),
+  openSourceToolIds: z.array(z.string()).optional(),
 });
 
 const contractSuggestionSchema = z.object({
@@ -392,6 +397,7 @@ export default async function securityRoutes(app: FastifyInstance) {
     }
 
     const savedSetup = body.useSavedSetup ? await getSavedSecuritySetup(project.id) : emptySecurityTestSetup();
+    const openSourceToolIds = normalizeOpenSourceToolIds(body.openSourceToolIds);
     const testSetup = mergeSecurityTestSetup(savedSetup, {
       authProfiles: [...(body.authProfiles as SecurityAuthProfile[]), ...sessionAuthProfiles],
       apiFixtures: body.apiFixtures as ApiSecurityFixture[],
@@ -402,7 +408,12 @@ export default async function securityRoutes(app: FastifyInstance) {
     const authProfiles = testSetup.authProfiles;
     const approvalRequired =
       body.environment === "prod" || body.scanDepth === "deep" || body.enableActive || body.safeMode === false;
-    if (body.environment === "prod" && (body.scanDepth === "deep" || body.enableActive || body.safeMode === false)) {
+    if (requiresProductionApproval({
+      environment: body.environment,
+      scanDepth: body.scanDepth,
+      enableActive: body.enableActive,
+      safeMode: body.safeMode,
+    })) {
       return reply.code(409).send({
         error:
           "Deep, active, or non-safe production security validation requires Operator approval. Use Operator > Security for this target.",
@@ -423,6 +434,7 @@ export default async function securityRoutes(app: FastifyInstance) {
           environment: body.environment,
           scanDepth: body.scanDepth,
           safeMode: body.safeMode,
+          sourceMode: body.sourceMode,
           approvalRequired,
           useSavedSetup: body.useSavedSetup,
           authProfiles: authProfiles.map((profile) => redactAuthProfileForStorage(profile)),
@@ -430,6 +442,7 @@ export default async function securityRoutes(app: FastifyInstance) {
           expectedControls: testSetup.expectedControls,
           owaspCategories: testSetup.owaspCategories,
           complianceFrameworks: testSetup.complianceFrameworks,
+          openSourceToolIds,
         } as any,
       },
     });
@@ -446,11 +459,13 @@ export default async function securityRoutes(app: FastifyInstance) {
         environment: body.environment,
         scanDepth: body.scanDepth,
         safeMode: body.safeMode,
+        sourceMode: body.sourceMode,
         authProfiles,
         apiFixtures: testSetup.apiFixtures,
         expectedControls: testSetup.expectedControls,
         owaspCategories: testSetup.owaspCategories,
         complianceFrameworks: testSetup.complianceFrameworks,
+        openSourceToolIds,
         apiSpecId: body.apiSpecId,
       });
     } catch (err) {
@@ -1070,6 +1085,7 @@ export default async function securityRoutes(app: FastifyInstance) {
   const streamTicketSchema = z.object({
     allowInteractiveChallengeHandling: z.boolean().default(false),
     proxyUrl: z.string().url().optional(),
+    executionMode: z.enum(["headless", "headed"]).default("headed"),
   });
 
   app.post("/security/auth-sessions/:id/stream-ticket", async (req, reply) => {
@@ -1086,13 +1102,50 @@ export default async function securityRoutes(app: FastifyInstance) {
     // allowInteractiveChallengeHandling requires the same in-scope acknowledgement already
     // collected at session start.
     const parsed = streamTicketSchema.safeParse(req.body ?? {});
+    const executionMode = parsed.success ? parsed.data.executionMode : "headed";
     const allowInteractiveChallengeHandling =
-      (parsed.success && parsed.data.allowInteractiveChallengeHandling) && session.scopeAcknowledged;
+      executionMode === "headless" &&
+      process.env.TESTMIND_ALLOW_IP_TRUST_HEADERS === "1" &&
+      (parsed.success && parsed.data.allowInteractiveChallengeHandling) &&
+      session.scopeAcknowledged;
     const proxyUrl = parsed.success ? parsed.data.proxyUrl : undefined;
-    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl) };
+    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl, executionMode) };
   });
 
   registerAuthSessionStreamRoutes(app);
+
+  // ── Live Security Testing (v0.1 POC) ─────────────────────────────────────────
+
+  app.post("/security/auth-sessions/:id/live-test-ticket", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({
+      where: { id, project: { ownerId: userId } },
+    });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+    if (session.status !== "captured" || !session.storagePath) {
+      return reply.code(400).send({ error: "Session has not completed authentication capture yet" });
+    }
+    if (!session.scopeAcknowledged) {
+      return reply.code(400).send({ error: "Scope must be acknowledged before starting live testing" });
+    }
+    return { ticket: issueLiveTestTicket(id) };
+  });
+
+  app.post("/security/auth-sessions/:id/live-test-stop", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({
+      where: { id, project: { ownerId: userId } },
+    });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+    await closeLiveSession(id);
+    return { ok: true };
+  });
+
+  registerLiveSecuritySessionRoutes(app);
 
   // ── API Spec (OpenAPI / Swagger import) ──────────────────────────────────────
 

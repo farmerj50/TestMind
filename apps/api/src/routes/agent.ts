@@ -4,6 +4,7 @@ import { getAuth } from "@clerk/fastify";
 import { Queue } from "bullmq";
 import fs from "fs/promises";
 import path from "path";
+import { isProjectOwner } from "../lib/project-access.js";
 import {
   createAgentSession,
   listAgentSessions,
@@ -149,6 +150,7 @@ function registerProjectHelpers(
     const userId = requireUserFn(req, reply);
     if (!userId) return;
     const { projectId } = req.params as { projectId: string };
+    if (!(await isProjectOwner(projectId, userId))) return reply.code(403).send({ error: "Forbidden" });
     const parsed = ScanBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
@@ -203,6 +205,9 @@ export default async function agentRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
     const { baseUrl, name, projectId, instructions } = parsed.data;
+    if (projectId && !(await isProjectOwner(projectId, userId))) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
     const session = await createAgentSession({
       userId,
       baseUrl,

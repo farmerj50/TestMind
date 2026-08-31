@@ -291,7 +291,7 @@ export default async function orgRoutes(app: FastifyInstance) {
 
     const project = await prisma.project.findUnique({ where: { id: parsed.data.projectId } });
     if (!project) return reply.code(404).send({ error: "Project not found" });
-    if (project.ownerId !== userId && callerRole !== "owner" && callerRole !== "admin") {
+    if (project.ownerId !== userId) {
       return reply.code(403).send({ error: "You can only add projects you own" });
     }
 

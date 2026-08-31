@@ -24,6 +24,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { enqueueSecurityScan } from "../runner/queue.js";
+import { requiresProductionApproval } from "../lib/security-approval-policy.js";
 
 const WEB_URL = (process.env.WEB_URL ?? "http://localhost:5173").replace(/\/$/, "");
 const API_URL = (process.env.API_URL ?? "http://localhost:3001").replace(/\/$/, "");
@@ -304,6 +305,10 @@ const triggerSchema = z.object({
   maxDurationMinutes: z.number().int().min(1).max(120).optional().default(15),
   authSessionId: z.string().optional(),
   apiSpecId: z.string().optional(),
+  // Optional so existing CI configs keep working; unset is treated as prod (see below) -
+  // a CI baseUrl frequently points at a real deployed target, so silently allowing active/
+  // deep scanning by default is riskier than requiring an explicit non-prod declaration.
+  environment: z.enum(["dev", "qa", "stage", "prod"]).optional(),
 });
 
 export default async function ciRoutes(app: FastifyInstance) {
@@ -325,6 +330,23 @@ export default async function ciRoutes(app: FastifyInstance) {
     });
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
+    const effectiveEnvironment = body.environment ?? "prod";
+    const enableActive = body.scanDepth !== "baseline";
+    if (
+      requiresProductionApproval({
+        environment: effectiveEnvironment,
+        scanDepth: body.scanDepth,
+        enableActive,
+      })
+    ) {
+      return reply.code(409).send({
+        error:
+          `Active/deep security scans against a production target require Operator approval. ` +
+          `Declare environment: "dev" | "qa" | "stage" in the request to run this against a ` +
+          `non-production target, or use the Operator > Security flow for approved production scans.`,
+      });
+    }
+
     const job = await prisma.securityScanJob.create({
       data: {
         projectId: auth.projectId,
@@ -334,6 +356,7 @@ export default async function ciRoutes(app: FastifyInstance) {
           scanDepth: body.scanDepth,
           failOn: body.failOn,
           maxDurationMinutes: body.maxDurationMinutes,
+          environment: effectiveEnvironment,
           trigger: "ci",
         },
       },
@@ -344,8 +367,9 @@ export default async function ciRoutes(app: FastifyInstance) {
       projectId: auth.projectId,
       baseUrl: body.baseUrl,
       scanDepth: body.scanDepth,
+      environment: effectiveEnvironment,
       maxDurationMinutes: body.maxDurationMinutes,
-      enableActive: body.scanDepth !== "baseline",
+      enableActive,
       allowedHosts: [],
       allowedPorts: [],
       authProfiles: [],

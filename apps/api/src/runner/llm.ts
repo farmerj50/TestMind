@@ -16,7 +16,7 @@ const MODEL = process.env.HEALING_LLM_MODEL || "gpt-4o-mini";
  * We normalize those before schema validation so a sloppy-but-correct response
  * doesn't trigger a hard failure and skip the fallback rewrite.
  */
-function normalizeOpTypes(raw: string): string {
+export function normalizeOpTypes(raw: string): string {
   const normalizeToken = (value: string) =>
     value
       .trim()
@@ -26,31 +26,53 @@ function normalizeOpTypes(raw: string): string {
       .replace(/^_+|_+$/g, "")
       .replace(/_+/g, "_");
 
+  const TYPE_MAP: Record<string, string> = {
+    replace: "replace_literal",
+    replace_literal: "replace_literal",
+    replace_text: "replace_literal",
+    replace_string: "replace_literal",
+    replace_line: "replace_literal",
+    replace_once: "replace_literal",
+    replace_literal_once: "replace_literal",
+    literal_replace: "replace_literal",
+    replace_regex: "replace_regex_once",
+    replace_regex_once: "replace_regex_once",
+    regex_replace: "replace_regex_once",
+    regex_replace_once: "replace_regex_once",
+    regex_once: "replace_regex_once",
+    pattern_replace: "replace_regex_once",
+    replace_pattern: "replace_regex_once",
+    insert: "insert_after_literal",
+    insert_after: "insert_after_literal",
+    insert_after_literal: "insert_after_literal",
+    append_after: "insert_after_literal",
+    append_after_literal: "insert_after_literal",
+  };
+
+  // The model sometimes wraps the whole operation in an object keyed by its own type name
+  // instead of a flat {type, ...fields} shape, e.g. {"replace_literal": {"find": "...",
+  // "replace": "..."}} instead of {"type": "replace_literal", "find": "...", "replace": "..."}.
+  // None of the field-based heuristics below can see through that extra nesting level (op.find/
+  // op.replace don't exist at the top level), so every operation silently fails discriminator
+  // validation. Detect and unwrap this shape before anything else runs.
+  const unwrapKeyedOperation = (op: Record<string, unknown>) => {
+    if (typeof op.type === "string" && op.type.trim()) return;
+    const keys = Object.keys(op);
+    for (const key of keys) {
+      const canonical = TYPE_MAP[normalizeToken(key)];
+      const inner = op[key];
+      if (canonical && inner && typeof inner === "object" && !Array.isArray(inner)) {
+        delete op[key];
+        Object.assign(op, inner as Record<string, unknown>);
+        op.type = canonical;
+        return;
+      }
+    }
+  };
+
   const canonicalType = (value: unknown, op?: Record<string, unknown>): string | undefined => {
     if (typeof value === "string" && value.trim()) {
       const normalized = normalizeToken(value);
-      const TYPE_MAP: Record<string, string> = {
-        replace: "replace_literal",
-        replace_literal: "replace_literal",
-        replace_text: "replace_literal",
-        replace_string: "replace_literal",
-        replace_line: "replace_literal",
-        replace_once: "replace_literal",
-        replace_literal_once: "replace_literal",
-        literal_replace: "replace_literal",
-        replace_regex: "replace_regex_once",
-        replace_regex_once: "replace_regex_once",
-        regex_replace: "replace_regex_once",
-        regex_replace_once: "replace_regex_once",
-        regex_once: "replace_regex_once",
-        pattern_replace: "replace_regex_once",
-        replace_pattern: "replace_regex_once",
-        insert: "insert_after_literal",
-        insert_after: "insert_after_literal",
-        insert_after_literal: "insert_after_literal",
-        append_after: "insert_after_literal",
-        append_after_literal: "insert_after_literal",
-      };
       if (TYPE_MAP[normalized]) return TYPE_MAP[normalized];
     }
 
@@ -74,6 +96,7 @@ function normalizeOpTypes(raw: string): string {
   };
 
   const normalizeOperation = (op: Record<string, unknown>) => {
+    unwrapKeyedOperation(op);
     const type = canonicalType(op.type, op);
     if (type) op.type = type;
 
@@ -372,11 +395,24 @@ function parseModelJson<T>(raw: string, schema: z.ZodType<T>): T {
   try {
     parsed = JSON.parse(extractJsonPayload(raw));
   } catch (err) {
-    throw new Error(`LLM returned invalid JSON: ${(err as Error).message}`);
+    throw new Error(`LLM returned invalid JSON: ${(err as Error).message}\nraw: ${raw.slice(0, 500)}`);
   }
   const result = schema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`LLM returned invalid JSON shape: ${result.error.issues[0]?.message ?? "unknown schema error"}`);
+    // This validation failure has recurred repeatedly (discriminated-union "type" mismatches
+    // on patch operations) without ever being diagnosable — only the first Zod issue's message
+    // survived, and neither the raw model output nor the offending value was ever logged or
+    // persisted anywhere. Include both here so the next occurrence is actually fixable: this
+    // message ends up in TestHealingAttempt.response.fixDetails.reason, visible in the Self-heal
+    // attempts panel on the run page.
+    const issues = result.error.issues
+      .slice(0, 3)
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    console.error("[llm] parseModelJson validation failed", { issues, raw });
+    throw new Error(
+      `LLM returned invalid JSON shape: ${issues}\nparsed: ${JSON.stringify(parsed).slice(0, 800)}`
+    );
   }
   return result.data;
 }

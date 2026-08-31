@@ -20,6 +20,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { enqueueSecurityScan } from "../runner/queue.js";
+import { requiresProductionApproval } from "../lib/security-approval-policy.js";
 
 const configSchema = z.object({
   projectId: z.string(),
@@ -42,6 +43,10 @@ const scanSchema = z.object({
   scanDepth: z.enum(["baseline", "standard", "deep"]).optional().default("standard"),
   maxDurationMinutes: z.number().int().min(1).max(60).optional().default(15),
   authSessionId: z.string().optional(),
+  // Optional so existing callers keep working; unset is treated as prod (see below) - the
+  // mobile scan's baseUrl is typically the app's real backend, so silently allowing active
+  // testing by default is riskier than requiring an explicit non-prod declaration.
+  environment: z.enum(["dev", "qa", "stage", "prod"]).optional(),
 });
 
 export default async function mobileRoutes(app: FastifyInstance) {
@@ -125,6 +130,22 @@ export default async function mobileRoutes(app: FastifyInstance) {
     if (!project || project.ownerId !== userId) return reply.code(403).send({ error: "Forbidden" });
     if (!mobileConfig || mobileConfig.projectId !== body.projectId) return reply.code(404).send({ error: "Mobile config not found" });
 
+    const effectiveEnvironment = body.environment ?? "prod";
+    if (
+      requiresProductionApproval({
+        environment: effectiveEnvironment,
+        scanDepth: body.scanDepth,
+        enableActive: true,
+      })
+    ) {
+      return reply.code(409).send({
+        error:
+          `Active mobile security scans against a production target require Operator approval. ` +
+          `Declare environment: "dev" | "qa" | "stage" in the request to run this against a ` +
+          `non-production target, or use the Operator > Security flow for approved production scans.`,
+      });
+    }
+
     const job = await prisma.securityScanJob.create({
       data: {
         projectId: body.projectId,
@@ -133,6 +154,7 @@ export default async function mobileRoutes(app: FastifyInstance) {
           baseUrl: body.baseUrl,
           scanDepth: body.scanDepth,
           maxDurationMinutes: body.maxDurationMinutes,
+          environment: effectiveEnvironment,
           trigger: "mobile",
           mobileConfigId: body.mobileConfigId,
           platform: mobileConfig.platform,
@@ -149,6 +171,7 @@ export default async function mobileRoutes(app: FastifyInstance) {
       projectId: body.projectId,
       baseUrl: body.baseUrl,
       scanDepth: body.scanDepth,
+      environment: effectiveEnvironment,
       maxDurationMinutes: body.maxDurationMinutes,
       enableActive: true,
       allowedHosts: [],

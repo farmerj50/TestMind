@@ -79,6 +79,10 @@ journey-report/
 # Auth state
 auth.setup.ts
 apps/web/state.json
+testmind-auth-sessions/
+
+# Runner job artifacts (contain run logs/specs, not meant to be tracked)
+apps/api/runs/
 
 # Recorder artifacts
 recorder-desktop/

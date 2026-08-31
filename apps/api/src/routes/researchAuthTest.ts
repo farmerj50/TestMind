@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { ensureClient } from "../agent/openai.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 
 const MODEL = process.env.AGENT_MODEL || "gpt-4o";
 type Sev = "info" | "low" | "medium" | "high";
@@ -105,8 +106,8 @@ async function testEndpointAuthGuard(
 
   try {
     const [unauthRes, authRes] = await Promise.all([
-      fetch(targetUrl, { redirect: "follow", signal: AbortSignal.timeout(10000) }),
-      fetch(targetUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(10000) }),
+      safeFetch(targetUrl, { signal: AbortSignal.timeout(10000) }),
+      safeFetch(targetUrl, { headers: authHeaders, signal: AbortSignal.timeout(10000) }),
     ]);
 
     const [unauthBody, authBody] = await Promise.all([unauthRes.text(), authRes.text()]);
@@ -171,7 +172,7 @@ async function testOwnedResourceIdor(
   let baselineStatus: number;
   let baselineBody: string;
   try {
-    const res = await fetch(baselineUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const res = await safeFetch(baselineUrl, { headers: authHeaders, signal: AbortSignal.timeout(10000) });
     baselineStatus = res.status;
     baselineBody = await res.text();
   } catch {
@@ -187,7 +188,7 @@ async function testOwnedResourceIdor(
     const testUrl = injectId(baselineUrl, candidateId);
     if (!testUrl) continue;
     try {
-      const res = await fetch(testUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(10000) });
+      const res = await safeFetch(testUrl, { headers: authHeaders, signal: AbortSignal.timeout(10000) });
       if (res.status === 200) {
         const body = await res.text();
         if (body !== baselineBody && body.length > 50) {
@@ -239,7 +240,7 @@ async function testCrossAccountAccess(
 
   let statusA: number, bodyA: string;
   try {
-    const res = await fetch(resourceUrl, { headers: headersA, redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const res = await safeFetch(resourceUrl, { headers: headersA, signal: AbortSignal.timeout(10000) });
     statusA = res.status;
     bodyA = await res.text();
   } catch {
@@ -252,7 +253,7 @@ async function testCrossAccountAccess(
 
   let statusB: number, bodyB: string;
   try {
-    const res = await fetch(resourceUrl, { headers: headersB, redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const res = await safeFetch(resourceUrl, { headers: headersB, signal: AbortSignal.timeout(10000) });
     statusB = res.status;
     bodyB = await res.text();
   } catch {

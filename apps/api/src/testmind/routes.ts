@@ -1352,54 +1352,48 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
           projectId: suite.projectId ?? "",
           ownerId: suite.project.ownerId,
         };
-      } else {
-        const manifestEntry = getCuratedProject(projectId);
-        if (manifestEntry?.root) {
-          curatedSuite = {
-            id: projectId,
-            name: manifestEntry.name ?? projectId,
-            rootRel: manifestEntry.root ?? projectId,
-            projectId: "",
-            ownerId: userId,
-          };
-        }
       }
+      // No manifest-fallback branch here: CuratedProject (the manifest entry type) carries
+      // no ownerId/public field, so there is no trustworthy signal to grant access on. A
+      // DB-owned CuratedSuite is the only way to establish ownership for this branch.
       if (!curatedSuite) {
+        // Filesystem existence alone is not an ownership signal either. The one legitimate
+        // convention already established elsewhere in this file (GET /suite/specs) is that
+        // a user-suffixed projectId belongs to the caller only when it ends with their own
+        // userId — reuse that same check here rather than trusting directory existence.
+        if (!projectId.endsWith(userId)) {
+          return reply.code(403).send({ error: "Forbidden" });
+        }
         const curatedRoots = projectCuratedRoots(projectId);
         for (const root of curatedRoots) {
           const abs = path.resolve(root, relPath);
           if (!fs.existsSync(abs)) continue;
           ensureWithin(root, abs);
-          let content = await fs.promises.readFile(abs, "utf8");
+          const content = await fs.promises.readFile(abs, "utf8");
           const ext = path.extname(abs).toLowerCase();
+          // Read-only coercion: return the corrected content for display, but GET must
+          // never write to disk — persisting a coercion result belongs to an explicit
+          // save (PUT), not a read.
           const coerced = coercePlaywrightTestSource(
             content,
             path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
             ext === ".ts" || ext === ".tsx"
           );
-          if (coerced.changed) {
-            content = coerced.content;
-            await fs.promises.writeFile(abs, content, "utf8");
-          }
-          return { content };
+          return { content: coerced.changed ? coerced.content : content };
         }
         const roots = resolveGeneratedRoots(projectId);
         for (const root of roots) {
           const abs = path.resolve(root, relPath);
           if (!fs.existsSync(abs)) continue;
           ensureWithin(root, abs);
-          let content = await fs.promises.readFile(abs, "utf8");
+          const content = await fs.promises.readFile(abs, "utf8");
           const ext = path.extname(abs).toLowerCase();
           const coerced = coercePlaywrightTestSource(
             content,
             path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
             ext === ".ts" || ext === ".tsx"
           );
-          if (coerced.changed) {
-            content = coerced.content;
-            await fs.promises.writeFile(abs, content, "utf8");
-          }
-          return { content };
+          return { content: coerced.changed ? coerced.content : content };
         }
         return reply.code(404).send({ error: "Spec not found in generated suite" });
       }
@@ -1408,18 +1402,14 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         return reply.code(404).send({ error: "Spec not found in curated suite" });
       }
       ensureWithin(found.root, found.abs);
-      let content = await fs.promises.readFile(found.abs, "utf8");
+      const content = await fs.promises.readFile(found.abs, "utf8");
       const ext = path.extname(found.abs).toLowerCase();
       const coerced = coercePlaywrightTestSource(
         content,
         path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
         ext === ".ts" || ext === ".tsx"
       );
-      if (coerced.changed) {
-        content = coerced.content;
-        await fs.promises.writeFile(found.abs, content, "utf8");
-      }
-      return { content };
+      return { content: coerced.changed ? coerced.content : content };
     } catch (err) {
       return sendError(app, reply, err);
     }
@@ -1440,30 +1430,20 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         where: { id: projectId },
         select: { rootRel: true, project: { select: { ownerId: true } } },
       });
-      let curatedSuite: CuratedSuiteWithOwner | null = null;
-      if (suite && suite.project.ownerId === userId) {
-        curatedSuite = {
-          id: projectId,
-          name: "",
-          rootRel: suite.rootRel,
-          projectId: "",
-          ownerId: suite.project.ownerId,
-        };
-      } else {
-        const manifestEntry = getCuratedProject(projectId);
-        if (manifestEntry?.root) {
-          curatedSuite = {
-            id: projectId,
-            name: manifestEntry.name ?? projectId,
-            rootRel: manifestEntry.root ?? projectId,
-            projectId: "",
-            ownerId: userId,
-          };
-        }
+      // Fail closed: a manifest entry with no matching DB-owned CuratedSuite carries no
+      // ownership signal at all (CuratedProject has no ownerId/public field), so it must
+      // never grant access — previously this branch self-assigned ownerId: userId to any
+      // authenticated caller who knew/guessed a manifest project id.
+      if (!suite || suite.project.ownerId !== userId) {
+        return reply.code(403).send({ error: "Forbidden" });
       }
-      if (!curatedSuite) {
-        return reply.code(400).send({ error: "Only curated suites can be edited. Copy the spec first." });
-      }
+      const curatedSuite: CuratedSuiteWithOwner = {
+        id: projectId,
+        name: "",
+        rootRel: suite.rootRel,
+        projectId: "",
+        ownerId: suite.project.ownerId,
+      };
       const root = resolveCuratedRoot(curatedSuite, true);
       const abs = path.resolve(root, relPath);
       ensureWithin(root, abs);

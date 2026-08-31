@@ -36,6 +36,7 @@ import { GENERATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "../lib/storageRo
 import { sendRunNotifications } from "../notifications/runNotifications.js";
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { finalizeLatestTestState } from "../runner/finalize-latest-test-state.js";
+import { requireRunOwner } from "../lib/run-access.js";
 
 // Minimal, workspace-aware dependency installer
 // replace your installDeps with this
@@ -774,27 +775,6 @@ async function appendMissingLocators(
 }
 
 export default async function runRoutes(app: FastifyInstance) {
-  async function requireRunOwner(req: any, reply: any, runId: string) {
-    const { userId } = getAuth(req);
-    if (!userId) {
-      reply.code(401).send({ error: "Unauthorized" });
-      return null;
-    }
-    const run = await prisma.testRun.findUnique({
-      where: { id: runId },
-      select: {
-        id: true,
-        projectId: true,
-        project: { select: { ownerId: true } },
-      },
-    });
-    if (!run || run.project.ownerId !== userId) {
-      reply.code(404).send({ error: "Run not found" });
-      return null;
-    }
-    return { runId: run.id, projectId: run.projectId, userId };
-  }
-
   // POST /runner/run
   app.post("/run", async (req, reply) => {
     const { userId } = getAuth(req);
@@ -3478,18 +3458,40 @@ setup("auth storage", async ({ page, baseURL }) => {
       return reply.code(404).send({ error: "Run not found" });
     }
 
-    const runWithReruns = await prisma.testRun.findUnique({
-      where: { id },
-      select: {
-        reruns: {
-          where: { status: { in: [TestRunStatus.succeeded, TestRunStatus.failed] } },
-          orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
-          select: { id: true },
+    // Walk the FULL rerun chain, not just direct children: a self-heal rerun can itself
+    // fail and trigger another self-heal attempt on that rerun, producing rerun-of-rerun
+    // chains of arbitrary depth. A one-hop lookup here would miss a deeper rerun that
+    // actually passed and fall back to a stale "failed" status from an earlier hop -
+    // confirmed live (a case with 3 chained self-heal attempts showed "Repair validated"
+    // in the self-heal panel while this endpoint still reported the original failure).
+    const allRerunIds: string[] = [];
+    let frontier = [id];
+    // Depth cap purely as a defensive guard against a pathological/cyclic chain; normal
+    // self-heal chains are expected to be a handful of hops deep at most.
+    for (let depth = 0; depth < 25 && frontier.length > 0; depth += 1) {
+      const children = await prisma.testRun.findMany({
+        where: {
+          rerunOfId: { in: frontier },
+          status: { in: [TestRunStatus.succeeded, TestRunStatus.failed] },
         },
-      },
-    });
+        select: { id: true },
+      });
+      if (children.length === 0) break;
+      frontier = children.map((c) => c.id);
+      allRerunIds.push(...frontier);
+    }
 
-    const rerunIds = (runWithReruns?.reruns ?? []).map((rerun) => rerun.id);
+    // Re-fetch in recency order so the "first match wins" loop below picks the most
+    // recently finished rerun across the whole chain, not just the most recent direct child.
+    const rerunIds = allRerunIds.length
+      ? (
+          await prisma.testRun.findMany({
+            where: { id: { in: allRerunIds } },
+            orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
+            select: { id: true },
+          })
+        ).map((rerun) => rerun.id)
+      : [];
     const runIds = [id, ...rerunIds];
 
     const rows = await prisma.testResult.findMany({

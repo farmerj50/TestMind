@@ -198,6 +198,8 @@ console.log("[self-heal] config", {
   maxPatchOps: SELF_HEAL_POLICY.repair.maxPatchOps,
   maxPatchText: SELF_HEAL_POLICY.repair.maxPatchText,
   healOnly: SELF_HEAL_POLICY.healOnly,
+  tier2LiveProbeEnabled: SELF_HEAL_POLICY.liveProbe.enabled,
+  tier2AutoPromoteEnabled: SELF_HEAL_POLICY.liveProbe.autoPromoteEnabled,
 });
 
 export const selfHealWorker = new Worker(

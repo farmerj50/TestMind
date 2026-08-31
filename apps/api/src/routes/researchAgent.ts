@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { ensureClient } from "../agent/openai.js";
 import { prisma } from "../prisma.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 
 const MODEL = process.env.AGENT_MODEL || "gpt-4o";
 type Sev = "info" | "low" | "medium" | "high";
@@ -102,7 +103,7 @@ async function probeCors(targetUrl: string, authHeaders: Record<string, string>)
   const findings: CorsFinding[] = [];
   for (const origin of ["https://evil.com", "null", "https://attacker.example.com"]) {
     try {
-      const res = await fetch(targetUrl, {
+      const res = await safeFetch(targetUrl, {
         headers: { ...authHeaders, Origin: origin },
         signal: AbortSignal.timeout(8000),
       });
@@ -151,7 +152,7 @@ async function probeSensitivePaths(targetUrl: string, authHeaders: Record<string
   const findings: PathFinding[] = [];
   await Promise.all(SENSITIVE_PATHS.map(async ({ path, issue, severity }) => {
     try {
-      const res = await fetch(`${origin}${path}`, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(8000) });
+      const res = await safeFetch(`${origin}${path}`, { headers: authHeaders, signal: AbortSignal.timeout(8000) });
       if (res.status === 200 || res.status === 206)
         findings.push({ path: `${origin}${path}`, status: res.status, issue, severity });
       else if ((res.status === 401 || res.status === 403) && severity === "high")
@@ -166,7 +167,7 @@ async function probeSensitivePaths(targetUrl: string, authHeaders: Record<string
 async function checkCookieSecurity(targetUrl: string, authHeaders: Record<string, string>): Promise<CookieFinding[]> {
   const findings: CookieFinding[] = [];
   try {
-    const res = await fetch(targetUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const res = await safeFetch(targetUrl, { headers: authHeaders, signal: AbortSignal.timeout(10000) });
     const rawCookies: string[] = (res.headers as any).getSetCookie?.() ?? [];
     // fallback for runtimes without getSetCookie
     if (rawCookies.length === 0) {
@@ -205,8 +206,8 @@ async function checkBrokenAccess(targetUrl: string, authHeaders: Record<string, 
   if (hasAuth) {
     try {
       const [unauth, authed] = await Promise.all([
-        fetch(targetUrl, { redirect: "follow", signal: AbortSignal.timeout(8000) }),
-        fetch(targetUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(8000) }),
+        safeFetch(targetUrl, { signal: AbortSignal.timeout(8000) }),
+        safeFetch(targetUrl, { headers: authHeaders, signal: AbortSignal.timeout(8000) }),
       ]);
       if (unauth.status === 200 && authed.status === 200) {
         const [unauthBody, authBody] = await Promise.all([unauth.text(), authed.text()]);
@@ -222,7 +223,7 @@ async function checkBrokenAccess(targetUrl: string, authHeaders: Record<string, 
   await Promise.all(AUTH_REQUIRED_PATHS.map(async (path) => {
     const url = `${origin}${path}`;
     try {
-      const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(6000) });
+      const res = await safeFetch(url, { signal: AbortSignal.timeout(6000) });
       if (res.status === 200) {
         // Confirm the endpoint also works with auth (exists) before flagging
         const sev: Sev = hasAuth ? "high" : "medium";
@@ -255,7 +256,7 @@ async function checkIdor(targetUrl: string, authHeaders: Record<string, string>,
   let baselineBody: string;
   let baselineStatus: number;
   try {
-    const base = await fetch(targetUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const base = await safeFetch(targetUrl, { headers: authHeaders, signal: AbortSignal.timeout(10000) });
     baselineStatus = base.status;
     baselineBody = await base.text();
   } catch { return findings; }
@@ -274,7 +275,7 @@ async function checkIdor(targetUrl: string, authHeaders: Record<string, string>,
       testSegments[pos] = candidateId;
       const testUrl = `${url.origin}${testSegments.join("/")}${url.search}`;
       try {
-        const res = await fetch(testUrl, { headers: authHeaders, redirect: "follow", signal: AbortSignal.timeout(8000) });
+        const res = await safeFetch(testUrl, { headers: authHeaders, signal: AbortSignal.timeout(8000) });
         if (res.status === 200) {
           const body = await res.text();
           if (body !== baselineBody && body.length > 50) {
@@ -356,9 +357,8 @@ function analyzeJwt(token: string): JwtAnalysis | null {
 async function probeTarget(targetUrl: string, auth: AuthConfig): Promise<ProbeResults> {
   const authHeaders = buildAuthHeaders(auth);
 
-  const mainRes = await fetch(targetUrl, {
+  const mainRes = await safeFetch(targetUrl, {
     headers: { "User-Agent": "TestMind-ResearchAgent/1.0", ...authHeaders },
-    redirect: "follow",
     signal: AbortSignal.timeout(15000),
   });
 

@@ -6,10 +6,10 @@
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
-import { request } from "undici";
 import { prisma } from "../prisma.js";
 import { parseApiSpec } from "../security/openapi-parser.js";
 import { enqueueApiTestRun } from "../runner/queue.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 
 function requireUser(req: any, reply: any): string | null {
   const { userId } = getAuth(req);
@@ -69,8 +69,8 @@ export async function apiTestingRoutes(app: FastifyInstance) {
     let rawSpec: unknown = specJson;
     if (specUrl) {
       try {
-        const resp = await request(specUrl, { method: "GET" });
-        const text = await resp.body.text();
+        const resp = await safeFetch(specUrl, { method: "GET" });
+        const text = await resp.text();
         rawSpec = JSON.parse(text);
       } catch (err: any) {
         return reply.code(400).send({ error: `Failed to fetch spec from URL: ${err?.message ?? String(err)}` });

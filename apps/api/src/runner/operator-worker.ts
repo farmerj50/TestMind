@@ -16,6 +16,16 @@ import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
 import {
+  deriveDecisionsForFailureClassifications,
+  recordOperatorDecisions,
+  type FailureClassification,
+} from '../lib/operator-decisions.js';
+import {
+  computeApplicationModelUpdate,
+  normalizeApplicationModel,
+  normalizeRouteHint,
+} from '../lib/application-model.js';
+import {
   getOctokitForProject,
   pushSpecFilesToBranch,
   ensurePullRequest,
@@ -24,6 +34,8 @@ import {
   buildRepairPrBody,
 } from './github-writeback.js';
 import { validatedEnv } from '../config/env.js';
+import { requiresAutonomousScanApproval } from '../lib/security-approval-policy.js';
+import { normalizeOpenSourceToolIds } from '../security/open-source-tools.js';
 
 export { createStepRunner };
 
@@ -583,6 +595,11 @@ async function continueAutonomousAfterFailedRun(
   });
 
   await createInterventionsForClassifications(opJob, runId, triageTask.id, classifications);
+  await recordOperatorDecisions({
+    jobId: opJob.id,
+    taskId: triageTask.id,
+    decisions: deriveDecisionsForFailureClassifications(classifications),
+  });
 
   const selfHealableIds = classifications
     .filter((c) => c.type === 'self-heal')
@@ -886,6 +903,11 @@ async function waitAutonomousFullSuiteVerify(opJob: OpJobCtx, reDelay: ReDelayFn
   const runId = state.runId ?? state.initialRunId;
   const classifications = await classifyRunFailures(runId);
   await createInterventionsForClassifications(opJob, runId, state.taskId ?? null, classifications);
+  await recordOperatorDecisions({
+    jobId: opJob.id,
+    taskId: state.taskId ?? null,
+    decisions: deriveDecisionsForFailureClassifications(classifications),
+  });
   throw new Error('Autonomous QA full-suite verification failed');
 }
 
@@ -1106,7 +1128,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const classifications = await classifyRunFailures(run.id);
 
   // Persist triage output so the UI and rollup can surface it
-  await prisma.operatorTask.create({
+  const triageTask = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
       type: 'triage',
@@ -1118,6 +1140,11 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
         classifications,
       },
     },
+  });
+  await recordOperatorDecisions({
+    jobId: opJob.id,
+    taskId: triageTask.id,
+    decisions: deriveDecisionsForFailureClassifications(classifications),
   });
 
   const selfHealable = classifications.filter((c) => c.type === 'self-heal');
@@ -1326,7 +1353,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
  *   "blocked"    → infra/env/network — needs env owner
  *   "defect"     → likely product regression — route to dev
  */
-async function classifyRunFailures(runId: string) {
+async function classifyRunFailures(runId: string): Promise<FailureClassification[]> {
   const failedResults = await prisma.testResult.findMany({
     where: { runId, status: 'failed' },
     include: { testCase: { select: { id: true, title: true } } },
@@ -1626,7 +1653,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   const project = await prisma.project.findUnique({
     where: { id: opJob.projectId },
-    select: { repoUrl: true, ownerId: true, sharedSteps: true },
+    select: { repoUrl: true, ownerId: true, sharedSteps: true, applicationModel: true },
   });
   const repoUrl = project?.repoUrl?.trim() ?? '';
   const baseUrl: string | undefined =
@@ -1650,6 +1677,29 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   // ── Step 1: Playwright crawl ───────────────────────────────────────────────
   const { routes, forms, scans } = await discoverSite(baseUrl, [], { cookieString, maxPages });
+
+  // ── Project Memory: read prior application-model facts, diff against this cycle's forms.
+  // Forms without a routeHint can't be attributed to a page and are skipped. Log/diff only -
+  // does not change the crawl itself (see the plan: this is deliberately not a skip/
+  // deprioritize decision, that belongs to a later autonomous-rediscovery phase).
+  const formsByRoute: Record<string, Array<{ selector: string; action?: string; fields: typeof forms[number]['fields'] }>> = {};
+  for (const f of forms) {
+    if (!f.routeHint) continue;
+    const route = normalizeRouteHint(f.routeHint);
+    (formsByRoute[route] ??= []).push({ selector: f.selector, action: f.action, fields: f.fields });
+  }
+  const applicationModelUpdate = computeApplicationModelUpdate(
+    normalizeApplicationModel(project?.applicationModel),
+    formsByRoute,
+    new Date().toISOString()
+  );
+  console.log(
+    `[operator-worker] discovery application-model diff for project ${opJob.projectId}:`,
+    `new=${applicationModelUpdate.diff.newPages.length}`,
+    `changed=${applicationModelUpdate.diff.changedPages.length}`,
+    `unchanged=${applicationModelUpdate.diff.unchangedPages.length}`,
+    `missing=${applicationModelUpdate.diff.missingPages.length}`
+  );
 
   const checkedRoutes: Array<{ route: string; status: number; reachable: boolean }> = scans.map((s) => {
     const route = (() => { try { return new URL(s.url).pathname || '/'; } catch { return s.url; } })();
@@ -1702,7 +1752,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   await prisma.project.update({
     where: { id: opJob.projectId },
-    data: { sharedSteps: mergedSharedSteps as any },
+    data: { sharedSteps: mergedSharedSteps as any, applicationModel: applicationModelUpdate.next as any },
   });
 
   // ── Step 4: Write spec files to disk (with the seeded store active) ───────
@@ -1754,6 +1804,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     specFileCount: specCount,
     outDir,
     summary: `Discovered ${checkedRoutes.length} routes; generated ${savedCount} new tests across ${specCount} spec files`,
+    applicationModelDiff: applicationModelUpdate.diff,
   };
 
   await prisma.operatorTask.update({
@@ -1808,6 +1859,9 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     expectedControls: Array.isArray(ctx.expectedControls) ? ctx.expectedControls : [],
     owaspCategories: Array.isArray(ctx.owaspCategories) ? ctx.owaspCategories : [],
     complianceFrameworks: Array.isArray(ctx.complianceFrameworks) ? ctx.complianceFrameworks : [],
+    openSourceToolIds: normalizeOpenSourceToolIds(
+      Array.isArray(ctx.openSourceToolIds) ? ctx.openSourceToolIds : undefined
+    ),
   };
 
   const task = await prisma.operatorTask.create({
@@ -1820,11 +1874,12 @@ async function runSecurityJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
     },
   });
 
-  const needsSecurityApproval =
-    Boolean(securityCtx.enableActive) ||
-    securityCtx.scanDepth === 'deep' ||
-    securityCtx.safeMode === false ||
-    securityCtx.environment === 'prod';
+  const needsSecurityApproval = requiresAutonomousScanApproval({
+    environment: securityCtx.environment,
+    scanDepth: securityCtx.scanDepth,
+    enableActive: Boolean(securityCtx.enableActive),
+    safeMode: securityCtx.safeMode,
+  });
 
   if (needsSecurityApproval && opJob.requestedBy) {
     const approval = await prisma.operatorApproval.create({
@@ -1860,13 +1915,14 @@ async function startSecurityScan(
   projectId: string,
   taskId: string,
   securityCtx: SecurityResumeCtx,
-  reDelay: ReDelayFn
+  reDelay: ReDelayFn,
+  approvalGranted = false
 ) {
   const scan = await prisma.securityScanJob.create({
     data: { projectId, status: 'queued', config: securityCtx as any },
   });
 
-  await enqueueSecurityScan({ jobId: scan.id, projectId, ...securityCtx });
+  await enqueueSecurityScan({ jobId: scan.id, projectId, ...securityCtx, approvalGranted });
 
   const deadline = Date.now() + securityCtx.maxDurationMinutes * 60 * 1000 + 60_000;
   await checkOrDelayScan(scan.id, taskId, jobId, deadline, reDelay);
@@ -1884,7 +1940,7 @@ async function checkOrDelayApproval(
 
   if (approval?.status === 'approved') {
     await prisma.operatorJob.update({ where: { id: opJob.id }, data: { status: 'running' } });
-    await startSecurityScan(opJob.id, opJob.projectId, phase.taskId, phase.securityCtx, reDelay);
+    await startSecurityScan(opJob.id, opJob.projectId, phase.taskId, phase.securityCtx, reDelay, true);
     return;
   }
 

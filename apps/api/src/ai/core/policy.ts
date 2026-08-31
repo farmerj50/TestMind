@@ -9,10 +9,24 @@ export type AiRepairConfig = {
   maxBytesDelta: number;
 };
 
+// Tier 2 (live-page selector probing) config. Two independent flags, not one: `enabled`
+// gates whether the probe runs at all (repairs happen, verified by the normal rerun, but
+// nothing is written to sharedSteps); `autoPromoteEnabled` independently gates whether a
+// verified selector gets promoted to the project's shared locator store. Both default off.
+export type LiveProbeConfig = {
+  enabled: boolean;
+  autoPromoteEnabled: boolean;
+  navigationTimeoutMs: number;
+  perCandidateTimeoutMs: number;
+  totalBudgetMs: number;
+  maxSitesPerAttempt: number;
+};
+
 export type SelfHealPolicy = {
   workerConcurrency: number;
   healOnly: boolean;
   repair: AiRepairConfig;
+  liveProbe: LiveProbeConfig;
 };
 
 export function resolveRepairConfigForFramework(
@@ -69,6 +83,14 @@ export function readSelfHealPolicy(env: NodeJS.ProcessEnv = process.env): SelfHe
       maxPatchText: parseIntEnv(env.SELF_HEAL_MAX_PATCH_TEXT, 8000, 200, 20000),
       maxChangedLines: parseIntEnv(env.SELF_HEAL_MAX_CHANGED_LINES, 220, 1),
       maxBytesDelta: parseIntEnv(env.HEAL_MAX_BYTES_DELTA, 28000, 1),
+    },
+    liveProbe: {
+      enabled: parseBoolEnv(env.SELF_HEAL_LIVE_PROBE_ENABLED, false),
+      autoPromoteEnabled: parseBoolEnv(env.SELF_HEAL_LIVE_PROBE_AUTO_PROMOTE_ENABLED, false),
+      navigationTimeoutMs: parseIntEnv(env.SELF_HEAL_LIVE_PROBE_NAV_TIMEOUT_MS, 8000, 1000, 20000),
+      perCandidateTimeoutMs: parseIntEnv(env.SELF_HEAL_LIVE_PROBE_CANDIDATE_TIMEOUT_MS, 900, 200, 5000),
+      totalBudgetMs: parseIntEnv(env.SELF_HEAL_LIVE_PROBE_BUDGET_MS, 12000, 2000, 30000),
+      maxSitesPerAttempt: parseIntEnv(env.SELF_HEAL_LIVE_PROBE_MAX_SITES, 4, 1, 10),
     },
   };
 }

@@ -13,9 +13,9 @@
  * 2xx response, a race condition likely exists.
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type RaceConditionFinding = {
   type: "dynamic";
@@ -52,35 +52,24 @@ function isCandidateUrl(url: string): { match: boolean; label: string } {
 type RaceAttempt = { status: number; body: string; ms: number };
 
 async function singleProbe(
+  scope: ProbeScope,
   method: string,
   url: string,
   headers: Record<string, string>,
   body?: string,
   timeoutMs = 12_000,
 ): Promise<RaceAttempt | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const t0 = Date.now();
-  try {
-    const res = await request(url, {
-      method,
-      headers,
-      body,
-      signal: ctrl.signal as any,
-    });
-    const text = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body: text, ms: Date.now() - t0 };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await probeScoped(scope, url, { method, headers, body, timeoutMs });
+  if (res.error || res.status === undefined) return null;
+  return { status: res.status, body: res.body, ms: Date.now() - t0 };
 }
 
 const CONCURRENCY = 15; // requests fired simultaneously
 const MIN_SUCCESS_FOR_RACE = 2; // ≥2 successes on a "should-succeed-once" endpoint = race
 
 async function fireRace(
+  scope: ProbeScope,
   method: string,
   url: string,
   headers: Record<string, string>,
@@ -88,7 +77,7 @@ async function fireRace(
 ): Promise<RaceAttempt[]> {
   // Fire all requests as close together as possible with Promise.all
   const promises = Array.from({ length: CONCURRENCY }, () =>
-    singleProbe(method, url, headers, body, 12_000)
+    singleProbe(scope, method, url, headers, body, 12_000)
   );
   const results = await Promise.all(promises);
   return results.filter((r): r is RaceAttempt => r !== null);
@@ -176,6 +165,7 @@ const FINANCIAL_MUTATIONS = [
 ];
 
 async function testGraphQLRace(
+  scope: ProbeScope,
   baseUrl: string,
   authHeaders: Record<string, string>,
 ): Promise<RaceConditionFinding[]> {
@@ -188,7 +178,7 @@ async function testGraphQLRace(
   };
 
   for (const mutation of FINANCIAL_MUTATIONS) {
-    const results = await fireRace("POST", endpoint, headers, JSON.stringify({ query: mutation }));
+    const results = await fireRace(scope, "POST", endpoint, headers, JSON.stringify({ query: mutation }));
     if (!results.length) continue;
 
     // For GraphQL: a race is signalled by multiple responses returning `data` (not just errors)
@@ -232,6 +222,7 @@ async function testGraphQLRace(
 export async function runRaceConditionScan(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<RaceConditionFinding[]> {
   const findings: RaceConditionFinding[] = [];
   const primaryProfile = authProfiles[0];
@@ -247,18 +238,18 @@ export async function runRaceConditionScan(
     if (!match) continue;
 
     // Probe to see if the endpoint even exists (quick GET first)
-    const probe = await singleProbe("GET", url, authHeaders, undefined, 5_000);
+    const probe = await singleProbe(scope, "GET", url, authHeaders, undefined, 5_000);
     if (!probe || probe.status === 404) continue;
 
     // Race with a minimal POST
     const raceHeaders = { ...authHeaders, "Content-Type": "application/json" };
-    const results = await fireRace("POST", url, raceHeaders, JSON.stringify({}));
+    const results = await fireRace(scope, "POST", url, raceHeaders, JSON.stringify({}));
     const finding = analyzeRaceResults(results, url, label, "POST");
     if (finding) findings.push(finding);
   }
 
   // GraphQL mutation race
-  findings.push(...(await testGraphQLRace(base, authHeaders)));
+  findings.push(...(await testGraphQLRace(scope, base, authHeaders)));
 
   // Surface a general note if no financial endpoints were found but auth is present
   if (!findings.length && primaryProfile) {

@@ -1,7 +1,8 @@
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { requestSpecHeal, requestSpecPatchOps } from "../../runner/llm.js";
 import type { AiExecutionContext } from "./types.js";
-import { resolveRepairConfigForFramework, type AiRepairConfig } from "./policy.js";
+import { resolveRepairConfigForFramework, type AiRepairConfig, type LiveProbeConfig } from "./policy.js";
+import { tryLiveSelectorProbeRepair } from "./live-selector-probe-rule.js";
 import {
   applyHealOperations,
   buildHealPromptPayload,
@@ -14,7 +15,9 @@ import {
   withTimeout,
 } from "./repair-policy.js";
 
-type RuleRepairResult = {
+// Exported so the live-selector-probe rule (a Tier 2 repair, evaluated between the
+// deterministic rule chain and the LLM fallback) can return the same result shape.
+export type RuleRepairResult = {
   kind: "rule";
   patchedSpec: string;
   summary: string;
@@ -76,7 +79,9 @@ function parseNavigateTargetFromTitle(title?: string | null) {
   return { from, to };
 }
 
-function findSelectedTestBlock(specContent: string, title?: string | null) {
+// Exported so the live-selector-probe rule can isolate the failing test's block the same
+// way the existing nav-locator rule does, instead of a second block-isolation implementation.
+export function findSelectedTestBlock(specContent: string, title?: string | null) {
   if (!title) return null;
   const starts = [`test("${title}"`, `test('${title}'`, `test(\`${title}\``]
     .map((needle) => specContent.indexOf(needle))
@@ -93,7 +98,7 @@ function findSelectedTestBlock(specContent: string, title?: string | null) {
   };
 }
 
-function replaceSelectedTestBlock(
+export function replaceSelectedTestBlock(
   specContent: string,
   selectedBlock: { start: number; end: number; block: string },
   nextBlock: string,
@@ -522,7 +527,7 @@ function tryMalformedSelectorRepair(context: AiExecutionContext, specContent: st
   };
 }
 
-function tryRuleBasedRepair(context: AiExecutionContext): RuleRepairResult | null {
+export function tryRuleBasedRepair(context: AiExecutionContext): RuleRepairResult | null {
   const specContent = context.specContent;
   if (!specContent) return null;
 
@@ -612,40 +617,43 @@ function tryRuleBasedRepair(context: AiExecutionContext): RuleRepairResult | nul
   }
 
   if (containsStrictMode(context.failure.message)) {
-    const hrefMatch = context.failure.message?.match(/href="([^"]+)"/);
-    if (hrefMatch) {
-      const href = hrefMatch[1];
-      const locatorLinePattern =
-        /(page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\))/m;
-      const locatorMatch = specContent.match(locatorLinePattern);
-      if (locatorMatch) {
-        const original = locatorMatch[0];
-        const patchedSpec = specContent.replace(original, `page.locator('a[href="${href}"]').first()`);
+    const selectedBlock = findSelectedTestBlock(specContent, context.failure.testTitle);
+    if (selectedBlock) {
+      const hrefMatch = context.failure.message?.match(/href="([^"]+)"/);
+      if (hrefMatch) {
+        const href = hrefMatch[1];
+        const locatorLinePattern =
+          /(page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;()]*\))/m;
+        const locatorMatch = selectedBlock.block.match(locatorLinePattern);
+        if (locatorMatch) {
+          const original = locatorMatch[0];
+          const nextBlock = selectedBlock.block.replace(original, `page.locator('a[href="${href}"]').first()`);
+          return {
+            kind: "rule",
+            patchedSpec: replaceSelectedTestBlock(specContent, selectedBlock, nextBlock),
+            summary: `Auto-fixed strict-mode locator via href=${href}`,
+            note: "rule-based strict-mode href",
+            fixType: "rule_fixed",
+            fixDetails: { rule: "strict-mode-href", href },
+          };
+        }
+      }
+
+      const locatorPattern =
+        /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;()]*\)(?!\s*\.(first|nth|filter|locator))/m;
+      const match = selectedBlock.block.match(locatorPattern);
+      if (match) {
+        const target = match[0];
+        const nextBlock = selectedBlock.block.replace(target, `${target}.first()`);
         return {
           kind: "rule",
-          patchedSpec,
-          summary: `Auto-fixed strict-mode locator via href=${href}`,
-          note: "rule-based strict-mode href",
+          patchedSpec: replaceSelectedTestBlock(specContent, selectedBlock, nextBlock),
+          summary: "Auto-selected first match for strict-mode locator",
+          note: "rule-based strict-mode",
           fixType: "rule_fixed",
-          fixDetails: { rule: "strict-mode-href", href },
+          fixDetails: { rule: "strict-mode-first" },
         };
       }
-    }
-
-    const locatorPattern =
-      /page\.(locator|getByRole|getByText|getByLabel|getByTestId|getByPlaceholder|getByAltText)\([^;]+?\)(?!\s*\.(first|nth|filter|locator))/m;
-    const match = specContent.match(locatorPattern);
-    if (match) {
-      const target = match[0];
-      const patchedSpec = specContent.replace(target, `${target}.first()`);
-      return {
-        kind: "rule",
-        patchedSpec,
-        summary: "Auto-selected first match for strict-mode locator",
-        note: "rule-based strict-mode",
-        fixType: "rule_fixed",
-        fixDetails: { rule: "strict-mode-first" },
-      };
     }
   }
 
@@ -657,6 +665,7 @@ export async function executeRepairAttempt(input: {
   projectId: string;
   adapterId?: string;
   config: AiRepairConfig;
+  liveProbe?: LiveProbeConfig;
 }): Promise<RepairExecutionResult> {
   const { context, projectId, config } = input;
   const effectiveAdapterId = input.adapterId || DEFAULT_FRAMEWORK_ID;
@@ -670,11 +679,23 @@ export async function executeRepairAttempt(input: {
     return connectionRefusedRule;
   }
 
+  // Tier 1: deterministic, synchronous, cheap.
   const ruleResult = tryRuleBasedRepair(context);
   if (ruleResult) {
     return ruleResult;
   }
 
+  // Tier 2: evidence-assisted, browser-driven, observational-only. Off by default; only
+  // ever fires for what Tier 1 didn't catch. Never throws into this function - any probe
+  // failure/timeout/auth-gate falls through to Tier 3 exactly as if Tier 2 didn't exist.
+  if (input.liveProbe?.enabled) {
+    const liveProbeResult = await tryLiveSelectorProbeRepair(context, input.liveProbe).catch(() => null);
+    if (liveProbeResult) {
+      return liveProbeResult;
+    }
+  }
+
+  // Tier 3: generative, network/model, most expensive.
   if (containsConnectionRefused(`${context.failure.message || ""}\n${context.failure.stderr || ""}\n${context.failure.stdout || ""}`)) {
     throw new Error("Infra-like connection failure did not match a safe repair rule");
   }
@@ -745,10 +766,16 @@ export async function executeRepairAttempt(input: {
     }
 
     patchedSpec = stripMarkdownCodeFence(patchedSpec);
-    const validationError = validatePatchedSpec(context.specContent, patchedSpec, effectiveAdapterId, {
-      maxChangedLines: effectiveConfig.maxChangedLines,
-      maxBytesDelta: effectiveConfig.maxBytesDelta,
-    });
+    const validationError = validatePatchedSpec(
+      context.specContent,
+      patchedSpec,
+      effectiveAdapterId,
+      {
+        maxChangedLines: effectiveConfig.maxChangedLines,
+        maxBytesDelta: effectiveConfig.maxBytesDelta,
+      },
+      context.failure.message
+    );
     if (!validationError) {
       return {
         kind: "llm",

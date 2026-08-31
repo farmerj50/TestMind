@@ -13,9 +13,9 @@
  *  5. Regression baseline — p50/p95 stored in evidence so teams can diff future scans
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
 
 export type PerfFinding = {
   type: "dynamic";
@@ -32,26 +32,15 @@ export type PerfFinding = {
 // ── HTTP timing probe ─────────────────────────────────────────────────────────
 
 async function timedProbe(
+  scope: ProbeScope,
   url: string,
   headers: Record<string, string> = {},
   timeoutMs = 15_000,
 ): Promise<{ status: number; ms: number } | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const t0 = Date.now();
-  try {
-    const res = await request(url, {
-      method: "GET",
-      headers: { Accept: "application/json", ...headers },
-      signal: ctrl.signal as any,
-    });
-    await res.body.text().catch(() => ""); // drain
-    return { status: res.statusCode, ms: Date.now() - t0 };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await probeScoped(scope, url, { method: "GET", headers: { Accept: "application/json", ...headers }, timeoutMs });
+  if (res.error || res.status === undefined) return null;
+  return { status: res.status, ms: Date.now() - t0 };
 }
 
 function percentile(sorted: number[], p: number): number {
@@ -73,6 +62,7 @@ const PROBE_PATHS = [
 ];
 
 async function discoverLivePaths(
+  scope: ProbeScope,
   base: string,
   authHeaders: Record<string, string>,
 ): Promise<string[]> {
@@ -80,7 +70,7 @@ async function discoverLivePaths(
   await Promise.all(
     PROBE_PATHS.map(async (p) => {
       const url = `${base}${p}`;
-      const r = await timedProbe(url, authHeaders, 6_000);
+      const r = await timedProbe(scope, url, authHeaders, 6_000);
       if (r && r.status !== 404 && r.status !== 405) live.push(url);
     })
   );
@@ -90,6 +80,7 @@ async function discoverLivePaths(
 // ── Sequential baseline ───────────────────────────────────────────────────────
 
 async function measureSequential(
+  scope: ProbeScope,
   url: string,
   headers: Record<string, string>,
   samples = 5,
@@ -97,7 +88,7 @@ async function measureSequential(
   const times: number[] = [];
   let errorCount = 0;
   for (let i = 0; i < samples; i++) {
-    const r = await timedProbe(url, headers);
+    const r = await timedProbe(scope, url, headers);
     if (!r) { errorCount++; continue; }
     if (r.status >= 500) { errorCount++; }
     times.push(r.ms);
@@ -114,12 +105,13 @@ async function measureSequential(
 // ── Concurrent load ───────────────────────────────────────────────────────────
 
 async function measureConcurrent(
+  scope: ProbeScope,
   url: string,
   headers: Record<string, string>,
   concurrency = 10,
 ): Promise<{ results: Array<{ status: number; ms: number } | null>; errorRate: number; hasRateLimit: boolean; p50: number; p95: number }> {
   const results = await Promise.all(
-    Array.from({ length: concurrency }, () => timedProbe(url, headers, 20_000))
+    Array.from({ length: concurrency }, () => timedProbe(scope, url, headers, 20_000))
   );
   const success = results.filter(Boolean) as { status: number; ms: number }[];
   const errorCount = results.filter((r) => !r || r.status >= 500).length;
@@ -142,10 +134,10 @@ const TIMING_ATTACK_PATHS = [
   "/api/v1/auth/login", "/api/users/login",
 ];
 
-async function checkTimingAttack(base: string): Promise<PerfFinding | null> {
+async function checkTimingAttack(scope: ProbeScope, base: string): Promise<PerfFinding | null> {
   for (const path of TIMING_ATTACK_PATHS) {
     const url = `${base}${path}`;
-    const check = await timedProbe(url, { "Content-Type": "application/json" }, 5_000);
+    const check = await timedProbe(scope, url, { "Content-Type": "application/json" }, 5_000);
     if (!check || check.status === 404 || check.status === 405) continue;
 
     // Probe with nonexistent user
@@ -153,12 +145,12 @@ async function checkTimingAttack(base: string): Promise<PerfFinding | null> {
     const badPassTimes: number[] = [];
 
     for (let i = 0; i < 5; i++) {
-      const r1 = await timedProbe(url, {
+      const r1 = await timedProbe(scope, url, {
         "Content-Type": "application/json",
       }, 10_000); // nonexistent user
       if (r1) noUserTimes.push(r1.ms);
 
-      const r2 = await timedProbe(url, {
+      const r2 = await timedProbe(scope, url, {
         "Content-Type": "application/json",
       }, 10_000); // wrong password on common username
       if (r2) badPassTimes.push(r2.ms);
@@ -207,20 +199,21 @@ async function checkTimingAttack(base: string): Promise<PerfFinding | null> {
 export async function runPerfBaseline(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<PerfFinding[]> {
   const findings: PerfFinding[] = [];
   const base = baseUrl.replace(/\/+$/, "");
   const primaryProfile = authProfiles[0];
   const authHeaders = buildAuthHeaders(primaryProfile);
 
-  const endpoints = await discoverLivePaths(base, authHeaders);
+  const endpoints = await discoverLivePaths(scope, base, authHeaders);
 
   for (const url of endpoints.slice(0, 5)) {
     // 1. Sequential baseline
-    const seq = await measureSequential(url, authHeaders, 5);
+    const seq = await measureSequential(scope, url, authHeaders, 5);
 
     // 2. Concurrent load
-    const conc = await measureConcurrent(url, authHeaders, 10);
+    const conc = await measureConcurrent(scope, url, authHeaders, 10);
 
     const degradation = seq.p50 > 0 ? (conc.p50 - seq.p50) / seq.p50 : 0;
     const slowBaseline = seq.p95 > 5_000;
@@ -297,7 +290,7 @@ export async function runPerfBaseline(
   }
 
   // 4. Timing attack check on login endpoints
-  const timingFinding = await checkTimingAttack(base);
+  const timingFinding = await checkTimingAttack(scope, base);
   if (timingFinding) findings.push(timingFinding);
 
   if (!findings.length) {

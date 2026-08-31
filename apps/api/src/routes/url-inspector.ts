@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { getAuth } from '@clerk/fastify';
 import { lookup as dnsLookup } from 'node:dns/promises';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
 import {
   discoverSite,
   discoverSiteWithAuth,
@@ -13,6 +16,8 @@ import {
 import { generatePlanWithAI, fillMissingFamilies, type RichTestCase } from '../testmind/pipeline/generate-plan-ai.js';
 import { suggestRouteDiscoveryWithAI } from '../testmind/pipeline/route-discovery-ai.js';
 import { emitSpecFilesByPage } from '../testmind/adapters/playwright-ts/generator.js';
+import { ensureWithin } from '../testmind/curated-store.js';
+import { GENERATED_ROOT } from '../lib/storageRoots.js';
 import { prisma } from '../prisma.js';
 
 // ── SSRF guard ────────────────────────────────────────────────────────────────
@@ -62,7 +67,10 @@ async function assertSafeUrl(raw: string): Promise<URL> {
 type Warning = { code: string; message: string; severity: 'info' | 'warning' | 'error' };
 type ScanPhase = 'auth_required' | 'auth_failed' | 'partial' | 'ready';
 
-const AUTH_PATH_RE = /\/(login|signin|sign-in|auth|sso|oauth|account\/login)/i;
+// Exported so other code that needs the same "does this path look auth-gated" heuristic
+// (e.g. the self-heal live-page probe's fail-closed skip check) can reuse this single
+// pattern instead of duplicating it.
+export const AUTH_PATH_RE = /\/(login|signin|sign-in|auth|sso|oauth|account\/login)/i;
 const DEFAULT_URL_INSPECTOR_MAX_PAGES = 30;
 
 function boundedMaxPages(raw: unknown): number {
@@ -73,6 +81,22 @@ function boundedMaxPages(raw: unknown): number {
 
 function effectiveScanUrl(scan: RouteScan): string {
   return scan.finalUrl || scan.url;
+}
+
+// Looks for a login form among ALL crawled routes, not just the one the user typed —
+// a public marketing/app site can scan fully successfully while still having a /login
+// or /signup route the crawler happened to discover. A password-type field is a more
+// reliable signal than the URL path alone (catches logins at non-standard paths too).
+function findDiscoveredLoginRoute(scans: RouteScan[]): string | null {
+  for (const scan of scans) {
+    const hasPasswordField =
+      scan.forms?.some((form) => form.fields.some((f) => f.type === 'password')) ?? false;
+    const path = scanPathname(scan);
+    if (hasPasswordField || AUTH_PATH_RE.test(path)) {
+      return path;
+    }
+  }
+  return null;
 }
 
 function scanPathname(scan: RouteScan): string {
@@ -355,6 +379,22 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
       phase = 'auth_failed';
     }
 
+    // The root URL scanned fine on its own, but the crawl may have turned up a login
+    // form on a different route — surface it as a non-blocking suggestion rather than
+    // silently generating public-route-only tests. Only when the scan is otherwise
+    // 'ready': auth_required/auth_failed/partial already communicate a credential ask.
+    let loginRouteDiscovered: string | null = null;
+    if (!authCreds && loginOutcome !== 'success' && phase === 'ready') {
+      loginRouteDiscovered = findDiscoveredLoginRoute(scans);
+      if (loginRouteDiscovered) {
+        warnings.push({
+          code: 'LOGIN_DISCOVERED',
+          message: `TestMind found a login page at ${loginRouteDiscovered}. Add credentials to also cover the authenticated experience.`,
+          severity: 'info',
+        });
+      }
+    }
+
     const interactiveElements = scans.reduce((sum, scan) => sum + scan.fields.length + scan.buttons.length, 0);
     const formCount = scans.reduce((sum, scan) => sum + (scan.forms?.length ?? 0), 0);
     const buttonCount = scans.reduce((sum, scan) => sum + scan.buttons.length, 0);
@@ -565,7 +605,7 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
         coverageMatrix: p.coverageMatrix,
       })),
       duplicatesRemoved,
-      auth: { loginOutcome, authFailureReason, authEntryUsed, authTransitions },
+      auth: { loginOutcome, authFailureReason, authEntryUsed, authTransitions, loginRouteDiscovered },
     });
   });
 
@@ -578,7 +618,7 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
       projectId?: string;
       url?: string;
       testCases?: Array<{ id: string; name: string; group?: { page?: string; url?: string }; steps: unknown[] }>;
-      specFiles?: Array<{ path: string; page: string; testCount: number }>;
+      specFiles?: Array<{ path: string; page: string; testCount: number; content?: string }>;
     };
 
     if (!projectId) return reply.code(400).send({ error: 'projectId is required' });
@@ -589,6 +629,28 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } });
     if (!project) return reply.code(404).send({ error: 'Project not found' });
     if (project.ownerId !== userId) return reply.code(403).send({ error: 'Forbidden' });
+
+    // Write the generated spec files to the same on-disk location /tm/generate uses
+    // (GENERATED_ROOT/{adapter}-{userId}/{projectId}/...) so they're discoverable via
+    // /tm/generated/list and can be pulled into a Suite Explorer suite with
+    // "sync from generated" — without this, saved cases only exist as TestCase rows and
+    // the specPath recorded on them below points at a file that was never written.
+    const outRoot = path.join(GENERATED_ROOT, `${DEFAULT_FRAMEWORK_ID}-${userId}`, projectId);
+    for (const file of specFiles ?? []) {
+      if (!file?.path || typeof file.content !== 'string') continue;
+      const dest = path.join(outRoot, file.path);
+      try {
+        ensureWithin(outRoot, dest);
+      } catch {
+        continue;
+      }
+      try {
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.writeFile(dest, file.content, 'utf8');
+      } catch (err) {
+        app.log.warn({ err, path: file.path }, '[url-inspector] failed to write generated spec file');
+      }
+    }
 
 
     const casesByRoute = new Map<string, Array<{ id: string; name: string; group?: { page?: string; url?: string }; steps: unknown[] }>>();

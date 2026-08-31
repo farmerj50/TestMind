@@ -9,9 +9,10 @@
  * This is the #1 finding class in fintech bug bounty programs.
  */
 
-import { request } from "undici";
 import { buildAuthHeaders } from "../auth-headers.js";
 import type { SecurityAuthProfile } from "../types.js";
+import { probeScoped, type ProbeScope } from "../http-client.js";
+import { UUID_PATTERN, CUID_PATTERN } from "../http-exchange.js";
 
 export type IdorFinding = {
   type: "dynamic";
@@ -28,28 +29,21 @@ export type IdorFinding = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function httpGet(
+  scope: ProbeScope,
   url: string,
   headers: Record<string, string>,
   timeoutMs = 8_000,
 ): Promise<{ status: number; body: string } | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await request(url, { method: "GET", headers, signal: ctrl.signal as any });
-    const body = await res.body.text().catch(() => "");
-    return { status: res.statusCode, body };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await probeScoped(scope, url, { method: "GET", headers, timeoutMs });
+  if (res.error || res.status === undefined) return null;
+  return { status: res.status, body: res.body };
 }
 
 // ── ID extraction ────────────────────────────────────────────────────────────
 
-// Extracts IDs embedded in JSON responses
-const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const CUID_PATTERN = /\bc[a-z0-9]{24,}\b/g;
+// Extracts IDs embedded in JSON responses. UUID_PATTERN/CUID_PATTERN are shared with
+// http-exchange.ts's URL-candidate detection so the two never define the same ID shapes
+// differently.
 const NUMERIC_ID_PATTERN = /"(?:id|userId|accountId|transferId|transactionId|cardId|paymentId)"\s*:\s*"?(\d{4,})"?/g;
 
 function harvestIds(body: string): { uuids: string[]; cuids: string[]; numerics: string[] } {
@@ -99,6 +93,7 @@ const PROBE_TEMPLATES = [
 // ── Cross-account IDOR test ───────────────────────────────────────────────────
 
 async function testCrossAccount(
+  scope: ProbeScope,
   base: string,
   idsFromA: string[],
   headersB: Record<string, string>,
@@ -110,7 +105,7 @@ async function testCrossAccount(
   for (const id of idsFromA.slice(0, 15)) {
     for (const template of PROBE_TEMPLATES) {
       const url = `${base}${template.replace("{id}", id)}`;
-      const res = await httpGet(url, headersB);
+      const res = await httpGet(scope, url, headersB);
       if (!res || res.status === 404 || res.status === 405) continue;
 
       if (res.status >= 200 && res.status < 300 && res.body.length > 10) {
@@ -151,6 +146,7 @@ async function testCrossAccount(
 // ── Predictable ID enumeration (single account) ───────────────────────────────
 
 async function testPredictableIds(
+  scope: ProbeScope,
   base: string,
   knownId: string,
   headers: Record<string, string>,
@@ -165,7 +161,7 @@ async function testPredictableIds(
     for (const altId of candidates) {
       for (const template of PROBE_TEMPLATES.slice(0, 4)) {
         const url = `${base}${template.replace("{id}", altId)}`;
-        const res = await httpGet(url, headers);
+        const res = await httpGet(scope, url, headers);
         if (!res || res.status === 404 || res.status === 405) continue;
 
         if (res.status >= 200 && res.status < 300 && res.body.length > 10) {
@@ -205,6 +201,7 @@ async function testPredictableIds(
 export async function runIdorScan(
   baseUrl: string,
   authProfiles: SecurityAuthProfile[],
+  scope: ProbeScope,
 ): Promise<IdorFinding[]> {
   const findings: IdorFinding[] = [];
   const base = baseUrl.replace(/\/+$/, "");
@@ -220,7 +217,7 @@ export async function runIdorScan(
   };
 
   for (const path of DISCOVERY_PATHS) {
-    const res = await httpGet(`${base}${path}`, headersA);
+    const res = await httpGet(scope, `${base}${path}`, headersA);
     if (!res || res.status >= 400) continue;
     const harvested = harvestIds(res.body);
     allIds.uuids.push(...harvested.uuids);
@@ -255,6 +252,7 @@ export async function runIdorScan(
     const profileB = authProfiles[1];
     const headersB = buildAuthHeaders(profileB);
     const crossFindings = await testCrossAccount(
+      scope,
       base,
       combinedIds,
       headersB,
@@ -281,7 +279,7 @@ export async function runIdorScan(
   } else {
     // 3. Predictable ID test (single account)
     if (allIds.numerics.length) {
-      const predictableFindings = await testPredictableIds(base, allIds.numerics[0], headersA);
+      const predictableFindings = await testPredictableIds(scope, base, allIds.numerics[0], headersA);
       findings.push(...predictableFindings);
     }
 
