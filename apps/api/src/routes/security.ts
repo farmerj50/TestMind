@@ -329,7 +329,7 @@ export default async function securityRoutes(app: FastifyInstance) {
       ? body.allowedPorts
       : [target.port ? Number(target.port) : target.protocol === "https:" ? 443 : 80];
 
-    // If a captured auth session (Enterprise bypass or Bug Bounty live capture) was selected,
+    // If a captured auth session (Enterprise bypass or External Security Assessment live capture) was selected,
     // turn its stored cookies into a synthetic cookie auth profile for this scan. cookieName
     // "__raw__" tells buildAuthHeaders() to send cookieValue as the full Cookie header verbatim
     // (it may contain multiple name=value pairs), rather than treating it as a single cookie.
@@ -670,8 +670,8 @@ export default async function securityRoutes(app: FastifyInstance) {
     return { report };
   });
 
-  // ── Auth sessions (Enterprise / Bug Bounty mode) ────────────────────────────
-  // Creates/tracks SecurityAuthSession records and their lifecycle. Bug Bounty mode's
+  // ── Auth sessions (Enterprise / External Security Assessment mode) ─────────
+  // Creates/tracks SecurityAuthSession records and their lifecycle. External assessment mode's
   // remote-browser capture engine (live-streamed manual login + MFA, then storageState()
   // capture) lives in auth-session-stream.ts, registered via registerAuthSessionStreamRoutes
   // below. Enterprise mode supports a test-only bypass endpoint and direct Auth0/Firebase/
@@ -747,10 +747,10 @@ export default async function securityRoutes(app: FastifyInstance) {
 
     if (body.mode === "bug_bounty") {
       if (!body.scopeAcknowledged) {
-        return reply.code(400).send({ error: "Bug Bounty mode requires scope/rules acknowledgement before starting a session" });
+        return reply.code(400).send({ error: "External Security Assessment mode requires scope/rules acknowledgement before starting a session" });
       }
       if (!body.baseUrl || !body.loginUrl) {
-        return reply.code(400).send({ error: "Bug Bounty mode requires both baseUrl and loginUrl" });
+        return reply.code(400).send({ error: "External Security Assessment mode requires both baseUrl and loginUrl" });
       }
     }
     if (body.mode === "enterprise" && body.provider === "bypass" && (!body.baseUrl || !body.bypassSecretKey)) {
@@ -1097,7 +1097,7 @@ export default async function securityRoutes(app: FastifyInstance) {
     });
     if (!session) return reply.code(404).send({ error: "Not found" });
     if (session.mode !== "bug_bounty") {
-      return reply.code(400).send({ error: "Live session capture is only available for Bug Bounty sessions" });
+      return reply.code(400).send({ error: "Live session capture is only available for External Security Assessment sessions" });
     }
     // allowInteractiveChallengeHandling requires the same in-scope acknowledgement already
     // collected at session start.

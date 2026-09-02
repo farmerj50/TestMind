@@ -13,7 +13,7 @@ import { prisma } from "../prisma.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
 import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js";
 
-// Bug Bounty mode: streams a live, server-side Chromium tab to the browser via
+// External Security Assessment mode: streams a live, server-side Chromium tab to the browser via
 // CDP screencast frames over a WebSocket, and forwards the user's mouse/keyboard
 // input back into the page via the CDP Input domain. Once the user logs in
 // (detected via successPattern, or confirmed manually) the authenticated

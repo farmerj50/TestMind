@@ -479,7 +479,7 @@ export default function ResearchAgentPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Program &amp; Target</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <Input placeholder="Program name (e.g. Acme Bug Bounty)" value={programName} onChange={e => setProgramName(e.target.value)} />
+          <Input placeholder="Program name (e.g. Acme Security Assessment)" value={programName} onChange={e => setProgramName(e.target.value)} />
           <textarea className="w-full min-h-[90px] rounded-md border px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Paste program scope / rules" value={programRules} onChange={e => setProgramRules(e.target.value)} />
           <Input placeholder="Target URL (e.g. https://app.example.com/api/orders/123)" value={targetUrl} onChange={e => setTargetUrl(e.target.value)} />
           <textarea className="w-full min-h-[60px] rounded-md border px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Feature or flow (e.g. order detail page, payment API)" value={featureOrFlow} onChange={e => setFeatureOrFlow(e.target.value)} />

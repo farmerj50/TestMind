@@ -2,6 +2,7 @@ import type { SecurityHttpExchange } from "./http-exchange.js";
 import { applyResourceIdMutation, detectResourceIdCandidates } from "./http-exchange.js";
 import { probeScoped, type ProbeResult, type ProbeScope } from "./http-client.js";
 import { computeDifferential, type ExchangeDiff } from "./differential.js";
+import { buildValidation, type SecurityValidation } from "./validation.js";
 
 export type LiveSecuritySeverity = "info" | "low" | "medium" | "high" | "critical";
 export type LiveSecurityCheckStatus = "passed" | "failed" | "skipped" | "info";
@@ -16,12 +17,25 @@ export type LiveSecurityCheck = {
   owaspApiCategory?: string;
   description: string;
   evidence?: Record<string, unknown>;
+  validation?: SecurityValidation;
 };
 
 export type LiveSecurityProbe = {
   label: string;
   result: ProbeResult;
   diff?: ExchangeDiff;
+};
+
+export type BrowserCorsReadResult = ProbeResult & {
+  browserReadable: boolean;
+  browserBlocked: boolean;
+  browserSkipped?: boolean;
+  browserOrigin: string;
+};
+
+export type LiveSecurityTestOptions = {
+  browserCorsRead?: (url: string, timeoutMs: number) => Promise<BrowserCorsReadResult>;
+  browserCorsReadAttempts?: number;
 };
 
 export type LiveSecurityTestResult = {
@@ -56,6 +70,10 @@ const ERROR_DISCLOSURE_RE =
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CUID_SHAPE = /^c[a-z0-9]{24,}$/i;
 const NUMERIC_ID_SHAPE = /^\d{2,}$/;
+const TEST_ORIGIN = "https://attacker.invalid";
+const VALIDATION_REPEAT_COUNT = 2;
+const REFLECTION_PROBE_PARAM = "tm_xss_probe";
+const INJECTION_PROBE_PARAM = "tm_injection_probe";
 
 function statusIn(status: number | undefined, min: number, max: number) {
   return status !== undefined && status >= min && status <= max;
@@ -73,6 +91,10 @@ function headerValue(headers: Record<string, string> | undefined, name: string) 
   if (!headers) return "";
   const match = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
   return match ? String(match[1]) : "";
+}
+
+function hasRequestHeader(headers: Record<string, string>, name: string) {
+  return Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
 }
 
 function isJsonContentType(value: string) {
@@ -314,14 +336,40 @@ function routeEvidence(context: RouteContext, extra: Record<string, unknown> = {
   };
 }
 
-function withProbeMarker(rawUrl: string): string | null {
+function withProbeParam(rawUrl: string, name: string, value: string): string | null {
   try {
     const url = new URL(rawUrl);
-    url.searchParams.set("tm_probe", "1");
+    url.searchParams.set(name, value);
     return url.toString();
   } catch {
     return null;
   }
+}
+
+function withProbeMarker(rawUrl: string): string | null {
+  return withProbeParam(rawUrl, "tm_probe", "1");
+}
+
+function reflectionProbe(rawUrl: string, exchangeId: string) {
+  const token = `tmxss-${exchangeId.replace(/[^a-z0-9]/gi, "").slice(0, 16) || "probe"}`;
+  const value = `<testmind-xss-probe data-token="${token}">`;
+  return { token, value, url: withProbeParam(rawUrl, REFLECTION_PROBE_PARAM, value) };
+}
+
+function injectionProbeUrl(rawUrl: string) {
+  return withProbeParam(rawUrl, INJECTION_PROBE_PARAM, "'\"\\");
+}
+
+function isHtmlLikeContentType(contentType: string) {
+  return /\b(text\/html|application\/xhtml\+xml|image\/svg\+xml)\b/i.test(contentType);
+}
+
+function reflectedRawMarkup(body: string, token: string) {
+  return body.includes("<testmind-xss-probe") && body.includes(token);
+}
+
+function reflectedProbeToken(body: string, token: string) {
+  return body.includes(token);
 }
 
 function alternateIdValues(value: string): string[] {
@@ -347,6 +395,20 @@ function defaultClassification(id: string) {
       owaspApiCategory: "API3:2023 Broken Object Property Level Authorization",
     };
   }
+  if (id.includes("xss") || id.includes("reflection")) {
+    return {
+      vulnerabilityClass: "xss",
+      owaspCategory: "A03:2021 Injection",
+      owaspApiCategory: "API8:2023 Security Misconfiguration",
+    };
+  }
+  if (id.includes("injection")) {
+    return {
+      vulnerabilityClass: "injection",
+      owaspCategory: "A03:2021 Injection",
+      owaspApiCategory: "API8:2023 Security Misconfiguration",
+    };
+  }
   if (id === "benign-query-marker") {
     return {
       vulnerabilityClass: "input_validation",
@@ -354,7 +416,14 @@ function defaultClassification(id: string) {
       owaspApiCategory: "API8:2023 Security Misconfiguration",
     };
   }
-  if (id === "route-context" || id.includes("cors") || id.includes("head") || id === "error-disclosure" || id === "active-get-probes") {
+  if (id.includes("method") || id.includes("head")) {
+    return {
+      vulnerabilityClass: "method_tampering",
+      owaspCategory: "A05:2021 Security Misconfiguration",
+      owaspApiCategory: "API8:2023 Security Misconfiguration",
+    };
+  }
+  if (id === "route-context" || id.includes("cors") || id === "error-disclosure" || id === "active-get-probes") {
     return {
       vulnerabilityClass: "security_misconfiguration",
       owaspCategory: "A05:2021 Security Misconfiguration",
@@ -366,6 +435,13 @@ function defaultClassification(id: string) {
       vulnerabilityClass: "broken_authentication",
       owaspCategory: "A01:2021 Broken Access Control",
       owaspApiCategory: "API2:2023 Broken Authentication",
+    };
+  }
+  if (id.includes("idor") || id === "alternate-id-probe" || id.startsWith("derived-detail-auth")) {
+    return {
+      vulnerabilityClass: "broken_object_level_authorization",
+      owaspCategory: "A01:2021 Broken Access Control",
+      owaspApiCategory: "API1:2023 Broken Object Level Authorization",
     };
   }
   return {
@@ -422,7 +498,8 @@ function failedCheck(
   owaspCategory: string,
   owaspApiCategory: string,
   description: string,
-  evidence?: Record<string, unknown>
+  evidence?: Record<string, unknown>,
+  validation?: SecurityValidation
 ): LiveSecurityCheck {
   return {
     id,
@@ -434,12 +511,336 @@ function failedCheck(
     owaspApiCategory,
     description,
     evidence,
+    validation,
   };
+}
+
+function validationAwareCorsCheck(
+  id: string,
+  title: string,
+  potentialSeverity: LiveSecuritySeverity,
+  description: string,
+  evidence: Record<string, unknown>,
+  validation: SecurityValidation
+): LiveSecurityCheck {
+  const confirmed = validation.status === "confirmed";
+  const severity =
+    validation.status === "confirmed"
+      ? potentialSeverity
+      : validation.status === "likely"
+        ? "medium"
+        : validation.status === "suspected"
+          ? "low"
+          : "info";
+
+  return {
+    id,
+    title,
+    status: confirmed ? "failed" : "info",
+    severity,
+    vulnerabilityClass: "security_misconfiguration",
+    owaspCategory: "A05:2021 Security Misconfiguration",
+    owaspApiCategory: "API8:2023 Security Misconfiguration",
+    description,
+    evidence: { ...evidence, potentialSeverity },
+    validation,
+  };
+}
+
+function isBrowserCorsReadResult(result: ProbeResult): result is BrowserCorsReadResult {
+  return typeof (result as BrowserCorsReadResult).browserReadable === "boolean";
+}
+
+function successfulProtocolCorsReadAttempts(attempts: ProbeResult[], baselineBody: string, ids: string[]) {
+  return attempts.filter((attempt) => {
+    if (isBrowserCorsReadResult(attempt)) return false;
+    const acao = headerValue(attempt.headers, "access-control-allow-origin");
+    const acac = headerValue(attempt.headers, "access-control-allow-credentials");
+    return isSuccess(attempt.status) && acao === TEST_ORIGIN && /true/i.test(acac) && bodyLooksSameData(baselineBody, attempt.body, ids);
+  }).length;
+}
+
+function successfulBrowserCorsReadAttempts(attempts: ProbeResult[], baselineBody: string, ids: string[]) {
+  return attempts.filter(
+    (attempt) => isBrowserCorsReadResult(attempt) && attempt.browserReadable && isSuccess(attempt.status) && bodyLooksSameData(baselineBody, attempt.body, ids)
+  ).length;
+}
+
+function buildCorsValidation(
+  context: RouteContext,
+  corsProbe: ProbeResult,
+  actualReadAttempts: ProbeResult[],
+  baselineBody: string,
+  ids: string[],
+  hasCookieSession: boolean,
+  capturedCors?: { acao: string; acac: string }
+): SecurityValidation {
+  const probedAcao = headerValue(corsProbe.headers, "access-control-allow-origin");
+  const probedAcac = headerValue(corsProbe.headers, "access-control-allow-credentials");
+  const preflightSucceeded = isSuccess(corsProbe.status);
+  const originAllowed = probedAcao === TEST_ORIGIN || probedAcao === "*";
+  const browserCompatibleOrigin = probedAcao === TEST_ORIGIN;
+  const credentialsAllowed = /true/i.test(probedAcac);
+  const capturedWildcardCredentialed = capturedCors?.acao === "*" && /true/i.test(capturedCors.acac);
+  const probedWildcardCredentialed = probedAcao === "*" && credentialsAllowed;
+  const browserAttempts = actualReadAttempts.filter(isBrowserCorsReadResult);
+  const browserAttempted = browserAttempts.length > 0;
+  const browserProofCompleted = browserAttempts.some((attempt) => attempt.browserReadable || attempt.browserBlocked);
+  const protocolReadSuccesses = successfulProtocolCorsReadAttempts(actualReadAttempts, baselineBody, ids);
+  const browserReadSuccesses = successfulBrowserCorsReadAttempts(actualReadAttempts, baselineBody, ids);
+  const readSuccesses = protocolReadSuccesses + browserReadSuccesses;
+  const repeatedProtocolRead = protocolReadSuccesses >= VALIDATION_REPEAT_COUNT;
+  const browserConfirmationsRequired = Math.max(1, browserAttempts.filter((attempt) => !attempt.browserSkipped).length);
+  const repeatedBrowserRead = browserReadSuccesses >= browserConfirmationsRequired;
+  const browserBlocked = browserProofCompleted && browserReadSuccesses === 0 && browserAttempts.some((attempt) => attempt.browserBlocked);
+  const browserOrigin = (browserAttempts[0] as BrowserCorsReadResult | undefined)?.browserOrigin;
+
+  const status =
+    repeatedBrowserRead && hasCookieSession
+      ? "confirmed"
+      : !browserAttempted && repeatedProtocolRead && hasCookieSession
+        ? "confirmed"
+        : readSuccesses > 0
+        ? "likely"
+        : browserBlocked && (capturedWildcardCredentialed || probedWildcardCredentialed)
+          ? "not_exploitable"
+          : capturedWildcardCredentialed || (originAllowed && credentialsAllowed)
+          ? "suspected"
+          : "inconclusive";
+  const confidence =
+    status === "confirmed" ? 96 : status === "likely" ? 82 : status === "not_exploitable" ? 88 : status === "suspected" ? 45 : 25;
+
+  return buildValidation({
+    status,
+    confidence,
+    proofLevel: browserAttempted ? "browser" : repeatedProtocolRead ? "repeated" : "protocol",
+    attempts: 1 + actualReadAttempts.length,
+    successfulReproductions: readSuccesses,
+    requirements: [
+      { id: "baseline_response", label: "Captured baseline response exists", passed: true },
+      {
+        id: "captured_wildcard_credentials",
+        label: "Captured wildcard credentialed CORS",
+        passed: capturedCors ? capturedWildcardCredentialed : null,
+      },
+      { id: "preflight_success", label: "Preflight returned 2xx", passed: preflightSucceeded },
+      { id: "untrusted_origin_allowed", label: "Untrusted origin was allowed", passed: originAllowed },
+      { id: "credentials_allowed", label: "Credentialed CORS was advertised", passed: credentialsAllowed },
+      { id: "browser_origin_compatible", label: "Origin is browser-compatible for credentials", passed: browserCompatibleOrigin },
+      {
+        id: "browser_credentialed_read",
+        label: "Browser credentialed read proven",
+        passed: browserAttempted ? (browserProofCompleted ? browserReadSuccesses > 0 : null) : null,
+      },
+      { id: "cookie_session", label: "Captured session uses cookies", passed: actualReadAttempts.length > 0 ? hasCookieSession : null },
+    ],
+    expectedBehavior: "An untrusted origin should not receive credentialed CORS approval for this route.",
+    observedBehavior:
+      browserReadSuccesses > 0
+        ? `${browserReadSuccesses}/${browserAttempts.length} browser credentialed read probe${
+            browserAttempts.length === 1 ? "" : "s"
+          } from ${browserOrigin ?? "the test origin"} returned matching data.`
+        : browserBlocked
+          ? `${browserAttempts.length} browser credentialed read probe${
+              browserAttempts.length === 1 ? " was" : "s were"
+            } blocked or did not return matching data from ${browserOrigin ?? "the test origin"}.`
+          : browserAttempted
+            ? `Browser credentialed read proof was skipped or could not complete for ${browserOrigin ?? "the test origin"}.`
+          : protocolReadSuccesses > 0
+            ? `${protocolReadSuccesses}/${actualReadAttempts.length} protocol read probe${
+                actualReadAttempts.length === 1 ? "" : "s"
+              } returned matching data with readable CORS headers.`
+            : `Preflight returned ${corsProbe.status ?? "no response"} with ACAO=${probedAcao || "none"} and ACAC=${
+                probedAcac || "none"
+              }.`,
+    conclusion:
+      status === "confirmed"
+        ? "Repeated validation shows this cookie-backed route can expose matching data to an untrusted origin."
+        : status === "likely"
+          ? "The route returned matching data to a credentialed CORS probe, but browser/session proof is not complete."
+          : status === "not_exploitable"
+            ? "CORS headers are misconfigured, but TestMind could not demonstrate browser-readable credentialed data exposure for this captured session."
+            : "The CORS response is suspicious, but TestMind did not prove browser-readable data exposure.",
+  });
+}
+
+function buildPassiveFieldValidation(context: RouteContext, fields: string[]): SecurityValidation {
+  return buildValidation({
+    status: "confirmed",
+    confidence: 90,
+    proofLevel: "passive",
+    attempts: 1,
+    successfulReproductions: 1,
+    requirements: [
+      { id: "json_response", label: "Captured response is JSON", passed: context.jsonKeys > 0 },
+      { id: "sensitive_key_present", label: "Sensitive key pattern present", passed: fields.length > 0 },
+    ],
+    expectedBehavior: "API responses should not expose fields named like secrets, tokens, sessions, or passwords unless explicitly intended.",
+    observedBehavior: `${fields.length} sensitive-looking field${fields.length === 1 ? "" : "s"} found in the captured response.`,
+    conclusion: "The field-name evidence is present in the captured payload; human review should decide whether the data is actually sensitive.",
+  });
+}
+
+function buildErrorDisclosureValidation(context: RouteContext): SecurityValidation {
+  return buildValidation({
+    status: "confirmed",
+    confidence: 88,
+    proofLevel: "passive",
+    attempts: 1,
+    successfulReproductions: 1,
+    requirements: [
+      { id: "baseline_response", label: "Captured baseline response exists", passed: true },
+      { id: "error_marker_present", label: "Internal error marker present", passed: true },
+    ],
+    expectedBehavior: "API responses should not expose stack traces, database errors, framework exceptions, or internal failure details.",
+    observedBehavior: `${context.pathname} contained an internal error marker in the captured response body.`,
+    conclusion: "The disclosure marker was observed directly in the baseline response.",
+  });
+}
+
+function buildReflectionValidation(
+  context: RouteContext,
+  probe: ProbeResult,
+  rawMarkupReflected: boolean,
+  markerReflected: boolean,
+  browserRelevantResponse: boolean
+): SecurityValidation {
+  const status = rawMarkupReflected && browserRelevantResponse ? "suspected" : markerReflected ? "inconclusive" : "not_exploitable";
+  return buildValidation({
+    status,
+    confidence: status === "suspected" ? 62 : status === "inconclusive" ? 35 : 82,
+    proofLevel: "protocol",
+    attempts: 1,
+    successfulReproductions: rawMarkupReflected ? 1 : 0,
+    requirements: [
+      { id: "baseline_success", label: "Captured baseline returned 2xx", passed: isSuccess(context.baselineStatus) },
+      { id: "safe_get_probe", label: "Safe GET reflection probe was sent", passed: true },
+      { id: "marker_reflected", label: "Reflection marker appeared in response", passed: markerReflected },
+      { id: "raw_markup_reflected", label: "Markup was reflected without encoding", passed: rawMarkupReflected },
+      { id: "browser_relevant_content_type", label: "Response is browser-rendered HTML/XML", passed: browserRelevantResponse },
+    ],
+    expectedBehavior: "User-controlled input should not be reflected into browser-rendered responses without output encoding.",
+    observedBehavior: `Reflection probe returned ${probe.status ?? "no response"} for ${context.pathname}.`,
+    conclusion:
+      status === "suspected"
+        ? "The inert markup marker was reflected into a browser-rendered response without encoding. Manual browser proof is needed before marking this confirmed XSS."
+        : markerReflected
+          ? "The marker was reflected, but TestMind did not observe browser-relevant unencoded markup."
+          : "The reflection marker was not observed in the response.",
+  });
+}
+
+function buildInjectionProbeValidation(context: RouteContext, probe: ProbeResult): SecurityValidation {
+  const errored = statusIn(probe.status, 500, 599) || ERROR_DISCLOSURE_RE.test(probe.body);
+  return buildValidation({
+    status: errored ? "suspected" : "not_exploitable",
+    confidence: errored ? 65 : 80,
+    proofLevel: "protocol",
+    attempts: 1,
+    successfulReproductions: errored ? 1 : 0,
+    requirements: [
+      { id: "baseline_success", label: "Captured baseline returned 2xx", passed: isSuccess(context.baselineStatus) },
+      { id: "safe_get_probe", label: "Safe GET parser probe was sent", passed: true },
+      { id: "server_error", label: "Probe produced HTTP 5xx", passed: statusIn(probe.status, 500, 599) },
+      { id: "error_disclosure", label: "Probe exposed framework/database error text", passed: ERROR_DISCLOSURE_RE.test(probe.body) },
+    ],
+    expectedBehavior: "Parser and query handling should reject unusual input safely without server errors or internal error disclosure.",
+    observedBehavior: `Injection parser probe returned ${probe.status ?? "no response"} for ${context.pathname}.`,
+    conclusion: errored
+      ? "A harmless parser-stress probe caused a server error or internal error disclosure. This is an injection-adjacent signal requiring targeted validation."
+      : "The parser-stress probe did not produce a server error or obvious internal error disclosure.",
+  });
+}
+
+function buildUnauthenticatedAccessValidation(
+  context: RouteContext,
+  attempts: ProbeResult[],
+  baselineBody: string,
+  ids: string[],
+  removedHeaders: string[]
+): SecurityValidation {
+  const successCount = attempts.filter((attempt) => isSuccess(attempt.status)).length;
+  const matchingDataCount = attempts.filter((attempt) => isSuccess(attempt.status) && bodyLooksSameData(baselineBody, attempt.body, ids)).length;
+  const repeatedMatchingData = matchingDataCount >= VALIDATION_REPEAT_COUNT;
+  const status = repeatedMatchingData ? "confirmed" : successCount > 0 ? "likely" : "inconclusive";
+  const confidence = status === "confirmed" ? 96 : status === "likely" ? 76 : 35;
+
+  return buildValidation({
+    status,
+    confidence,
+    proofLevel: repeatedMatchingData ? "repeated" : "protocol",
+    attempts: attempts.length,
+    successfulReproductions: matchingDataCount,
+    requirements: [
+      { id: "baseline_success", label: "Authenticated baseline returned 2xx", passed: isSuccess(context.baselineStatus) },
+      { id: "auth_removed", label: "Auth/session headers were removed", passed: removedHeaders.length > 0 },
+      { id: "unauth_success", label: "Unauthenticated request returned 2xx", passed: successCount > 0 },
+      { id: "protected_data_match", label: "Unauthenticated body matched protected data", passed: matchingDataCount > 0 },
+      { id: "reproduced", label: "Result reproduced", passed: repeatedMatchingData },
+    ],
+    expectedBehavior: "Removing auth/session headers should cause this route to deny access or return only public data.",
+    observedBehavior: `${successCount}/${attempts.length} unauthenticated probe${attempts.length === 1 ? "" : "s"} returned 2xx; ${matchingDataCount} matched protected-looking data.`,
+    conclusion:
+      status === "confirmed"
+        ? "Repeated auth-removal probes returned protected-looking data, so this finding is confirmed at protocol level."
+        : "Auth removal returned a successful response, but repeated protected-data proof is not complete.",
+  });
+}
+
+function buildIdorValidation(
+  context: RouteContext,
+  findings: Array<{ sameData: boolean }>
+): SecurityValidation {
+  const matchedData = findings.some((finding) => finding.sameData);
+  return buildValidation({
+    status: matchedData ? "likely" : "suspected",
+    confidence: matchedData ? 72 : 55,
+    proofLevel: "protocol",
+    attempts: findings.length,
+    successfulReproductions: findings.length,
+    requirements: [
+      { id: "url_id_mutated", label: "URL ID was safely mutated", passed: context.urlIds > 0 },
+      { id: "alternate_id_success", label: "Alternate ID returned 2xx data", passed: findings.length > 0 },
+      { id: "same_shape_or_data", label: "Response matched protected data shape", passed: matchedData },
+      { id: "cross_identity", label: "Second authorized identity verified ownership", passed: null },
+      { id: "negative_control", label: "Owner/non-owner control pair checked", passed: null },
+    ],
+    expectedBehavior: "Changing a resource identifier should deny access unless the captured identity owns the alternate object.",
+    observedBehavior: `${findings.length} alternate ID probe${findings.length === 1 ? "" : "s"} returned successful data.`,
+    conclusion:
+      "The route is suspicious for object-level authorization weakness, but TestMind needs a second identity or ownership control to confirm exploitability.",
+  });
+}
+
+function buildDerivedDetailAuthValidation(
+  context: RouteContext,
+  authDetail: ProbeResult,
+  unauthDetail: ProbeResult,
+  ids: string[]
+): SecurityValidation {
+  const sameData = bodyLooksSameData(authDetail.body, unauthDetail.body, ids);
+  return buildValidation({
+    status: sameData ? "likely" : "suspected",
+    confidence: sameData ? 78 : 62,
+    proofLevel: "protocol",
+    attempts: 1,
+    successfulReproductions: isSuccess(unauthDetail.status) ? 1 : 0,
+    requirements: [
+      { id: "derived_detail_success", label: "Derived detail returned 2xx with auth", passed: isSuccess(authDetail.status) },
+      { id: "unauth_detail_success", label: "Derived detail returned 2xx without auth", passed: isSuccess(unauthDetail.status) },
+      { id: "protected_data_match", label: "Unauthenticated detail matched protected data", passed: sameData },
+      { id: "repeat_validation", label: "Repeated unauthenticated detail validation", passed: null },
+    ],
+    expectedBehavior: "A detail URL derived from a protected list response should deny access when auth/session headers are removed.",
+    observedBehavior: `Derived detail returned ${unauthDetail.status ?? "no response"} without auth/session headers.`,
+    conclusion: "The derived detail route needs repeat and ownership validation before it can be marked confirmed.",
+  });
 }
 
 export async function runLiveSecurityTests(
   exchange: SecurityHttpExchange,
-  scope: ProbeScope
+  scope: ProbeScope,
+  options: LiveSecurityTestOptions = {}
 ): Promise<LiveSecurityTestResult> {
   requireLiveSecurityCandidate(exchange);
 
@@ -454,6 +855,8 @@ export async function runLiveSecurityTests(
   const authStripped = stripAuthHeaders(exchange.request.headers);
   const context = buildRouteContext(exchange, ids, authStripped.removed.length, jsonKeys);
   const baselineSucceeded = isSuccess(exchange.response?.status);
+  const activeBaselineProbeAllowed = activeProbeAllowed && baselineSucceeded;
+  const idCandidates = detectResourceIdCandidates(exchange.request.url).slice(0, 2);
 
   checks.push(
     infoCheck(
@@ -487,6 +890,38 @@ export async function runLiveSecurityTests(
         routeEvidence(context)
       )
     );
+    checks.push(
+      skippedCheck(
+        "method-tampering-head",
+        `Method handling skipped for ${method} ${context.pathname}`,
+        "Safe method probing currently uses captured GET baselines so TestMind does not replay state-changing requests.",
+        routeEvidence(context)
+      )
+    );
+    checks.push(
+      skippedCheck(
+        "xss-reflection-probe",
+        `XSS reflection probe skipped for ${method} ${context.pathname}`,
+        "Live XSS/reflection probes currently use safe GET query markers only; this captured request was not a GET baseline.",
+        routeEvidence(context)
+      )
+    );
+    checks.push(
+      skippedCheck(
+        "injection-error-probe",
+        `Injection parser probe skipped for ${method} ${context.pathname}`,
+        "Live injection probes currently use safe GET query markers only; this captured request was not a GET baseline.",
+        routeEvidence(context)
+      )
+    );
+    checks.push(
+      skippedCheck(
+        "idor-url-mutation",
+        `IDOR/BOLA URL mutation skipped for ${method} ${context.pathname}`,
+        "Live IDOR URL mutation probes currently use captured GET baselines so TestMind does not replay state-changing requests.",
+        routeEvidence(context, { idsFound: ids.length, urlIds: context.urlIds })
+      )
+    );
   }
 
   const sensitiveFields = extractSensitiveFieldPaths(baselineBody);
@@ -500,7 +935,8 @@ export async function runLiveSecurityTests(
         "A02:2021 Cryptographic Failures",
         "API3:2023 Broken Object Property Level Authorization",
         "The captured JSON response includes fields whose names look like secrets, tokens, sessions, or passwords.",
-        routeEvidence(context, { fields: sensitiveFields, jsonKeys: context.jsonKeys })
+        routeEvidence(context, { fields: sensitiveFields, jsonKeys: context.jsonKeys }),
+        buildPassiveFieldValidation(context, sensitiveFields)
       )
     );
   } else {
@@ -524,7 +960,8 @@ export async function runLiveSecurityTests(
         "A05:2021 Security Misconfiguration",
         "API8:2023 Security Misconfiguration",
         "The response body contains text that looks like a stack trace, database error, framework exception, or internal failure.",
-        routeEvidence(context)
+        routeEvidence(context),
+        buildErrorDisclosureValidation(context)
       )
     );
   } else {
@@ -540,17 +977,77 @@ export async function runLiveSecurityTests(
 
   const acao = headerValue(exchange.response?.headers, "access-control-allow-origin");
   const acac = headerValue(exchange.response?.headers, "access-control-allow-credentials");
-  if (acao === "*" && /true/i.test(acac)) {
+  const capturedWildcardCredentialed = acao === "*" && /true/i.test(acac);
+
+  const corsProbe = await probeScoped(scope, exchange.request.url, {
+    method: "OPTIONS",
+    headers: {
+      Origin: TEST_ORIGIN,
+      "Access-Control-Request-Method": method === "OPTIONS" ? "GET" : method,
+      "Access-Control-Request-Headers": "authorization,content-type",
+    },
+    timeoutMs: 5_000,
+  });
+  probes.push({ label: "cross-origin preflight probe", result: corsProbe });
+  const probedAcao = headerValue(corsProbe.headers, "access-control-allow-origin");
+  const probedAcac = headerValue(corsProbe.headers, "access-control-allow-credentials");
+  const credentialedCorsSuspicious = (probedAcao === "*" || probedAcao === TEST_ORIGIN) && /true/i.test(probedAcac);
+  const corsReadAttempts: ProbeResult[] = [];
+  const browserCorsReadAttempts = Math.max(
+    0,
+    Math.min(VALIDATION_REPEAT_COUNT, Math.trunc(options.browserCorsReadAttempts ?? VALIDATION_REPEAT_COUNT))
+  );
+  if (credentialedCorsSuspicious && activeProbeAllowed && baselineSucceeded && authStripped.removed.length > 0 && probedAcao === TEST_ORIGIN) {
+    for (let attempt = 0; attempt < VALIDATION_REPEAT_COUNT; attempt += 1) {
+      const corsRead = await probeScoped(scope, exchange.request.url, {
+        method: "GET",
+        headers: { ...exchange.request.headers, Origin: TEST_ORIGIN },
+        timeoutMs: 5_000,
+      });
+      corsReadAttempts.push(corsRead);
+      probes.push({
+        label: attempt === 0 ? "credentialed CORS read probe" : "credentialed CORS read reproduction",
+        result: corsRead,
+        diff: computeDifferential(exchange, corsRead),
+      });
+    }
+  }
+  if (
+    options.browserCorsRead &&
+    browserCorsReadAttempts > 0 &&
+    activeProbeAllowed &&
+    baselineSucceeded &&
+    hasRequestHeader(exchange.request.headers, "cookie") &&
+    (capturedWildcardCredentialed || credentialedCorsSuspicious)
+  ) {
+    for (let attempt = 0; attempt < browserCorsReadAttempts; attempt += 1) {
+      const browserRead = await options.browserCorsRead(exchange.request.url, 7_000);
+      corsReadAttempts.push(browserRead);
+      probes.push({
+        label: attempt === 0 ? "browser credentialed CORS read proof" : "browser credentialed CORS read reproduction",
+        result: browserRead,
+        diff: computeDifferential(exchange, browserRead),
+      });
+    }
+  }
+  const corsValidation = buildCorsValidation(
+    context,
+    corsProbe,
+    corsReadAttempts,
+    baselineBody,
+    ids,
+    hasRequestHeader(exchange.request.headers, "cookie"),
+    { acao, acac }
+  );
+  if (capturedWildcardCredentialed) {
     checks.push(
-      failedCheck(
+      validationAwareCorsCheck(
         "cors-wildcard-credentials",
-        `${context.pathname} allows wildcard credentialed CORS`,
+        `${context.pathname} advertises wildcard credentialed CORS`,
         "high",
-        "security_misconfiguration",
-        "A05:2021 Security Misconfiguration",
-        "API8:2023 Security Misconfiguration",
-        "The response advertises Access-Control-Allow-Origin: * together with credentialed CORS.",
-        routeEvidence(context, { accessControlAllowOrigin: acao, accessControlAllowCredentials: acac })
+        "The captured response advertises Access-Control-Allow-Origin: * together with credentialed CORS.",
+        routeEvidence(context, { accessControlAllowOrigin: acao, accessControlAllowCredentials: acac }),
+        corsValidation
       )
     );
   } else {
@@ -563,43 +1060,26 @@ export async function runLiveSecurityTests(
       )
     );
   }
-
-  const corsProbe = await probeScoped(scope, exchange.request.url, {
-    method: "OPTIONS",
-    headers: {
-      Origin: "https://attacker.invalid",
-      "Access-Control-Request-Method": method === "OPTIONS" ? "GET" : method,
-      "Access-Control-Request-Headers": "authorization,content-type",
-    },
-    timeoutMs: 5_000,
-  });
-  probes.push({ label: "cross-origin preflight probe", result: corsProbe });
-  const probedAcao = headerValue(corsProbe.headers, "access-control-allow-origin");
-  const probedAcac = headerValue(corsProbe.headers, "access-control-allow-credentials");
-  if ((probedAcao === "*" || probedAcao === "https://attacker.invalid") && /true/i.test(probedAcac)) {
+  if (credentialedCorsSuspicious) {
     checks.push(
-      failedCheck(
+      validationAwareCorsCheck(
         "active-cors-origin-probe",
         `Preflight probe for ${context.pathname} allowed credentialed access`,
         "high",
-        "security_misconfiguration",
-        "A05:2021 Security Misconfiguration",
-        "API8:2023 Security Misconfiguration",
         "A synthetic cross-origin preflight was accepted with credential support.",
-        routeEvidence(context, { status: corsProbe.status, accessControlAllowOrigin: probedAcao, accessControlAllowCredentials: probedAcac })
+        routeEvidence(context, { status: corsProbe.status, accessControlAllowOrigin: probedAcao, accessControlAllowCredentials: probedAcac }),
+        corsValidation
       )
     );
-  } else if (probedAcao === "https://attacker.invalid") {
+  } else if (probedAcao === TEST_ORIGIN) {
     checks.push(
-      failedCheck(
+      validationAwareCorsCheck(
         "active-cors-origin-probe",
         `Preflight probe for ${context.pathname} reflected an untrusted origin`,
         "medium",
-        "security_misconfiguration",
-        "A05:2021 Security Misconfiguration",
-        "API8:2023 Security Misconfiguration",
         "A synthetic cross-origin preflight reflected the supplied untrusted Origin header.",
-        routeEvidence(context, { status: corsProbe.status, accessControlAllowOrigin: probedAcao })
+        routeEvidence(context, { status: corsProbe.status, accessControlAllowOrigin: probedAcao }),
+        corsValidation
       )
     );
   } else {
@@ -623,8 +1103,8 @@ export async function runLiveSecurityTests(
     if (statusIn(headProbe.status, 500, 599)) {
       checks.push(
         failedCheck(
-          "head-method-probe",
-          `HEAD ${context.pathname} returned ${headProbe.status}`,
+          "method-tampering-head",
+          `Method handling: HEAD ${context.pathname} returned ${headProbe.status}`,
           "medium",
           "security_misconfiguration",
           "A05:2021 Security Misconfiguration",
@@ -636,8 +1116,8 @@ export async function runLiveSecurityTests(
     } else {
       checks.push(
         infoCheck(
-          "head-method-probe",
-          `HEAD ${context.pathname} returned ${headProbe.status ?? "no response"}`,
+          "method-tampering-head",
+          `Method handling: HEAD ${context.pathname} returned ${headProbe.status ?? "no response"}`,
           "Compared method handling by sending a safe HEAD request to the captured GET endpoint.",
           routeEvidence(context, { status: headProbe.status, error: headProbe.error })
         )
@@ -677,9 +1157,119 @@ export async function runLiveSecurityTests(
       }
     }
 
-    const idCandidates = detectResourceIdCandidates(exchange.request.url).slice(0, 2);
-    const idProbeFindings: Array<{ url: string; status?: number; candidate: string; value: string }> = [];
-    for (const candidate of idCandidates) {
+    if (activeBaselineProbeAllowed) {
+      const reflection = reflectionProbe(exchange.request.url, exchange.id);
+      if (reflection.url) {
+        const reflected = await probeScoped(scope, reflection.url, {
+          method: "GET",
+          headers: exchange.request.headers,
+          timeoutMs: 5_000,
+        });
+        probes.push({ label: "XSS reflection marker probe", result: reflected, diff: computeDifferential(exchange, reflected) });
+        const rawMarkupReflected = reflectedRawMarkup(reflected.body, reflection.token);
+        const markerReflected = reflectedProbeToken(reflected.body, reflection.token);
+        const browserRelevantResponse = isHtmlLikeContentType(headerValue(reflected.headers, "content-type"));
+        if (rawMarkupReflected && browserRelevantResponse) {
+          checks.push(
+            failedCheck(
+              "xss-reflection-probe",
+              `XSS/reflection probe for ${context.pathname} reflected unencoded markup`,
+              "medium",
+              "xss",
+              "A03:2021 Injection",
+              "API8:2023 Security Misconfiguration",
+              "An inert markup marker was reflected into a browser-rendered response without output encoding.",
+              routeEvidence(context, { status: reflected.status, markerReflected, rawMarkupReflected, contentType: headerValue(reflected.headers, "content-type") }),
+              buildReflectionValidation(context, reflected, rawMarkupReflected, markerReflected, browserRelevantResponse)
+            )
+          );
+        } else {
+          checks.push(
+            passedCheck(
+              "xss-reflection-probe",
+              `XSS/reflection probe for ${context.pathname} did not prove unencoded HTML reflection`,
+              markerReflected
+                ? "The marker appeared in the response, but not as unencoded markup in a browser-rendered response."
+                : "The inert markup marker was not reflected in the response.",
+              routeEvidence(context, { status: reflected.status, markerReflected, rawMarkupReflected, contentType: headerValue(reflected.headers, "content-type") })
+            )
+          );
+        }
+      } else {
+        checks.push(
+          skippedCheck(
+            "xss-reflection-probe",
+            `XSS/reflection probe skipped for ${context.pathname}`,
+            "TestMind could not construct a scoped GET URL for the reflection marker.",
+            routeEvidence(context)
+          )
+        );
+      }
+
+      const injectionUrl = injectionProbeUrl(exchange.request.url);
+      if (injectionUrl) {
+        const injectionProbe = await probeScoped(scope, injectionUrl, {
+          method: "GET",
+          headers: exchange.request.headers,
+          timeoutMs: 5_000,
+        });
+        probes.push({ label: "injection parser error probe", result: injectionProbe, diff: computeDifferential(exchange, injectionProbe) });
+        const injectionErrored = statusIn(injectionProbe.status, 500, 599) || ERROR_DISCLOSURE_RE.test(injectionProbe.body);
+        if (injectionErrored) {
+          checks.push(
+            failedCheck(
+              "injection-error-probe",
+              `Injection parser probe for ${context.pathname} returned ${injectionProbe.status ?? "error disclosure"}`,
+              "medium",
+              "injection",
+              "A03:2021 Injection",
+              "API8:2023 Security Misconfiguration",
+              "A harmless parser-stress query marker caused a server error or internal error disclosure.",
+              routeEvidence(context, { status: injectionProbe.status, error: injectionProbe.error }),
+              buildInjectionProbeValidation(context, injectionProbe)
+            )
+          );
+        } else {
+          checks.push(
+            passedCheck(
+              "injection-error-probe",
+              `Injection parser probe for ${context.pathname} returned ${injectionProbe.status ?? "no response"}`,
+              "A harmless parser-stress query marker did not cause a server error or obvious internal error disclosure.",
+              routeEvidence(context, { status: injectionProbe.status, error: injectionProbe.error })
+            )
+          );
+        }
+      } else {
+        checks.push(
+          skippedCheck(
+            "injection-error-probe",
+            `Injection parser probe skipped for ${context.pathname}`,
+            "TestMind could not construct a scoped GET URL for the parser-stress marker.",
+            routeEvidence(context)
+          )
+        );
+      }
+    } else {
+      checks.push(
+        skippedCheck(
+          "xss-reflection-probe",
+          `XSS/reflection probe skipped for ${context.pathname}`,
+          "Live XSS/reflection probes require a successful captured GET baseline.",
+          routeEvidence(context)
+        )
+      );
+      checks.push(
+        skippedCheck(
+          "injection-error-probe",
+          `Injection parser probe skipped for ${context.pathname}`,
+          "Live injection probes require a successful captured GET baseline.",
+          routeEvidence(context)
+        )
+      );
+    }
+
+    const idProbeFindings: Array<{ url: string; status?: number; candidate: string; value: string; sameData: boolean }> = [];
+    for (const candidate of activeBaselineProbeAllowed ? idCandidates : []) {
       for (const alternateValue of alternateIdValues(candidate.value).slice(0, 2)) {
         const probeUrl = applyResourceIdMutation(exchange.request.url, candidate, alternateValue);
         const idProbe = await probeScoped(scope, probeUrl, {
@@ -694,30 +1284,52 @@ export async function runLiveSecurityTests(
             status: idProbe.status,
             candidate: candidate.paramName,
             value: alternateValue,
+            sameData: bodyLooksSameData(baselineBody, idProbe.body, ids),
           });
         }
       }
     }
-    if (idProbeFindings.length > 0) {
+    if (!activeBaselineProbeAllowed) {
+      checks.push(
+        skippedCheck(
+          "idor-url-mutation",
+          `IDOR/BOLA URL mutation skipped for ${context.pathname}`,
+          "Live IDOR URL mutation probes require a successful captured GET baseline.",
+          routeEvidence(context, { candidates: idCandidates.map((candidate) => candidate.paramName), idsFound: ids.length, urlIds: context.urlIds })
+        )
+      );
+    } else if (idProbeFindings.length > 0) {
       checks.push(
         failedCheck(
-          "alternate-id-probe",
-          `Alternate ID probes for ${context.pathname} returned data`,
+          "idor-url-mutation",
+          `IDOR/BOLA alternate ID probes for ${context.pathname} returned data`,
           "high",
           "broken_object_level_authorization",
           "A01:2021 Broken Access Control",
           "API1:2023 Broken Object Level Authorization",
           "Changing an ID in the captured GET URL returned a successful response with a body.",
-          routeEvidence(context, { probes: idProbeFindings, probeCount: idProbeFindings.length })
+          routeEvidence(context, { probes: idProbeFindings, probeCount: idProbeFindings.length }),
+          buildIdorValidation(context, idProbeFindings)
         )
       );
     } else if (idCandidates.length > 0) {
       checks.push(
         passedCheck(
-          "alternate-id-probe",
-          `Alternate ID probes for ${context.pathname} did not return data`,
+          "idor-url-mutation",
+          `IDOR/BOLA alternate ID probes for ${context.pathname} did not return data`,
           "Changing detected URL IDs did not return successful data responses.",
           routeEvidence(context, { candidates: idCandidates.map((candidate) => candidate.paramName) })
+        )
+      );
+    } else {
+      checks.push(
+        skippedCheck(
+          "idor-url-mutation",
+          `IDOR/BOLA URL mutation skipped for ${context.pathname}`,
+          ids.length > 0
+            ? "IDs were found in the response body, but this request has no URL ID parameter or path segment to mutate."
+            : "No URL ID parameter, URL ID path segment, or response ID candidate was available for safe same-route IDOR mutation.",
+          routeEvidence(context, { idsFound: ids.length, urlIds: context.urlIds })
         )
       );
     }
@@ -758,6 +1370,20 @@ export async function runLiveSecurityTests(
         )
       );
     } else if (isSuccess(unauth.status)) {
+      const unauthAttempts = [unauth];
+      for (let attempt = 0; attempt < VALIDATION_REPEAT_COUNT; attempt += 1) {
+        const repeatUnauth = await probeScoped(scope, exchange.request.url, {
+          method: "GET",
+          headers: authStripped.headers,
+          timeoutMs: 5_000,
+        });
+        unauthAttempts.push(repeatUnauth);
+        probes.push({
+          label: attempt === 0 ? "unauthenticated replay validation" : "unauthenticated replay reproduction",
+          result: repeatUnauth,
+          diff: computeDifferential(exchange, repeatUnauth),
+        });
+      }
       const sameData = bodyLooksSameData(baselineBody, unauth.body, ids);
       checks.push(
         failedCheck(
@@ -775,7 +1401,8 @@ export async function runLiveSecurityTests(
             baselineStatus: exchange.response?.status,
             unauthStatus: unauth.status,
             sameData,
-          })
+          }),
+          buildUnauthenticatedAccessValidation(context, unauthAttempts, baselineBody, ids, authStripped.removed)
         )
       );
     } else {
@@ -806,7 +1433,7 @@ export async function runLiveSecurityTests(
     checks.push(
       skippedCheck(
         "derived-detail-auth",
-        `No safe detail URL was derived from ${context.pathname}`,
+        `IDOR/BOLA derived detail skipped for ${context.pathname}`,
         "IDs were found in the response body, but no safe collection-to-detail URL could be derived from this route.",
         routeEvidence(context, { idsFound: ids.length })
       )
@@ -824,7 +1451,7 @@ export async function runLiveSecurityTests(
       checks.push(
         skippedCheck(
           `derived-detail-auth:${url}`,
-          `Derived detail ${pathnameFromUrl(url)} returned ${authDetail.status ?? "no response"}`,
+          `IDOR/BOLA derived detail ${pathnameFromUrl(url)} returned ${authDetail.status ?? "no response"}`,
           "The server did not return a successful response for the derived detail URL using the captured headers.",
           routeEvidence(context, { url, authStatus: authDetail.status, error: authDetail.error })
         )
@@ -836,7 +1463,7 @@ export async function runLiveSecurityTests(
       checks.push(
         skippedCheck(
           `derived-detail-auth:${url}`,
-          `Derived detail ${pathnameFromUrl(url)} was reachable, unauthenticated check skipped`,
+          `IDOR/BOLA derived detail ${pathnameFromUrl(url)} was reachable, unauthenticated check skipped`,
           "The detail URL was reachable, but no auth/session headers were available to remove.",
           routeEvidence(context, { url, authStatus: authDetail.status })
         )
@@ -854,7 +1481,7 @@ export async function runLiveSecurityTests(
       checks.push(
         passedCheck(
           `derived-detail-auth:${url}`,
-          `Unauthenticated detail ${pathnameFromUrl(url)} returned ${unauthDetail.status}`,
+          `IDOR/BOLA unauthenticated detail ${pathnameFromUrl(url)} returned ${unauthDetail.status}`,
           "A detail URL built from an ID in the list response denied access after auth/session headers were removed.",
           routeEvidence(context, { url, authStatus: authDetail.status, unauthStatus: unauthDetail.status })
         )
@@ -863,20 +1490,21 @@ export async function runLiveSecurityTests(
       checks.push(
         failedCheck(
           `derived-detail-auth:${url}`,
-          `Unauthenticated detail ${pathnameFromUrl(url)} returned ${unauthDetail.status}`,
+          `IDOR/BOLA unauthenticated detail ${pathnameFromUrl(url)} returned ${unauthDetail.status}`,
           bodyLooksSameData(authDetail.body, unauthDetail.body, ids) ? "high" : "medium",
           "broken_access_control",
           "A01:2021 Broken Access Control",
           "API1:2023 Broken Object Level Authorization",
           "A detail URL built from an ID in a captured response returned HTTP 2xx without auth/session headers.",
-          routeEvidence(context, { url, authStatus: authDetail.status, unauthStatus: unauthDetail.status })
+          routeEvidence(context, { url, authStatus: authDetail.status, unauthStatus: unauthDetail.status }),
+          buildDerivedDetailAuthValidation(context, authDetail, unauthDetail, ids)
         )
       );
     } else {
       checks.push(
         passedCheck(
           `derived-detail-auth:${url}`,
-          `Unauthenticated detail ${pathnameFromUrl(url)} returned ${unauthDetail.status ?? "no response"}`,
+          `IDOR/BOLA unauthenticated detail ${pathnameFromUrl(url)} returned ${unauthDetail.status ?? "no response"}`,
           "The derived detail route did not return HTTP 2xx after auth/session headers were removed.",
           routeEvidence(context, { url, authStatus: authDetail.status, unauthStatus: unauthDetail.status, error: unauthDetail.error })
         )

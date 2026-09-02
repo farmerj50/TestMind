@@ -294,7 +294,7 @@ export async function runIdorScan(
       location: base,
       tool: "idor-engine",
       evidence: { harvestedIds: combinedIds.slice(0, 5), totalHarvested: combinedIds.length },
-      suggestion: "Add a second test account session via Bug Bounty mode → Paste cookies, then re-run the scan.",
+      suggestion: "Add a second test account session via External Security Assessment mode → Paste cookies, then re-run the scan.",
       status: "open",
     });
   }

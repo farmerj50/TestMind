@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import http from "node:http";
 import type { FastifyInstance } from "fastify";
 import type WebSocket from "ws";
 // patchright, not playwright — see auth-session-stream.ts for why (Runtime.enable CDP
@@ -8,9 +9,10 @@ import { chromium, type Browser, type BrowserContext, type Page, type CDPSession
 import { prisma } from "../prisma.js";
 import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js";
 import { runIdMutationExperiment, runReplayExperiment } from "../security/experiment.js";
-import { runLiveSecurityTests } from "../security/live-security-tests.js";
+import { runLiveSecurityTests, type BrowserCorsReadResult } from "../security/live-security-tests.js";
 import type { SecurityHttpExchange, ResourceIdCandidate } from "../security/http-exchange.js";
-import type { ProbeScope } from "../security/http-client.js";
+import { isWithinScope, type ProbeScope } from "../security/http-client.js";
+import { snippet } from "../security/redaction.js";
 
 // Live Security Testing v0.1 (POC) - a person drives a real, already-authenticated
 // browser session resumed from a captured SecurityAuthSession. This session captures
@@ -29,13 +31,33 @@ import type { ProbeScope } from "../security/http-client.js";
 const TICKET_TTL_MS = 60_000;
 const IDLE_TIMEOUT_MS = 30 * 60_000; // longer than auth-capture — this is an active testing session, not a quick login
 const VIEWPORT = { width: 1280, height: 800 };
-const MAX_BUFFERED_EXCHANGES = 200;
+const MAX_BUFFERED_EXCHANGES = 5_000;
+const MAX_PENDING_NETWORK_ENTRIES = 2_000;
+const MAX_CAPTURED_BODY_CHARS = 128_000;
+const MAX_CAPTURED_POST_DATA_CHARS = 32_000;
+const MAX_BODY_RETRIEVAL_BYTES = 512_000;
 const ACTION_CORRELATION_WINDOW_MS = 2_000;
-const MAX_ROUTE_WALK_PAGES = 25;
+const MAX_AUTOMATED_SCAN_STEPS = 100;
+const MAX_INTERACTIONS_PER_PAGE = 12;
+const MAX_SEARCH_INPUTS_PER_PAGE = 4;
+const AUTOMATED_SCAN_SETTLE_MS = 700;
+const DEFAULT_AUTOMATED_SCAN_DELAY_MS = 5_000;
+const MAX_AUTOMATED_SCAN_DELAY_MS = 60_000;
+const MAX_BROWSER_CORS_PROOFS_PER_SESSION = 25;
+const BROWSER_CORS_PROOF_TIMEOUT_MS = 2_500;
+const RATE_LIMIT_SIGNAL_WINDOW_MS = 60_000;
+const RATE_LIMIT_SIGNAL_THRESHOLD = 3;
 const SENSITIVE_HEADER_RE =
   /^(authorization|cookie|set-cookie|proxy-authorization|x-api-key|api-key|x-auth-token|x-session|x-session-id|x-csrf-token|x-xsrf-token)$/i;
 const DANGEROUS_ROUTE_RE =
-  /(logout|log-out|signout|sign-out|delete|remove|destroy|deactivate|close-account|cancel|billing|checkout|payment|purchase|subscribe|transfer|withdraw)/i;
+  /(logout|log-out|signout|sign-out|delete|remove|destroy|deactivate|close-account|cancel|billing|checkout|payment|purchase|subscribe|transfer|withdraw|deposit|fund|trade|buy|sell|invest|order|confirm|submit|upload|enroll|enrol|sign-up|signup|register|apply|application|finish|continue)/i;
+const SAFE_SEARCH_INPUT_RE = /(search|filter|query|find|lookup)/i;
+const VOLATILE_CORS_QUERY_PARAM_RE =
+  /^(client[_-]?request[_-]?id|request[_-]?id|trace[_-]?id|correlation[_-]?id|cache[_-]?bust|cachebuster|nonce|timestamp|ts|t|_|cb|rand|random)$/i;
+const TEXT_LIKE_CONTENT_TYPE_RE =
+  /\b(application\/(?:json|[\w.+-]+\+json|xml|x-www-form-urlencoded|graphql)|text\/|multipart\/form-data)\b/i;
+const RATE_LIMIT_STATUS_CODES = new Set([429, 503, 509, 529]);
+const WAF_RATE_LIMIT_TEXT_RE = /(error\s*1015|you are being rate limited|banned temporarily|too many requests)/i;
 
 type Ticket = { authSessionId: string; expiresAt: number };
 const tickets = new Map<string, Ticket>();
@@ -66,6 +88,18 @@ type PendingResponse = {
   headers: Record<string, string>;
 };
 
+type AutomatedClickTarget = {
+  selector: string;
+  fingerprint: string;
+  label: string;
+};
+
+type AutomatedSearchTarget = {
+  selector: string;
+  fingerprint: string;
+  label: string;
+};
+
 type LiveSession = {
   id: string; // = SecurityAuthSession id
   baseUrl: string;
@@ -81,8 +115,14 @@ type LiveSession = {
   pendingRequests: Map<string, PendingRequest>; // keyed by CDP requestId
   pendingRequestExtraHeaders: Map<string, Record<string, string>>; // keyed by CDP requestId
   pendingResponses: Map<string, PendingResponse>;
+  browserCorsProofCache: Map<string, BrowserCorsReadResult>;
+  browserCorsProofInFlight: Map<string, Promise<BrowserCorsReadResult>>;
+  browserCorsProofCount: number;
   routeWalkSeen: Set<string>;
   routeWalkRunning: boolean;
+  routeWalkPausedByRateLimit: boolean;
+  rateLimitSignals: number[];
+  automatedScanDelayMs: number;
   lastInputAt: number;
   idleHandle: NodeJS.Timeout;
   closed: boolean;
@@ -107,6 +147,11 @@ function normalizeHeaders(headers: Record<string, unknown> | undefined): Record<
   return out;
 }
 
+function headerValue(headers: Record<string, string> | undefined, name: string) {
+  if (!headers) return "";
+  return Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1] ?? "";
+}
+
 function mergeHeaders(base: Record<string, string>, extra: Record<string, string>): Record<string, string> {
   const out = { ...base };
   const index = new Map(Object.keys(out).map((key) => [key.toLowerCase(), key]));
@@ -116,6 +161,68 @@ function mergeHeaders(base: Record<string, string>, extra: Record<string, string
     else out[key] = value;
   }
   return out;
+}
+
+function truncateText(value: string | undefined, maxChars: number): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n...[truncated ${value.length - maxChars} chars by TestMind live capture]`;
+}
+
+function contentLengthBytes(headers: Record<string, string> | undefined): number | undefined {
+  const raw = headerValue(headers, "content-length").trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function shouldCaptureResponseBody(request: PendingRequest, response: PendingResponse | undefined, encodedDataLength: number | undefined) {
+  if (!response) return false;
+  const method = request.method.toUpperCase();
+  if (method === "HEAD" || method === "OPTIONS") return false;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return false;
+  }
+  if (isStaticPath(pathname)) return false;
+
+  const contentLength = contentLengthBytes(response.headers);
+  if (contentLength !== undefined && contentLength > MAX_BODY_RETRIEVAL_BYTES) return false;
+  if (encodedDataLength !== undefined && encodedDataLength > MAX_BODY_RETRIEVAL_BYTES) return false;
+
+  const contentType = headerValue(response.headers, "content-type");
+  if (contentType) return TEXT_LIKE_CONTENT_TYPE_RE.test(contentType);
+  return isApiLikePath(pathname);
+}
+
+function trimMapToMax<K, V>(map: Map<K, V>, maxEntries: number) {
+  while (map.size > maxEntries) {
+    const first = map.keys().next();
+    if (first.done) return;
+    map.delete(first.value);
+  }
+}
+
+function prunePendingNetworkState(session: LiveSession) {
+  trimMapToMax(session.pendingRequests, MAX_PENDING_NETWORK_ENTRIES);
+  trimMapToMax(session.pendingRequestExtraHeaders, MAX_PENDING_NETWORK_ENTRIES);
+  trimMapToMax(session.pendingResponses, MAX_PENDING_NETWORK_ENTRIES);
+}
+
+function boundedAutomationDelayMs(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(MAX_AUTOMATED_SCAN_DELAY_MS, Math.max(0, Math.trunc(parsed)));
+}
+
+function setAutomatedScanPacing(session: LiveSession, msg: any) {
+  session.automatedScanDelayMs = boundedAutomationDelayMs(msg.dispatchDelayMs ?? msg.delayMs, session.automatedScanDelayMs);
+  broadcast(session, {
+    type: "automationPacing",
+    dispatchDelayMs: session.automatedScanDelayMs,
+  });
 }
 
 function redactHeaders(headers: Record<string, string>): Record<string, string> {
@@ -132,11 +239,13 @@ function clientExchange(exchange: SecurityHttpExchange): SecurityHttpExchange {
     request: {
       ...exchange.request,
       headers: redactHeaders(exchange.request.headers),
+      postData: truncateText(exchange.request.postData, MAX_CAPTURED_POST_DATA_CHARS),
     },
     response: exchange.response
       ? {
           ...exchange.response,
           headers: redactHeaders(exchange.response.headers),
+          body: truncateText(exchange.response.body, MAX_CAPTURED_BODY_CHARS),
         }
       : undefined,
   };
@@ -165,12 +274,241 @@ function observeHost(session: LiveSession, rawUrl: string) {
   broadcast(session, { type: "scope", ...scopeSnapshot(session) });
 }
 
+function looksJsonBody(body: string | undefined) {
+  const trimmed = body?.trim() ?? "";
+  return (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+}
+
+function isApiLikePath(pathname: string) {
+  return /\/(api|graphql|rest|rpc|v\d+)\b/i.test(pathname);
+}
+
+function isBufferedSecurityCandidate(exchange: SecurityHttpExchange) {
+  if (!exchange.response) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(exchange.request.url).pathname;
+  } catch {
+    return false;
+  }
+  if (isStaticPath(pathname)) return false;
+  return (
+    isApiLikePath(pathname) ||
+    /\bapplication\/(?:json|[\w.+-]+\+json)\b/i.test(headerValue(exchange.response.headers, "content-type")) ||
+    looksJsonBody(exchange.response.body)
+  );
+}
+
+function isRateLimitExchange(exchange: SecurityHttpExchange) {
+  const status = exchange.response?.status;
+  if (typeof status === "number" && RATE_LIMIT_STATUS_CODES.has(status)) return true;
+  return WAF_RATE_LIMIT_TEXT_RE.test(exchange.response?.body ?? "");
+}
+
+function registerRateLimitSignal(session: LiveSession, source: string) {
+  const now = Date.now();
+  session.rateLimitSignals = [...session.rateLimitSignals.filter((timestamp) => now - timestamp <= RATE_LIMIT_SIGNAL_WINDOW_MS), now];
+  session.automatedScanDelayMs = Math.min(
+    MAX_AUTOMATED_SCAN_DELAY_MS,
+    Math.max(1_000, session.automatedScanDelayMs > 0 ? session.automatedScanDelayMs * 2 : 1_000)
+  );
+  if (!session.routeWalkPausedByRateLimit && session.rateLimitSignals.length >= RATE_LIMIT_SIGNAL_THRESHOLD) {
+    session.routeWalkPausedByRateLimit = true;
+    broadcast(session, {
+      type: "rateLimit",
+      source,
+      count: session.rateLimitSignals.length,
+      dispatchDelayMs: session.automatedScanDelayMs,
+      pauseActiveTests: true,
+      error: "Rate limit or WAF block detected. Automated walking and active probes were paused to preserve the session.",
+    });
+  }
+}
+
+function evictBufferedExchange(session: LiveSession) {
+  const evictIndex = session.exchanges.findIndex((exchange) => !isBufferedSecurityCandidate(exchange));
+  const [removed] = session.exchanges.splice(evictIndex >= 0 ? evictIndex : 0, 1);
+  if (removed) session.exchangesById.delete(removed.id);
+}
+
 function pushExchange(session: LiveSession, exchange: SecurityHttpExchange) {
   session.exchanges.push(exchange);
   session.exchangesById.set(exchange.id, exchange);
-  if (session.exchanges.length > MAX_BUFFERED_EXCHANGES) {
-    const removed = session.exchanges.shift();
-    if (removed) session.exchangesById.delete(removed.id);
+  while (session.exchanges.length > MAX_BUFFERED_EXCHANGES) evictBufferedExchange(session);
+}
+
+function browserCorsReadResult(
+  url: string,
+  origin: string,
+  input: {
+    status?: number;
+    body?: string;
+    headers?: Record<string, string>;
+    error?: string;
+    browserReadable: boolean;
+    browserBlocked: boolean;
+    browserSkipped?: boolean;
+  }
+): BrowserCorsReadResult {
+  const body = truncateText(input.body, MAX_CAPTURED_BODY_CHARS) ?? "";
+  return {
+    method: "GET",
+    url,
+    status: input.status,
+    body,
+    bodyLength: body.length,
+    bodySnippet: snippet(body),
+    headers: input.headers ?? {},
+    error: input.error,
+    browserReadable: input.browserReadable,
+    browserBlocked: input.browserBlocked,
+    browserSkipped: input.browserSkipped,
+    browserOrigin: origin,
+  };
+}
+
+function browserCorsProofCacheKey(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    for (const key of [...url.searchParams.keys()]) {
+      if (VOLATILE_CORS_QUERY_PARAM_RE.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    return `${url.origin}${url.pathname}${url.search}`;
+  } catch {
+    return rawUrl;
+  }
+}
+
+async function closeServer(server: http.Server) {
+  await new Promise<void>((resolve) => server.close(() => resolve())).catch(() => {});
+}
+
+async function runCachedBrowserCorsReadProbe(session: LiveSession, url: string, timeoutMs: number): Promise<BrowserCorsReadResult> {
+  const cacheKey = browserCorsProofCacheKey(url);
+  const cached = session.browserCorsProofCache.get(cacheKey);
+  if (cached) return { ...cached, url };
+
+  const inFlight = session.browserCorsProofInFlight.get(cacheKey);
+  if (inFlight) return { ...(await inFlight), url };
+
+  if (session.browserCorsProofCount >= MAX_BROWSER_CORS_PROOFS_PER_SESSION) {
+    return browserCorsReadResult(url, "local-test-origin", {
+      browserReadable: false,
+      browserBlocked: false,
+      browserSkipped: true,
+      error: `Browser CORS proof cap reached (${MAX_BROWSER_CORS_PROOFS_PER_SESSION} per live session).`,
+    });
+  }
+
+  session.browserCorsProofCount += 1;
+  const promise = runBrowserCorsReadProbe(session, url, Math.min(timeoutMs, BROWSER_CORS_PROOF_TIMEOUT_MS));
+  session.browserCorsProofInFlight.set(cacheKey, promise);
+  try {
+    const result = await promise;
+    session.browserCorsProofCache.set(cacheKey, result);
+    return result;
+  } finally {
+    session.browserCorsProofInFlight.delete(cacheKey);
+  }
+}
+
+async function runBrowserCorsReadProbe(session: LiveSession, url: string, timeoutMs: number): Promise<BrowserCorsReadResult> {
+  if (!isWithinScope(url, session.scope.allowedHosts, session.scope.allowedPorts)) {
+    return browserCorsReadResult(url, "local-test-origin", {
+      browserReadable: false,
+      browserBlocked: true,
+      error: "URL is outside allowed security scan scope.",
+    });
+  }
+
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end("<!doctype html><title>TestMind CORS proof</title>");
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  const origin = typeof address === "object" && address ? `http://127.0.0.1:${address.port}` : "local-test-origin";
+  let proofPage: Page | null = null;
+  try {
+    proofPage = await session.context.newPage();
+    await proofPage.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 5_000) });
+    const result = await proofPage.evaluate(
+      async ({
+        targetUrl,
+        timeoutMs: browserTimeoutMs,
+        maxBodyChars,
+      }: {
+        targetUrl: string;
+        timeoutMs: number;
+        maxBodyChars: number;
+      }) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), browserTimeoutMs);
+        try {
+          const response = await fetch(targetUrl, {
+            method: "GET",
+            credentials: "include",
+            mode: "cors",
+            signal: controller.signal,
+          });
+          const headers: Record<string, string> = {};
+          response.headers.forEach((value, key) => {
+            headers[key.toLowerCase()] = value;
+          });
+          let body = "";
+          if (response.body) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            try {
+              while (body.length < maxBodyChars) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  body += decoder.decode();
+                  break;
+                }
+                body += decoder.decode(value, { stream: true });
+              }
+              if (body.length >= maxBodyChars) {
+                await reader.cancel().catch(() => {});
+                body = `${body.slice(0, maxBodyChars)}\n...[truncated in browser CORS proof]`;
+              }
+            } finally {
+              reader.releaseLock();
+            }
+          } else {
+            body = (await response.text()).slice(0, maxBodyChars);
+          }
+          return { browserReadable: true, browserBlocked: false, status: response.status, headers, body };
+        } catch (err: any) {
+          return {
+            browserReadable: false,
+            browserBlocked: true,
+            error: err?.message ?? String(err),
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      { targetUrl: url, timeoutMs, maxBodyChars: MAX_CAPTURED_BODY_CHARS }
+    );
+    return browserCorsReadResult(url, origin, result);
+  } catch (err: any) {
+    return browserCorsReadResult(url, origin, {
+      browserReadable: false,
+      browserBlocked: true,
+      error: err?.message ?? String(err),
+    });
+  } finally {
+    if (proofPage) await proofPage.close().catch(() => {});
+    await closeServer(server);
   }
 }
 
@@ -184,6 +522,59 @@ function normalizeRouteUrl(rawUrl: string): string | null {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isDangerousSignal(signal: string) {
+  return DANGEROUS_ROUTE_RE.test(signal.toLowerCase());
+}
+
+function automatedScanLimitPayload(
+  session: LiveSession,
+  reason: "initial" | "manual",
+  status: "running" | "visiting" | "done" | "failed" | "stopped" | "paused",
+  extra: Record<string, unknown> = {}
+) {
+  return {
+    type: "siteWalk",
+    status,
+    reason,
+    limit: MAX_AUTOMATED_SCAN_STEPS,
+    ...extra,
+  };
+}
+
+async function detectBrowserRateLimitPage(session: LiveSession) {
+  const text = await session.page
+    .evaluate(() => {
+      const doc = (globalThis as any).document;
+      return `${doc?.title ?? ""}\n${doc?.body?.innerText ?? ""}`.slice(0, 4000);
+    })
+    .catch(() => "");
+  return WAF_RATE_LIMIT_TEXT_RE.test(text);
+}
+
+async function pauseAutomatedScanIfRateLimited(session: LiveSession, progress: AutomatedScanProgress, source: string) {
+  if (session.routeWalkPausedByRateLimit) return true;
+  const blocked = await detectBrowserRateLimitPage(session);
+  if (!blocked) return false;
+  session.routeWalkPausedByRateLimit = true;
+  broadcast(
+    session,
+    automatedScanLimitPayload(session, progress.reason, "paused", {
+      visited: progress.visited,
+      url: session.page.url(),
+      action: source,
+      dispatchDelayMs: session.automatedScanDelayMs,
+      pauseActiveTests: true,
+      rateLimited: true,
+      error: "Rate limit or WAF block detected. Automated scan paused.",
+    })
+  );
+  return true;
+}
+
 function isSafeRouteWalkTarget(baseUrl: string, candidate: { url: string; text: string }) {
   try {
     const base = new URL(baseUrl);
@@ -191,7 +582,7 @@ function isSafeRouteWalkTarget(baseUrl: string, candidate: { url: string; text: 
     if (url.origin !== base.origin) return false;
     if (isStaticPath(url.pathname)) return false;
     const signal = `${url.pathname} ${url.search} ${candidate.text}`.toLowerCase();
-    return !DANGEROUS_ROUTE_RE.test(signal);
+    return !isDangerousSignal(signal);
   } catch {
     return false;
   }
@@ -219,43 +610,272 @@ async function collectSafeRouteWalkTargets(session: LiveSession) {
   for (const candidate of rawTargets) {
     const normalized = normalizeRouteUrl(candidate.url);
     if (!normalized) continue;
-    if (session.routeWalkSeen.has(normalized)) continue;
+    const seenKey = `route:${normalized}`;
+    if (session.routeWalkSeen.has(seenKey)) continue;
     if (!isSafeRouteWalkTarget(session.baseUrl, { ...candidate, url: normalized })) continue;
-    session.routeWalkSeen.add(normalized);
+    session.routeWalkSeen.add(seenKey);
     targets.push(normalized);
   }
   return targets;
 }
 
+async function collectSafeClickTargets(session: LiveSession): Promise<AutomatedClickTarget[]> {
+  const rawTargets = await session.page
+    .evaluate(
+      ({ dangerousSource }: { dangerousSource: string }) => {
+        const doc = (globalThis as any).document;
+        const win = (globalThis as any).window;
+        const dangerous = new RegExp(dangerousSource, "i");
+        const visible = (el: any) => {
+          const rect = el.getBoundingClientRect?.();
+          const style = win.getComputedStyle?.(el);
+          return Boolean(rect && rect.width > 4 && rect.height > 4 && style?.visibility !== "hidden" && style?.display !== "none");
+        };
+        const labelFor = (el: any) =>
+          String(
+            el.innerText ||
+              el.getAttribute?.("aria-label") ||
+              el.getAttribute?.("title") ||
+              el.getAttribute?.("data-testid") ||
+              el.id ||
+              el.className ||
+              ""
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 120);
+
+        const nodes = Array.from(
+          doc.querySelectorAll(
+            [
+              "button",
+              "[role='button']",
+              "[role='tab']",
+              "[role='menuitem']",
+              "[aria-controls]",
+              "summary",
+              "[data-testid]",
+              "[data-test]",
+            ].join(",")
+          )
+        );
+        const targets: AutomatedClickTarget[] = [];
+        const seen = new Set<string>();
+        nodes.forEach((node: any, index) => {
+          if (targets.length >= 40 || !visible(node)) return;
+          if (node.closest?.("[data-tm-ignore], [disabled], [aria-disabled='true']")) return;
+          const tag = String(node.tagName || "").toLowerCase();
+          const type = String(node.getAttribute?.("type") || "").toLowerCase();
+          if (tag === "button" && ["submit", "reset"].includes(type)) return;
+          if (node.closest?.("form") && !["button", "menu", "tab"].includes(String(node.getAttribute?.("role") || "").toLowerCase())) return;
+          const label = labelFor(node);
+          const href = String(node.getAttribute?.("href") || "");
+          const signal = `${tag} ${type} ${href} ${label} ${node.getAttribute?.("aria-label") || ""} ${node.id || ""}`;
+          if (!label && !node.getAttribute?.("aria-controls") && !node.getAttribute?.("data-testid")) return;
+          if (dangerous.test(signal)) return;
+          const fingerprint = `${win.location.pathname}|${tag}|${type}|${label}|${node.getAttribute?.("role") || ""}|${
+            node.getAttribute?.("data-testid") || node.id || index
+          }`;
+          if (seen.has(fingerprint)) return;
+          seen.add(fingerprint);
+          const id = `tm-auto-click-${Date.now()}-${index}`;
+          node.setAttribute("data-testmind-auto-id", id);
+          targets.push({ selector: `[data-testmind-auto-id="${id}"]`, fingerprint, label: label || tag || "control" });
+        });
+        return targets;
+      },
+      { dangerousSource: DANGEROUS_ROUTE_RE.source }
+    )
+    .catch(() => []);
+
+  return rawTargets.filter((target) => !isDangerousSignal(target.fingerprint) && !isDangerousSignal(target.label));
+}
+
+async function collectSafeSearchTargets(session: LiveSession): Promise<AutomatedSearchTarget[]> {
+  const rawTargets = await session.page
+    .evaluate(
+      ({ searchSource }: { searchSource: string }) => {
+        const doc = (globalThis as any).document;
+        const win = (globalThis as any).window;
+        const search = new RegExp(searchSource, "i");
+        const visible = (el: any) => {
+          const rect = el.getBoundingClientRect?.();
+          const style = win.getComputedStyle?.(el);
+          return Boolean(rect && rect.width > 20 && rect.height > 8 && style?.visibility !== "hidden" && style?.display !== "none");
+        };
+        const nodes = Array.from(doc.querySelectorAll("input, textarea, [role='searchbox']"));
+        const targets: AutomatedSearchTarget[] = [];
+        nodes.forEach((node: any, index) => {
+          if (targets.length >= 12 || !visible(node)) return;
+          if (node.disabled || node.readOnly || node.closest?.("[disabled], [aria-disabled='true']")) return;
+          const type = String(node.getAttribute?.("type") || "text").toLowerCase();
+          if (!["search", "text", ""].includes(type) && node.getAttribute?.("role") !== "searchbox") return;
+          const label = String(
+            node.getAttribute?.("placeholder") ||
+              node.getAttribute?.("aria-label") ||
+              node.getAttribute?.("name") ||
+              node.id ||
+              node.closest?.("label")?.innerText ||
+              ""
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 120);
+          if (!search.test(label)) return;
+          const fingerprint = `${win.location.pathname}|search|${label}|${node.getAttribute?.("name") || node.id || index}`;
+          const id = `tm-auto-search-${Date.now()}-${index}`;
+          node.setAttribute("data-testmind-auto-id", id);
+          targets.push({ selector: `[data-testmind-auto-id="${id}"]`, fingerprint, label: label || "search" });
+        });
+        return targets;
+      },
+      { searchSource: SAFE_SEARCH_INPUT_RE.source }
+    )
+    .catch(() => []);
+
+  return rawTargets;
+}
+
+async function settleAutomatedScanPage(session: LiveSession) {
+  await session.page.waitForLoadState("domcontentloaded", { timeout: 4_000 }).catch(() => null);
+  await session.page.waitForLoadState("networkidle", { timeout: 1_500 }).catch(() => null);
+  await sleep(Math.max(AUTOMATED_SCAN_SETTLE_MS, session.automatedScanDelayMs));
+}
+
+type AutomatedScanProgress = {
+  reason: "initial" | "manual";
+  visited: number;
+  routeQueue: string[];
+};
+
+function enqueueDiscoveredRoutes(progress: AutomatedScanProgress, routes: string[]) {
+  for (const route of routes) {
+    if (progress.visited + progress.routeQueue.length >= MAX_AUTOMATED_SCAN_STEPS) break;
+    if (!progress.routeQueue.includes(route)) progress.routeQueue.push(route);
+  }
+}
+
+function hasAutomatedScanBudget(progress: AutomatedScanProgress) {
+  return progress.visited < MAX_AUTOMATED_SCAN_STEPS;
+}
+
+async function exerciseSafeSearchInputs(session: LiveSession, progress: AutomatedScanProgress) {
+  const targets = (await collectSafeSearchTargets(session)).slice(0, MAX_SEARCH_INPUTS_PER_PAGE);
+  for (const target of targets) {
+    if (session.closed || session.routeWalkPausedByRateLimit || !hasAutomatedScanBudget(progress)) return;
+    const seenKey = `search:${target.fingerprint}`;
+    if (session.routeWalkSeen.has(seenKey)) continue;
+    session.routeWalkSeen.add(seenKey);
+    progress.visited += 1;
+    broadcast(
+      session,
+      automatedScanLimitPayload(session, progress.reason, "visiting", {
+        visited: progress.visited,
+        url: session.page.url(),
+        action: `search ${target.label}`,
+      })
+    );
+
+    const locator = session.page.locator(target.selector).first();
+    await locator.fill("testmind").catch(() => null);
+    await locator.press("Enter").catch(() => null);
+    await settleAutomatedScanPage(session);
+    if (await pauseAutomatedScanIfRateLimited(session, progress, `search ${target.label}`)) return;
+    enqueueDiscoveredRoutes(progress, await collectSafeRouteWalkTargets(session));
+  }
+}
+
+async function exerciseSafePageControls(session: LiveSession, progress: AutomatedScanProgress) {
+  const baseOrigin = new URL(session.baseUrl).origin;
+  for (let pass = 0; pass < 2 && hasAutomatedScanBudget(progress) && !session.closed && !session.routeWalkPausedByRateLimit; pass += 1) {
+    const targets = await collectSafeClickTargets(session);
+    let clickedOnThisPage = 0;
+    for (const target of targets) {
+      if (session.closed || session.routeWalkPausedByRateLimit || !hasAutomatedScanBudget(progress) || clickedOnThisPage >= MAX_INTERACTIONS_PER_PAGE) return;
+      const seenKey = `click:${target.fingerprint}`;
+      if (session.routeWalkSeen.has(seenKey)) continue;
+      session.routeWalkSeen.add(seenKey);
+
+      const beforeUrl = session.page.url();
+      progress.visited += 1;
+      clickedOnThisPage += 1;
+      broadcast(
+        session,
+        automatedScanLimitPayload(session, progress.reason, "visiting", {
+          visited: progress.visited,
+          url: beforeUrl,
+          action: `click ${target.label}`,
+        })
+      );
+
+      await session.page.locator(target.selector).first().click({ timeout: 3_000 }).catch(() => null);
+      await settleAutomatedScanPage(session);
+      if (await pauseAutomatedScanIfRateLimited(session, progress, `click ${target.label}`)) return;
+      const afterUrl = session.page.url();
+      enqueueDiscoveredRoutes(progress, await collectSafeRouteWalkTargets(session));
+
+      try {
+        const after = new URL(afterUrl);
+        if (after.origin !== baseOrigin || isDangerousSignal(`${after.pathname} ${after.search}`)) {
+          await session.page.goto(beforeUrl, { waitUntil: "domcontentloaded", timeout: 8_000 }).catch(() => null);
+          await settleAutomatedScanPage(session);
+        }
+      } catch {
+        await session.page.goto(beforeUrl, { waitUntil: "domcontentloaded", timeout: 8_000 }).catch(() => null);
+        await settleAutomatedScanPage(session);
+      }
+    }
+  }
+}
+
+async function scanCurrentPage(session: LiveSession, progress: AutomatedScanProgress) {
+  if (await pauseAutomatedScanIfRateLimited(session, progress, "inspect page")) return;
+  enqueueDiscoveredRoutes(progress, await collectSafeRouteWalkTargets(session));
+  await exerciseSafeSearchInputs(session, progress);
+  if (session.routeWalkPausedByRateLimit) return;
+  await exerciseSafePageControls(session, progress);
+  if (session.routeWalkPausedByRateLimit) return;
+  enqueueDiscoveredRoutes(progress, await collectSafeRouteWalkTargets(session));
+}
+
 async function runSafeRouteWalk(session: LiveSession, reason: "initial" | "manual" = "manual") {
   if (session.routeWalkRunning || session.closed) return;
   session.routeWalkRunning = true;
+  session.routeWalkPausedByRateLimit = false;
+  session.rateLimitSignals = [];
+  if (reason === "manual") session.routeWalkSeen.clear();
   const originalUrl = session.page.url();
-  let visited = 0;
-  broadcast(session, { type: "siteWalk", status: "running", reason, visited, limit: MAX_ROUTE_WALK_PAGES });
+  const progress: AutomatedScanProgress = { reason, visited: 0, routeQueue: [] };
+  broadcast(session, automatedScanLimitPayload(session, reason, "running", { visited: progress.visited }));
 
   try {
-    const queue = await collectSafeRouteWalkTargets(session);
-    while (queue.length > 0 && visited < MAX_ROUTE_WALK_PAGES && !session.closed) {
-      const nextUrl = queue.shift();
+    await settleAutomatedScanPage(session);
+    await scanCurrentPage(session, progress);
+    while (progress.routeQueue.length > 0 && hasAutomatedScanBudget(progress) && !session.closed && !session.routeWalkPausedByRateLimit) {
+      const nextUrl = progress.routeQueue.shift();
       if (!nextUrl) continue;
-      visited += 1;
-      broadcast(session, { type: "siteWalk", status: "visiting", url: nextUrl, visited, limit: MAX_ROUTE_WALK_PAGES });
+      progress.visited += 1;
+      broadcast(
+        session,
+        automatedScanLimitPayload(session, reason, "visiting", {
+          url: nextUrl,
+          visited: progress.visited,
+          action: "visit route",
+        })
+      );
       await session.page.goto(nextUrl, { waitUntil: "domcontentloaded", timeout: 12_000 }).catch(() => null);
-      await session.page.waitForLoadState("networkidle", { timeout: 1_500 }).catch(() => null);
-
-      const discovered = await collectSafeRouteWalkTargets(session);
-      for (const target of discovered) {
-        if (visited + queue.length >= MAX_ROUTE_WALK_PAGES) break;
-        queue.push(target);
-      }
+      await settleAutomatedScanPage(session);
+      if (await pauseAutomatedScanIfRateLimited(session, progress, "visit route")) break;
+      await scanCurrentPage(session, progress);
     }
   } finally {
-    if (!session.closed) {
+    if (!session.closed && !session.routeWalkPausedByRateLimit) {
       await session.page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 12_000 }).catch(() => null);
     }
     session.routeWalkRunning = false;
-    broadcast(session, { type: "siteWalk", status: "done", reason, visited, limit: MAX_ROUTE_WALK_PAGES });
+    if (!session.routeWalkPausedByRateLimit) {
+      broadcast(session, automatedScanLimitPayload(session, reason, "done", { visited: progress.visited }));
+    }
   }
 }
 
@@ -319,8 +939,14 @@ export async function startLiveSession(authSession: {
     pendingRequests: new Map(),
     pendingRequestExtraHeaders: new Map(),
     pendingResponses: new Map(),
+    browserCorsProofCache: new Map(),
+    browserCorsProofInFlight: new Map(),
+    browserCorsProofCount: 0,
     routeWalkSeen: new Set(),
     routeWalkRunning: false,
+    routeWalkPausedByRateLimit: false,
+    rateLimitSignals: [],
+    automatedScanDelayMs: DEFAULT_AUTOMATED_SCAN_DELAY_MS,
     lastInputAt: 0,
     idleHandle: setTimeout(() => {
       closeLiveSession(authSession.id).catch(() => {});
@@ -334,7 +960,11 @@ export async function startLiveSession(authSession: {
     cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {});
   });
 
-  await cdp.send("Network.enable");
+  await cdp.send("Network.enable", {
+    maxTotalBufferSize: MAX_BODY_RETRIEVAL_BYTES * 20,
+    maxResourceBufferSize: MAX_BODY_RETRIEVAL_BYTES,
+    maxPostDataSize: MAX_CAPTURED_POST_DATA_CHARS,
+  });
 
   cdp.on("Network.requestWillBeSent", (evt: any) => {
     observeHost(session, evt.request.url);
@@ -343,9 +973,10 @@ export async function startLiveSession(authSession: {
       method: evt.request.method,
       url: evt.request.url,
       headers: mergeHeaders(normalizeHeaders(evt.request.headers), extraHeaders),
-      postData: evt.request.postData,
+      postData: truncateText(evt.request.postData, MAX_CAPTURED_POST_DATA_CHARS),
       timestamp: Date.now(),
     });
+    prunePendingNetworkState(session);
   });
 
   cdp.on("Network.requestWillBeSentExtraInfo", (evt: any) => {
@@ -357,6 +988,7 @@ export async function startLiveSession(authSession: {
       const previous = session.pendingRequestExtraHeaders.get(evt.requestId) ?? {};
       session.pendingRequestExtraHeaders.set(evt.requestId, mergeHeaders(previous, extraHeaders));
     }
+    prunePendingNetworkState(session);
   });
 
   cdp.on("Network.responseReceived", (evt: any) => {
@@ -364,6 +996,7 @@ export async function startLiveSession(authSession: {
       status: evt.response.status,
       headers: normalizeHeaders(evt.response.headers),
     });
+    prunePendingNetworkState(session);
   });
 
   // Request failed before a response arrived (blocked, aborted, network error) — nothing
@@ -383,12 +1016,14 @@ export async function startLiveSession(authSession: {
     if (!pendingRequest) return;
 
     let body: string | undefined;
-    try {
-      const bodyResult: any = await cdp.send("Network.getResponseBody", { requestId: evt.requestId });
-      if (!bodyResult.base64Encoded) body = bodyResult.body;
-    } catch {
+    if (shouldCaptureResponseBody(pendingRequest, pendingResponse, evt.encodedDataLength)) {
+      try {
+        const bodyResult: any = await cdp.send("Network.getResponseBody", { requestId: evt.requestId });
+        if (!bodyResult.base64Encoded) body = truncateText(bodyResult.body, MAX_CAPTURED_BODY_CHARS);
+      } catch {
       // Body may be unavailable (redirect, opaque response, already-evicted from CDP's
       // buffer) — still record the exchange without it.
+      }
     }
 
     const exchange: SecurityHttpExchange = {
@@ -399,7 +1034,7 @@ export async function startLiveSession(authSession: {
         method: pendingRequest.method,
         url: pendingRequest.url,
         headers: pendingRequest.headers,
-        postData: pendingRequest.postData,
+        postData: truncateText(pendingRequest.postData, MAX_CAPTURED_POST_DATA_CHARS),
       },
       response: pendingResponse
         ? {
@@ -412,6 +1047,7 @@ export async function startLiveSession(authSession: {
       correlatedActionId:
         Date.now() - session.lastInputAt < ACTION_CORRELATION_WINDOW_MS ? `input-${session.lastInputAt}` : undefined,
     };
+    if (isRateLimitExchange(exchange)) registerRateLimitSignal(session, `HTTP ${exchange.response?.status ?? "rate-limit page"}`);
     pushExchange(session, exchange);
     broadcast(session, { type: "exchange", exchange: clientExchange(exchange) });
   });
@@ -513,7 +1149,10 @@ async function handleSecurityTestMessage(session: LiveSession, msg: any) {
   }
 
   try {
-    const result = await runLiveSecurityTests(exchange, session.scope);
+    const result = await runLiveSecurityTests(exchange, session.scope, {
+      browserCorsRead: (url, timeoutMs) => runCachedBrowserCorsReadProbe(session, url, timeoutMs),
+      browserCorsReadAttempts: 1,
+    });
     broadcast(session, {
       type: "securityTestResult",
       exchangeId: exchange.id,
@@ -556,11 +1195,14 @@ export async function handleClientMessage(session: LiveSession, raw: string) {
       await dispatchKeyInput(session.cdp, msg);
     } else if (msg.type === "allowHost") {
       handleAllowHostMessage(session, msg);
+    } else if (msg.type === "automationPacing") {
+      setAutomatedScanPacing(session, msg);
     } else if (msg.type === "replay") {
       await handleReplayMessage(session, msg);
     } else if (msg.type === "securityTest") {
       await handleSecurityTestMessage(session, msg);
     } else if (msg.type === "siteWalk") {
+      setAutomatedScanPacing(session, msg);
       runSafeRouteWalk(session, "manual").catch((err: any) => {
         console.warn(`[live-security-session] route walk failed for ${session.id}:`, err?.message ?? err);
         session.routeWalkRunning = false;

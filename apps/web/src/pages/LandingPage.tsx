@@ -154,7 +154,7 @@ const comparisonRows = [
   ["Playwright Generation", "No", "Manual/codegen", "Partial", "Yes"],
   ["Self Healing", "No built-in", "No built-in", "Yes", "Yes"],
   ["Security Intelligence", "No", "No", "Limited", "Yes"],
-  ["Bug Bounty Authentication", "No", "No", "No", "Yes"],
+  ["External Assessment Authentication", "No", "No", "No", "Yes"],
   ["Regression Generation", "Manual", "Manual", "Partial", "Yes"],
   ["Root Cause Analysis", "No", "Trace/logs", "Partial", "Yes"],
 ] as const;
@@ -185,7 +185,7 @@ const faqs = [
   },
   {
     q: "Can I test authenticated applications?",
-    a: "Yes. Enterprise mode supports stored sessions and auth integrations. Bug Bounty mode supports browser login, MFA, and captured sessions.",
+    a: "Yes. Enterprise mode supports stored sessions and auth integrations. External Security Assessment mode supports browser login, MFA, and captured sessions.",
   },
   {
     q: "Can it self-heal tests?",
@@ -700,7 +700,7 @@ function EnterpriseBugBounty() {
             items={["Auth integrations", "Stored sessions", "Test bypass", "Continuous scans"]}
           />
           <ModePanel
-            title="Bug Bounty"
+            title="External Assessment"
             icon={Globe2}
             items={["Browser login", "MFA support", "Session capture", "Authenticated scanning"]}
           />
