@@ -4,7 +4,7 @@
 // identical to playwright-core's.
 import type { CDPSession } from "patchright";
 
-// Shared by auth-session-stream.ts (Bug Bounty auth capture) and live-security-session.ts
+// Shared by auth-session-stream.ts (External Security Assessment auth capture) and live-security-session.ts
 // (Live Security Testing) — both forward a remote browser's mouse/keyboard input into a
 // server-side CDP session identically; extracted here so the two session types can't drift.
 

@@ -1,4 +1,4 @@
-// Extracted from SecurityScanPage.tsx's existing Bug Bounty live-view code so both the
+// Extracted from SecurityScanPage.tsx's existing external-assessment live-view code so both the
 // auth-capture flow and the new Live Security Test page render the same remote-browser
 // screencast + input-forwarding UI instead of two copies. Purely presentational — it does
 // not open or manage the WebSocket connection itself; the caller owns that (exactly as

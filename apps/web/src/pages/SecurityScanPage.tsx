@@ -792,11 +792,11 @@ export default function SecurityScanPage() {
       return;
     }
     if (!baseUrl.trim() || !bbLoginUrl.trim()) {
-      setError("Target URL and login URL are required for Bug Bounty mode.");
+      setError("Target URL and login URL are required for External Security Assessment mode.");
       return;
     }
     if (!bbScopeAck) {
-      setError("Confirm program scope/rules before starting a Bug Bounty session.");
+      setError("Confirm authorization and scope/rules before starting an External Security Assessment session.");
       return;
     }
     setError(null);
@@ -816,7 +816,7 @@ export default function SecurityScanPage() {
       pollBbSession(res.session.id);
       await openLiveView(res.session);
     } catch (err: any) {
-      setError(err?.message ?? "Failed to start Bug Bounty session");
+      setError(err?.message ?? "Failed to start External Security Assessment session");
     } finally {
       setBbStarting(false);
     }
@@ -884,7 +884,7 @@ export default function SecurityScanPage() {
       setBbSession(res.session);
       pollBbSession(res.session.id);
     } catch (err: any) {
-      setError(err?.message ?? "Failed to refresh Bug Bounty session");
+      setError(err?.message ?? "Failed to refresh External Security Assessment session");
     }
   };
 
@@ -1604,10 +1604,10 @@ export default function SecurityScanPage() {
             >
               <div className="flex items-center gap-2 font-semibold text-slate-900">
                 <Bug className="h-4 w-4 text-amber-600" />
-                Bug Bounty / External Target
+                External Security Assessment
               </div>
               <p className="mt-1 text-xs text-slate-600">
-                Open browser login, complete MFA manually, then scan using that session.
+                Authenticate through the browser, including MFA, then validate the authorized application session for security weaknesses.
               </p>
             </button>
           </div>
@@ -2419,7 +2419,7 @@ export default function SecurityScanPage() {
                 <SelectItem value="__none__">None</SelectItem>
                 {usableAuthSessions.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
-                    {s.mode === "bug_bounty" ? "Bug Bounty" : "Enterprise"} — {s.role || "no role"} —{" "}
+                    {s.mode === "bug_bounty" ? "External Assessment" : "Enterprise"} — {s.role || "no role"} —{" "}
                     {new Date(s.createdAt).toLocaleString()}
                   </SelectItem>
                 ))}
