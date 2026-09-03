@@ -10,6 +10,7 @@ import {
 import { redactAuthProfileForStorage } from "../security/redaction.js";
 import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/auth-session-stream.js";
 import { issueLiveTestTicket, registerLiveSecuritySessionRoutes, closeLiveSession } from "../runner/live-security-session.js";
+import { listExchangeHistory, listExperimentHistory } from "../security/live-exchange-history.js";
 import {
   callAuthBypassEndpoint,
   buildStorageStateFromCookieString,
@@ -1143,6 +1144,43 @@ export default async function securityRoutes(app: FastifyInstance) {
     if (!session) return reply.code(404).send({ error: "Not found" });
     await closeLiveSession(id);
     return { ok: true };
+  });
+
+  // Ticket 0.5 — UI history recovery. Read-only: mutate/replay/securityTest stay WS-only
+  // (handleMutateMessage etc.); these routes only let the client backfill history that's
+  // scrolled out of the in-memory buffer or was captured before a page reload. Pagination/
+  // serialization logic lives in ../security/live-exchange-history.js — these handlers are
+  // just the auth/ownership check, matching every other route in this file.
+  app.get("/security/auth-sessions/:id/exchanges", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({ where: { id, project: { ownerId: userId } } });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+
+    const { limit, before } = req.query as { limit?: string; before?: string };
+    try {
+      const page = await listExchangeHistory(id, { limit: Number(limit) || undefined, before });
+      reply.send(page);
+    } catch {
+      reply.code(400).send({ error: "Invalid before cursor" });
+    }
+  });
+
+  app.get("/security/auth-sessions/:id/experiments", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const session = await prisma.securityAuthSession.findFirst({ where: { id, project: { ownerId: userId } } });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+
+    const { limit, before } = req.query as { limit?: string; before?: string };
+    try {
+      const page = await listExperimentHistory(id, { limit: Number(limit) || undefined, before });
+      reply.send(page);
+    } catch {
+      reply.code(400).send({ error: "Invalid before cursor" });
+    }
   });
 
   registerLiveSecuritySessionRoutes(app);

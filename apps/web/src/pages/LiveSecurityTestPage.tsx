@@ -1051,6 +1051,58 @@ export default function LiveSecurityTestPage() {
       }, delayMs);
     }
 
+    // Ticket 0.5 — UI history recovery. A page reload remounts this component, which resets
+    // all the in-memory lists below to empty; this backfills them from the server's durable
+    // history (Ticket 0.2/0.3) instead of leaving the view blank until new traffic arrives.
+    // Runs in parallel with connect() below, not sequentially before it — hydration failing
+    // must not block establishing the live WS connection.
+    async function hydrateHistory() {
+      try {
+        const page = await apiFetch<{ exchanges: SecurityHttpExchange[]; nextCursor: string | null; totalCount: number }>(
+          `/security/auth-sessions/${authSessionId}/exchanges?limit=${MAX_RETAINED_EXCHANGES}`
+        );
+        if (cancelled) return;
+        const compacted = page.exchanges.map(compactClientExchange);
+        // Snapshot BEFORE mutating the ref: only exchanges not already seen (i.e. not already
+        // reflected in trafficTotals by the concurrent WS handler) should be counted below —
+        // otherwise an id present in both this hydration page and an already-processed WS
+        // message would get double-counted.
+        const newlyHydrated = compacted.filter((exchange) => !seenExchangeIdsRef.current.has(exchange.id));
+        for (const exchange of compacted) seenExchangeIdsRef.current.add(exchange.id);
+
+        // Merge rather than replace: connect() runs concurrently and may already have
+        // delivered live "exchange" messages (via its own functional setExchanges updater)
+        // before this fetch resolves — a plain replace here would silently drop them.
+        setExchanges((prev) => {
+          const extra = prev.filter((exchange) => !compacted.some((c) => c.id === exchange.id));
+          const merged = [...compacted, ...extra];
+          return merged.length > MAX_RETAINED_EXCHANGES ? merged.slice(-MAX_RETAINED_EXCHANGES) : merged;
+        });
+        const candidates = compacted.filter(isPotentialSecurityTestTarget);
+        setSecurityCandidateExchanges((prev) => {
+          const extra = prev.filter((exchange) => !candidates.some((c) => c.id === exchange.id));
+          const merged = [...candidates, ...extra];
+          return merged.length > MAX_SECURITY_CANDIDATE_EXCHANGES ? merged.slice(-MAX_SECURITY_CANDIDATE_EXCHANGES) : merged;
+        });
+        setTrafficTotals((current) => newlyHydrated.reduce((acc, exchange) => addExchangeToTrafficTotals(acc, exchange), current));
+        // Max, not replace: totalCount reflects the server's count as of when this REST call
+        // was made, which could already be stale relative to a few WS increments that landed
+        // in the meantime — never let hydration move the displayed total backward.
+        setCapturedExchangeTotal((current) => Math.max(current, page.totalCount));
+
+        const observedHosts = new Set<string>();
+        for (const exchange of compacted) {
+          const host = hostnameFromUrl(exchange.request.url);
+          if (host) observedHosts.add(host);
+        }
+        if (observedHosts.size) {
+          setScope((prev) => ({ ...prev, observedHosts: [...new Set([...prev.observedHosts, ...observedHosts])].sort() }));
+        }
+      } catch (err) {
+        console.warn("[LiveSecurityTestPage] failed to hydrate exchange history:", err);
+      }
+    }
+
     async function connect(attempt = 0) {
       clearReconnectTimer();
       setConnecting(true);
@@ -1220,6 +1272,7 @@ export default function LiveSecurityTestPage() {
       }
     }
 
+    hydrateHistory();
     connect();
     return () => {
       cancelled = true;
