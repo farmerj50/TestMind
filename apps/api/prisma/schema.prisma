@@ -108,6 +108,22 @@ enum SecuritySeverity {
   critical
 }
 
+// Ticket VR.1 (Validation + Regression v1). Deliberately named differently from
+// security/validation.ts's TS type SecurityValidationStatus (same 7 values, reused verbatim)
+// to avoid import ambiguity once Prisma generates a same-purpose client enum. Set only by
+// explicit human action via PATCH /security/findings/:id/validation-status - never by any
+// scanner module. Distinct from SecurityFinding.status (the legacy, always-"open", untouched
+// String? column).
+enum SecurityFindingValidationStatus {
+  confirmed
+  likely
+  suspected
+  inconclusive
+  not_exploitable
+  false_positive
+  not_applicable
+}
+
 model User {
   id               String            @id
   plan             PlanTier?
@@ -158,6 +174,12 @@ model Project {
   createdAt DateTime @default(now())
   sharedSteps Json?   @default("{}")
   applicationModel Json? @default("{}")
+  // Application Brain v1 (Ticket AB.1): optimistic-concurrency counter for
+  // applicationModel writes, incremented only by lib/application-model-store.ts's
+  // applyApplicationModelMerge. A dedicated counter rather than a generic updatedAt
+  // (Project has none) so CAS conflicts fire only on genuine concurrent Brain writes,
+  // not on unrelated Project updates.
+  applicationModelVersion Int @default(0)
 
   testRuns         TestRun[]
   suites           TestSuite[]
@@ -255,6 +277,12 @@ model TestCase {
   suite           TestSuite?     @relation(fields: [suiteId], references: [id])
   curatedSuiteId  String?
   curatedSuite    CuratedSuite?  @relation(fields: [curatedSuiteId], references: [id])
+  // Ticket VR.3B (Validation + Regression v1). Durable provenance for a regression test
+  // generated from a confirmed SecurityFinding - a real FK (not JSON metadata) so "which
+  // regression protects this finding" / "does this finding already have a regression" /
+  // "which finding created this test" are real queries, not parsing.
+  securityFindingId String?
+  securityFinding   SecurityFinding? @relation(fields: [securityFindingId], references: [id])
   key             String         @default(cuid())
   title         String
   priority      TestPriority   @default(medium)
@@ -532,7 +560,13 @@ model SecurityFinding {
   evidence    Json?
   suggestion  String?
   status      String?
+  // Ticket VR.1 - real, enum-backed, human-set validation state. null = untriaged. See the
+  // enum's own doc comment for why this is a separate column/type from `status` above.
+  validationStatus SecurityFindingValidationStatus?
   createdAt   DateTime            @default(now())
+
+  // Ticket VR.3B - back-relation for TestCase.securityFindingId.
+  regressionTestCases TestCase[]
 
   @@index([scanId, severity])
 }

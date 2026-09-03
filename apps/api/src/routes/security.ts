@@ -28,6 +28,9 @@ import { generateBugBountyReport } from "../security/bug-bounty-report.js";
 import { safeFetch } from "../lib/safe-fetch.js";
 import { AUTH_SESSION_ROOT } from "../lib/storageRoots.js";
 import { requiresProductionApproval } from "../lib/security-approval-policy.js";
+import { persistSecurityRegressionTest } from "../lib/security-regression-persist.js";
+import { applyApplicationModelMerge } from "../lib/application-model-store.js";
+import { computeApiUpdate, computeIdentityUpdate } from "../lib/application-model.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -649,6 +652,66 @@ export default async function securityRoutes(app: FastifyInstance) {
     return { test: buildSecurityRegressionTest(finding as any) };
   });
 
+  // Ticket VR.1 (Validation + Regression v1). Manual triage only - this is a human's explicit
+  // judgment call, never set by any scanner module. Distinct from and never touches the legacy
+  // `status` column (always "open", written by all 15 scanners, left alone by design).
+  const securityFindingValidationStatusSchema = z.object({
+    validationStatus: z.enum([
+      "confirmed",
+      "likely",
+      "suspected",
+      "inconclusive",
+      "not_exploitable",
+      "false_positive",
+      "not_applicable",
+    ]),
+  });
+
+  app.patch("/security/findings/:id/validation-status", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const parsed = securityFindingValidationStatusSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    const finding = await prisma.securityFinding.findFirst({
+      where: { id, scan: { project: { ownerId: userId } } },
+    });
+    if (!finding) return reply.code(404).send({ error: "Not found" });
+
+    const updated = await prisma.securityFinding.update({
+      where: { id },
+      data: { validationStatus: parsed.data.validationStatus },
+    });
+    return { finding: updated };
+  });
+
+  // Ticket VR.3B (Validation + Regression v1). Reuses buildSecurityRegressionTest() unchanged
+  // and generatedSpecs.ts's project-scoped directory helper (its first real caller - see that
+  // file's own header comment). Per VR.3A's investigation: the standard per-TestCase runner
+  // (routes/tests.ts) always synthesizes execution content fresh from TestCase.steps/locators
+  // at run time and has no code path that reads a spec file off disk instead - teaching it to
+  // do so would change execution semantics for every pre-existing TestCase, which is the hard
+  // boundary this ticket does not cross. So this endpoint does NOT wire into "click Run" in
+  // Suite Explorer; it writes a real, syntactically valid .spec.ts file to disk (independently
+  // executable - see the certification test) and a TestCase row for provenance/discoverability,
+  // matching url-inspector.ts's own established convention for its generated-but-not-yet-synced
+  // cases (preconditions.specPath, requires the existing manual "sync from generated" step to
+  // become runnable via the UI - not a new gap, the same one that already exists there).
+  app.post("/security/findings/:id/persist-regression-test", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const finding = await prisma.securityFinding.findFirst({
+      where: { id, scan: { project: { ownerId: userId } } },
+      include: { scan: { select: { projectId: true } } },
+    });
+    if (!finding) return reply.code(404).send({ error: "Not found" });
+
+    const { testCase, specPath } = await persistSecurityRegressionTest(finding, { userId, projectId: finding.scan.projectId });
+    return reply.code(201).send({ testCase, specPath });
+  });
+
   app.post("/security/findings/:id/bug-bounty-report", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
@@ -791,6 +854,20 @@ export default async function securityRoutes(app: FastifyInstance) {
         status: "pending",
       },
     });
+
+    // Application Brain v1 (Ticket AB.4): role labels only (never credentials/scopes/tokens -
+    // see MUST HAVE #4). Best-effort, never blocks session creation, which has already
+    // committed above.
+    if (body.role) {
+      try {
+        await applyApplicationModelMerge(body.projectId, (store) =>
+          computeIdentityUpdate(store, { [body.role!]: { role: body.role! } }, new Date().toISOString())
+        );
+      } catch (err) {
+        app.log.warn({ err, projectId: body.projectId }, "[security] Application Brain merge failed on auth-session role capture");
+      }
+    }
+
     return reply.code(201).send({ session });
   });
 
@@ -1234,6 +1311,20 @@ export default async function securityRoutes(app: FastifyInstance) {
         endpointCount: summary.endpointCount,
       },
     });
+
+    // Application Brain v1 (Ticket AB.4): already-structured, already-persisted endpoint data -
+    // the API-side analog of what url-inspector.ts is for pages. Best-effort, never blocks the
+    // import that already committed above.
+    try {
+      const incoming: Record<string, { method: string; path: string }> = {};
+      for (const ep of spec.endpoints) {
+        incoming[`${ep.method} ${ep.path}`] = { method: ep.method, path: ep.path };
+      }
+      await applyApplicationModelMerge(body.projectId, (store) => computeApiUpdate(store, incoming, new Date().toISOString()));
+    } catch (err) {
+      app.log.warn({ err, projectId: body.projectId }, "[security] Application Brain merge failed on ApiSpec import");
+    }
+
     return reply.code(201).send({ spec: record, summary });
   });
 

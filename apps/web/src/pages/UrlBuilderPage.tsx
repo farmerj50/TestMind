@@ -345,6 +345,7 @@ export default function UrlBuilderPage() {
           testCases: result.generation.testCases,
           specContent: result.generation.specContent,
           specFiles: result.generation.specFiles ?? [],
+          pages: result.pages ?? [],
         }),
       });
       toast.success(`Saved ${result.generation.testCases.length} test cases to project`);

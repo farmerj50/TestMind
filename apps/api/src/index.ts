@@ -31,6 +31,13 @@ import { validatedEnv } from "./config/env.js";
 import recorderRoutes from "./routes/recorder.js";
 import { GENERATED_ROOT, CURATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 import { validateAndNormalizeProjectUrl } from "./lib/git-url.js";
+import { getApplicationBrainSnapshot } from "./lib/application-brain-query.js";
+import { setWorkflow, removeWorkflow, normalizeRouteHint, type ApplicationModelWorkflow } from "./lib/application-model.js";
+import { applyApplicationModelMerge } from "./lib/application-model-store.js";
+import { rankWorkflowRisk, parseTopN, isValidAsOf } from "./lib/autonomous-planner.js";
+import { investigateTestResult } from "./lib/investigator-query.js";
+import { getWorkflowCoverageReport } from "./lib/coverage-report.js";
+import { slugify } from "./testmind/curated-store.js";
 import { safeFetch } from "./lib/safe-fetch.js";
 import {
   scoreSelectorConfidence,
@@ -962,6 +969,204 @@ app.get<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
   });
   if (!project) return reply.code(404).send({ error: "Not found" });
   return { project };
+});
+
+// ---------- Application Brain v1 (Ticket AB.2) ----------
+// Read-only: never writes to TestCase/SecurityFinding, only joins against them. See
+// lib/application-brain-query.ts.
+app.get<{ Params: { id: string } }>("/projects/:id/application-brain", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const project = await prisma.project.findFirst({ where: { id, ownerId: userId } });
+  if (!project) return reply.code(404).send({ error: "Not found" });
+
+  const snapshot = await getApplicationBrainSnapshot(id);
+  return snapshot;
+});
+
+// ---------- Application Brain v1 (Ticket AB.3): workflow authoring ----------
+// The one place in v1 where the Brain is written to by a human rather than passively
+// observed. Nested under /application-brain to stay distinct from the unrelated top-level
+// /workflows routes (routes/workflows.ts - CI/CD job-trigger config, a different concept).
+const ApplicationBrainWorkflowSchema = z.object({
+  name: z.string().min(1, "Workflow name is required"),
+  riskTags: z.array(z.string()).optional(),
+  routeHints: z.array(z.string()).optional(),
+  apiHints: z.array(z.string()).optional(),
+});
+const ApplicationBrainWorkflowPatchSchema = ApplicationBrainWorkflowSchema.partial();
+
+async function requireOwnedProject(userId: string, id: string, reply: any) {
+  const project = await prisma.project.findFirst({ where: { id, ownerId: userId } });
+  if (!project) {
+    reply.code(404).send({ error: "Not found" });
+    return null;
+  }
+  return project;
+}
+
+app.get<{ Params: { id: string } }>("/projects/:id/application-brain/workflows", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+  if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+  const snapshot = await getApplicationBrainSnapshot(req.params.id);
+  return { workflows: snapshot.store.workflows };
+});
+
+app.post<{ Params: { id: string } }>("/projects/:id/application-brain/workflows", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+  if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+  const parsed = ApplicationBrainWorkflowSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: parsed.error.flatten() });
+  }
+  const key = slugify(parsed.data.name);
+  const workflow: ApplicationModelWorkflow = {
+    name: parsed.data.name,
+    riskTags: parsed.data.riskTags ?? [],
+    // Normalized so this matches the already-normalized routeHint keys used everywhere else
+    // in the store (pages{}, coverage[].routeHint, attributed finding routeHints) - see
+    // Autonomous Planner v1's Ticket AP.1 for why an unnormalized routeHint here silently
+    // broke coveragePercent (and would have silently broken planner risk scoring too).
+    routeHints: (parsed.data.routeHints ?? []).map(normalizeRouteHint),
+    apiHints: parsed.data.apiHints ?? [],
+  };
+
+  class WorkflowKeyConflict extends Error {}
+  let store: Awaited<ReturnType<typeof applyApplicationModelMerge>>;
+  try {
+    store = await applyApplicationModelMerge(req.params.id, (current) => {
+      if (current.workflows[key]) throw new WorkflowKeyConflict();
+      return setWorkflow(current, key, workflow);
+    });
+  } catch (err) {
+    if (err instanceof WorkflowKeyConflict) {
+      return reply.code(409).send({ error: `A workflow named "${key}" already exists` });
+    }
+    throw err;
+  }
+
+  return reply.code(201).send({ key, workflow: store.workflows[key] });
+});
+
+app.patch<{ Params: { id: string; key: string } }>(
+  "/projects/:id/application-brain/workflows/:key",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+    const parsed = ApplicationBrainWorkflowPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const { key } = req.params;
+    let notFound = false;
+    const store = await applyApplicationModelMerge(req.params.id, (current) => {
+      const existing = current.workflows[key];
+      if (!existing) {
+        notFound = true;
+        return current;
+      }
+      const updated: ApplicationModelWorkflow = {
+        name: parsed.data.name ?? existing.name,
+        riskTags: parsed.data.riskTags ?? existing.riskTags,
+        routeHints: parsed.data.routeHints ? parsed.data.routeHints.map(normalizeRouteHint) : existing.routeHints,
+        apiHints: parsed.data.apiHints ?? existing.apiHints,
+      };
+      return setWorkflow(current, key, updated);
+    });
+    if (notFound) return reply.code(404).send({ error: `Workflow "${key}" not found` });
+
+    return { key, workflow: store.workflows[key] };
+  }
+);
+
+app.delete<{ Params: { id: string; key: string } }>(
+  "/projects/:id/application-brain/workflows/:key",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+    const { key } = req.params;
+    await applyApplicationModelMerge(req.params.id, (current) => removeWorkflow(current, key));
+    return reply.code(204).send();
+  }
+);
+
+// ---------- Autonomous Planner v1 (Ticket AP.3) ----------
+// Read-only: no writes anywhere in this route. See lib/autonomous-planner.ts's frozen v1
+// scoring formula (Ticket AP.1's contract). parseTopN/isValidAsOf live in that file (not
+// inline here) so their edge cases are unit-testable without a Fastify test harness - index.ts
+// calls app.listen() at module scope, so it can never be imported directly from a test.
+app.get<{ Params: { id: string } }>("/projects/:id/plan", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+  if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+  const query = req.query as { topN?: string; objective?: string; asOf?: string };
+
+  let asOf: string;
+  if (query.asOf !== undefined) {
+    if (!isValidAsOf(query.asOf)) {
+      return reply.code(400).send({
+        error: "asOf must be a complete ISO-8601 timestamp with an explicit timezone/offset, e.g. 2026-09-03T12:00:00.000Z",
+      });
+    }
+    asOf = query.asOf;
+  } else {
+    asOf = new Date().toISOString();
+  }
+
+  const topN = parseTopN(query.topN);
+  const objective = query.objective ?? null;
+
+  const snapshot = await getApplicationBrainSnapshot(req.params.id);
+  const { ranked, unrankable } = rankWorkflowRisk(snapshot, asOf, { topN });
+
+  return {
+    ranked,
+    unrankable,
+    notAttributableFindings: snapshot.securityFindings.notAttributable,
+    objective,
+    asOf,
+  };
+});
+
+// ---------- Investigator v1 (Ticket INV.2) ----------
+// Read-only: no writes anywhere in this route. See lib/investigator.ts's frozen verdict
+// mapping/precedence (Ticket INV.1's contract) and lib/investigator-query.ts for the
+// project-scoped TestResult lookup.
+app.get<{ Params: { id: string; testResultId: string } }>(
+  "/projects/:id/investigator/:testResultId",
+  async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+    const result = await investigateTestResult(req.params.id, req.params.testResultId);
+    if (!result) return reply.code(404).send({ error: "Not found" });
+    return result;
+  }
+);
+
+// ---------- Coverage + Stop Decision v1 (Ticket CS.2) ----------
+// Read-only: no writes anywhere in this route. See lib/coverage-report.ts's frozen contract -
+// deliberately never calls into lib/autonomous-planner.ts (Ticket CS.1).
+app.get<{ Params: { id: string } }>("/projects/:id/coverage", async (req, reply) => {
+  const userId = requireUser(req, reply);
+  if (!userId) return;
+  if (!(await requireOwnedProject(userId, req.params.id, reply))) return;
+
+  const snapshot = await getApplicationBrainSnapshot(req.params.id);
+  return getWorkflowCoverageReport(snapshot);
 });
 
 // ---------- Create ----------

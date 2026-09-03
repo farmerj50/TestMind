@@ -19,6 +19,8 @@ import { emitSpecFilesByPage } from '../testmind/adapters/playwright-ts/generato
 import { ensureWithin } from '../testmind/curated-store.js';
 import { GENERATED_ROOT } from '../lib/storageRoots.js';
 import { prisma } from '../prisma.js';
+import { applyApplicationModelMerge } from '../lib/application-model-store.js';
+import { computeApplicationModelUpdate, applyLinksTo, upsertTestLink, normalizeRouteHint } from '../lib/application-model.js';
 
 // ── SSRF guard ────────────────────────────────────────────────────────────────
 
@@ -614,11 +616,20 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const { projectId, url: sourceUrl, testCases, specFiles } = (req.body ?? {}) as {
+    const { projectId, url: sourceUrl, testCases, specFiles, pages } = (req.body ?? {}) as {
       projectId?: string;
       url?: string;
       testCases?: Array<{ id: string; name: string; group?: { page?: string; url?: string }; steps: unknown[] }>;
       specFiles?: Array<{ path: string; page: string; testCount: number; content?: string }>;
+      // Application Brain v1 (Ticket AB.4): optional, from the /scan response's `pages` field
+      // (buildPageResponse's shape) - the frontend passes this through unchanged so save() has
+      // access to the form/link knowledge that scan() collected but never persists itself.
+      // Absent for older clients; the merge below is simply skipped when it's missing.
+      pages?: Array<{
+        pathname?: string;
+        forms?: Array<{ selector: string; action?: string; fields?: Array<{ name: string; type?: string; label?: string }> }>;
+        links?: Array<{ href: string }>;
+      }>;
     };
 
     if (!projectId) return reply.code(400).send({ error: 'projectId is required' });
@@ -677,12 +688,17 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
       suitesByRoute.set(routePath, routeSuite);
     }
 
+    // Parallel to the create-promise array below (built in the same flatMap pass, before
+    // $transaction awaits anything), so savedCases[i] and savedRoutePaths[i] refer to the same
+    // case. Used below to write Application Brain testLinks once each case has a real id.
+    const savedRoutePaths: string[] = [];
     const savedCases = await prisma.$transaction(
       Array.from(casesByRoute.entries()).flatMap(([routePath, routeCases]) => {
         const routeSuite = suitesByRoute.get(routePath)!;
         const specFile = specFiles?.find((file) => routePathFromValue(file.page) === routePath);
-        return routeCases.map((tc) =>
-          prisma.testCase.create({
+        return routeCases.map((tc) => {
+          savedRoutePaths.push(routePath);
+          return prisma.testCase.create({
             data: {
               projectId,
               suiteId: routeSuite.id,
@@ -697,10 +713,48 @@ export default async function urlInspectorRoutes(app: FastifyInstance) {
               locators: JSON.stringify(tc.steps),
             },
             select: { id: true },
-          })
-        );
+          });
+        });
       })
     );
+
+    // Application Brain v1 (Ticket AB.4): best-effort merge of this save's page/form/link
+    // knowledge and testCase-to-route links. Runs after the transaction above has committed,
+    // never inside it - a CAS merge can take several retries under concurrent writers, which
+    // isn't worth holding the TestCase transaction open for. Never throws: a Brain-write
+    // failure must never turn a successful save into a failed request (see MUST HAVE #7/#8 and
+    // AB.1's MergeConflictError contract).
+    try {
+      const nowIso = new Date().toISOString();
+      await applyApplicationModelMerge(projectId, (store) => {
+        let next = store;
+        if (pages && pages.length > 0) {
+          const formsByRoute: Record<string, Array<{ selector: string; action?: string; fields: Array<{ name: string; type?: string; label?: string }> }>> = {};
+          for (const page of pages) {
+            if (!page?.pathname) continue;
+            const route = normalizeRouteHint(page.pathname);
+            formsByRoute[route] = (page.forms ?? []).map((form) => ({
+              selector: form.selector,
+              action: form.action,
+              fields: (form.fields ?? []).map((f) => ({ name: f.name, type: f.type, label: f.label })),
+            }));
+          }
+          next = computeApplicationModelUpdate(next, formsByRoute, nowIso).next;
+          for (const page of pages) {
+            if (!page?.pathname) continue;
+            const route = normalizeRouteHint(page.pathname);
+            const linksTo = Array.from(new Set((page.links ?? []).map((l) => normalizeRouteHint(l.href))));
+            next = applyLinksTo(next, route, linksTo);
+          }
+        }
+        savedCases.forEach((tc, i) => {
+          next = upsertTestLink(next, tc.id, normalizeRouteHint(savedRoutePaths[i]), nowIso);
+        });
+        return next;
+      });
+    } catch (err) {
+      app.log.warn({ err, projectId }, '[url-inspector] Application Brain merge failed on save');
+    }
 
     return reply.send({
       saved: {

@@ -901,11 +901,27 @@ Every phase above gets its own closed-scope definition — MUST HAVE / DONE WHEN
 
 ```
 1. Durable execution        [x]  — closed, certified (50,000-exchange volume test passed)
-2. Application Brain v1     [ ]
-3. Autonomous Planner v1    [ ]
-4. Investigator v1          [ ]
-5. Validation + regression  [ ]
-6. Coverage + stop decision [ ]
+2. Application Brain v1     [x]  — closed, certified (see AB.5's 7-question certification test)
+3. Autonomous Planner v1    [x]  — closed, certified (see AP.4's realistic-ceiling certification test)
+4. Investigator v1          [x]  — closed, certified (see INV.4's absence-proving certification test)
+5. Validation + regression  [x]  — closed, certified (see VR.4's end-to-end + absence-proving certification test)
+6. Coverage + stop decision [x]  — closed, certified (see CS.3's end-to-end + absence-proving certification test)
 ```
 
-Implementation history and the detailed six-ticket breakdown for item 1 (Durable execution) live in the session planning record, not duplicated here — this document is the standing strategic reference; per-item execution plans are scoped and frozen separately when each item is taken up.
+**TestMind Autonomous v1 is closed as of CS.3.** All six items passed their own predefined closed-contract acceptance tests, per the governing discipline stated above.
+
+## Program closing statement
+
+Across all six items, TestMind Autonomous v1 delivered one coherent, honest chain: a passively-observed, route-indexed model of what's tested and what's failing (Application Brain v1); a deterministic risk ranking over that model (Autonomous Planner v1); a narrow, evidence-gated failure classifier that declines to guess verdicts it can't support (Investigator v1); a real human-triage state machine for security findings with durable, fully-wired regression-test provenance (Validation + Regression v1, completed end-to-end by Coverage + Stop Decision v1's CS.0 fix); and a read-only, zero-new-persistence coverage view reporting exactly what the rest of the system actually knows — one blended coverage percentage per workflow, real triage-state finding counts, and two raw open-items signals — with no invented percentages and no synthesized stop/continue verdict anywhere (Coverage + Stop Decision v1).
+
+Every item was grounded against the real codebase before a line of implementation code was written, most were independently critiqued by a second Plan-pass before freezing, and every item's contract was narrowed — sometimes drastically — whenever the roadmap's aspirational prose outran what real data/infrastructure could honestly support. Several real, previously-uncaught bugs were found and fixed transparently along the way as part of the item that discovered them (e.g. `Project.updatedAt` not existing during Application Brain v1; workflow `routeHints` never being normalized, found while scoping Autonomous Planner v1; a VR.3B-created regression `TestCase` being completely invisible to Application Brain's coverage rollup, found and fixed while scoping Coverage + Stop Decision v1).
+
+**Explicitly out of scope for v2, named rather than silently dropped:**
+- A genuine multi-dimension coverage taxonomy (Functional/API/Negative/Boundary/Recovery/Accessibility/Authentication/Authorization percentages) — would require new classification infrastructure (LLM or deterministic) plus schema to persist it; today's only near-miss (`generate-plan-ai.ts`'s `CoverageMatrix`) is discarded before it ever reaches the database.
+- A real findings-over-time trend/saturation engine — would require a `createdAt` index and a fingerprint/dedup field on `SecurityFinding` that don't exist today, plus a defined, non-arbitrary information-gain policy.
+- Any automated stop/continue recommendation — requires the trend infrastructure above plus an explicit, product-owned policy for what threshold of open items constitutes "done," which is a business decision, not a grounding question.
+- Automated security-finding confirmation (signal → hypothesis → experiment → verdict) for the 15 scanner modules — the sophisticated multi-signal confirmation logic already built for the manual Live Security Test tool (`security/live-security-tests.ts`) was never extended to the automated scan pipeline.
+- Real evidence collection for Investigator (live DOM diffing, independent API reproduction) — `PRODUCT_DEFECT`, `DATA_FAILURE`, `DEPENDENCY_FAILURE`, `SECURITY_ANOMALY`, and `EXPECTED_CHANGE` remain unreachable verdicts pending this infrastructure.
+- Any `apps/web` UI surface for any of the six items — every item is backend-only, read-only where possible, with real tests as the only verification performed.
+
+Implementation history and the detailed ticket breakdowns for all six items live in the session planning record, not duplicated here — this document is the standing strategic reference.
