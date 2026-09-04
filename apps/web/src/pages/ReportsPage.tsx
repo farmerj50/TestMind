@@ -878,6 +878,12 @@ export default function ReportsPage() {
                   {formatRunFailureReason(r) || "Failure summary unavailable."}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  <a
+                    href={`/test-runs/${r.id}`}
+                    className="text-blue-600 underline"
+                  >
+                    View run
+                  </a>
                   {suiteHref(r.projectId) && (
                     <a
                       href={suiteHref(r.projectId)}
@@ -932,6 +938,12 @@ export default function ReportsPage() {
                   </div>
                 )}
                   <div className="flex flex-wrap gap-2 text-[11px] mt-1">
+                    <a
+                      href={`/test-runs/${r.id}`}
+                      className="text-blue-600 underline"
+                    >
+                      View run
+                    </a>
                     {suiteHref(r.projectId) && (
                       <a
                         href={suiteHref(r.projectId)}

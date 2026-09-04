@@ -109,8 +109,8 @@ test("security-findings-only: points by severity, joined by routeHint membership
     const snapshot = baseSnapshot({
       workflows: [workflowCoverage({ routeHints: ["/checkout"], coveragePercent: 100 })],
       securityFindings: {
-        attributed: [{ id: "f1", routeHint: "/checkout", severity, title: "finding", tool: "idor-engine", validationStatus: null }],
-        notAttributable: [{ id: "f2", severity: "critical", title: "unattributed", tool: "code-review", location: "x:1", validationStatus: null }],
+        attributed: [{ id: "f1", routeHint: "/checkout", severity, title: "finding", tool: "idor-engine", validationStatus: null, createdAt: NOW, scanId: "scan1" }],
+        notAttributable: [{ id: "f2", severity: "critical", title: "unattributed", tool: "code-review", location: "x:1", validationStatus: null, createdAt: NOW, scanId: "scan1" }],
       },
     });
     const item = rankWorkflowRisk(snapshot, NOW).ranked[0];
@@ -120,7 +120,7 @@ test("security-findings-only: points by severity, joined by routeHint membership
   const manyFindings = baseSnapshot({
     workflows: [workflowCoverage({ routeHints: ["/checkout"], coveragePercent: 100 })],
     securityFindings: {
-      attributed: Array.from({ length: 3 }, (_, i) => ({ id: `f${i}`, routeHint: "/checkout", severity: "critical", title: "x", tool: "idor-engine", validationStatus: null })),
+      attributed: Array.from({ length: 3 }, (_, i) => ({ id: `f${i}`, routeHint: "/checkout", severity: "critical", title: "x", tool: "idor-engine", validationStatus: null, createdAt: NOW, scanId: "scan1" })),
       notAttributable: [],
     },
   });
@@ -184,7 +184,7 @@ test("all five signals combined reach exactly MAX_POSSIBLE_SCORE (110) when ever
       lastRunAt: null,
     })),
     securityFindings: {
-      attributed: Array.from({ length: 3 }, (_, i) => ({ id: `f${i}`, routeHint: "/checkout", severity: "critical", title: "x", tool: "idor-engine", validationStatus: null })),
+      attributed: Array.from({ length: 3 }, (_, i) => ({ id: `f${i}`, routeHint: "/checkout", severity: "critical", title: "x", tool: "idor-engine", validationStatus: null, createdAt: NOW, scanId: "scan1" })),
       notAttributable: [],
     },
     store: { version: 2, pages: { "/checkout": page("2026-01-10T00:00:00.000Z") }, apis: {}, identities: {}, resources: {}, workflows: {}, testLinks: {} },

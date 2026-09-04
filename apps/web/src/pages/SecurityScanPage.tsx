@@ -442,6 +442,14 @@ function uniqByPage(jobs: SecurityJob[]) {
   );
 }
 
+// A completed scan's summary.counts is {severity: count}, computed once at completion time -
+// reused here rather than re-fetching each job's findings just to show a count in the list.
+function findingsCountFor(job: SecurityJob): number | null {
+  const counts = job.summary?.counts;
+  if (!counts || typeof counts !== "object") return null;
+  return Object.values(counts).reduce((sum: number, n) => sum + (typeof n === "number" ? n : 0), 0);
+}
+
 export default function SecurityScanPage() {
   const { apiFetch } = useApi();
   const [searchParams] = useSearchParams();
@@ -527,6 +535,10 @@ export default function SecurityScanPage() {
   const [secrets, setSecrets] = useState<ProjectSecret[]>([]);
   const [job, setJob] = useState<SecurityJob | null>(null);
   const [recent, setRecent] = useState<SecurityJob[]>([]);
+  const [recentLoaded, setRecentLoaded] = useState(false);
+  // Tracks which project we've already resolved a default scan for, so switching projects (or
+  // recent's list refreshing for the same project) doesn't re-trigger the auto-load repeatedly.
+  const autoSelectedProjectRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [operatorRequest, setOperatorRequest] = useState<OperatorJobRef | null>(null);
   const pollRef = useRef<number | null>(null);
@@ -580,9 +592,11 @@ export default function SecurityScanPage() {
   // load recent scans when project changes
   useEffect(() => {
     if (!projectId) return;
+    setRecentLoaded(false);
     apiFetch<{ jobs: SecurityJob[] }>(`/security/scans?projectId=${projectId}`)
       .then((res) => setRecent(uniqByPage(res.jobs || [])))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setRecentLoaded(true));
   }, [apiFetch, projectId]);
 
   // deep-link: if ?jobId= is present (e.g. from Operator "View full report →"), load that scan
@@ -597,6 +611,27 @@ export default function SecurityScanPage() {
       })
       .catch(() => {});
   }, [apiFetch, searchParams]);
+
+  // Default behavior when there's no explicit ?jobId=: auto-select the most recent completed
+  // scan for the current project, so the page doesn't open in a misleading "no findings" state
+  // when a completed scan with real findings exists - the user still has to click into a job to
+  // see anything otherwise. Precedence: explicit ?jobId= wins; else most recent completed scan;
+  // else leave job null (an empty-state message renders below instead of a blank Findings card).
+  useEffect(() => {
+    if (!projectId || !recentLoaded) return;
+    if (searchParams.get("jobId")) return;
+    if (autoSelectedProjectRef.current === projectId) return;
+    autoSelectedProjectRef.current = projectId;
+
+    const mostRecentCompleted = recent.find((r) => r.projectId === projectId && r.status === "completed");
+    if (!mostRecentCompleted) {
+      setJob(null);
+      return;
+    }
+    apiFetch<{ job: SecurityJob }>(`/security/scans/${mostRecentCompleted.id}`)
+      .then((res) => setJob(res.job))
+      .catch(() => {});
+  }, [apiFetch, projectId, recent, recentLoaded, searchParams]);
 
   const loadAuthSessions = (pid: string) => {
     apiFetch<{ sessions: SecurityAuthSession[] }>(`/security/auth-sessions?projectId=${pid}`)
@@ -3300,6 +3335,12 @@ export default function SecurityScanPage() {
         </CardContent>
       </Card>
 
+      {!job && recentLoaded && projectId && !recent.some((r) => r.projectId === projectId && r.status === "completed") && (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          No completed security scan for this project yet. Start one above, or select a run below once one finishes.
+        </div>
+      )}
+
       {job && (
         <Card>
           <CardHeader>
@@ -3715,9 +3756,19 @@ export default function SecurityScanPage() {
                   </span>
                   <span className="text-xs text-slate-500">#{r.id.slice(0, 8)}</span>
                 </div>
-                <div className="text-xs uppercase tracking-wide text-slate-700">
-                  {r.status}
-                  {r.phase ? ` · ${r.phase}` : ""}
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-700">
+                  <span>
+                    {r.status}
+                    {r.phase ? ` · ${r.phase}` : ""}
+                  </span>
+                  {(() => {
+                    const fc = findingsCountFor(r);
+                    return fc !== null ? (
+                      <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 normal-case text-slate-600">
+                        {fc} finding{fc === 1 ? "" : "s"}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             ))}

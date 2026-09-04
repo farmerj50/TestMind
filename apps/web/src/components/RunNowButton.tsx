@@ -1,4 +1,5 @@
 import { useState, type ComponentProps } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/api";
 import { Play } from "lucide-react";
@@ -9,6 +10,10 @@ type RunNowButtonProps = {
   adapterId?: AdapterId;
   maxSpecs?: number;
   onDone?: () => void;
+  /** Navigate to the new run's detail page (/test-runs/:id) once it's created. Off by default
+   * so existing callers (Locator Library, Project Suite, Agent Session) keep their current
+   * in-place behavior - only pages that want the "click Run, land on results" flow opt in. */
+  navigateOnStart?: boolean;
 } & Omit<ComponentProps<typeof Button>, "onClick" | "children">;
 
 export default function RunNowButton({
@@ -16,18 +21,20 @@ export default function RunNowButton({
   adapterId,
   maxSpecs,
   onDone,
+  navigateOnStart = false,
   className,
   size = "sm",
   variant = "default",
   ...btnProps
 }: RunNowButtonProps) {
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
     setLoading(true);
     try {
-      await apiFetch<{ id: string }>("/runner/run", {
+      const res = await apiFetch<{ id: string }>("/runner/run", {
         method: "POST",
         body: JSON.stringify({
           projectId,
@@ -36,6 +43,9 @@ export default function RunNowButton({
         }),
       });
       onDone?.();
+      if (navigateOnStart && res?.id) {
+        navigate(`/test-runs/${res.id}`);
+      }
     } catch (e) {
       console.error(e);
     } finally {

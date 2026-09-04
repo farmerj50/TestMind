@@ -77,10 +77,10 @@ test("securityFindingsByValidationStatus buckets attributed findings by routeHin
     workflows: [workflowCoverage({ routeHints: ["/checkout"], coveragePercent: 100 })],
     securityFindings: {
       attributed: [
-        { id: "f1", routeHint: "/checkout", severity: "high", title: "a", tool: "idor-engine", validationStatus: "confirmed" },
-        { id: "f2", routeHint: "/checkout", severity: "medium", title: "b", tool: "cors-audit", validationStatus: "confirmed" },
-        { id: "f3", routeHint: "/checkout", severity: "low", title: "c", tool: "idor-engine", validationStatus: null },
-        { id: "f4", routeHint: "/unrelated-route", severity: "critical", title: "d", tool: "idor-engine", validationStatus: "confirmed" },
+        { id: "f1", routeHint: "/checkout", severity: "high", title: "a", tool: "idor-engine", validationStatus: "confirmed", createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
+        { id: "f2", routeHint: "/checkout", severity: "medium", title: "b", tool: "cors-audit", validationStatus: "confirmed", createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
+        { id: "f3", routeHint: "/checkout", severity: "low", title: "c", tool: "idor-engine", validationStatus: null, createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
+        { id: "f4", routeHint: "/unrelated-route", severity: "critical", title: "d", tool: "idor-engine", validationStatus: "confirmed", createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
       ],
       notAttributable: [],
     },
@@ -99,7 +99,7 @@ test("securityFindingsByValidationStatus buckets attributed findings by routeHin
 
 test("notAttributableFindings is a passthrough of the Brain's own list, never blended into any workflow's counts", () => {
   const notAttributable: ApplicationBrainSnapshot["securityFindings"]["notAttributable"] = [
-    { id: "na1", severity: "medium", title: "x", tool: "code-review", location: "a.ts:1", validationStatus: null },
+    { id: "na1", severity: "medium", title: "x", tool: "code-review", location: "a.ts:1", validationStatus: null, createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
   ];
   const snapshot = baseSnapshot({
     workflows: [workflowCoverage({ coveragePercent: 100 })],
@@ -117,10 +117,10 @@ test("openItems.untriagedFindingsCount counts both attributed and notAttributabl
     workflows: [],
     securityFindings: {
       attributed: [
-        { id: "f1", routeHint: "/a", severity: "high", title: "a", tool: "idor-engine", validationStatus: null },
-        { id: "f2", routeHint: "/b", severity: "high", title: "b", tool: "idor-engine", validationStatus: "confirmed" },
+        { id: "f1", routeHint: "/a", severity: "high", title: "a", tool: "idor-engine", validationStatus: null, createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
+        { id: "f2", routeHint: "/b", severity: "high", title: "b", tool: "idor-engine", validationStatus: "confirmed", createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" },
       ],
-      notAttributable: [{ id: "na1", severity: "medium", title: "c", tool: "code-review", location: "a.ts:1", validationStatus: null }],
+      notAttributable: [{ id: "na1", severity: "medium", title: "c", tool: "code-review", location: "a.ts:1", validationStatus: null, createdAt: "2026-01-01T00:00:00.000Z", scanId: "scan1" }],
     },
   });
   const report = getWorkflowCoverageReport(snapshot);

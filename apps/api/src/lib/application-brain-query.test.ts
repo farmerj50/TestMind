@@ -307,3 +307,26 @@ test("securityFindings: validationStatus is carried through for both attributed 
     assert.equal(notAttributableUntriaged?.validationStatus, null);
   });
 });
+
+// QA Agent workspace's Security tab needs to group re-detections of the same finding across
+// scans (Last seen / First seen / Occurrences / Source scan), which requires createdAt and
+// scanId on every finding - two already-existing SecurityFinding columns this query didn't
+// select before. Carried through for both the attributed and notAttributable branches.
+test("securityFindings: createdAt and scanId are carried through for both attributed and notAttributable findings, matching the real DB rows", async () => {
+  await withScratchProject(async (projectId) => {
+    const attributedRow = await seedFinding(projectId, "idor-engine", "https://example.invalid/api/orders/123", "attributed finding");
+    const notAttributableRow = await seedFinding(projectId, "code-review", "apps/api/src/index.ts:1", "notAttributable finding");
+
+    const snapshot = await getApplicationBrainSnapshot(projectId);
+
+    const attributed = snapshot.securityFindings.attributed.find((f) => f.id === attributedRow.id);
+    assert.ok(attributed);
+    assert.equal(attributed!.scanId, attributedRow.scanId);
+    assert.equal(attributed!.createdAt, attributedRow.createdAt.toISOString());
+
+    const notAttributable = snapshot.securityFindings.notAttributable.find((f) => f.id === notAttributableRow.id);
+    assert.ok(notAttributable);
+    assert.equal(notAttributable!.scanId, notAttributableRow.scanId);
+    assert.equal(notAttributable!.createdAt, notAttributableRow.createdAt.toISOString());
+  });
+});

@@ -71,6 +71,8 @@ export type AttributedFinding = {
   title: string;
   tool: string | null;
   validationStatus: FindingValidationStatus;
+  createdAt: string;
+  scanId: string;
 };
 
 export type NotAttributableFinding = {
@@ -80,6 +82,8 @@ export type NotAttributableFinding = {
   tool: string | null;
   location: string | null;
   validationStatus: FindingValidationStatus;
+  createdAt: string;
+  scanId: string;
 };
 
 export type WorkflowCoverage = {
@@ -200,7 +204,20 @@ export async function getApplicationBrainSnapshot(projectId: string): Promise<Ap
 
   const findings = await prisma.securityFinding.findMany({
     where: { scan: { projectId } },
-    select: { id: true, severity: true, title: true, tool: true, location: true, validationStatus: true },
+    select: {
+      id: true,
+      severity: true,
+      title: true,
+      tool: true,
+      location: true,
+      validationStatus: true,
+      // Exposes two already-existing columns (QA Agent workspace's Security tab: grouping
+      // re-detections of the same finding across scans into one row, rather than re-listing
+      // every SecurityFinding as its own row every time a project is re-scanned). No new join,
+      // no new write path - same precedent as securityFindingId's exposure on GET /tests/cases.
+      createdAt: true,
+      scanId: true,
+    },
   });
 
   const attributed: AttributedFinding[] = [];
@@ -214,6 +231,8 @@ export async function getApplicationBrainSnapshot(projectId: string): Promise<Ap
         title: finding.title,
         tool: finding.tool,
         validationStatus: finding.validationStatus,
+        createdAt: finding.createdAt.toISOString(),
+        scanId: finding.scanId,
       });
       continue;
     }
@@ -224,6 +243,8 @@ export async function getApplicationBrainSnapshot(projectId: string): Promise<Ap
       tool: finding.tool,
       location: finding.location,
       validationStatus: finding.validationStatus,
+      createdAt: finding.createdAt.toISOString(),
+      scanId: finding.scanId,
     });
   }
 

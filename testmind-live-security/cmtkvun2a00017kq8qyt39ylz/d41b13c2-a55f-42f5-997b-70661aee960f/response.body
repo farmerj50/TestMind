@@ -1,0 +1,1003 @@
+{
+  "customerId": 918269,
+  "maxReturn": -85.70,
+  "monthly": [
+    {
+      "start": "2011-07-08T08:27:45.643Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2011-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2011-09-01T00:00:00Z",
+      "gain": -0.30,
+      "isSimulation": false
+    },
+    {
+      "start": "2011-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2011-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2011-12-01T00:00:00Z",
+      "gain": -0.90,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-04-01T00:00:00Z",
+      "gain": -0.07,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-07-01T00:00:00Z",
+      "gain": -6.28,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-08-01T00:00:00Z",
+      "gain": -20.75,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-05-01T00:00:00Z",
+      "gain": -0.26,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-09-01T00:00:00Z",
+      "gain": -17.08,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-12-01T00:00:00Z",
+      "gain": -2.14,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-01-01T00:00:00Z",
+      "gain": -11.31,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-02-01T00:00:00Z",
+      "gain": -9.29,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-01-01T00:00:00Z",
+      "gain": -1.57,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-03-01T00:00:00Z",
+      "gain": -0.17,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-09-01T00:00:00Z",
+      "gain": -0.66,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-11-01T00:00:00Z",
+      "gain": -0.43,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-02-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-03-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-04-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-05-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-06-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-07-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-08-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-09-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-10-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-11-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-12-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-01-01T00:00:00Z",
+      "gain": -19.11,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-02-01T00:00:00Z",
+      "gain": -2.77,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-03-01T00:00:00Z",
+      "gain": -29.51,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-04-01T00:00:00Z",
+      "gain": 94.21,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-05-01T00:00:00Z",
+      "gain": -43.53,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-06-01T00:00:00Z",
+      "gain": -13.68,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-07-01T00:00:00Z",
+      "gain": -0.53,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-08-01T00:00:00Z",
+      "gain": -0.33,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-09-01T00:00:00Z",
+      "gain": -0.46,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-10-01T00:00:00Z",
+      "gain": 2.91,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-11-01T00:00:00Z",
+      "gain": -2.91,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-12-01T00:00:00Z",
+      "gain": 0.54,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-01-01T00:00:00Z",
+      "gain": -0.46,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-02-01T00:00:00Z",
+      "gain": -1.04,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-03-01T00:00:00Z",
+      "gain": 0.63,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-04-01T00:00:00Z",
+      "gain": -0.21,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-05-01T00:00:00Z",
+      "gain": 0.29,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-06-01T00:00:00Z",
+      "gain": 0.71,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-07-01T00:00:00Z",
+      "gain": -27.43,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-08-01T00:00:00Z",
+      "gain": 0.51,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-09-01T00:00:00Z",
+      "gain": -0.34,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-10-01T00:00:00Z",
+      "gain": -11.92,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-11-01T00:00:00Z",
+      "gain": -2.78,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-12-01T00:00:00Z",
+      "gain": -5.66,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-01-01T00:00:00Z",
+      "gain": -1.62,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-02-01T00:00:00Z",
+      "gain": 2.94,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-03-01T00:00:00Z",
+      "gain": -7.25,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-04-01T00:00:00Z",
+      "gain": -3.16,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-05-01T00:00:00Z",
+      "gain": 4.89,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-06-01T00:00:00Z",
+      "gain": -8.51,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-07-01T00:00:00Z",
+      "gain": -1.29,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-08-01T00:00:00Z",
+      "gain": 18.35,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-09-01T00:00:00Z",
+      "gain": -1.04,
+      "isSimulation": false
+    }
+  ],
+  "yearly": [
+    {
+      "start": "2011-01-01T00:00:00Z",
+      "gain": -1.20,
+      "isSimulation": false
+    },
+    {
+      "start": "2012-01-01T00:00:00Z",
+      "gain": -25.78,
+      "isSimulation": false
+    },
+    {
+      "start": "2013-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2014-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2015-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2016-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2017-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2018-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2019-01-01T00:00:00Z",
+      "gain": -19.06,
+      "isSimulation": false
+    },
+    {
+      "start": "2020-01-01T00:00:00Z",
+      "gain": -19.55,
+      "isSimulation": false
+    },
+    {
+      "start": "2021-01-01T00:00:00Z",
+      "gain": -1.57,
+      "isSimulation": false
+    },
+    {
+      "start": "2022-01-01T00:00:00Z",
+      "gain": -1.26,
+      "isSimulation": false
+    },
+    {
+      "start": "2023-01-01T00:00:00Z",
+      "gain": 0.0,
+      "isSimulation": false
+    },
+    {
+      "start": "2024-01-01T00:00:00Z",
+      "gain": -47.96,
+      "isSimulation": false
+    },
+    {
+      "start": "2025-01-01T00:00:00Z",
+      "gain": -41.33,
+      "isSimulation": false
+    },
+    {
+      "start": "2026-01-01T00:00:00Z",
+      "gain": 0.92,
+      "isSimulation": false
+    }
+  ]
+}
