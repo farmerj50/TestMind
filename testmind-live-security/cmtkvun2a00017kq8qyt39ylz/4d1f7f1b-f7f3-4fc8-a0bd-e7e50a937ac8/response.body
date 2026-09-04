@@ -1,0 +1,1350 @@
+{
+  "page": 1,
+  "pageSize": 0,
+  "totalItems": 225,
+  "items": [
+    {
+      "instrumentId": 1137,
+      "dividendRate-Annual": 0.280000,
+      "popularityUniques-System-RankAsc": 2,
+      "instrumentId": 1137
+    },
+    {
+      "instrumentId": 1005,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 6,
+      "instrumentId": 1005
+    },
+    {
+      "instrumentId": 1004,
+      "dividendRate-Annual": 3.560000,
+      "popularityUniques-System-RankAsc": 7,
+      "instrumentId": 1004
+    },
+    {
+      "instrumentId": 1003,
+      "dividendRate-Annual": 2.100000,
+      "popularityUniques-System-RankAsc": 9,
+      "instrumentId": 1003
+    },
+    {
+      "instrumentId": 1001,
+      "dividendRate-Annual": 1.060000,
+      "popularityUniques-System-RankAsc": 10,
+      "instrumentId": 1001
+    },
+    {
+      "instrumentId": 1111,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 11,
+      "instrumentId": 1111
+    },
+    {
+      "instrumentId": 1002,
+      "dividendRate-Annual": 0.850000,
+      "popularityUniques-System-RankAsc": 12,
+      "instrumentId": 1002
+    },
+    {
+      "instrumentId": 1832,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 14,
+      "instrumentId": 1832
+    },
+    {
+      "instrumentId": 4481,
+      "dividendRate-Annual": 3.495700,
+      "popularityUniques-System-RankAsc": 15,
+      "instrumentId": 4481
+    },
+    {
+      "instrumentId": 1130,
+      "dividendRate-Annual": 0.530000,
+      "popularityUniques-System-RankAsc": 16,
+      "instrumentId": 1130
+    },
+    {
+      "instrumentId": 1155,
+      "dividendRate-Annual": 1.050000,
+      "popularityUniques-System-RankAsc": 17,
+      "instrumentId": 1155
+    },
+    {
+      "instrumentId": 2587,
+      "dividendRate-Annual": 11.500000,
+      "popularityUniques-System-RankAsc": 19,
+      "instrumentId": 2587
+    },
+    {
+      "instrumentId": 15618,
+      "popularityUniques-System-RankAsc": 21,
+      "instrumentId": 15618
+    },
+    {
+      "instrumentId": 7991,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 22,
+      "instrumentId": 7991
+    },
+    {
+      "instrumentId": 1136,
+      "dividendRate-Annual": 13.650000,
+      "popularityUniques-System-RankAsc": 23,
+      "instrumentId": 1136
+    },
+    {
+      "instrumentId": 1021,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 24,
+      "instrumentId": 1021
+    },
+    {
+      "instrumentId": 6434,
+      "dividendRate-Annual": 0.850000,
+      "popularityUniques-System-RankAsc": 27,
+      "instrumentId": 6434
+    },
+    {
+      "instrumentId": 1127,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 28,
+      "instrumentId": 1127
+    },
+    {
+      "instrumentId": 4489,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 29,
+      "instrumentId": 4489
+    },
+    {
+      "instrumentId": 2175,
+      "dividendRate-Annual": 22.018300,
+      "popularityUniques-System-RankAsc": 32,
+      "instrumentId": 2175
+    },
+    {
+      "instrumentId": 4509,
+      "dividendRate-Annual": 7.500000,
+      "popularityUniques-System-RankAsc": 33,
+      "instrumentId": 4509
+    },
+    {
+      "instrumentId": 4236,
+      "dividendRate-Annual": 2.540000,
+      "popularityUniques-System-RankAsc": 34,
+      "instrumentId": 4236
+    },
+    {
+      "instrumentId": 4244,
+      "dividendRate-Annual": 8.785700,
+      "popularityUniques-System-RankAsc": 35,
+      "instrumentId": 4244
+    },
+    {
+      "instrumentId": 1484,
+      "dividendRate-Annual": 0.420000,
+      "popularityUniques-System-RankAsc": 36,
+      "instrumentId": 1484
+    },
+    {
+      "instrumentId": 2072,
+      "dividendRate-Annual": 0.050000,
+      "popularityUniques-System-RankAsc": 37,
+      "instrumentId": 2072
+    },
+    {
+      "instrumentId": 12200,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 38,
+      "instrumentId": 12200
+    },
+    {
+      "instrumentId": 1135,
+      "dividendRate-Annual": 2.500000,
+      "popularityUniques-System-RankAsc": 39,
+      "instrumentId": 1135
+    },
+    {
+      "instrumentId": 1253,
+      "dividendRate-Annual": 13,
+      "popularityUniques-System-RankAsc": 41,
+      "instrumentId": 1253
+    },
+    {
+      "instrumentId": 1023,
+      "dividendRate-Annual": 6,
+      "popularityUniques-System-RankAsc": 43,
+      "instrumentId": 1023
+    },
+    {
+      "instrumentId": 1180,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 44,
+      "instrumentId": 1180
+    },
+    {
+      "instrumentId": 4260,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 45,
+      "instrumentId": 4260
+    },
+    {
+      "instrumentId": 1126,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 46,
+      "instrumentId": 1126
+    },
+    {
+      "instrumentId": 1118,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 47,
+      "instrumentId": 1118
+    },
+    {
+      "instrumentId": 1567,
+      "dividendRate-Annual": 6.460000,
+      "popularityUniques-System-RankAsc": 49,
+      "instrumentId": 1567
+    },
+    {
+      "instrumentId": 4363,
+      "dividendRate-Annual": 0.910000,
+      "popularityUniques-System-RankAsc": 50,
+      "instrumentId": 4363
+    },
+    {
+      "instrumentId": 5506,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 52,
+      "instrumentId": 5506
+    },
+    {
+      "instrumentId": 2260,
+      "dividendRate-Annual": 11.700000,
+      "popularityUniques-System-RankAsc": 53,
+      "instrumentId": 2260
+    },
+    {
+      "instrumentId": 1042,
+      "dividendRate-Annual": 1.630000,
+      "popularityUniques-System-RankAsc": 54,
+      "instrumentId": 1042
+    },
+    {
+      "instrumentId": 1024,
+      "dividendRate-Annual": 2.080000,
+      "popularityUniques-System-RankAsc": 55,
+      "instrumentId": 1024
+    },
+    {
+      "instrumentId": 4124,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 56,
+      "instrumentId": 4124
+    },
+    {
+      "instrumentId": 2339,
+      "dividendRate-Annual": 5.300000,
+      "popularityUniques-System-RankAsc": 57,
+      "instrumentId": 2339
+    },
+    {
+      "instrumentId": 1839,
+      "dividendRate-Annual": 1.712000,
+      "popularityUniques-System-RankAsc": 58,
+      "instrumentId": 1839
+    },
+    {
+      "instrumentId": 1046,
+      "dividendRate-Annual": 2.600000,
+      "popularityUniques-System-RankAsc": 59,
+      "instrumentId": 1046
+    },
+    {
+      "instrumentId": 6473,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 60,
+      "instrumentId": 6473
+    },
+    {
+      "instrumentId": 1186,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 62,
+      "instrumentId": 1186
+    },
+    {
+      "instrumentId": 1906,
+      "dividendRate-Annual": 1.040000,
+      "popularityUniques-System-RankAsc": 63,
+      "instrumentId": 1906
+    },
+    {
+      "instrumentId": 4358,
+      "dividendRate-Annual": 0.300000,
+      "popularityUniques-System-RankAsc": 64,
+      "instrumentId": 4358
+    },
+    {
+      "instrumentId": 1388,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 68,
+      "instrumentId": 1388
+    },
+    {
+      "instrumentId": 1706,
+      "dividendRate-Annual": 1.910000,
+      "popularityUniques-System-RankAsc": 69,
+      "instrumentId": 1706
+    },
+    {
+      "instrumentId": 1141,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 70,
+      "instrumentId": 1141
+    },
+    {
+      "instrumentId": 6844,
+      "dividendRate-Annual": 1.801700,
+      "popularityUniques-System-RankAsc": 72,
+      "instrumentId": 6844
+    },
+    {
+      "instrumentId": 1016,
+      "dividendRate-Annual": 1.500000,
+      "popularityUniques-System-RankAsc": 73,
+      "instrumentId": 1016
+    },
+    {
+      "instrumentId": 1022,
+      "dividendRate-Annual": 5.240000,
+      "popularityUniques-System-RankAsc": 76,
+      "instrumentId": 1022
+    },
+    {
+      "instrumentId": 8601,
+      "dividendRate-Annual": 1.628600,
+      "popularityUniques-System-RankAsc": 77,
+      "instrumentId": 8601
+    },
+    {
+      "instrumentId": 1485,
+      "dividendRate-Annual": 3.590000,
+      "popularityUniques-System-RankAsc": 79,
+      "instrumentId": 1485
+    },
+    {
+      "instrumentId": 1011,
+      "dividendRate-Annual": 1.120000,
+      "popularityUniques-System-RankAsc": 80,
+      "instrumentId": 1011
+    },
+    {
+      "instrumentId": 5733,
+      "dividendRate-Annual": 1.086000,
+      "popularityUniques-System-RankAsc": 81,
+      "instrumentId": 5733
+    },
+    {
+      "instrumentId": 1041,
+      "dividendRate-Annual": 3.370000,
+      "popularityUniques-System-RankAsc": 82,
+      "instrumentId": 1041
+    },
+    {
+      "instrumentId": 9085,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 83,
+      "instrumentId": 9085
+    },
+    {
+      "instrumentId": 4108,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 84,
+      "instrumentId": 4108
+    },
+    {
+      "instrumentId": 2380,
+      "dividendRate-Annual": 0.411400,
+      "popularityUniques-System-RankAsc": 85,
+      "instrumentId": 2380
+    },
+    {
+      "instrumentId": 6218,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 86,
+      "instrumentId": 6218
+    },
+    {
+      "instrumentId": 1467,
+      "dividendRate-Annual": 17,
+      "popularityUniques-System-RankAsc": 87,
+      "instrumentId": 1467
+    },
+    {
+      "instrumentId": 1545,
+      "dividendRate-Annual": 9.400000,
+      "popularityUniques-System-RankAsc": 88,
+      "instrumentId": 1545
+    },
+    {
+      "instrumentId": 1699,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 90,
+      "instrumentId": 1699
+    },
+    {
+      "instrumentId": 6168,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 91,
+      "instrumentId": 6168
+    },
+    {
+      "instrumentId": 1043,
+      "dividendRate-Annual": 5.747500,
+      "popularityUniques-System-RankAsc": 92,
+      "instrumentId": 1043
+    },
+    {
+      "instrumentId": 1234,
+      "dividendRate-Annual": 3.200000,
+      "popularityUniques-System-RankAsc": 93,
+      "instrumentId": 1234
+    },
+    {
+      "instrumentId": 1265,
+      "dividendRate-Annual": 4.200000,
+      "popularityUniques-System-RankAsc": 94,
+      "instrumentId": 1265
+    },
+    {
+      "instrumentId": 1032,
+      "dividendRate-Annual": 8.950000,
+      "popularityUniques-System-RankAsc": 95,
+      "instrumentId": 1032
+    },
+    {
+      "instrumentId": 8597,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 97,
+      "instrumentId": 8597
+    },
+    {
+      "instrumentId": 9255,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 98,
+      "instrumentId": 9255
+    },
+    {
+      "instrumentId": 8804,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 99,
+      "instrumentId": 8804
+    },
+    {
+      "instrumentId": 5607,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 100,
+      "instrumentId": 5607
+    },
+    {
+      "instrumentId": 1246,
+      "dividendRate-Annual": 3.400000,
+      "popularityUniques-System-RankAsc": 101,
+      "instrumentId": 1246
+    },
+    {
+      "instrumentId": 1028,
+      "dividendRate-Annual": 1.720000,
+      "popularityUniques-System-RankAsc": 102,
+      "instrumentId": 1028
+    },
+    {
+      "instrumentId": 4001,
+      "dividendRate-Annual": 0.920000,
+      "popularityUniques-System-RankAsc": 104,
+      "instrumentId": 4001
+    },
+    {
+      "instrumentId": 1404,
+      "dividendRate-Annual": 0.940000,
+      "popularityUniques-System-RankAsc": 105,
+      "instrumentId": 1404
+    },
+    {
+      "instrumentId": 3222,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 106,
+      "instrumentId": 3222
+    },
+    {
+      "instrumentId": 1642,
+      "dividendRate-Annual": 2.670000,
+      "popularityUniques-System-RankAsc": 107,
+      "instrumentId": 1642
+    },
+    {
+      "instrumentId": 1555,
+      "dividendRate-Annual": 0.300000,
+      "popularityUniques-System-RankAsc": 108,
+      "instrumentId": 1555
+    },
+    {
+      "instrumentId": 1036,
+      "dividendRate-Annual": 4.080000,
+      "popularityUniques-System-RankAsc": 109,
+      "instrumentId": 1036
+    },
+    {
+      "instrumentId": 6270,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 110,
+      "instrumentId": 6270
+    },
+    {
+      "instrumentId": 13620,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 112,
+      "instrumentId": 13620
+    },
+    {
+      "instrumentId": 1117,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 113,
+      "instrumentId": 1117
+    },
+    {
+      "instrumentId": 1365,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 115,
+      "instrumentId": 1365
+    },
+    {
+      "instrumentId": 1017,
+      "dividendRate-Annual": 1.660000,
+      "popularityUniques-System-RankAsc": 116,
+      "instrumentId": 1017
+    },
+    {
+      "instrumentId": 6614,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 117,
+      "instrumentId": 6614
+    },
+    {
+      "instrumentId": 2402,
+      "dividendRate-Annual": 1.028600,
+      "popularityUniques-System-RankAsc": 118,
+      "instrumentId": 2402
+    },
+    {
+      "instrumentId": 1210,
+      "dividendRate-Annual": 5.260000,
+      "popularityUniques-System-RankAsc": 119,
+      "instrumentId": 1210
+    },
+    {
+      "instrumentId": 2845,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 120,
+      "instrumentId": 2845
+    },
+    {
+      "instrumentId": 1103,
+      "dividendRate-Annual": 0.147200,
+      "popularityUniques-System-RankAsc": 121,
+      "instrumentId": 1103
+    },
+    {
+      "instrumentId": 4317,
+      "dividendRate-Annual": 8,
+      "popularityUniques-System-RankAsc": 122,
+      "instrumentId": 4317
+    },
+    {
+      "instrumentId": 8867,
+      "dividendRate-Annual": 0.225000,
+      "popularityUniques-System-RankAsc": 123,
+      "instrumentId": 8867
+    },
+    {
+      "instrumentId": 1025,
+      "dividendRate-Annual": 7.350000,
+      "popularityUniques-System-RankAsc": 126,
+      "instrumentId": 1025
+    },
+    {
+      "instrumentId": 5040,
+      "dividendRate-Annual": 3.900000,
+      "popularityUniques-System-RankAsc": 127,
+      "instrumentId": 5040
+    },
+    {
+      "instrumentId": 8537,
+      "dividendRate-Annual": 0.700000,
+      "popularityUniques-System-RankAsc": 129,
+      "instrumentId": 8537
+    },
+    {
+      "instrumentId": 9425,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 130,
+      "instrumentId": 9425
+    },
+    {
+      "instrumentId": 6414,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 131,
+      "instrumentId": 6414
+    },
+    {
+      "instrumentId": 1013,
+      "dividendRate-Annual": 1.660000,
+      "popularityUniques-System-RankAsc": 132,
+      "instrumentId": 1013
+    },
+    {
+      "instrumentId": 1238,
+      "dividendRate-Annual": 5.160000,
+      "popularityUniques-System-RankAsc": 134,
+      "instrumentId": 1238
+    },
+    {
+      "instrumentId": 1594,
+      "dividendRate-Annual": 2.379400,
+      "popularityUniques-System-RankAsc": 135,
+      "instrumentId": 1594
+    },
+    {
+      "instrumentId": 1035,
+      "dividendRate-Annual": 0.965000,
+      "popularityUniques-System-RankAsc": 136,
+      "instrumentId": 1035
+    },
+    {
+      "instrumentId": 13589,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 137,
+      "instrumentId": 13589
+    },
+    {
+      "instrumentId": 6094,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 139,
+      "instrumentId": 6094
+    },
+    {
+      "instrumentId": 1417,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 142,
+      "instrumentId": 1417
+    },
+    {
+      "instrumentId": 1027,
+      "dividendRate-Annual": 3.360000,
+      "popularityUniques-System-RankAsc": 143,
+      "instrumentId": 1027
+    },
+    {
+      "instrumentId": 8637,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 144,
+      "instrumentId": 8637
+    },
+    {
+      "instrumentId": 1014,
+      "dividendRate-Annual": 6.980000,
+      "popularityUniques-System-RankAsc": 145,
+      "instrumentId": 1014
+    },
+    {
+      "instrumentId": 4483,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 146,
+      "instrumentId": 4483
+    },
+    {
+      "instrumentId": 15239,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 147,
+      "instrumentId": 15239
+    },
+    {
+      "instrumentId": 1156,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 148,
+      "instrumentId": 1156
+    },
+    {
+      "instrumentId": 1020,
+      "dividendRate-Annual": 6.730000,
+      "popularityUniques-System-RankAsc": 149,
+      "instrumentId": 1020
+    },
+    {
+      "instrumentId": 5999,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 150,
+      "instrumentId": 5999
+    },
+    {
+      "instrumentId": 10881,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 152,
+      "instrumentId": 10881
+    },
+    {
+      "instrumentId": 1859,
+      "dividendRate-Annual": 1.690000,
+      "popularityUniques-System-RankAsc": 153,
+      "instrumentId": 1859
+    },
+    {
+      "instrumentId": 5960,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 154,
+      "instrumentId": 5960
+    },
+    {
+      "instrumentId": 9471,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 155,
+      "instrumentId": 9471
+    },
+    {
+      "instrumentId": 10655,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 156,
+      "instrumentId": 10655
+    },
+    {
+      "instrumentId": 1033,
+      "dividendRate-Annual": 2.770000,
+      "popularityUniques-System-RankAsc": 157,
+      "instrumentId": 1033
+    },
+    {
+      "instrumentId": 4179,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 159,
+      "instrumentId": 4179
+    },
+    {
+      "instrumentId": 1687,
+      "dividendRate-Annual": 1.120000,
+      "popularityUniques-System-RankAsc": 160,
+      "instrumentId": 1687
+    },
+    {
+      "instrumentId": 1129,
+      "dividendRate-Annual": 0.500000,
+      "popularityUniques-System-RankAsc": 161,
+      "instrumentId": 1129
+    },
+    {
+      "instrumentId": 7999,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 162,
+      "instrumentId": 7999
+    },
+    {
+      "instrumentId": 1262,
+      "dividendRate-Annual": 4.120000,
+      "popularityUniques-System-RankAsc": 163,
+      "instrumentId": 1262
+    },
+    {
+      "instrumentId": 12167,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 164,
+      "instrumentId": 12167
+    },
+    {
+      "instrumentId": 9250,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 165,
+      "instrumentId": 9250
+    },
+    {
+      "instrumentId": 2007,
+      "dividendRate-Annual": 0.478400,
+      "popularityUniques-System-RankAsc": 166,
+      "instrumentId": 2007
+    },
+    {
+      "instrumentId": 4307,
+      "dividendRate-Annual": 3.239000,
+      "popularityUniques-System-RankAsc": 167,
+      "instrumentId": 4307
+    },
+    {
+      "instrumentId": 1010,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 168,
+      "instrumentId": 1010
+    },
+    {
+      "instrumentId": 4434,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 170,
+      "instrumentId": 4434
+    },
+    {
+      "instrumentId": 4261,
+      "dividendRate-Annual": 2.205000,
+      "popularityUniques-System-RankAsc": 171,
+      "instrumentId": 4261
+    },
+    {
+      "instrumentId": 4286,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 172,
+      "instrumentId": 4286
+    },
+    {
+      "instrumentId": 4239,
+      "dividendRate-Annual": 2.685000,
+      "popularityUniques-System-RankAsc": 173,
+      "instrumentId": 4239
+    },
+    {
+      "instrumentId": 4340,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 174,
+      "instrumentId": 4340
+    },
+    {
+      "instrumentId": 1203,
+      "dividendRate-Annual": 0.110000,
+      "popularityUniques-System-RankAsc": 175,
+      "instrumentId": 1203
+    },
+    {
+      "instrumentId": 2551,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 176,
+      "instrumentId": 2551
+    },
+    {
+      "instrumentId": 4241,
+      "dividendRate-Annual": 6.200000,
+      "popularityUniques-System-RankAsc": 177,
+      "instrumentId": 4241
+    },
+    {
+      "instrumentId": 6194,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 178,
+      "instrumentId": 6194
+    },
+    {
+      "instrumentId": 1044,
+      "dividendRate-Annual": 0.158400,
+      "popularityUniques-System-RankAsc": 179,
+      "instrumentId": 1044
+    },
+    {
+      "instrumentId": 6835,
+      "dividendRate-Annual": 0.380000,
+      "popularityUniques-System-RankAsc": 180,
+      "instrumentId": 6835
+    },
+    {
+      "instrumentId": 8047,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 181,
+      "instrumentId": 8047
+    },
+    {
+      "instrumentId": 1597,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 182,
+      "instrumentId": 1597
+    },
+    {
+      "instrumentId": 6689,
+      "dividendRate-Annual": 0.652500,
+      "popularityUniques-System-RankAsc": 183,
+      "instrumentId": 6689
+    },
+    {
+      "instrumentId": 1634,
+      "dividendRate-Annual": 5.620000,
+      "popularityUniques-System-RankAsc": 184,
+      "instrumentId": 1634
+    },
+    {
+      "instrumentId": 2064,
+      "dividendRate-Annual": 2.122000,
+      "popularityUniques-System-RankAsc": 185,
+      "instrumentId": 2064
+    },
+    {
+      "instrumentId": 10088,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 186,
+      "instrumentId": 10088
+    },
+    {
+      "instrumentId": 1286,
+      "dividendRate-Annual": 0.630000,
+      "popularityUniques-System-RankAsc": 187,
+      "instrumentId": 1286
+    },
+    {
+      "instrumentId": 7996,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 188,
+      "instrumentId": 7996
+    },
+    {
+      "instrumentId": 6264,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 190,
+      "instrumentId": 6264
+    },
+    {
+      "instrumentId": 5044,
+      "dividendRate-Annual": 14.300000,
+      "popularityUniques-System-RankAsc": 192,
+      "instrumentId": 5044
+    },
+    {
+      "instrumentId": 4329,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 195,
+      "instrumentId": 4329
+    },
+    {
+      "instrumentId": 1202,
+      "dividendRate-Annual": 2.500000,
+      "popularityUniques-System-RankAsc": 196,
+      "instrumentId": 1202
+    },
+    {
+      "instrumentId": 2394,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 197,
+      "instrumentId": 2394
+    },
+    {
+      "instrumentId": 4403,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 198,
+      "instrumentId": 4403
+    },
+    {
+      "instrumentId": 1242,
+      "dividendRate-Annual": 5,
+      "popularityUniques-System-RankAsc": 199,
+      "instrumentId": 1242
+    },
+    {
+      "instrumentId": 9272,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 200,
+      "instrumentId": 9272
+    },
+    {
+      "instrumentId": 4246,
+      "dividendRate-Annual": 0.447300,
+      "popularityUniques-System-RankAsc": 201,
+      "instrumentId": 4246
+    },
+    {
+      "instrumentId": 8753,
+      "popularityUniques-System-RankAsc": 202,
+      "instrumentId": 8753
+    },
+    {
+      "instrumentId": 1029,
+      "dividendRate-Annual": 4.258900,
+      "popularityUniques-System-RankAsc": 203,
+      "instrumentId": 1029
+    },
+    {
+      "instrumentId": 2244,
+      "dividendRate-Annual": 11,
+      "popularityUniques-System-RankAsc": 204,
+      "instrumentId": 2244
+    },
+    {
+      "instrumentId": 1296,
+      "dividendRate-Annual": 0.900000,
+      "popularityUniques-System-RankAsc": 205,
+      "instrumentId": 1296
+    },
+    {
+      "instrumentId": 2171,
+      "dividendRate-Annual": 1.105200,
+      "popularityUniques-System-RankAsc": 206,
+      "instrumentId": 2171
+    },
+    {
+      "instrumentId": 6591,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 208,
+      "instrumentId": 6591
+    },
+    {
+      "instrumentId": 4309,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 209,
+      "instrumentId": 4309
+    },
+    {
+      "instrumentId": 4148,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 211,
+      "instrumentId": 4148
+    },
+    {
+      "instrumentId": 1330,
+      "dividendRate-Annual": 0.680000,
+      "popularityUniques-System-RankAsc": 212,
+      "instrumentId": 1330
+    },
+    {
+      "instrumentId": 1841,
+      "dividendRate-Annual": 0.800000,
+      "popularityUniques-System-RankAsc": 213,
+      "instrumentId": 1841
+    },
+    {
+      "instrumentId": 1661,
+      "dividendRate-Annual": 21.880000,
+      "popularityUniques-System-RankAsc": 214,
+      "instrumentId": 1661
+    },
+    {
+      "instrumentId": 4545,
+      "dividendRate-Annual": 2.520000,
+      "popularityUniques-System-RankAsc": 215,
+      "instrumentId": 4545
+    },
+    {
+      "instrumentId": 4406,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 216,
+      "instrumentId": 4406
+    },
+    {
+      "instrumentId": 10002,
+      "popularityUniques-System-RankAsc": 217,
+      "instrumentId": 10002
+    },
+    {
+      "instrumentId": 2492,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 218,
+      "instrumentId": 2492
+    },
+    {
+      "instrumentId": 5763,
+      "dividendRate-Annual": 2.920000,
+      "popularityUniques-System-RankAsc": 219,
+      "instrumentId": 5763
+    },
+    {
+      "instrumentId": 1012,
+      "dividendRate-Annual": 6.040000,
+      "popularityUniques-System-RankAsc": 220,
+      "instrumentId": 1012
+    },
+    {
+      "instrumentId": 2280,
+      "dividendRate-Annual": 0.740000,
+      "popularityUniques-System-RankAsc": 221,
+      "instrumentId": 2280
+    },
+    {
+      "instrumentId": 7702,
+      "dividendRate-Annual": 3.180400,
+      "popularityUniques-System-RankAsc": 222,
+      "instrumentId": 7702
+    },
+    {
+      "instrumentId": 1053,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 223,
+      "instrumentId": 1053
+    },
+    {
+      "instrumentId": 10683,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 224,
+      "instrumentId": 10683
+    },
+    {
+      "instrumentId": 1288,
+      "dividendRate-Annual": 0.376000,
+      "popularityUniques-System-RankAsc": 225,
+      "instrumentId": 1288
+    },
+    {
+      "instrumentId": 14412,
+      "popularityUniques-System-RankAsc": 226,
+      "instrumentId": 14412
+    },
+    {
+      "instrumentId": 5635,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 228,
+      "instrumentId": 5635
+    },
+    {
+      "instrumentId": 6855,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 229,
+      "instrumentId": 6855
+    },
+    {
+      "instrumentId": 1200,
+      "dividendRate-Annual": 5.350000,
+      "popularityUniques-System-RankAsc": 230,
+      "instrumentId": 1200
+    },
+    {
+      "instrumentId": 1069,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 231,
+      "instrumentId": 1069
+    },
+    {
+      "instrumentId": 1121,
+      "dividendRate-Annual": 3.737500,
+      "popularityUniques-System-RankAsc": 232,
+      "instrumentId": 1121
+    },
+    {
+      "instrumentId": 1933,
+      "dividendRate-Annual": 2.800000,
+      "popularityUniques-System-RankAsc": 233,
+      "instrumentId": 1933
+    },
+    {
+      "instrumentId": 4273,
+      "dividendRate-Annual": 4.280000,
+      "popularityUniques-System-RankAsc": 234,
+      "instrumentId": 4273
+    },
+    {
+      "instrumentId": 2222,
+      "dividendRate-Annual": 4,
+      "popularityUniques-System-RankAsc": 235,
+      "instrumentId": 2222
+    },
+    {
+      "instrumentId": 1283,
+      "dividendRate-Annual": 1.050000,
+      "popularityUniques-System-RankAsc": 236,
+      "instrumentId": 1283
+    },
+    {
+      "instrumentId": 2110,
+      "dividendRate-Annual": 0.363000,
+      "popularityUniques-System-RankAsc": 237,
+      "instrumentId": 2110
+    },
+    {
+      "instrumentId": 1917,
+      "dividendRate-Annual": 4.248200,
+      "popularityUniques-System-RankAsc": 238,
+      "instrumentId": 1917
+    },
+    {
+      "instrumentId": 1184,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 239,
+      "instrumentId": 1184
+    },
+    {
+      "instrumentId": 1341,
+      "dividendRate-Annual": 2,
+      "popularityUniques-System-RankAsc": 240,
+      "instrumentId": 1341
+    },
+    {
+      "instrumentId": 1009,
+      "dividendRate-Annual": 3.540000,
+      "popularityUniques-System-RankAsc": 241,
+      "instrumentId": 1009
+    },
+    {
+      "instrumentId": 2334,
+      "dividendRate-Annual": 1.930800,
+      "popularityUniques-System-RankAsc": 243,
+      "instrumentId": 2334
+    },
+    {
+      "instrumentId": 5838,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 244,
+      "instrumentId": 5838
+    },
+    {
+      "instrumentId": 4003,
+      "dividendRate-Annual": 0.296100,
+      "popularityUniques-System-RankAsc": 245,
+      "instrumentId": 4003
+    },
+    {
+      "instrumentId": 1967,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 246,
+      "instrumentId": 1967
+    },
+    {
+      "instrumentId": 2585,
+      "dividendRate-Annual": 1.600000,
+      "popularityUniques-System-RankAsc": 248,
+      "instrumentId": 2585
+    },
+    {
+      "instrumentId": 6610,
+      "dividendRate-Annual": 0.458900,
+      "popularityUniques-System-RankAsc": 249,
+      "instrumentId": 6610
+    },
+    {
+      "instrumentId": 6501,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 251,
+      "instrumentId": 6501
+    },
+    {
+      "instrumentId": 3049,
+      "dividendRate-Annual": 0.520000,
+      "popularityUniques-System-RankAsc": 252,
+      "instrumentId": 3049
+    },
+    {
+      "instrumentId": 15025,
+      "popularityUniques-System-RankAsc": 253,
+      "instrumentId": 15025
+    },
+    {
+      "instrumentId": 1497,
+      "dividendRate-Annual": 4.660000,
+      "popularityUniques-System-RankAsc": 254,
+      "instrumentId": 1497
+    },
+    {
+      "instrumentId": 2505,
+      "dividendRate-Annual": 0.620000,
+      "popularityUniques-System-RankAsc": 256,
+      "instrumentId": 2505
+    },
+    {
+      "instrumentId": 2019,
+      "dividendRate-Annual": 0.248400,
+      "popularityUniques-System-RankAsc": 258,
+      "instrumentId": 2019
+    },
+    {
+      "instrumentId": 5757,
+      "dividendRate-Annual": 0.650000,
+      "popularityUniques-System-RankAsc": 259,
+      "instrumentId": 5757
+    },
+    {
+      "instrumentId": 4399,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 260,
+      "instrumentId": 4399
+    },
+    {
+      "instrumentId": 1182,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 261,
+      "instrumentId": 1182
+    },
+    {
+      "instrumentId": 9843,
+      "dividendRate-Annual": 0.875400,
+      "popularityUniques-System-RankAsc": 262,
+      "instrumentId": 9843
+    },
+    {
+      "instrumentId": 1552,
+      "dividendRate-Annual": 2.480000,
+      "popularityUniques-System-RankAsc": 263,
+      "instrumentId": 1552
+    },
+    {
+      "instrumentId": 9979,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 264,
+      "instrumentId": 9979
+    },
+    {
+      "instrumentId": 1757,
+      "dividendRate-Annual": 1.020000,
+      "popularityUniques-System-RankAsc": 266,
+      "instrumentId": 1757
+    },
+    {
+      "instrumentId": 1037,
+      "dividendRate-Annual": 2.400000,
+      "popularityUniques-System-RankAsc": 267,
+      "instrumentId": 1037
+    },
+    {
+      "instrumentId": 9412,
+      "popularityUniques-System-RankAsc": 268,
+      "instrumentId": 9412
+    },
+    {
+      "instrumentId": 1583,
+      "dividendRate-Annual": 4.240000,
+      "popularityUniques-System-RankAsc": 269,
+      "instrumentId": 1583
+    },
+    {
+      "instrumentId": 3365,
+      "dividendRate-Annual": 4.097000,
+      "popularityUniques-System-RankAsc": 271,
+      "instrumentId": 3365
+    },
+    {
+      "instrumentId": 6916,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 272,
+      "instrumentId": 6916
+    },
+    {
+      "instrumentId": 2219,
+      "dividendRate-Annual": 3,
+      "popularityUniques-System-RankAsc": 273,
+      "instrumentId": 2219
+    },
+    {
+      "instrumentId": 5777,
+      "dividendRate-Annual": 4.500000,
+      "popularityUniques-System-RankAsc": 274,
+      "instrumentId": 5777
+    },
+    {
+      "instrumentId": 1353,
+      "dividendRate-Annual": 7.125600,
+      "popularityUniques-System-RankAsc": 275,
+      "instrumentId": 1353
+    },
+    {
+      "instrumentId": 10005,
+      "popularityUniques-System-RankAsc": 276,
+      "instrumentId": 10005
+    },
+    {
+      "instrumentId": 4263,
+      "dividendRate-Annual": 0,
+      "popularityUniques-System-RankAsc": 279,
+      "instrumentId": 4263
+    },
+    {
+      "instrumentId": 1461,
+      "dividendRate-Annual": 5.370000,
+      "popularityUniques-System-RankAsc": 280,
+      "instrumentId": 1461
+    }
+  ]
+}

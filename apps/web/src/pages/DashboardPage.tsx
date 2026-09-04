@@ -81,6 +81,7 @@ type ActivityEntry = {
   detail: string;
   at: string;
   tone: "emerald" | "rose" | "amber" | "blue" | "slate";
+  href?: string;
 };
 
 const EMPTY_COUNTS = {
@@ -600,6 +601,7 @@ export default function DashboardPage() {
           : run.status === "running"
           ? "blue"
           : "amber",
+      href: `/test-runs/${run.id}`,
     }));
 
     const projectItems: ActivityEntry[] = projects.slice(0, 5).map((project) => ({
@@ -608,6 +610,7 @@ export default function DashboardPage() {
       detail: project.repoUrl ? `Repo linked: ${getDomainLabel(project.repoUrl)}` : "Repo link pending",
       at: project.createdAt,
       tone: "slate",
+      href: `/projects/${project.id}`,
     }));
 
     return [...runItems, ...projectItems]
@@ -927,67 +930,72 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        <RunNowButton
-                          projectId={project.id}
-                          adapterId={adapterId}
-                          maxSpecs={maxSpecsLimit}
-                          onDone={() => setRefreshKey((value) => value + 1)}
-                          size="sm"
-                        />
-                        <Button asChild variant="outline" size="sm">
-                          <Link to="/reports">Reports</Link>
-                        </Button>
-                        <Button asChild variant="outline" size="sm">
-                          <Link to={`/agent?projectId=${project.id}`}>
-                            <Bot className="mr-2 h-4 w-4" />
-                            Scan
-                          </Link>
-                        </Button>
-                        {/^https?:\/\//i.test(project.repoUrl ?? "") ? (
-                          <Button
-                            variant="outline"
+                      <div className="flex flex-col items-start gap-2 lg:items-end">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <RunNowButton
+                            projectId={project.id}
+                            adapterId={adapterId}
+                            maxSpecs={maxSpecsLimit}
+                            onDone={() => setRefreshKey((value) => value + 1)}
+                            navigateOnStart
                             size="sm"
-                            disabled={launchingIds.has(project.id)}
-                            onClick={() => triggerAutonomousRun(project.id, project.repoUrl!)}
-                          >
-                            {launchingIds.has(project.id) ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
+                          />
+                          <Button asChild variant="outline" size="sm">
+                            <Link to="/reports">Reports</Link>
+                          </Button>
+                          <Button asChild variant="outline" size="sm">
+                            <Link to={`/agent?projectId=${project.id}`}>
                               <Bot className="mr-2 h-4 w-4" />
-                            )}
-                            Auto Run
+                              Scan
+                            </Link>
                           </Button>
-                        ) : (
+                          {/^https?:\/\//i.test(project.repoUrl ?? "") ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={launchingIds.has(project.id)}
+                              onClick={() => triggerAutonomousRun(project.id, project.repoUrl!)}
+                            >
+                              {launchingIds.has(project.id) ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Bot className="mr-2 h-4 w-4" />
+                              )}
+                              Auto Run
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              title="Add an HTTP base URL in project settings to enable Auto Run"
+                            >
+                              <Bot className="mr-2 h-4 w-4" />
+                              Auto Run
+                            </Button>
+                          )}
+                          <Button asChild variant="outline" size="sm">
+                            <Link to={`/projects/${project.id}`}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              View
+                            </Link>
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <GenerateButton
+                            projectId={project.id}
+                            onDone={() => setGenRefresh((value) => value + 1)}
+                          />
                           <Button
-                            variant="outline"
-                            size="sm"
-                            disabled
-                            title="Add an HTTP base URL in project settings to enable Auto Run"
+                            variant="ghost"
+                            size="icon"
+                            title="Delete project"
+                            aria-label="Delete project"
+                            onClick={() => deleteProject(project.id, project.name)}
                           >
-                            <Bot className="mr-2 h-4 w-4" />
-                            Auto Run
+                            <Trash2 className="h-4 w-4 text-rose-600" />
                           </Button>
-                        )}
-                        <Button asChild variant="outline" size="sm">
-                          <Link to={`/projects/${project.id}`}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            View
-                          </Link>
-                        </Button>
-                        <GenerateButton
-                          projectId={project.id}
-                          onDone={() => setGenRefresh((value) => value + 1)}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Delete project"
-                          aria-label="Delete project"
-                          onClick={() => deleteProject(project.id, project.name)}
-                        >
-                          <Trash2 className="h-4 w-4 text-rose-600" />
-                        </Button>
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -1213,11 +1221,11 @@ export default function DashboardPage() {
                     <Clock3 className="h-4 w-4 text-slate-500" />
                   );
 
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  >
+                const cardClassName =
+                  "flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" +
+                  (item.href ? " transition-colors hover:border-slate-300 hover:bg-slate-100" : "");
+                const cardContent = (
+                  <>
                     <div className="flex min-w-0 items-start gap-3">
                       <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${toneClass}`} />
                       <div className="min-w-0">
@@ -1231,6 +1239,16 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <span className="shrink-0 text-xs text-slate-500">{formatRelative(item.at)}</span>
+                  </>
+                );
+
+                return item.href ? (
+                  <Link key={item.id} to={item.href} className={cardClassName}>
+                    {cardContent}
+                  </Link>
+                ) : (
+                  <div key={item.id} className={cardClassName}>
+                    {cardContent}
                   </div>
                 );
               })

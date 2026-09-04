@@ -8,9 +8,23 @@ import type WebSocket from "ws";
 import { chromium, type Browser, type BrowserContext, type Page, type CDPSession } from "patchright";
 import { prisma } from "../prisma.js";
 import { dispatchMouseInput, dispatchKeyInput } from "./live-input-forwarding.js";
+import {
+  enqueuePersistExchange,
+  enqueuePersistExperiment,
+  loadPersistedExchange,
+  getPersistQueueDepth,
+  PERSIST_QUEUE_HIGH_WATERMARK,
+  PERSIST_QUEUE_LOW_WATERMARK,
+} from "./live-security-persist.js";
 import { runIdMutationExperiment, runReplayExperiment } from "../security/experiment.js";
 import { runLiveSecurityTests, type BrowserCorsReadResult } from "../security/live-security-tests.js";
 import type { SecurityHttpExchange, ResourceIdCandidate } from "../security/http-exchange.js";
+import {
+  clientExchange,
+  truncateText,
+  MAX_CAPTURED_BODY_CHARS,
+  MAX_CAPTURED_POST_DATA_CHARS,
+} from "../security/live-exchange-serialize.js";
 import { isWithinScope, type ProbeScope } from "../security/http-client.js";
 import { snippet } from "../security/redaction.js";
 
@@ -31,10 +45,15 @@ import { snippet } from "../security/redaction.js";
 const TICKET_TTL_MS = 60_000;
 const IDLE_TIMEOUT_MS = 30 * 60_000; // longer than auth-capture — this is an active testing session, not a quick login
 const VIEWPORT = { width: 1280, height: 800 };
-const MAX_BUFFERED_EXCHANGES = 5_000;
+// Ticket 0.4: shrunk from 5_000 — matches the frontend's own MAX_RETAINED_EXCHANGES = 500, no
+// value buffering server-side far beyond what any client ever renders. Durable storage
+// (Ticket 0.2/0.3) is the overflow now, not a bigger in-memory number.
+const MAX_BUFFERED_EXCHANGES = 400;
 const MAX_PENDING_NETWORK_ENTRIES = 2_000;
-const MAX_CAPTURED_BODY_CHARS = 128_000;
-const MAX_CAPTURED_POST_DATA_CHARS = 32_000;
+// Memory-pressure throttling (Ticket 0.4, §4) — crossing this heapUsed threshold degrades
+// capture (metadata-only, halved effective buffer cap) until usage recovers with margin.
+const LIVE_SECURITY_HEAP_THROTTLE_BYTES = Number(process.env.TM_LIVE_SECURITY_HEAP_THROTTLE_BYTES) || 1_610_612_736; // ~1.5GB
+const HEAP_CHECK_INTERVAL_MS = 5_000;
 const MAX_BODY_RETRIEVAL_BYTES = 512_000;
 const ACTION_CORRELATION_WINDOW_MS = 2_000;
 const MAX_AUTOMATED_SCAN_STEPS = 100;
@@ -47,8 +66,6 @@ const MAX_BROWSER_CORS_PROOFS_PER_SESSION = 25;
 const BROWSER_CORS_PROOF_TIMEOUT_MS = 2_500;
 const RATE_LIMIT_SIGNAL_WINDOW_MS = 60_000;
 const RATE_LIMIT_SIGNAL_THRESHOLD = 3;
-const SENSITIVE_HEADER_RE =
-  /^(authorization|cookie|set-cookie|proxy-authorization|x-api-key|api-key|x-auth-token|x-session|x-session-id|x-csrf-token|x-xsrf-token)$/i;
 const DANGEROUS_ROUTE_RE =
   /(logout|log-out|signout|sign-out|delete|remove|destroy|deactivate|close-account|cancel|billing|checkout|payment|purchase|subscribe|transfer|withdraw|deposit|fund|trade|buy|sell|invest|order|confirm|submit|upload|enroll|enrol|sign-up|signup|register|apply|application|finish|continue)/i;
 const SAFE_SEARCH_INPUT_RE = /(search|filter|query|find|lookup)/i;
@@ -112,6 +129,15 @@ type LiveSession = {
   observedHosts: Set<string>;
   exchanges: SecurityHttpExchange[]; // ring buffer, oldest evicted first
   exchangesById: Map<string, SecurityHttpExchange>;
+  // Ticket 0.4: ids whose in-memory body/postData have been shrunk to a redacted snippet
+  // after durable persistence succeeded — resolveExchange() treats a hit here as needing a
+  // full reload from durable storage rather than using the snippet directly.
+  persistedSnippetIds: Set<string>;
+  effectiveMaxBufferedExchanges: number; // MAX_BUFFERED_EXCHANGES, temporarily halved under memory pressure
+  captureDegraded: boolean; // degradedByBacklog || degradedByMemory — metadata-only capture while true
+  degradedByBacklog: boolean;
+  degradedByMemory: boolean;
+  heapCheckHandle?: NodeJS.Timeout;
   pendingRequests: Map<string, PendingRequest>; // keyed by CDP requestId
   pendingRequestExtraHeaders: Map<string, Record<string, string>>; // keyed by CDP requestId
   pendingResponses: Map<string, PendingResponse>;
@@ -161,12 +187,6 @@ function mergeHeaders(base: Record<string, string>, extra: Record<string, string
     else out[key] = value;
   }
   return out;
-}
-
-function truncateText(value: string | undefined, maxChars: number): string | undefined {
-  if (value === undefined) return undefined;
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n...[truncated ${value.length - maxChars} chars by TestMind live capture]`;
 }
 
 function contentLengthBytes(headers: Record<string, string> | undefined): number | undefined {
@@ -223,32 +243,6 @@ function setAutomatedScanPacing(session: LiveSession, msg: any) {
     type: "automationPacing",
     dispatchDelayMs: session.automatedScanDelayMs,
   });
-}
-
-function redactHeaders(headers: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers)) {
-    out[key] = SENSITIVE_HEADER_RE.test(key) ? "[REDACTED]" : value;
-  }
-  return out;
-}
-
-function clientExchange(exchange: SecurityHttpExchange): SecurityHttpExchange {
-  return {
-    ...exchange,
-    request: {
-      ...exchange.request,
-      headers: redactHeaders(exchange.request.headers),
-      postData: truncateText(exchange.request.postData, MAX_CAPTURED_POST_DATA_CHARS),
-    },
-    response: exchange.response
-      ? {
-          ...exchange.response,
-          headers: redactHeaders(exchange.response.headers),
-          body: truncateText(exchange.response.body, MAX_CAPTURED_BODY_CHARS),
-        }
-      : undefined,
-  };
 }
 
 function hostnameFromUrl(rawUrl: string): string | null {
@@ -328,13 +322,71 @@ function registerRateLimitSignal(session: LiveSession, source: string) {
 function evictBufferedExchange(session: LiveSession) {
   const evictIndex = session.exchanges.findIndex((exchange) => !isBufferedSecurityCandidate(exchange));
   const [removed] = session.exchanges.splice(evictIndex >= 0 ? evictIndex : 0, 1);
-  if (removed) session.exchangesById.delete(removed.id);
+  if (removed) {
+    session.exchangesById.delete(removed.id);
+    session.persistedSnippetIds.delete(removed.id);
+  }
 }
 
-function pushExchange(session: LiveSession, exchange: SecurityHttpExchange) {
+// Ticket 0.4 (§4) — two independent degrade reasons (persist backlog, memory pressure)
+// combine into the single session.captureDegraded flag that shouldCaptureResponseBody
+// consults. Kept deliberately separate from the existing routeWalkPausedByRateLimit /
+// automatedScanDelayMs machinery (outbound rate-limit/WAF backoff) — neither can suppress
+// the other by construction. Broadcasts only fire on the combined flag's edge transitions,
+// never on every check, so a session sitting at the watermark doesn't spam the client.
+export function setCaptureDegraded(session: LiveSession, reason: "persist backlog" | "memory pressure", active: boolean) {
+  if (reason === "persist backlog") session.degradedByBacklog = active;
+  else session.degradedByMemory = active;
+
+  if (reason === "memory pressure") {
+    session.effectiveMaxBufferedExchanges = active
+      ? Math.max(1, Math.floor(MAX_BUFFERED_EXCHANGES / 2))
+      : MAX_BUFFERED_EXCHANGES;
+    while (session.exchanges.length > session.effectiveMaxBufferedExchanges) evictBufferedExchange(session);
+  }
+
+  const next = session.degradedByBacklog || session.degradedByMemory;
+  if (next !== session.captureDegraded) {
+    session.captureDegraded = next;
+    broadcast(session, { type: "captureThrottled", reason, active: next });
+  }
+}
+
+export function checkBacklogWatermark(session: LiveSession) {
+  const depth = getPersistQueueDepth();
+  if (!session.degradedByBacklog && depth >= PERSIST_QUEUE_HIGH_WATERMARK) {
+    setCaptureDegraded(session, "persist backlog", true);
+  } else if (session.degradedByBacklog && depth <= PERSIST_QUEUE_LOW_WATERMARK) {
+    setCaptureDegraded(session, "persist backlog", false);
+  }
+}
+
+function checkMemoryPressure(session: LiveSession) {
+  if (session.closed) return;
+  const heapUsed = process.memoryUsage().heapUsed;
+  if (!session.degradedByMemory && heapUsed >= LIVE_SECURITY_HEAP_THROTTLE_BYTES) {
+    setCaptureDegraded(session, "memory pressure", true);
+  } else if (session.degradedByMemory && heapUsed < LIVE_SECURITY_HEAP_THROTTLE_BYTES * 0.9) {
+    // 10% recovery margin so it doesn't flap right at the threshold.
+    setCaptureDegraded(session, "memory pressure", false);
+  }
+}
+
+export function pushExchange(session: LiveSession, exchange: SecurityHttpExchange) {
   session.exchanges.push(exchange);
   session.exchangesById.set(exchange.id, exchange);
-  while (session.exchanges.length > MAX_BUFFERED_EXCHANGES) evictBufferedExchange(session);
+  while (session.exchanges.length > session.effectiveMaxBufferedExchanges) evictBufferedExchange(session);
+  enqueuePersistExchange(
+    exchange,
+    (err: any) => console.warn(`[live-security-session] failed to persist exchange ${exchange.id}:`, err?.message ?? err),
+    () => {
+      // Bound per-entry memory, not just count: once durably persisted, the in-memory copy
+      // only needs to identify the exchange and support UI display, not carry the full body.
+      if (exchange.request.postData) exchange.request.postData = snippet(exchange.request.postData);
+      if (exchange.response?.body) exchange.response.body = snippet(exchange.response.body);
+      session.persistedSnippetIds.add(exchange.id);
+    }
+  );
 }
 
 function browserCorsReadResult(
@@ -884,6 +936,7 @@ export async function closeLiveSession(id: string): Promise<void> {
   if (!session || session.closed) return;
   session.closed = true;
   clearTimeout(session.idleHandle);
+  if (session.heapCheckHandle) clearInterval(session.heapCheckHandle);
   active.delete(id);
   for (const ws of session.sockets) {
     try { ws.close(); } catch {}
@@ -936,6 +989,11 @@ export async function startLiveSession(authSession: {
     observedHosts: new Set([hostname]),
     exchanges: [],
     exchangesById: new Map(),
+    persistedSnippetIds: new Set(),
+    effectiveMaxBufferedExchanges: MAX_BUFFERED_EXCHANGES,
+    captureDegraded: false,
+    degradedByBacklog: false,
+    degradedByMemory: false,
     pendingRequests: new Map(),
     pendingRequestExtraHeaders: new Map(),
     pendingResponses: new Map(),
@@ -954,6 +1012,7 @@ export async function startLiveSession(authSession: {
     closed: false,
   };
   active.set(authSession.id, session);
+  session.heapCheckHandle = setInterval(() => checkMemoryPressure(session), HEAP_CHECK_INTERVAL_MS);
 
   cdp.on("Page.screencastFrame", (frame: any) => {
     broadcast(session, { type: "frame", data: frame.data, mimeType: "jpeg" });
@@ -1015,8 +1074,13 @@ export async function startLiveSession(authSession: {
     session.pendingResponses.delete(evt.requestId);
     if (!pendingRequest) return;
 
+    // Ticket 0.4 (§4): checked once per captured exchange so a session degrades/recovers
+    // promptly as the shared persist queue backs up or drains, independent of the periodic
+    // memory-pressure interval.
+    checkBacklogWatermark(session);
+
     let body: string | undefined;
-    if (shouldCaptureResponseBody(pendingRequest, pendingResponse, evt.encodedDataLength)) {
+    if (!session.captureDegraded && shouldCaptureResponseBody(pendingRequest, pendingResponse, evt.encodedDataLength)) {
       try {
         const bodyResult: any = await cdp.send("Network.getResponseBody", { requestId: evt.requestId });
         if (!bodyResult.base64Encoded) body = truncateText(bodyResult.body, MAX_CAPTURED_BODY_CHARS);
@@ -1034,7 +1098,7 @@ export async function startLiveSession(authSession: {
         method: pendingRequest.method,
         url: pendingRequest.url,
         headers: pendingRequest.headers,
-        postData: truncateText(pendingRequest.postData, MAX_CAPTURED_POST_DATA_CHARS),
+        postData: session.captureDegraded ? undefined : truncateText(pendingRequest.postData, MAX_CAPTURED_POST_DATA_CHARS),
       },
       response: pendingResponse
         ? {
@@ -1075,12 +1139,90 @@ export async function startLiveSession(authSession: {
   return session;
 }
 
+// Ticket 0.3 — durable exchange retrieval. The in-memory buffer remains the primary path;
+// this only adds a fallback for an exchange that's scrolled out of it. Scoped to this
+// session's own authSessionId inside loadPersistedExchange, so an exchange id belonging to
+// another session can never be resolved here — same invariant the in-memory Map already gave
+// for free (session.exchangesById is per-session), now preserved for the durable path too.
+async function resolveExchange(session: LiveSession, exchangeId: string): Promise<SecurityHttpExchange | undefined> {
+  const hit = session.exchangesById.get(exchangeId);
+  // A hit whose body/postData were shrunk to a snippet post-persist (Ticket 0.4, §3) can't be
+  // used directly — reload the full data from durable storage. Fall back to the snippet-only
+  // copy only if that reload unexpectedly fails, rather than turning a memory-bounding
+  // optimization into a new way to lose an otherwise-known exchange.
+  if (hit && !session.persistedSnippetIds.has(exchangeId)) return hit;
+  const persisted = await loadPersistedExchange(session.id, exchangeId);
+  return persisted ?? hit;
+}
+
+// Ticket 0.5 — durable experiment history. Called AFTER the existing WS broadcast in each of
+// handleMutateMessage/handleReplayMessage/handleSecurityTestMessage, fire-and-forget, so a
+// persistence failure can never affect the live result path that already reached the client.
+function persistMutationOrReplayResult(
+  session: LiveSession,
+  exchange: SecurityHttpExchange,
+  kind: "mutation" | "replay",
+  requestJson: unknown,
+  result: { mutatedResult: { status?: number; body: string }; diff: unknown }
+): void {
+  enqueuePersistExperiment(
+    {
+      authSessionId: session.id,
+      baselineExchangeId: exchange.id,
+      baselineUrl: exchange.request.url,
+      baselineMethod: exchange.request.method,
+      kind,
+      requestJson,
+      resultStatus: result.mutatedResult.status,
+      resultBody: result.mutatedResult.body,
+      diffJson: result.diff,
+    },
+    (err: any) => console.warn(`[live-security-session] failed to persist ${kind} experiment for ${exchange.id}:`, err?.message ?? err)
+  );
+}
+
+function persistSecurityTestResult(session: LiveSession, exchange: SecurityHttpExchange, result: unknown): void {
+  enqueuePersistExperiment(
+    {
+      authSessionId: session.id,
+      baselineExchangeId: exchange.id,
+      baselineUrl: exchange.request.url,
+      baselineMethod: exchange.request.method,
+      kind: "securityTest",
+      securityTestResultJson: result,
+    },
+    (err: any) => console.warn(`[live-security-session] failed to persist securityTest experiment for ${exchange.id}:`, err?.message ?? err)
+  );
+}
+
+function persistExperimentError(
+  session: LiveSession,
+  exchange: SecurityHttpExchange,
+  kind: "mutation" | "replay" | "securityTest",
+  requestJson: unknown,
+  err: any
+): void {
+  enqueuePersistExperiment(
+    {
+      authSessionId: session.id,
+      baselineExchangeId: exchange.id,
+      baselineUrl: exchange.request.url,
+      baselineMethod: exchange.request.method,
+      kind,
+      requestJson,
+      error: err?.message ?? String(err),
+    },
+    (persistErr: any) =>
+      console.warn(`[live-security-session] failed to persist ${kind} experiment error for ${exchange.id}:`, persistErr?.message ?? persistErr)
+  );
+}
+
 async function handleMutateMessage(session: LiveSession, msg: any) {
   const exchangeId = String(msg.exchangeId ?? "");
-  // Invariant #1: the exchange is looked up server-side, from this session's own buffer —
-  // the client never supplies the request/headers itself, only a reference to a previously
-  // broadcast exchange.
-  const exchange = session.exchangesById.get(exchangeId);
+  // Invariant #1: the exchange is looked up server-side, from this session's own buffer or
+  // (Ticket 0.3) durable storage — the client never supplies the request/headers itself,
+  // only a reference to a previously broadcast exchange.
+  const exchange = await resolveExchange(session, exchangeId);
   if (!exchange) {
     broadcast(session, {
       type: "experimentError",
@@ -1094,6 +1236,7 @@ async function handleMutateMessage(session: LiveSession, msg: any) {
     paramName: String(msg.paramName ?? ""),
     value: "",
   };
+  const requestJson = { location: candidate.location, paramName: candidate.paramName, newValue: String(msg.newValue ?? "") };
   try {
     // Invariants #2-#4 are enforced inside runIdMutationExperiment itself, not here.
     const result = await runIdMutationExperiment(exchange, candidate, String(msg.newValue ?? ""), session.scope);
@@ -1104,14 +1247,16 @@ async function handleMutateMessage(session: LiveSession, msg: any) {
       mutatedResult: result.mutatedResult,
       diff: result.diff,
     });
+    persistMutationOrReplayResult(session, exchange, "mutation", requestJson, result);
   } catch (err: any) {
     broadcast(session, { type: "experimentError", exchangeId: exchange.id, error: err?.message ?? String(err) });
+    persistExperimentError(session, exchange, "mutation", requestJson, err);
   }
 }
 
 async function handleReplayMessage(session: LiveSession, msg: any) {
   const exchangeId = String(msg.exchangeId ?? "");
-  const exchange = session.exchangesById.get(exchangeId);
+  const exchange = await resolveExchange(session, exchangeId);
   if (!exchange) {
     broadcast(session, {
       type: "experimentError",
@@ -1131,14 +1276,16 @@ async function handleReplayMessage(session: LiveSession, msg: any) {
       mutatedResult: result.mutatedResult,
       diff: result.diff,
     });
+    persistMutationOrReplayResult(session, exchange, "replay", undefined, result);
   } catch (err: any) {
     broadcast(session, { type: "experimentError", exchangeId: exchange.id, error: err?.message ?? String(err) });
+    persistExperimentError(session, exchange, "replay", undefined, err);
   }
 }
 
 async function handleSecurityTestMessage(session: LiveSession, msg: any) {
   const exchangeId = String(msg.exchangeId ?? "");
-  const exchange = session.exchangesById.get(exchangeId);
+  const exchange = await resolveExchange(session, exchangeId);
   if (!exchange) {
     broadcast(session, {
       type: "securityTestError",
@@ -1158,8 +1305,10 @@ async function handleSecurityTestMessage(session: LiveSession, msg: any) {
       exchangeId: exchange.id,
       result,
     });
+    persistSecurityTestResult(session, exchange, result);
   } catch (err: any) {
     broadcast(session, { type: "securityTestError", exchangeId: exchange.id, error: err?.message ?? String(err) });
+    persistExperimentError(session, exchange, "securityTest", undefined, err);
   }
 }
 

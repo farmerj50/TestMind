@@ -1092,6 +1092,10 @@ export async function testRoutes(app: FastifyInstance) {
         curatedSuiteId: true,
         updatedAt: true,
         tags: true,
+        // Exposes an already-existing column (VR.3B writes it when persisting a security
+        // regression test) so the QA Agent workspace's Coverage tab can find these TestCases
+        // without a new endpoint. No new behavior.
+        securityFindingId: true,
       },
     });
 

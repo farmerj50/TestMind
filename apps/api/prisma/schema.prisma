@@ -108,6 +108,22 @@ enum SecuritySeverity {
   critical
 }
 
+// Ticket VR.1 (Validation + Regression v1). Deliberately named differently from
+// security/validation.ts's TS type SecurityValidationStatus (same 7 values, reused verbatim)
+// to avoid import ambiguity once Prisma generates a same-purpose client enum. Set only by
+// explicit human action via PATCH /security/findings/:id/validation-status - never by any
+// scanner module. Distinct from SecurityFinding.status (the legacy, always-"open", untouched
+// String? column).
+enum SecurityFindingValidationStatus {
+  confirmed
+  likely
+  suspected
+  inconclusive
+  not_exploitable
+  false_positive
+  not_applicable
+}
+
 model User {
   id               String            @id
   plan             PlanTier?
@@ -158,6 +174,12 @@ model Project {
   createdAt DateTime @default(now())
   sharedSteps Json?   @default("{}")
   applicationModel Json? @default("{}")
+  // Application Brain v1 (Ticket AB.1): optimistic-concurrency counter for
+  // applicationModel writes, incremented only by lib/application-model-store.ts's
+  // applyApplicationModelMerge. A dedicated counter rather than a generic updatedAt
+  // (Project has none) so CAS conflicts fire only on genuine concurrent Brain writes,
+  // not on unrelated Project updates.
+  applicationModelVersion Int @default(0)
 
   testRuns         TestRun[]
   suites           TestSuite[]
@@ -255,6 +277,12 @@ model TestCase {
   suite           TestSuite?     @relation(fields: [suiteId], references: [id])
   curatedSuiteId  String?
   curatedSuite    CuratedSuite?  @relation(fields: [curatedSuiteId], references: [id])
+  // Ticket VR.3B (Validation + Regression v1). Durable provenance for a regression test
+  // generated from a confirmed SecurityFinding - a real FK (not JSON metadata) so "which
+  // regression protects this finding" / "does this finding already have a regression" /
+  // "which finding created this test" are real queries, not parsing.
+  securityFindingId String?
+  securityFinding   SecurityFinding? @relation(fields: [securityFindingId], references: [id])
   key             String         @default(cuid())
   title         String
   priority      TestPriority   @default(medium)
@@ -532,7 +560,13 @@ model SecurityFinding {
   evidence    Json?
   suggestion  String?
   status      String?
+  // Ticket VR.1 - real, enum-backed, human-set validation state. null = untriaged. See the
+  // enum's own doc comment for why this is a separate column/type from `status` above.
+  validationStatus SecurityFindingValidationStatus?
   createdAt   DateTime            @default(now())
+
+  // Ticket VR.3B - back-relation for TestCase.securityFindingId.
+  regressionTestCases TestCase[]
 
   @@index([scanId, severity])
 }
@@ -576,8 +610,63 @@ model SecurityAuthSession {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  liveExchanges   SecurityLiveExchange[]
+  liveExperiments SecurityLiveExperiment[]
+
   @@index([projectId, createdAt])
   @@index([projectId, status])
+}
+
+// ── Live Security Testing: durable execution state (TestMind Autonomous v1, Phase 0) ──
+// Purpose-built rather than an Operator-spine extension: a live session is a single
+// continuous, human-driven capture stream with no task graph and no agent making
+// decisions, unlike OperatorJob/Task/Step. Anchored 1:1 off SecurityAuthSession, the same
+// way SecurityScanJob hangs directly off Project rather than being an OperatorJob. The
+// pattern reused from the Operator spine is small metadata rows + a path pointer for large
+// content (OperatorArtifact.path), never a blob column, applied without the coupling.
+
+model SecurityLiveExchange {
+  id                    String              @id // = SecurityHttpExchange.id (crypto.randomUUID() from live-security-session.ts) — must match the in-memory id used for exchangesById/mutate/replay lookups, so NOT @default(cuid())
+  seq                   BigInt              @unique @default(autoincrement()) // stable insertion-order cursor for pagination, independent of clock/CDP-event ordering
+  authSessionId         String
+  authSession           SecurityAuthSession @relation(fields: [authSessionId], references: [id])
+  timestamp             DateTime
+  method                String
+  url                   String              @db.Text
+  requestHeadersJson    Json // full headers, unredacted — needed verbatim for replay/mutation reuse; same trust tier as SecurityAuthSession.storagePath
+  requestPostDataInline String?             @db.Text
+  requestPostDataPath   String?
+  responseStatus        Int?
+  responseHeadersJson   Json?
+  responseDurationMs    Int?
+  responseBodyInline    String?             @db.Text
+  responseBodyPath      String?
+  responseBodyBytes     Int? // original length, so UI can show size even when body isn't loaded
+  correlatedActionId    String?
+  createdAt             DateTime            @default(now())
+
+  @@index([authSessionId, seq])
+  @@index([createdAt])
+}
+
+model SecurityLiveExperiment {
+  id                     String              @id @default(cuid())
+  authSessionId          String
+  authSession            SecurityAuthSession @relation(fields: [authSessionId], references: [id])
+  baselineExchangeId     String? // soft reference, no FK/cascade — eviction of the exchange row must never block/cascade-delete this row
+  baselineUrl            String              @db.Text // snapshotted at experiment time so this row stays meaningful after the baseline exchange is evicted
+  baselineMethod         String
+  kind                   String // "mutation" | "replay" | "securityTest"
+  requestJson            Json? // e.g. mutation candidate {location, paramName, newValue}
+  resultStatus           Int?
+  resultBodyInline       String?             @db.Text
+  resultBodyPath         String?
+  diffJson               Json? // computeDifferential() output — small/structured, always inline
+  securityTestResultJson Json? // runLiveSecurityTests() output when kind="securityTest"
+  error                  String?
+  createdAt              DateTime            @default(now())
+
+  @@index([authSessionId, createdAt])
 }
 
 model ProjectSecret {

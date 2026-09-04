@@ -167,15 +167,6 @@ export default async function reportsRoutes(app: FastifyInstance) {
         return reply.send({ counts: empty, lastRun: null });
       }
 
-      // counts by status
-      const grouped = await prisma.testRun.groupBy({
-        by: ["status"],
-        where: projectId
-          ? { projectId, project: { ownerId: userId } }
-          : { projectId: { in: projectIds } },
-        _count: { _all: true },
-      });
-
       const counts: Record<string, number> = {
         queued: 0,
         running: 0,
@@ -184,9 +175,37 @@ export default async function reportsRoutes(app: FastifyInstance) {
         total: 0,
       };
 
-      for (const g of grouped) {
-        counts[g.status] = g._count._all;
+      // queued/running are inherently about runs currently in flight - a TestRun-level concept,
+      // correctly counted by run here.
+      const runGrouped = await prisma.testRun.groupBy({
+        by: ["status"],
+        where: projectId
+          ? { projectId, project: { ownerId: userId } }
+          : { projectId: { in: projectIds } },
+        _count: { _all: true },
+      });
+      for (const g of runGrouped) {
+        if (g.status === "queued" || g.status === "running") counts[g.status] = g._count._all;
+      }
+
+      // succeeded/failed/total must be a per-test count, not a per-run count: TestRun.status is
+      // "failed" if even one test in that run failed (see worker.ts's `ok ? succeeded : failed`),
+      // so grouping by TestRun.status here would count every one of that run's passing tests as
+      // failed too. TestCase.lastResultStatus is each test's own most recent outcome - the same
+      // canonical per-test signal Application Brain's qaFailures/coverage-report already use -
+      // so a run with 9 passes and 1 failure correctly contributes 9 to succeeded and 1 to failed.
+      const caseGrouped = await prisma.testCase.groupBy({
+        by: ["lastResultStatus"],
+        where: {
+          ...(projectId ? { projectId, project: { ownerId: userId } } : { projectId: { in: projectIds } }),
+          lastResultStatus: { not: null },
+        },
+        _count: { _all: true },
+      });
+      for (const g of caseGrouped) {
         counts.total += g._count._all;
+        if (g.lastResultStatus === "passed") counts.succeeded += g._count._all;
+        else if (g.lastResultStatus === "failed" || g.lastResultStatus === "error") counts.failed += g._count._all;
       }
 
       // Journey 1: count test cases whose canonical passing state came from self-heal

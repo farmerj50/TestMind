@@ -24,7 +24,9 @@ import {
   computeApplicationModelUpdate,
   normalizeApplicationModel,
   normalizeRouteHint,
+  upsertTestLink,
 } from '../lib/application-model.js';
+import { applyApplicationModelMerge } from '../lib/application-model-store.js';
 import {
   getOctokitForProject,
   pushSpecFilesToBranch,
@@ -1773,6 +1775,12 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   // ── Step 5: Upsert test cases to DB ───────────────────────────────────────
   let savedCount = 0;
+  // Application Brain v1 (Ticket AB.4): route is already a local variable here (`page`) and
+  // discarded into an opaque compound key today - this collects it so a testLink can be
+  // written per newly-created case below, once each case has a real id. Only new cases, per
+  // MUST HAVE #7 ("written once, at creation time") - not re-linked on every rediscovery of an
+  // already-known case, which would multiply CAS writes for no informational gain.
+  const newlyCreatedLinks: Array<{ testCaseId: string; routeHint: string }> = [];
   if (planCases.length > 0) {
     await prisma.$transaction(async (tx) => {
       for (const c of planCases) {
@@ -1787,11 +1795,26 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
         if (existing) {
           await tx.testCase.update({ where: { id: existing.id }, data: { title } });
         } else {
-          await tx.testCase.create({ data: { projectId: opJob.projectId, key, title } });
+          const created = await tx.testCase.create({ data: { projectId: opJob.projectId, key, title }, select: { id: true } });
           savedCount++;
+          newlyCreatedLinks.push({ testCaseId: created.id, routeHint: normalizeRouteHint(page) });
         }
       }
     });
+  }
+
+  // Best-effort, outside the transaction above - a CAS merge can take several retries under
+  // concurrent writers, which isn't worth holding the TestCase transaction open for. A failed
+  // link never blocks case creation, which has already committed by this point; the case just
+  // falls back to AB.2's "inferred" coverage confidence instead of "linked".
+  for (const link of newlyCreatedLinks) {
+    try {
+      await applyApplicationModelMerge(opJob.projectId, (store) =>
+        upsertTestLink(store, link.testCaseId, link.routeHint, new Date().toISOString())
+      );
+    } catch (err) {
+      console.warn(`[operator-worker] failed to write Application Brain testLink for case ${link.testCaseId}:`, err);
+    }
   }
 
   // ── Step 6: Persist task result and artifact ───────────────────────────────

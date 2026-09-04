@@ -1,0 +1,4022 @@
+{
+  "page": 1,
+  "pageSize": 0,
+  "totalItems": 25,
+  "items": [
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2026-07-15",
+          "PayDate": "2026-08-17",
+          "RecordDate": "2026-07-15",
+          "DeclaredDate": "2026-06-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2026-04-15",
+          "PayDate": "2026-05-15",
+          "RecordDate": "2026-04-15",
+          "DeclaredDate": "2026-02-20",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2026-01-15",
+          "PayDate": "2026-02-13",
+          "RecordDate": "2026-01-15",
+          "DeclaredDate": "2025-12-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-10-15",
+          "PayDate": "2025-11-17",
+          "RecordDate": "2025-10-15",
+          "DeclaredDate": "2025-09-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-07-15",
+          "PayDate": "2025-08-15",
+          "RecordDate": "2025-07-15",
+          "DeclaredDate": "2025-06-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-04-15",
+          "PayDate": "2025-05-15",
+          "RecordDate": "2025-04-15",
+          "DeclaredDate": "2025-02-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-01-15",
+          "PayDate": "2025-02-14",
+          "RecordDate": "2025-01-15",
+          "DeclaredDate": "2024-12-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.55,
+          "Currency": "USD",
+          "ExDate": "2024-10-15",
+          "PayDate": "2024-11-15",
+          "RecordDate": "2024-10-15",
+          "DeclaredDate": "2024-09-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.55,
+          "Currency": "USD",
+          "ExDate": "2024-07-15",
+          "PayDate": "2024-08-15",
+          "RecordDate": "2024-07-15",
+          "DeclaredDate": "2024-06-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.55,
+          "Currency": "USD",
+          "ExDate": "2024-04-12",
+          "PayDate": "2024-05-15",
+          "RecordDate": "2024-04-15",
+          "DeclaredDate": "2024-02-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.55,
+          "Currency": "USD",
+          "ExDate": "2024-01-11",
+          "PayDate": "2024-02-15",
+          "RecordDate": "2024-01-12",
+          "DeclaredDate": "2023-12-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2023-10-12",
+          "PayDate": "2023-11-15",
+          "RecordDate": "2023-10-13",
+          "DeclaredDate": "2023-09-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2023-07-13",
+          "PayDate": "2023-08-15",
+          "RecordDate": "2023-07-14",
+          "DeclaredDate": "2023-06-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2023-04-13",
+          "PayDate": "2023-05-15",
+          "RecordDate": "2023-04-14",
+          "DeclaredDate": "2023-02-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2023-01-12",
+          "PayDate": "2023-02-15",
+          "RecordDate": "2023-01-13",
+          "DeclaredDate": "2022-12-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.47,
+          "Currency": "USD",
+          "ExDate": "2022-10-13",
+          "PayDate": "2022-11-15",
+          "RecordDate": "2022-10-14",
+          "DeclaredDate": "2022-09-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.47,
+          "Currency": "USD",
+          "ExDate": "2022-07-14",
+          "PayDate": "2022-08-15",
+          "RecordDate": "2022-07-15",
+          "DeclaredDate": "2022-06-10",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.47,
+          "Currency": "USD",
+          "ExDate": "2022-04-13",
+          "PayDate": "2022-05-16",
+          "RecordDate": "2022-04-15",
+          "DeclaredDate": "2022-02-18",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.47,
+          "Currency": "USD",
+          "ExDate": "2022-01-13",
+          "PayDate": "2022-02-15",
+          "RecordDate": "2022-01-14",
+          "DeclaredDate": "2021-12-10",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2021-10-14",
+          "PayDate": "2021-11-15",
+          "RecordDate": "2021-10-15",
+          "DeclaredDate": "2021-09-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2021-07-14",
+          "PayDate": "2021-08-16",
+          "RecordDate": "2021-07-15",
+          "DeclaredDate": "2021-06-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2021-04-14",
+          "PayDate": "2021-05-17",
+          "RecordDate": "2021-04-15",
+          "DeclaredDate": "2021-02-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2021-01-14",
+          "PayDate": "2021-02-16",
+          "RecordDate": "2021-01-15",
+          "DeclaredDate": "2020-12-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2020-10-14",
+          "PayDate": "2020-11-16",
+          "RecordDate": "2020-10-15",
+          "DeclaredDate": "2020-09-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2020-07-14",
+          "PayDate": "2020-08-17",
+          "RecordDate": "2020-07-15",
+          "DeclaredDate": "2020-06-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2020-04-14",
+          "PayDate": "2020-05-15",
+          "RecordDate": "2020-04-15",
+          "DeclaredDate": "2020-02-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2020-01-14",
+          "PayDate": "2020-02-14",
+          "RecordDate": "2020-01-15",
+          "DeclaredDate": "2019-12-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2019-10-11",
+          "PayDate": "2019-11-15",
+          "RecordDate": "2019-10-15",
+          "DeclaredDate": "2019-09-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2019-07-12",
+          "PayDate": "2019-08-15",
+          "RecordDate": "2019-07-15",
+          "DeclaredDate": "2019-06-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2019-04-12",
+          "PayDate": "2019-05-15",
+          "RecordDate": "2019-04-15",
+          "DeclaredDate": "2019-02-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2019-01-14",
+          "PayDate": "2019-02-15",
+          "RecordDate": "2019-01-15",
+          "DeclaredDate": "2018-12-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.28,
+          "Currency": "USD",
+          "ExDate": "2018-10-12",
+          "PayDate": "2018-11-15",
+          "RecordDate": "2018-10-15",
+          "DeclaredDate": "2018-09-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.28,
+          "Currency": "USD",
+          "ExDate": "2018-07-12",
+          "PayDate": "2018-08-15",
+          "RecordDate": "2018-07-13",
+          "DeclaredDate": "2018-06-08",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.28,
+          "Currency": "USD",
+          "ExDate": "2018-04-12",
+          "PayDate": "2018-05-15",
+          "RecordDate": "2018-04-13",
+          "DeclaredDate": "2018-02-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.28,
+          "Currency": "USD",
+          "ExDate": "2018-01-11",
+          "PayDate": "2018-02-15",
+          "RecordDate": "2018-01-12",
+          "DeclaredDate": "2017-12-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2017-10-12",
+          "PayDate": "2017-11-15",
+          "RecordDate": "2017-10-13",
+          "DeclaredDate": "2017-09-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2017-07-12",
+          "PayDate": "2017-08-15",
+          "RecordDate": "2017-07-14",
+          "DeclaredDate": "2017-06-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2017-04-11",
+          "PayDate": "2017-05-15",
+          "RecordDate": "2017-04-14",
+          "DeclaredDate": "2017-02-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2017-01-11",
+          "PayDate": "2017-02-15",
+          "RecordDate": "2017-01-13",
+          "DeclaredDate": "2016-12-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.26,
+          "Currency": "USD",
+          "ExDate": "2016-10-12",
+          "PayDate": "2016-11-15",
+          "RecordDate": "2016-10-14",
+          "DeclaredDate": "2016-09-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.26,
+          "Currency": "USD",
+          "ExDate": "2016-07-13",
+          "PayDate": "2016-08-15",
+          "RecordDate": "2016-07-15",
+          "DeclaredDate": "2016-06-10",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.26,
+          "Currency": "USD",
+          "ExDate": "2016-04-13",
+          "PayDate": "2016-05-16",
+          "RecordDate": "2016-04-15",
+          "DeclaredDate": "2016-02-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.26,
+          "Currency": "USD",
+          "ExDate": "2016-01-13",
+          "PayDate": "2016-02-16",
+          "RecordDate": "2016-01-15",
+          "DeclaredDate": "2015-12-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.24,
+          "Currency": "USD",
+          "ExDate": "2015-10-13",
+          "PayDate": "2015-11-15",
+          "RecordDate": "2015-10-15",
+          "DeclaredDate": "2015-09-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.24,
+          "Currency": "USD",
+          "ExDate": "2015-07-13",
+          "PayDate": "2015-08-15",
+          "RecordDate": "2015-07-15",
+          "DeclaredDate": "2015-06-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.24,
+          "Currency": "USD",
+          "ExDate": "2015-04-13",
+          "PayDate": "2015-05-15",
+          "RecordDate": "2015-04-15",
+          "DeclaredDate": "2015-02-20",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.24,
+          "Currency": "USD",
+          "ExDate": "2015-01-13",
+          "PayDate": "2015-02-13",
+          "RecordDate": "2015-01-15",
+          "DeclaredDate": "2014-12-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.22,
+          "Currency": "USD",
+          "ExDate": "2014-10-10",
+          "PayDate": "2014-11-15",
+          "RecordDate": "2014-10-15",
+          "DeclaredDate": "2014-09-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.22,
+          "Currency": "USD",
+          "ExDate": "2014-07-11",
+          "PayDate": "2014-08-15",
+          "RecordDate": "2014-07-15",
+          "DeclaredDate": "2014-06-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.22,
+          "Currency": "USD",
+          "ExDate": "2014-04-11",
+          "PayDate": "2014-05-15",
+          "RecordDate": "2014-04-15",
+          "DeclaredDate": "2014-02-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.22,
+          "Currency": "USD",
+          "ExDate": "2014-01-13",
+          "PayDate": "2014-02-15",
+          "RecordDate": "2014-01-15",
+          "DeclaredDate": "2013-10-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.14,
+          "Currency": "USD",
+          "ExDate": "2013-10-10",
+          "PayDate": "2013-11-15",
+          "RecordDate": "2013-10-15",
+          "DeclaredDate": "2013-09-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.14,
+          "Currency": "USD",
+          "ExDate": "2013-07-11",
+          "PayDate": "2013-08-15",
+          "RecordDate": "2013-07-15",
+          "DeclaredDate": "2013-06-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.14,
+          "Currency": "USD",
+          "ExDate": "2013-04-11",
+          "PayDate": "2013-05-15",
+          "RecordDate": "2013-04-15",
+          "DeclaredDate": "2013-02-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.14,
+          "Currency": "USD",
+          "ExDate": "2013-01-11",
+          "PayDate": "2013-02-15",
+          "RecordDate": "2013-01-15",
+          "DeclaredDate": "2012-12-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.244,
+          "Currency": "USD",
+          "ExDate": "2012-10-11",
+          "PayDate": "2012-11-15",
+          "RecordDate": "2012-10-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.244,
+          "Currency": "USD",
+          "ExDate": "2012-07-11",
+          "PayDate": "2012-08-15",
+          "RecordDate": "2012-07-13",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.244,
+          "Currency": "USD",
+          "ExDate": "2012-04-11",
+          "PayDate": "2012-05-15",
+          "RecordDate": "2012-04-13",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2297,
+          "Currency": "USD",
+          "ExDate": "2012-01-11",
+          "PayDate": "2012-02-15",
+          "RecordDate": "2012-01-13",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2297,
+          "Currency": "USD",
+          "ExDate": "2011-10-12",
+          "PayDate": "2011-11-15",
+          "RecordDate": "2011-10-14",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2297,
+          "Currency": "USD",
+          "ExDate": "2011-07-13",
+          "PayDate": "2011-08-15",
+          "RecordDate": "2011-07-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2297,
+          "Currency": "USD",
+          "ExDate": "2011-04-13",
+          "PayDate": "2011-05-16",
+          "RecordDate": "2011-04-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2105,
+          "Currency": "USD",
+          "ExDate": "2011-01-12",
+          "PayDate": "2011-02-15",
+          "RecordDate": "2011-01-14",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2105,
+          "Currency": "USD",
+          "ExDate": "2010-10-13",
+          "PayDate": "2010-11-15",
+          "RecordDate": "2010-10-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2105,
+          "Currency": "USD",
+          "ExDate": "2010-07-13",
+          "PayDate": "2010-08-15",
+          "RecordDate": "2010-07-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2105,
+          "Currency": "USD",
+          "ExDate": "2010-04-13",
+          "PayDate": "2010-05-15",
+          "RecordDate": "2010-04-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.1914,
+          "Currency": "USD",
+          "ExDate": "2010-01-13",
+          "PayDate": "2010-02-15",
+          "RecordDate": "2010-01-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 1552
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 3.2,
+          "Currency": "EUR",
+          "ExDate": "2026-04-21",
+          "PayDate": "2026-04-23",
+          "RecordDate": "2026-04-22",
+          "DeclaredDate": "2026-04-09",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.0,
+          "Currency": "EUR",
+          "ExDate": "2025-04-22",
+          "PayDate": "2025-04-24",
+          "RecordDate": "2025-04-23",
+          "DeclaredDate": "2025-02-20",
+          "PaymentFrequency": "Other",
+          "Type": "ExtraDividend"
+        },
+        {
+          "DividendAmount": 2.0,
+          "Currency": "EUR",
+          "ExDate": "2025-04-22",
+          "PayDate": "2025-04-24",
+          "RecordDate": "2025-04-23",
+          "DeclaredDate": "2025-02-20",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9927,
+          "Currency": "EUR",
+          "ExDate": "2024-04-16",
+          "PayDate": "2024-04-18",
+          "RecordDate": "2024-04-17",
+          "DeclaredDate": "2024-02-28",
+          "PaymentFrequency": "Other",
+          "Type": "ExtraDividend"
+        },
+        {
+          "DividendAmount": 1.7868,
+          "Currency": "EUR",
+          "ExDate": "2024-04-16",
+          "PayDate": "2024-04-18",
+          "RecordDate": "2024-04-17",
+          "DeclaredDate": "2024-02-02",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.7759,
+          "Currency": "EUR",
+          "ExDate": "2023-04-25",
+          "PayDate": "2023-04-27",
+          "RecordDate": "2023-04-26",
+          "DeclaredDate": "2023-03-08",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.4799,
+          "Currency": "EUR",
+          "ExDate": "2022-04-19",
+          "PayDate": "2022-04-21",
+          "RecordDate": "2022-04-20",
+          "DeclaredDate": "2022-03-01",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.6279,
+          "Currency": "EUR",
+          "ExDate": "2019-04-15",
+          "PayDate": "2019-04-17",
+          "RecordDate": "2019-04-16",
+          "DeclaredDate": "2019-02-14",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.4799,
+          "Currency": "EUR",
+          "ExDate": "2018-04-16",
+          "PayDate": "2018-04-18",
+          "RecordDate": "2018-04-17",
+          "DeclaredDate": "2018-02-15",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.3319,
+          "Currency": "EUR",
+          "ExDate": "2017-04-18",
+          "PayDate": "2017-04-20",
+          "RecordDate": "2017-04-19",
+          "DeclaredDate": "2017-02-22",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.2826,
+          "Currency": "EUR",
+          "ExDate": "2016-05-02",
+          "PayDate": "2016-05-04",
+          "RecordDate": "2016-05-03",
+          "DeclaredDate": "2016-04-14",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.1839,
+          "Currency": "EUR",
+          "ExDate": "2015-06-01",
+          "PayDate": "2015-06-03",
+          "RecordDate": "2015-06-02",
+          "DeclaredDate": "2015-02-27",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.74,
+          "Currency": "EUR",
+          "ExDate": "2014-05-29",
+          "PayDate": "2014-06-03",
+          "RecordDate": "2014-06-02",
+          "DeclaredDate": "2014-02-26",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.592,
+          "Currency": "EUR",
+          "ExDate": "2013-05-31",
+          "PayDate": "2013-06-05",
+          "RecordDate": "2013-06-04",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.444,
+          "Currency": "EUR",
+          "ExDate": "2012-06-04",
+          "PayDate": "2012-06-07",
+          "RecordDate": "2012-06-06",
+          "DeclaredDate": "2012-06-01",
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.2171,
+          "Currency": "EUR",
+          "ExDate": "2011-06-01",
+          "PayDate": "2011-06-06",
+          "RecordDate": "2011-06-03",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Annual",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 1234
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.65,
+          "Currency": "USD",
+          "ExDate": "2026-06-22",
+          "PayDate": "2026-06-30",
+          "RecordDate": "2026-06-22",
+          "DeclaredDate": "2026-06-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.65,
+          "Currency": "USD",
+          "ExDate": "2026-03-23",
+          "PayDate": "2026-03-31",
+          "RecordDate": "2026-03-23",
+          "DeclaredDate": "2026-03-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.65,
+          "Currency": "USD",
+          "ExDate": "2025-12-22",
+          "PayDate": "2025-12-31",
+          "RecordDate": "2025-12-22",
+          "DeclaredDate": "2025-12-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-09-22",
+          "PayDate": "2025-09-30",
+          "RecordDate": "2025-09-22",
+          "DeclaredDate": "2025-09-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-06-20",
+          "PayDate": "2025-06-30",
+          "RecordDate": "2025-06-20",
+          "DeclaredDate": "2025-06-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2025-03-20",
+          "PayDate": "2025-03-31",
+          "RecordDate": "2025-03-20",
+          "DeclaredDate": "2025-03-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.59,
+          "Currency": "USD",
+          "ExDate": "2024-12-23",
+          "PayDate": "2024-12-31",
+          "RecordDate": "2024-12-23",
+          "DeclaredDate": "2024-12-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.53,
+          "Currency": "USD",
+          "ExDate": "2024-09-19",
+          "PayDate": "2024-09-30",
+          "RecordDate": "2024-09-19",
+          "DeclaredDate": "2024-09-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2024-06-24",
+          "PayDate": "2024-06-28",
+          "RecordDate": "2024-06-24",
+          "DeclaredDate": "2024-06-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2024-03-20",
+          "PayDate": "2024-03-29",
+          "RecordDate": "2024-03-21",
+          "DeclaredDate": "2024-03-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2023-12-19",
+          "PayDate": "2023-12-29",
+          "RecordDate": "2023-12-20",
+          "DeclaredDate": "2023-12-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.46,
+          "Currency": "USD",
+          "ExDate": "2023-09-20",
+          "PayDate": "2023-09-29",
+          "RecordDate": "2023-09-21",
+          "DeclaredDate": "2023-08-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.46,
+          "Currency": "USD",
+          "ExDate": "2023-06-21",
+          "PayDate": "2023-06-30",
+          "RecordDate": "2023-06-22",
+          "DeclaredDate": "2023-06-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.46,
+          "Currency": "USD",
+          "ExDate": "2023-03-21",
+          "PayDate": "2023-03-31",
+          "RecordDate": "2023-03-22",
+          "DeclaredDate": "2023-03-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.46,
+          "Currency": "USD",
+          "ExDate": "2022-12-19",
+          "PayDate": "2022-12-30",
+          "RecordDate": "2022-12-20",
+          "DeclaredDate": "2022-12-08",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.41,
+          "Currency": "USD",
+          "ExDate": "2022-09-21",
+          "PayDate": "2022-09-30",
+          "RecordDate": "2022-09-22",
+          "DeclaredDate": "2022-09-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.41,
+          "Currency": "USD",
+          "ExDate": "2022-06-21",
+          "PayDate": "2022-06-30",
+          "RecordDate": "2022-06-22",
+          "DeclaredDate": "2022-05-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.41,
+          "Currency": "USD",
+          "ExDate": "2022-03-21",
+          "PayDate": "2022-03-31",
+          "RecordDate": "2022-03-22",
+          "DeclaredDate": "2022-03-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.41,
+          "Currency": "USD",
+          "ExDate": "2021-12-21",
+          "PayDate": "2021-12-31",
+          "RecordDate": "2021-12-22",
+          "DeclaredDate": "2021-12-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2021-09-21",
+          "PayDate": "2021-09-30",
+          "RecordDate": "2021-09-22",
+          "DeclaredDate": "2021-09-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2021-06-21",
+          "PayDate": "2021-06-30",
+          "RecordDate": "2021-06-22",
+          "DeclaredDate": "2021-06-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2021-03-19",
+          "PayDate": "2021-03-31",
+          "RecordDate": "2021-03-22",
+          "DeclaredDate": "2021-03-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.36,
+          "Currency": "USD",
+          "ExDate": "2020-12-18",
+          "PayDate": "2020-12-31",
+          "RecordDate": "2020-12-21",
+          "DeclaredDate": "2020-12-10",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.325,
+          "Currency": "USD",
+          "ExDate": "2020-09-21",
+          "PayDate": "2020-09-30",
+          "RecordDate": "2020-09-22",
+          "DeclaredDate": "2020-09-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.325,
+          "Currency": "USD",
+          "ExDate": "2020-06-19",
+          "PayDate": "2020-06-30",
+          "RecordDate": "2020-06-22",
+          "DeclaredDate": "2020-06-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.325,
+          "Currency": "USD",
+          "ExDate": "2020-03-20",
+          "PayDate": "2020-03-31",
+          "RecordDate": "2020-03-23",
+          "DeclaredDate": "2020-03-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.325,
+          "Currency": "USD",
+          "ExDate": "2019-12-20",
+          "PayDate": "2019-12-31",
+          "RecordDate": "2019-12-23",
+          "DeclaredDate": "2019-12-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2019-09-20",
+          "PayDate": "2019-10-01",
+          "RecordDate": "2019-09-23",
+          "DeclaredDate": "2019-09-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2019-06-21",
+          "PayDate": "2019-07-02",
+          "RecordDate": "2019-06-24",
+          "DeclaredDate": "2019-06-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2019-03-20",
+          "PayDate": "2019-03-29",
+          "RecordDate": "2019-03-21",
+          "DeclaredDate": "2019-03-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.265,
+          "Currency": "USD",
+          "ExDate": "2018-12-18",
+          "PayDate": "2018-12-28",
+          "RecordDate": "2018-12-19",
+          "DeclaredDate": "2018-12-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.175,
+          "Currency": "USD",
+          "ExDate": "2018-09-18",
+          "PayDate": "2018-09-28",
+          "RecordDate": "2018-09-19",
+          "DeclaredDate": "2018-09-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.175,
+          "Currency": "USD",
+          "ExDate": "2018-06-19",
+          "PayDate": "2018-06-29",
+          "RecordDate": "2018-06-20",
+          "DeclaredDate": "2018-06-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.175,
+          "Currency": "USD",
+          "ExDate": "2018-03-21",
+          "PayDate": "2018-03-29",
+          "RecordDate": "2018-03-22",
+          "DeclaredDate": "2018-03-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.175,
+          "Currency": "USD",
+          "ExDate": "2017-12-18",
+          "PayDate": "2017-12-29",
+          "RecordDate": "2017-12-19",
+          "DeclaredDate": "2017-12-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.102,
+          "Currency": "USD",
+          "ExDate": "2017-09-18",
+          "PayDate": "2017-09-29",
+          "RecordDate": "2017-09-19",
+          "DeclaredDate": "2017-08-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.102,
+          "Currency": "USD",
+          "ExDate": "2017-06-15",
+          "PayDate": "2017-06-30",
+          "RecordDate": "2017-06-19",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.102,
+          "Currency": "USD",
+          "ExDate": "2017-03-16",
+          "PayDate": "2017-03-31",
+          "RecordDate": "2017-03-20",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.102,
+          "Currency": "USD",
+          "ExDate": "2016-12-14",
+          "PayDate": "2016-12-30",
+          "RecordDate": "2016-12-16",
+          "DeclaredDate": "2016-12-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.051,
+          "Currency": "USD",
+          "ExDate": "2016-09-15",
+          "PayDate": "2016-09-30",
+          "RecordDate": "2016-09-19",
+          "DeclaredDate": "2016-09-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.05,
+          "Currency": "USD",
+          "ExDate": "2016-06-15",
+          "PayDate": "2016-06-30",
+          "RecordDate": "2016-06-17",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.049,
+          "Currency": "USD",
+          "ExDate": "2016-03-16",
+          "PayDate": "2016-03-31",
+          "RecordDate": "2016-03-18",
+          "DeclaredDate": "2016-03-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.044,
+          "Currency": "USD",
+          "ExDate": "2015-12-16",
+          "PayDate": "2015-12-30",
+          "RecordDate": "2015-12-18",
+          "DeclaredDate": "2015-12-08",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.042,
+          "Currency": "USD",
+          "ExDate": "2015-09-16",
+          "PayDate": "2015-09-30",
+          "RecordDate": "2015-09-18",
+          "DeclaredDate": "2015-09-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.04,
+          "Currency": "USD",
+          "ExDate": "2015-06-17",
+          "PayDate": "2015-06-30",
+          "RecordDate": "2015-06-19",
+          "DeclaredDate": "2015-06-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.038,
+          "Currency": "USD",
+          "ExDate": "2015-03-18",
+          "PayDate": "2015-03-31",
+          "RecordDate": "2015-03-20",
+          "DeclaredDate": "2015-03-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.035,
+          "Currency": "USD",
+          "ExDate": "2014-12-17",
+          "PayDate": "2014-12-31",
+          "RecordDate": "2014-12-19",
+          "DeclaredDate": "2014-12-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.032,
+          "Currency": "USD",
+          "ExDate": "2014-09-17",
+          "PayDate": "2014-09-30",
+          "RecordDate": "2014-03-19",
+          "DeclaredDate": "2014-09-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.029,
+          "Currency": "USD",
+          "ExDate": "2014-06-17",
+          "PayDate": "2014-06-30",
+          "RecordDate": "2014-06-19",
+          "DeclaredDate": "2014-06-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.027,
+          "Currency": "USD",
+          "ExDate": "2014-03-18",
+          "PayDate": "2014-03-31",
+          "RecordDate": "2014-03-20",
+          "DeclaredDate": "2014-03-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.025,
+          "Currency": "USD",
+          "ExDate": "2013-12-18",
+          "PayDate": "2013-12-31",
+          "RecordDate": "2013-12-20",
+          "DeclaredDate": "2013-12-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.023,
+          "Currency": "USD",
+          "ExDate": "2013-09-17",
+          "PayDate": "2013-09-30",
+          "RecordDate": "2013-09-19",
+          "DeclaredDate": "2013-09-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.021,
+          "Currency": "USD",
+          "ExDate": "2013-06-13",
+          "PayDate": "2013-06-28",
+          "RecordDate": "2013-06-17",
+          "DeclaredDate": "2013-06-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.019,
+          "Currency": "USD",
+          "ExDate": "2013-03-21",
+          "PayDate": "2013-04-04",
+          "RecordDate": "2013-03-25",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.017,
+          "Currency": "USD",
+          "ExDate": "2012-12-13",
+          "PayDate": "2012-12-28",
+          "RecordDate": "2012-12-17",
+          "DeclaredDate": "2012-12-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.016,
+          "Currency": "USD",
+          "ExDate": "2012-09-18",
+          "PayDate": "2012-10-01",
+          "RecordDate": "2012-09-20",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.015,
+          "Currency": "USD",
+          "ExDate": "2012-06-14",
+          "PayDate": "2012-06-29",
+          "RecordDate": "2012-06-18",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.013,
+          "Currency": "USD",
+          "ExDate": "2012-03-15",
+          "PayDate": "2012-03-30",
+          "RecordDate": "2012-03-19",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.012,
+          "Currency": "USD",
+          "ExDate": "2011-12-15",
+          "PayDate": "2011-12-30",
+          "RecordDate": "2011-12-19",
+          "DeclaredDate": "2011-12-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.011,
+          "Currency": "USD",
+          "ExDate": "2011-09-15",
+          "PayDate": "2011-09-30",
+          "RecordDate": "2011-09-19",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.009,
+          "Currency": "USD",
+          "ExDate": "2011-06-15",
+          "PayDate": "2011-06-30",
+          "RecordDate": "2011-06-17",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.008,
+          "Currency": "USD",
+          "ExDate": "2011-03-16",
+          "PayDate": "2011-03-30",
+          "RecordDate": "2011-03-18",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.007,
+          "Currency": "USD",
+          "ExDate": "2010-12-13",
+          "PayDate": "2010-12-30",
+          "RecordDate": "2010-12-15",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 4236
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 1.06,
+          "Currency": "USD",
+          "ExDate": "2026-08-07",
+          "PayDate": "2026-09-08",
+          "RecordDate": "2026-08-07",
+          "DeclaredDate": "2026-02-10",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 2.17,
+          "Currency": "USD",
+          "ExDate": "2026-02-20",
+          "PayDate": "2026-03-23",
+          "RecordDate": "2026-02-20",
+          "DeclaredDate": "2026-02-10",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.03,
+          "Currency": "USD",
+          "ExDate": "2025-08-08",
+          "PayDate": "2025-09-08",
+          "RecordDate": "2025-08-08",
+          "DeclaredDate": "2025-07-29",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 2.1,
+          "Currency": "USD",
+          "ExDate": "2025-02-21",
+          "PayDate": "2025-03-24",
+          "RecordDate": "2025-02-21",
+          "DeclaredDate": "2025-02-06",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.0,
+          "Currency": "USD",
+          "ExDate": "2024-08-09",
+          "PayDate": "2024-09-09",
+          "RecordDate": "2024-08-09",
+          "DeclaredDate": "2024-07-25",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.97,
+          "Currency": "USD",
+          "ExDate": "2024-02-22",
+          "PayDate": "2024-03-25",
+          "RecordDate": "2024-02-23",
+          "DeclaredDate": "2024-02-08",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.93,
+          "Currency": "USD",
+          "ExDate": "2023-08-10",
+          "PayDate": "2023-09-11",
+          "RecordDate": "2023-08-11",
+          "DeclaredDate": "2023-07-28",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.97,
+          "Currency": "USD",
+          "ExDate": "2023-02-23",
+          "PayDate": "2023-03-27",
+          "RecordDate": "2023-02-24",
+          "DeclaredDate": "2023-02-09",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.93,
+          "Currency": "USD",
+          "ExDate": "2022-08-11",
+          "PayDate": "2022-09-12",
+          "RecordDate": "2022-08-12",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.97,
+          "Currency": "USD",
+          "ExDate": "2022-02-24",
+          "PayDate": "2022-03-28",
+          "RecordDate": "2022-02-25",
+          "DeclaredDate": "2022-02-10",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2021-08-12",
+          "PayDate": "2021-09-13",
+          "RecordDate": "2021-08-13",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2021-02-25",
+          "PayDate": "2021-03-29",
+          "RecordDate": "2021-02-26",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2020-08-13",
+          "PayDate": "2020-09-14",
+          "RecordDate": "2020-08-14",
+          "DeclaredDate": "2020-07-30",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2020-02-27",
+          "PayDate": "2020-03-30",
+          "RecordDate": "2020-02-28",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2019-08-08",
+          "PayDate": "2019-09-09",
+          "RecordDate": "2019-08-09",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2019-02-28",
+          "PayDate": "2019-03-27",
+          "RecordDate": "2019-03-01",
+          "DeclaredDate": "2019-02-14",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2018-08-09",
+          "PayDate": "2018-09-10",
+          "RecordDate": "2018-08-10",
+          "DeclaredDate": "2018-07-26",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2018-02-15",
+          "PayDate": "2018-03-19",
+          "RecordDate": "2018-02-16",
+          "DeclaredDate": "2018-02-02",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2017-08-09",
+          "PayDate": "2017-09-11",
+          "RecordDate": "2017-08-11",
+          "DeclaredDate": "2017-07-28",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2017-02-15",
+          "PayDate": "2017-03-20",
+          "RecordDate": "2017-02-17",
+          "DeclaredDate": "2017-02-02",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2016-08-10",
+          "PayDate": "2016-09-12",
+          "RecordDate": "2016-08-12",
+          "DeclaredDate": "2016-07-28",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2016-02-17",
+          "PayDate": "2016-03-21",
+          "RecordDate": "2016-02-19",
+          "DeclaredDate": "2016-02-24",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2015-08-12",
+          "PayDate": "2015-09-14",
+          "RecordDate": "2015-08-14",
+          "DeclaredDate": "2015-08-18",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2015-02-18",
+          "PayDate": "2015-03-23",
+          "RecordDate": "2015-02-20",
+          "DeclaredDate": "2015-02-24",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2014-08-13",
+          "PayDate": "2014-09-15",
+          "RecordDate": "2014-08-15",
+          "DeclaredDate": "2014-07-31",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2014-02-19",
+          "PayDate": "2014-03-24",
+          "RecordDate": "2014-02-21",
+          "DeclaredDate": "2014-02-07",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2013-08-14",
+          "PayDate": "2013-09-16",
+          "RecordDate": "2013-08-16",
+          "DeclaredDate": "2013-08-01",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.9,
+          "Currency": "USD",
+          "ExDate": "2013-02-13",
+          "PayDate": "2013-03-18",
+          "RecordDate": "2013-02-15",
+          "DeclaredDate": "2013-01-31",
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9,
+          "Currency": "USD",
+          "ExDate": "2012-08-08",
+          "PayDate": "2012-09-10",
+          "RecordDate": "2012-08-10",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.95,
+          "Currency": "USD",
+          "ExDate": "2012-02-15",
+          "PayDate": "2012-03-19",
+          "RecordDate": "2012-02-17",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.85,
+          "Currency": "USD",
+          "ExDate": "2011-08-04",
+          "PayDate": "2011-09-12",
+          "RecordDate": "2011-08-08",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.85,
+          "Currency": "USD",
+          "ExDate": "2011-02-02",
+          "PayDate": "2011-03-14",
+          "RecordDate": "2011-02-04",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2010-08-04",
+          "PayDate": "2010-09-13",
+          "RecordDate": "2010-08-06",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 1.71,
+          "Currency": "USD",
+          "ExDate": "2010-02-03",
+          "PayDate": "2010-03-15",
+          "RecordDate": "2010-02-05",
+          "DeclaredDate": null,
+          "PaymentFrequency": "SemiAnnual",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 4239
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.803,
+          "Currency": "USD",
+          "ExDate": "2026-07-07",
+          "PayDate": "2026-07-29",
+          "RecordDate": "2026-07-07",
+          "DeclaredDate": "2025-12-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.791,
+          "Currency": "USD",
+          "ExDate": "2026-04-07",
+          "PayDate": "2026-04-28",
+          "RecordDate": "2026-04-07",
+          "DeclaredDate": "2025-12-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7979,
+          "Currency": "USD",
+          "ExDate": "2026-01-06",
+          "PayDate": "2026-01-28",
+          "RecordDate": "2026-01-06",
+          "DeclaredDate": "2025-12-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7885,
+          "Currency": "USD",
+          "ExDate": "2025-10-07",
+          "PayDate": "2025-10-29",
+          "RecordDate": "2025-10-07",
+          "DeclaredDate": "2024-12-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.8075,
+          "Currency": "USD",
+          "ExDate": "2025-07-02",
+          "PayDate": "2025-07-29",
+          "RecordDate": "2025-07-02",
+          "DeclaredDate": "2024-12-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7404,
+          "Currency": "USD",
+          "ExDate": "2025-04-01",
+          "PayDate": "2025-04-28",
+          "RecordDate": "2025-04-01",
+          "DeclaredDate": "2024-12-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7389,
+          "Currency": "USD",
+          "ExDate": "2025-01-07",
+          "PayDate": "2025-01-29",
+          "RecordDate": "2025-01-07",
+          "DeclaredDate": "2024-12-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.786,
+          "Currency": "USD",
+          "ExDate": "2024-10-02",
+          "PayDate": "2024-10-29",
+          "RecordDate": "2024-10-02",
+          "DeclaredDate": "2024-08-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.778,
+          "Currency": "USD",
+          "ExDate": "2024-07-03",
+          "PayDate": "2024-07-29",
+          "RecordDate": "2024-07-03",
+          "DeclaredDate": "2024-05-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7805,
+          "Currency": "USD",
+          "ExDate": "2024-04-01",
+          "PayDate": "2024-04-26",
+          "RecordDate": "2024-04-02",
+          "DeclaredDate": "2024-02-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7962,
+          "Currency": "USD",
+          "ExDate": "2024-01-02",
+          "PayDate": "2024-01-29",
+          "RecordDate": "2024-01-03",
+          "DeclaredDate": "2023-11-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7756,
+          "Currency": "USD",
+          "ExDate": "2023-10-02",
+          "PayDate": "2023-10-27",
+          "RecordDate": "2023-10-03",
+          "DeclaredDate": "2022-11-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.8003,
+          "Currency": "USD",
+          "ExDate": "2023-07-03",
+          "PayDate": "2023-07-27",
+          "RecordDate": "2023-07-05",
+          "DeclaredDate": "2022-11-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7666,
+          "Currency": "USD",
+          "ExDate": "2023-04-03",
+          "PayDate": "2023-04-26",
+          "RecordDate": "2023-04-04",
+          "DeclaredDate": "2023-02-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7553,
+          "Currency": "USD",
+          "ExDate": "2023-01-03",
+          "PayDate": "2023-01-27",
+          "RecordDate": "2023-01-04",
+          "DeclaredDate": "2022-11-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7545,
+          "Currency": "USD",
+          "ExDate": "2022-10-03",
+          "PayDate": "2022-10-27",
+          "RecordDate": "2022-10-04",
+          "DeclaredDate": "2022-08-23",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7975,
+          "Currency": "USD",
+          "ExDate": "2022-07-01",
+          "PayDate": "2022-07-27",
+          "RecordDate": "2022-07-05",
+          "DeclaredDate": "2022-05-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.8005,
+          "Currency": "USD",
+          "ExDate": "2022-04-04",
+          "PayDate": "2022-04-27",
+          "RecordDate": "2022-04-05",
+          "DeclaredDate": "2022-03-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7829,
+          "Currency": "USD",
+          "ExDate": "2022-01-03",
+          "PayDate": "2022-01-27",
+          "RecordDate": "2022-01-04",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7157,
+          "Currency": "USD",
+          "ExDate": "2021-10-04",
+          "PayDate": "2021-10-27",
+          "RecordDate": "2021-10-05",
+          "DeclaredDate": "2021-08-24",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.729,
+          "Currency": "USD",
+          "ExDate": "2021-07-02",
+          "PayDate": "2021-07-28",
+          "RecordDate": "2021-07-06",
+          "DeclaredDate": "2021-06-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7193,
+          "Currency": "USD",
+          "ExDate": "2021-04-05",
+          "PayDate": "2021-04-28",
+          "RecordDate": "2021-04-06",
+          "DeclaredDate": "2021-02-23",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7066,
+          "Currency": "USD",
+          "ExDate": "2021-01-04",
+          "PayDate": "2021-01-27",
+          "RecordDate": "2021-01-05",
+          "DeclaredDate": "2020-12-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6782,
+          "Currency": "USD",
+          "ExDate": "2020-10-05",
+          "PayDate": "2020-10-28",
+          "RecordDate": "2020-10-06",
+          "DeclaredDate": "2019-11-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6644,
+          "Currency": "USD",
+          "ExDate": "2020-07-06",
+          "PayDate": "2020-07-29",
+          "RecordDate": "2020-07-07",
+          "DeclaredDate": "2019-11-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.637,
+          "Currency": "USD",
+          "ExDate": "2020-04-06",
+          "PayDate": "2020-04-28",
+          "RecordDate": "2020-04-07",
+          "DeclaredDate": "2019-11-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6937,
+          "Currency": "USD",
+          "ExDate": "2020-01-06",
+          "PayDate": "2020-01-29",
+          "RecordDate": "2020-01-07",
+          "DeclaredDate": "2019-11-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6796,
+          "Currency": "USD",
+          "ExDate": "2019-09-30",
+          "PayDate": "2019-10-29",
+          "RecordDate": "2019-10-01",
+          "DeclaredDate": "2019-08-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6645,
+          "Currency": "USD",
+          "ExDate": "2019-06-28",
+          "PayDate": "2019-07-29",
+          "RecordDate": "2019-07-02",
+          "DeclaredDate": "2019-05-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6519,
+          "Currency": "USD",
+          "ExDate": "2019-04-01",
+          "PayDate": "2019-04-26",
+          "RecordDate": "2019-04-02",
+          "DeclaredDate": "2019-02-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6226,
+          "Currency": "USD",
+          "ExDate": "2018-12-31",
+          "PayDate": "2019-01-29",
+          "RecordDate": "2019-01-02",
+          "DeclaredDate": "2018-11-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6641,
+          "Currency": "USD",
+          "ExDate": "2018-10-01",
+          "PayDate": "2018-10-29",
+          "RecordDate": "2018-10-02",
+          "DeclaredDate": "2018-08-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6641,
+          "Currency": "USD",
+          "ExDate": "2018-10-01",
+          "PayDate": "2018-10-29",
+          "RecordDate": "2018-10-02",
+          "DeclaredDate": "2018-08-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.624,
+          "Currency": "USD",
+          "ExDate": "2018-06-29",
+          "PayDate": "2018-07-27",
+          "RecordDate": "2018-07-03",
+          "DeclaredDate": "2018-05-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6347,
+          "Currency": "USD",
+          "ExDate": "2018-04-02",
+          "PayDate": "2018-04-26",
+          "RecordDate": "2018-04-03",
+          "DeclaredDate": "2018-02-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6305,
+          "Currency": "USD",
+          "ExDate": "2017-12-29",
+          "PayDate": "2018-01-29",
+          "RecordDate": "2018-01-02",
+          "DeclaredDate": "2017-11-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6316,
+          "Currency": "USD",
+          "ExDate": "2017-10-02",
+          "PayDate": "2017-10-27",
+          "RecordDate": "2017-10-03",
+          "DeclaredDate": "2017-08-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5842,
+          "Currency": "USD",
+          "ExDate": "2017-06-29",
+          "PayDate": "2017-07-27",
+          "RecordDate": "2017-07-04",
+          "DeclaredDate": "2017-05-30",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5705,
+          "Currency": "USD",
+          "ExDate": "2017-03-31",
+          "PayDate": "2017-04-26",
+          "RecordDate": "2017-04-04",
+          "DeclaredDate": "2017-02-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5488,
+          "Currency": "USD",
+          "ExDate": "2016-12-29",
+          "PayDate": "2017-01-27",
+          "RecordDate": "2017-01-03",
+          "DeclaredDate": "2016-11-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5641,
+          "Currency": "USD",
+          "ExDate": "2016-09-30",
+          "PayDate": "2016-10-27",
+          "RecordDate": "2016-10-04",
+          "DeclaredDate": "2016-08-30",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5537,
+          "Currency": "USD",
+          "ExDate": "2016-06-30",
+          "PayDate": "2016-07-27",
+          "RecordDate": "2016-07-05",
+          "DeclaredDate": "2016-05-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5519,
+          "Currency": "USD",
+          "ExDate": "2016-04-01",
+          "PayDate": "2016-04-27",
+          "RecordDate": "2016-04-05",
+          "DeclaredDate": "2016-03-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5039,
+          "Currency": "USD",
+          "ExDate": "2015-12-31",
+          "PayDate": "2016-01-27",
+          "RecordDate": "2016-01-05",
+          "DeclaredDate": "2015-12-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5297,
+          "Currency": "USD",
+          "ExDate": "2015-10-02",
+          "PayDate": "2015-10-28",
+          "RecordDate": "2015-10-06",
+          "DeclaredDate": "2015-08-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5411,
+          "Currency": "USD",
+          "ExDate": "2015-07-02",
+          "PayDate": "2015-07-29",
+          "RecordDate": "2015-07-07",
+          "DeclaredDate": "2015-05-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5403,
+          "Currency": "USD",
+          "ExDate": "2015-04-02",
+          "PayDate": "2015-04-28",
+          "RecordDate": "2015-04-07",
+          "DeclaredDate": "2015-03-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5635,
+          "Currency": "USD",
+          "ExDate": "2015-01-02",
+          "PayDate": "2015-01-28",
+          "RecordDate": "2015-01-06",
+          "DeclaredDate": "2014-12-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5864,
+          "Currency": "USD",
+          "ExDate": "2014-10-03",
+          "PayDate": "2014-10-29",
+          "RecordDate": "2014-10-07",
+          "DeclaredDate": "2014-08-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5994,
+          "Currency": "USD",
+          "ExDate": "2014-06-27",
+          "PayDate": "2014-07-29",
+          "RecordDate": "2014-07-02",
+          "DeclaredDate": "2014-05-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5783,
+          "Currency": "USD",
+          "ExDate": "2014-03-28",
+          "PayDate": "2014-04-28",
+          "RecordDate": "2014-04-01",
+          "DeclaredDate": "2014-03-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5837,
+          "Currency": "USD",
+          "ExDate": "2014-01-03",
+          "PayDate": "2014-01-29",
+          "RecordDate": "2014-01-07",
+          "DeclaredDate": "2013-12-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.602,
+          "Currency": "USD",
+          "ExDate": "2013-09-27",
+          "PayDate": "2013-10-29",
+          "RecordDate": "2013-10-01",
+          "DeclaredDate": "2013-08-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5707,
+          "Currency": "USD",
+          "ExDate": "2013-06-28",
+          "PayDate": "2013-07-29",
+          "RecordDate": "2013-07-02",
+          "DeclaredDate": "2013-05-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5906,
+          "Currency": "USD",
+          "ExDate": "2013-03-28",
+          "PayDate": "2013-04-26",
+          "RecordDate": "2013-04-02",
+          "DeclaredDate": "2013-03-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5725,
+          "Currency": "USD",
+          "ExDate": "2012-12-28",
+          "PayDate": "2013-01-29",
+          "RecordDate": "2013-01-02",
+          "DeclaredDate": "2012-12-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5794,
+          "Currency": "USD",
+          "ExDate": "2012-09-28",
+          "PayDate": "2012-10-29",
+          "RecordDate": "2012-10-02",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5397,
+          "Currency": "USD",
+          "ExDate": "2012-06-29",
+          "PayDate": "2012-07-27",
+          "RecordDate": "2012-07-03",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5505,
+          "Currency": "USD",
+          "ExDate": "2012-03-30",
+          "PayDate": "2012-04-26",
+          "RecordDate": "2012-04-03",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5089,
+          "Currency": "USD",
+          "ExDate": "2011-12-29",
+          "PayDate": "2012-01-27",
+          "RecordDate": "2012-01-03",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5005,
+          "Currency": "USD",
+          "ExDate": "2011-09-30",
+          "PayDate": "2011-10-27",
+          "RecordDate": "2011-10-04",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5393,
+          "Currency": "USD",
+          "ExDate": "2011-06-30",
+          "PayDate": "2011-07-27",
+          "RecordDate": "2011-07-05",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.54,
+          "Currency": "USD",
+          "ExDate": "2011-04-01",
+          "PayDate": "2011-04-27",
+          "RecordDate": "2011-04-05",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.493,
+          "Currency": "USD",
+          "ExDate": "2010-12-31",
+          "PayDate": "2011-01-27",
+          "RecordDate": "2011-01-04",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4797,
+          "Currency": "USD",
+          "ExDate": "2010-10-01",
+          "PayDate": "2010-10-27",
+          "RecordDate": "2010-10-05",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4613,
+          "Currency": "USD",
+          "ExDate": "2010-07-01",
+          "PayDate": "2010-07-28",
+          "RecordDate": "2010-07-06",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4864,
+          "Currency": "USD",
+          "ExDate": "2010-04-01",
+          "PayDate": "2010-04-28",
+          "RecordDate": "2010-04-06",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 7702
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.67,
+          "Currency": "USD",
+          "ExDate": "2026-08-03",
+          "PayDate": "2026-08-28",
+          "RecordDate": "2026-08-03",
+          "DeclaredDate": "2026-07-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2026-05-04",
+          "PayDate": "2026-05-22",
+          "RecordDate": "2026-05-04",
+          "DeclaredDate": "2026-04-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2026-02-02",
+          "PayDate": "2026-02-27",
+          "RecordDate": "2026-02-02",
+          "DeclaredDate": "2026-01-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2025-11-03",
+          "PayDate": "2025-11-26",
+          "RecordDate": "2025-11-03",
+          "DeclaredDate": "2025-10-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2025-08-04",
+          "PayDate": "2025-08-22",
+          "RecordDate": "2025-08-04",
+          "DeclaredDate": "2025-07-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.56,
+          "Currency": "USD",
+          "ExDate": "2025-05-05",
+          "PayDate": "2025-05-23",
+          "RecordDate": "2025-05-05",
+          "DeclaredDate": "2025-04-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.56,
+          "Currency": "USD",
+          "ExDate": "2025-02-03",
+          "PayDate": "2025-02-28",
+          "RecordDate": "2025-02-03",
+          "DeclaredDate": "2025-01-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.56,
+          "Currency": "USD",
+          "ExDate": "2024-11-04",
+          "PayDate": "2024-11-22",
+          "RecordDate": "2024-11-04",
+          "DeclaredDate": "2024-10-23",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.56,
+          "Currency": "USD",
+          "ExDate": "2024-08-05",
+          "PayDate": "2024-08-23",
+          "RecordDate": "2024-08-05",
+          "DeclaredDate": "2024-07-18",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.53,
+          "Currency": "USD",
+          "ExDate": "2024-05-03",
+          "PayDate": "2024-05-24",
+          "RecordDate": "2024-05-06",
+          "DeclaredDate": "2024-04-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.53,
+          "Currency": "USD",
+          "ExDate": "2024-02-02",
+          "PayDate": "2024-02-23",
+          "RecordDate": "2024-02-05",
+          "DeclaredDate": "2024-01-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.53,
+          "Currency": "USD",
+          "ExDate": "2023-11-03",
+          "PayDate": "2023-11-22",
+          "RecordDate": "2023-11-06",
+          "DeclaredDate": "2023-10-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.53,
+          "Currency": "USD",
+          "ExDate": "2023-08-04",
+          "PayDate": "2023-08-25",
+          "RecordDate": "2023-08-07",
+          "DeclaredDate": "2023-07-20",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2023-04-28",
+          "PayDate": "2023-05-26",
+          "RecordDate": "2023-05-01",
+          "DeclaredDate": "2023-04-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2023-02-03",
+          "PayDate": "2023-02-24",
+          "RecordDate": "2023-02-06",
+          "DeclaredDate": "2023-01-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2022-11-04",
+          "PayDate": "2022-11-23",
+          "RecordDate": "2022-11-07",
+          "DeclaredDate": "2022-10-20",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2022-07-29",
+          "PayDate": "2022-08-26",
+          "RecordDate": "2022-08-01",
+          "DeclaredDate": "2022-07-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2022-04-29",
+          "PayDate": "2022-05-27",
+          "RecordDate": "2022-05-02",
+          "DeclaredDate": "2022-04-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2022-02-04",
+          "PayDate": "2022-02-25",
+          "RecordDate": "2022-02-07",
+          "DeclaredDate": "2022-01-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2021-10-29",
+          "PayDate": "2021-11-24",
+          "RecordDate": "2021-11-01",
+          "DeclaredDate": "2021-10-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2021-07-30",
+          "PayDate": "2021-08-27",
+          "RecordDate": "2021-08-02",
+          "DeclaredDate": "2021-07-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2021-04-30",
+          "PayDate": "2021-05-28",
+          "RecordDate": "2021-05-03",
+          "DeclaredDate": "2021-04-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2021-01-29",
+          "PayDate": "2021-02-26",
+          "RecordDate": "2021-02-01",
+          "DeclaredDate": "2021-01-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2020-10-30",
+          "PayDate": "2020-11-25",
+          "RecordDate": "2020-11-02",
+          "DeclaredDate": "2020-10-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2020-07-31",
+          "PayDate": "2020-08-28",
+          "RecordDate": "2020-08-03",
+          "DeclaredDate": "2020-07-23",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2020-05-01",
+          "PayDate": "2020-05-22",
+          "RecordDate": "2020-05-04",
+          "DeclaredDate": "2020-04-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2020-01-31",
+          "PayDate": "2020-02-28",
+          "RecordDate": "2020-02-03",
+          "DeclaredDate": "2020-01-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2019-11-01",
+          "PayDate": "2019-11-22",
+          "RecordDate": "2019-11-04",
+          "DeclaredDate": "2019-10-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.51,
+          "Currency": "USD",
+          "ExDate": "2019-08-02",
+          "PayDate": "2019-08-23",
+          "RecordDate": "2019-08-05",
+          "DeclaredDate": "2019-07-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2019-05-03",
+          "PayDate": "2019-05-24",
+          "RecordDate": "2019-05-06",
+          "DeclaredDate": "2019-04-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2019-02-01",
+          "PayDate": "2019-02-22",
+          "RecordDate": "2019-02-04",
+          "DeclaredDate": "2019-01-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2018-11-02",
+          "PayDate": "2018-11-21",
+          "RecordDate": "2018-11-05",
+          "DeclaredDate": "2018-10-18",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.45,
+          "Currency": "USD",
+          "ExDate": "2018-08-03",
+          "PayDate": "2018-08-24",
+          "RecordDate": "2018-08-06",
+          "DeclaredDate": "2018-07-20",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2018-05-04",
+          "PayDate": "2018-05-25",
+          "RecordDate": "2018-05-07",
+          "DeclaredDate": "2018-04-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2018-02-02",
+          "PayDate": "2018-02-23",
+          "RecordDate": "2018-02-05",
+          "DeclaredDate": "2018-01-18",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2017-11-03",
+          "PayDate": "2017-11-22",
+          "RecordDate": "2017-11-06",
+          "DeclaredDate": "2017-10-18",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.32,
+          "Currency": "USD",
+          "ExDate": "2017-08-03",
+          "PayDate": "2017-08-25",
+          "RecordDate": "2017-08-07",
+          "DeclaredDate": "2017-07-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.16,
+          "Currency": "USD",
+          "ExDate": "2017-04-27",
+          "PayDate": "2017-05-26",
+          "RecordDate": "2017-05-01",
+          "DeclaredDate": "2017-04-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.16,
+          "Currency": "USD",
+          "ExDate": "2017-02-02",
+          "PayDate": "2017-02-24",
+          "RecordDate": "2017-02-06",
+          "DeclaredDate": "2017-01-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.16,
+          "Currency": "USD",
+          "ExDate": "2016-11-03",
+          "PayDate": "2016-11-23",
+          "RecordDate": "2016-11-07",
+          "DeclaredDate": "2016-10-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.16,
+          "Currency": "USD",
+          "ExDate": "2016-07-28",
+          "PayDate": "2016-08-26",
+          "RecordDate": "2016-08-01",
+          "DeclaredDate": "2016-07-20",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.05,
+          "Currency": "USD",
+          "ExDate": "2016-04-28",
+          "PayDate": "2016-05-27",
+          "RecordDate": "2016-05-02",
+          "DeclaredDate": "2016-04-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.05,
+          "Currency": "USD",
+          "ExDate": "2016-01-28",
+          "PayDate": "2016-02-26",
+          "RecordDate": "2016-02-01",
+          "DeclaredDate": "2016-01-14",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.05,
+          "Currency": "USD",
+          "ExDate": "2015-10-29",
+          "PayDate": "2015-11-25",
+          "RecordDate": "2015-11-02",
+          "DeclaredDate": "2015-10-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.05,
+          "Currency": "USD",
+          "ExDate": "2015-07-30",
+          "PayDate": "2015-08-28",
+          "RecordDate": "2015-08-03",
+          "DeclaredDate": "2015-07-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.05,
+          "Currency": "USD",
+          "ExDate": "2015-05-07",
+          "PayDate": "2015-05-22",
+          "RecordDate": "2015-05-11",
+          "DeclaredDate": "2015-04-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2015-01-29",
+          "PayDate": "2015-02-27",
+          "RecordDate": "2015-02-02",
+          "DeclaredDate": "2015-01-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2014-10-30",
+          "PayDate": "2014-11-26",
+          "RecordDate": "2014-11-03",
+          "DeclaredDate": "2014-10-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2014-07-31",
+          "PayDate": "2014-08-22",
+          "RecordDate": "2014-08-04",
+          "DeclaredDate": "2014-07-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2014-05-01",
+          "PayDate": "2014-05-23",
+          "RecordDate": "2014-05-05",
+          "DeclaredDate": "2014-04-23",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2014-01-30",
+          "PayDate": "2014-02-28",
+          "RecordDate": "2014-02-03",
+          "DeclaredDate": "2014-01-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2013-10-31",
+          "PayDate": "2013-11-22",
+          "RecordDate": "2013-11-04",
+          "DeclaredDate": "2013-10-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2013-08-01",
+          "PayDate": "2013-08-23",
+          "RecordDate": "2013-08-05",
+          "DeclaredDate": "2013-07-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2013-05-02",
+          "PayDate": "2013-05-24",
+          "RecordDate": "2013-05-06",
+          "DeclaredDate": "2013-04-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2013-01-31",
+          "PayDate": "2013-02-22",
+          "RecordDate": "2013-02-04",
+          "DeclaredDate": "2013-01-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2012-11-01",
+          "PayDate": "2012-11-21",
+          "RecordDate": "2012-11-05",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2012-08-02",
+          "PayDate": "2012-08-24",
+          "RecordDate": "2012-08-06",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2012-05-03",
+          "PayDate": "2012-05-25",
+          "RecordDate": "2012-05-07",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2012-02-02",
+          "PayDate": "2012-02-24",
+          "RecordDate": "2012-02-06",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2011-11-03",
+          "PayDate": "2011-11-23",
+          "RecordDate": "2011-11-07",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2011-07-28",
+          "PayDate": "2011-08-26",
+          "RecordDate": "2011-08-01",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.01,
+          "Currency": "USD",
+          "ExDate": "2011-05-25",
+          "PayDate": "2011-06-17",
+          "RecordDate": "2011-05-27",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Other",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 1037
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2026-05-29",
+          "PayDate": "2026-06-20",
+          "RecordDate": "2026-05-29",
+          "DeclaredDate": "2026-05-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2026-02-27",
+          "PayDate": "2026-03-20",
+          "RecordDate": "2026-02-27",
+          "DeclaredDate": "2026-01-23",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2025-12-05",
+          "PayDate": "2025-12-20",
+          "RecordDate": "2025-12-05",
+          "DeclaredDate": "2025-10-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2025-09-05",
+          "PayDate": "2025-09-20",
+          "RecordDate": "2025-09-05",
+          "DeclaredDate": "2025-07-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2025-05-29",
+          "PayDate": "2025-06-20",
+          "RecordDate": "2025-05-29",
+          "DeclaredDate": "2025-05-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2025-02-28",
+          "PayDate": "2025-03-20",
+          "RecordDate": "2025-02-28",
+          "DeclaredDate": "2025-01-24",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2024-11-29",
+          "PayDate": "2024-12-20",
+          "RecordDate": "2024-11-29",
+          "DeclaredDate": "2024-10-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2024-08-30",
+          "PayDate": "2024-09-20",
+          "RecordDate": "2024-08-30",
+          "DeclaredDate": "2024-07-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2024-05-31",
+          "PayDate": "2024-06-20",
+          "RecordDate": "2024-05-31",
+          "DeclaredDate": "2024-05-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2024-02-29",
+          "PayDate": "2024-03-20",
+          "RecordDate": "2024-03-01",
+          "DeclaredDate": "2024-01-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2023-11-30",
+          "PayDate": "2023-12-20",
+          "RecordDate": "2023-12-01",
+          "DeclaredDate": "2023-11-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2023-08-31",
+          "PayDate": "2023-09-20",
+          "RecordDate": "2023-09-01",
+          "DeclaredDate": "2023-08-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2023-06-01",
+          "PayDate": "2023-06-20",
+          "RecordDate": "2023-06-02",
+          "DeclaredDate": "2023-05-10",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2023-03-02",
+          "PayDate": "2023-03-20",
+          "RecordDate": "2023-03-03",
+          "DeclaredDate": "2023-02-08",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2022-12-01",
+          "PayDate": "2022-12-20",
+          "RecordDate": "2022-12-02",
+          "DeclaredDate": "2022-11-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2022-09-01",
+          "PayDate": "2022-09-20",
+          "RecordDate": "2022-09-02",
+          "DeclaredDate": "2022-08-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2022-06-02",
+          "PayDate": "2022-06-20",
+          "RecordDate": "2022-06-03",
+          "DeclaredDate": "2022-05-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6675,
+          "Currency": "USD",
+          "ExDate": "2022-03-03",
+          "PayDate": "2022-03-20",
+          "RecordDate": "2022-03-04",
+          "DeclaredDate": "2022-01-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2021-12-02",
+          "PayDate": "2021-12-20",
+          "RecordDate": "2021-12-03",
+          "DeclaredDate": "2021-11-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2021-09-02",
+          "PayDate": "2021-09-20",
+          "RecordDate": "2021-09-03",
+          "DeclaredDate": "2021-08-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2021-06-03",
+          "PayDate": "2021-06-20",
+          "RecordDate": "2021-06-04",
+          "DeclaredDate": "2021-05-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2021-03-04",
+          "PayDate": "2021-03-20",
+          "RecordDate": "2021-03-05",
+          "DeclaredDate": "2021-01-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2020-12-03",
+          "PayDate": "2020-12-20",
+          "RecordDate": "2020-12-04",
+          "DeclaredDate": "2020-11-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.94,
+          "Currency": "USD",
+          "ExDate": "2020-09-03",
+          "PayDate": "2020-09-20",
+          "RecordDate": "2020-09-04",
+          "DeclaredDate": "2020-07-30",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.94,
+          "Currency": "USD",
+          "ExDate": "2020-06-04",
+          "PayDate": "2020-06-20",
+          "RecordDate": "2020-06-05",
+          "DeclaredDate": "2020-05-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.94,
+          "Currency": "USD",
+          "ExDate": "2020-02-27",
+          "PayDate": "2020-03-20",
+          "RecordDate": "2020-02-28",
+          "DeclaredDate": "2020-01-24",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9175,
+          "Currency": "USD",
+          "ExDate": "2019-12-05",
+          "PayDate": "2019-12-20",
+          "RecordDate": "2019-12-06",
+          "DeclaredDate": "2019-10-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9175,
+          "Currency": "USD",
+          "ExDate": "2019-09-05",
+          "PayDate": "2019-09-20",
+          "RecordDate": "2019-09-06",
+          "DeclaredDate": "2019-07-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9175,
+          "Currency": "USD",
+          "ExDate": "2019-06-06",
+          "PayDate": "2019-06-20",
+          "RecordDate": "2019-06-07",
+          "DeclaredDate": "2019-05-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.9175,
+          "Currency": "USD",
+          "ExDate": "2019-02-28",
+          "PayDate": "2019-03-20",
+          "RecordDate": "2019-03-01",
+          "DeclaredDate": "2019-01-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.835,
+          "Currency": "USD",
+          "ExDate": "2018-12-06",
+          "PayDate": "2018-12-20",
+          "RecordDate": "2018-12-07",
+          "DeclaredDate": "2018-10-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.835,
+          "Currency": "USD",
+          "ExDate": "2018-09-06",
+          "PayDate": "2018-09-20",
+          "RecordDate": "2018-09-07",
+          "DeclaredDate": "2018-07-31",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.835,
+          "Currency": "USD",
+          "ExDate": "2018-05-31",
+          "PayDate": "2018-06-20",
+          "RecordDate": "2018-06-01",
+          "DeclaredDate": "2018-05-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.835,
+          "Currency": "USD",
+          "ExDate": "2018-03-01",
+          "PayDate": "2018-03-20",
+          "RecordDate": "2018-03-02",
+          "DeclaredDate": "2018-01-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.77,
+          "Currency": "USD",
+          "ExDate": "2017-11-30",
+          "PayDate": "2017-12-20",
+          "RecordDate": "2017-12-01",
+          "DeclaredDate": "2017-10-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.755,
+          "Currency": "USD",
+          "ExDate": "2017-08-30",
+          "PayDate": "2017-09-20",
+          "RecordDate": "2017-09-01",
+          "DeclaredDate": "2017-08-01",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.755,
+          "Currency": "USD",
+          "ExDate": "2017-05-31",
+          "PayDate": "2017-06-20",
+          "RecordDate": "2017-06-02",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.755,
+          "Currency": "USD",
+          "ExDate": "2017-03-01",
+          "PayDate": "2017-03-20",
+          "RecordDate": "2017-03-03",
+          "DeclaredDate": "2017-01-24",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2016-11-30",
+          "PayDate": "2016-12-20",
+          "RecordDate": "2016-12-02",
+          "DeclaredDate": "2016-10-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2016-08-31",
+          "PayDate": "2016-09-20",
+          "RecordDate": "2016-09-02",
+          "DeclaredDate": "2016-08-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2016-06-01",
+          "PayDate": "2016-06-20",
+          "RecordDate": "2016-06-03",
+          "DeclaredDate": "2016-05-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2016-03-02",
+          "PayDate": "2016-03-20",
+          "RecordDate": "2016-03-04",
+          "DeclaredDate": "2016-01-21",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6475,
+          "Currency": "USD",
+          "ExDate": "2015-11-23",
+          "PayDate": "2015-12-20",
+          "RecordDate": "2015-11-25",
+          "DeclaredDate": "2015-10-22",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6475,
+          "Currency": "USD",
+          "ExDate": "2015-08-26",
+          "PayDate": "2015-09-20",
+          "RecordDate": "2015-08-28",
+          "DeclaredDate": "2015-08-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6475,
+          "Currency": "USD",
+          "ExDate": "2015-05-27",
+          "PayDate": "2015-06-20",
+          "RecordDate": "2015-05-29",
+          "DeclaredDate": "2015-05-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6475,
+          "Currency": "USD",
+          "ExDate": "2015-02-25",
+          "PayDate": "2015-03-20",
+          "RecordDate": "2015-02-27",
+          "DeclaredDate": "2015-02-09",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2014-11-25",
+          "PayDate": "2014-12-20",
+          "RecordDate": "2014-11-28",
+          "DeclaredDate": "2014-10-15",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2014-08-27",
+          "PayDate": "2014-09-20",
+          "RecordDate": "2014-08-29",
+          "DeclaredDate": "2014-08-08",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2014-05-28",
+          "PayDate": "2014-06-20",
+          "RecordDate": "2014-05-30",
+          "DeclaredDate": "2014-05-19",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.6,
+          "Currency": "USD",
+          "ExDate": "2014-02-26",
+          "PayDate": "2014-03-20",
+          "RecordDate": "2014-02-28",
+          "DeclaredDate": "2014-01-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5625,
+          "Currency": "USD",
+          "ExDate": "2013-12-04",
+          "PayDate": "2013-12-20",
+          "RecordDate": "2013-12-06",
+          "DeclaredDate": "2013-10-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5625,
+          "Currency": "USD",
+          "ExDate": "2013-09-04",
+          "PayDate": "2013-09-20",
+          "RecordDate": "2013-09-06",
+          "DeclaredDate": "2013-08-13",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5625,
+          "Currency": "USD",
+          "ExDate": "2013-06-05",
+          "PayDate": "2013-06-20",
+          "RecordDate": "2013-06-07",
+          "DeclaredDate": "2013-05-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5625,
+          "Currency": "USD",
+          "ExDate": "2013-02-26",
+          "PayDate": "2013-03-20",
+          "RecordDate": "2013-02-28",
+          "DeclaredDate": "2013-01-25",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5275,
+          "Currency": "USD",
+          "ExDate": "2012-11-28",
+          "PayDate": "2012-12-20",
+          "RecordDate": "2012-11-30",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5275,
+          "Currency": "USD",
+          "ExDate": "2012-08-29",
+          "PayDate": "2012-09-20",
+          "RecordDate": "2012-08-31",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5275,
+          "Currency": "USD",
+          "ExDate": "2012-05-30",
+          "PayDate": "2012-06-20",
+          "RecordDate": "2012-06-01",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.5275,
+          "Currency": "USD",
+          "ExDate": "2012-02-29",
+          "PayDate": "2012-03-20",
+          "RecordDate": "2012-03-02",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4925,
+          "Currency": "USD",
+          "ExDate": "2011-11-30",
+          "PayDate": "2011-12-20",
+          "RecordDate": "2011-12-02",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4925,
+          "Currency": "USD",
+          "ExDate": "2011-08-24",
+          "PayDate": "2011-09-20",
+          "RecordDate": "2011-08-26",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4925,
+          "Currency": "USD",
+          "ExDate": "2011-05-25",
+          "PayDate": "2011-06-20",
+          "RecordDate": "2011-05-27",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4925,
+          "Currency": "USD",
+          "ExDate": "2011-03-02",
+          "PayDate": "2011-03-20",
+          "RecordDate": "2011-03-04",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4575,
+          "Currency": "USD",
+          "ExDate": "2010-11-24",
+          "PayDate": "2010-12-20",
+          "RecordDate": "2010-11-29",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4575,
+          "Currency": "USD",
+          "ExDate": "2010-08-25",
+          "PayDate": "2010-09-20",
+          "RecordDate": "2010-08-27",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4575,
+          "Currency": "USD",
+          "ExDate": "2010-05-26",
+          "PayDate": "2010-06-20",
+          "RecordDate": "2010-05-28",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.4575,
+          "Currency": "USD",
+          "ExDate": "2010-02-24",
+          "PayDate": "2010-03-20",
+          "RecordDate": "2010-02-26",
+          "DeclaredDate": null,
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 1642
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2026-07-21",
+          "PayDate": "2026-07-31",
+          "RecordDate": "2026-07-21",
+          "DeclaredDate": "2026-06-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.63,
+          "Currency": "USD",
+          "ExDate": "2026-04-21",
+          "PayDate": "2026-05-01",
+          "RecordDate": "2026-04-21",
+          "DeclaredDate": "2026-02-26",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2026-01-20",
+          "PayDate": "2026-01-30",
+          "RecordDate": "2026-01-20",
+          "DeclaredDate": "2025-12-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2025-10-21",
+          "PayDate": "2025-10-31",
+          "RecordDate": "2025-10-21",
+          "DeclaredDate": "2025-09-04",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2025-07-22",
+          "PayDate": "2025-08-01",
+          "RecordDate": "2025-07-22",
+          "DeclaredDate": "2025-06-17",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.525,
+          "Currency": "USD",
+          "ExDate": "2025-04-22",
+          "PayDate": "2025-05-02",
+          "RecordDate": "2025-04-22",
+          "DeclaredDate": "2025-02-27",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.445,
+          "Currency": "USD",
+          "ExDate": "2025-01-22",
+          "PayDate": "2025-01-31",
+          "RecordDate": "2025-01-22",
+          "DeclaredDate": "2024-12-03",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.445,
+          "Currency": "USD",
+          "ExDate": "2024-10-22",
+          "PayDate": "2024-11-01",
+          "RecordDate": "2024-10-22",
+          "DeclaredDate": "2024-09-18",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.445,
+          "Currency": "USD",
+          "ExDate": "2024-07-23",
+          "PayDate": "2024-08-02",
+          "RecordDate": "2024-07-23",
+          "DeclaredDate": "2024-06-11",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.445,
+          "Currency": "USD",
+          "ExDate": "2024-04-22",
+          "PayDate": "2024-05-03",
+          "RecordDate": "2024-04-23",
+          "DeclaredDate": "2024-02-29",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.37,
+          "Currency": "USD",
+          "ExDate": "2024-01-22",
+          "PayDate": "2024-02-02",
+          "RecordDate": "2024-01-23",
+          "DeclaredDate": "2023-12-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.37,
+          "Currency": "USD",
+          "ExDate": "2023-10-23",
+          "PayDate": "2023-11-03",
+          "RecordDate": "2023-10-24",
+          "DeclaredDate": "2023-09-28",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.37,
+          "Currency": "USD",
+          "ExDate": "2023-07-24",
+          "PayDate": "2023-08-04",
+          "RecordDate": "2023-07-25",
+          "DeclaredDate": "2023-06-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.37,
+          "Currency": "USD",
+          "ExDate": "2023-04-24",
+          "PayDate": "2023-05-05",
+          "RecordDate": "2023-04-25",
+          "DeclaredDate": "2023-03-02",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.33,
+          "Currency": "USD",
+          "ExDate": "2023-01-24",
+          "PayDate": "2023-02-03",
+          "RecordDate": "2023-01-25",
+          "DeclaredDate": "2022-12-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.33,
+          "Currency": "USD",
+          "ExDate": "2022-10-18",
+          "PayDate": "2022-10-28",
+          "RecordDate": "2022-10-19",
+          "DeclaredDate": "2022-09-06",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.33,
+          "Currency": "USD",
+          "ExDate": "2022-07-19",
+          "PayDate": "2022-07-29",
+          "RecordDate": "2022-07-20",
+          "DeclaredDate": "2022-06-07",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.33,
+          "Currency": "USD",
+          "ExDate": "2022-04-19",
+          "PayDate": "2022-04-29",
+          "RecordDate": "2022-04-20",
+          "DeclaredDate": "2022-02-24",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        }
+      ],
+      "instrumentId": 4261
+    },
+    {
+      "historicDividends": [
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2026-08-19",
+          "PayDate": "2026-09-02",
+          "RecordDate": "2026-08-19",
+          "DeclaredDate": "2026-07-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2026-06-01",
+          "PayDate": "2026-06-11",
+          "RecordDate": "2026-06-01",
+          "DeclaredDate": "2026-05-12",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2026-02-18",
+          "PayDate": "2026-03-04",
+          "RecordDate": "2026-02-18",
+          "DeclaredDate": "2026-02-05",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2025-11-19",
+          "PayDate": "2025-12-03",
+          "RecordDate": "2025-11-19",
+          "DeclaredDate": "2025-10-16",
+          "PaymentFrequency": "Quarterly",
+          "Type": "OrdinaryDividend"
+        },
+        {
+          "DividendAmount": 0.7,
+          "Currency": "USD",
+          "ExDate": "2025-
+...[truncated 318892 chars by TestMind live capture]
