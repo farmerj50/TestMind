@@ -100,6 +100,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     source: "testmind",
     supports: (ctx) => Boolean(ctx.validationConfig.apiFixtures?.length),
     run: async (ctx) => findingsOnly(await runIntelligentValidation(ctx.validationConfig)),
+    continueOnError: true,
   },
   {
     id: "graphql-audit",
@@ -110,6 +111,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
     source: "testmind",
     supports: () => true,
     run: async (ctx) => findingsOnly((await runGraphQLAudit(ctx.payloadWithAuth)) as SecurityAgentFinding[]),
+    continueOnError: true,
   },
   {
     id: "openapi-scan",
@@ -296,6 +298,7 @@ export const builtInSecurityScanners: SecurityScannerModule[] = [
         } satisfies AnomalyBaselineScannerMetadata,
       };
     },
+    continueOnError: true,
   },
 ];
 

@@ -103,3 +103,37 @@ test("probeScoped rejects a URL outside scope before ever making a request", asy
   assert.equal(result.status, undefined);
   assert.match(result.error ?? "", /outside allowed/);
 });
+
+// Regression test for a real, confirmed production bug: headers captured from a live browser
+// session via Chrome DevTools Protocol include HTTP/2 pseudo-headers (:authority, :method,
+// :path, :scheme) - not valid HTTP/1.1 header field names. Before this fix, undici's request()
+// threw "invalid header key" and the ENTIRE outbound call failed the moment probeScoped replayed
+// exchange.request.headers verbatim - silently failing ~83% of active probes in a real session
+// (every one that reused captured headers), so "no findings" from Live Security Testing could
+// mean "the probes never actually reached the target," not "nothing was wrong."
+test("probeScoped strips HTTP/2 pseudo-headers before sending, rather than failing the whole request", async () => {
+  await withLocalServer(
+    (req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ receivedHeaders: req.headers }));
+    },
+    async (base, port) => {
+      const scope = { allowedHosts: ["127.0.0.1"], allowedPorts: [port] };
+      const capturedHeaders = {
+        ":authority": "panic-room-production.up.railway.app",
+        ":method": "GET",
+        ":path": "/api/contacts",
+        ":scheme": "https",
+        "x-custom-header": "real-value",
+        cookie: "session=abc123",
+      };
+      const result = await probeScoped(scope, base, { headers: capturedHeaders });
+      assert.equal(result.status, 200, "the request must actually reach the server, not error out on the pseudo-headers");
+      assert.equal(result.error, undefined);
+      const received = JSON.parse(result.body).receivedHeaders;
+      assert.equal(received["x-custom-header"], "real-value", "legitimate headers must still be sent");
+      assert.equal(received["cookie"], "session=abc123");
+      assert.equal(received[":authority"], undefined, "pseudo-headers must never reach the outbound request");
+    }
+  );
+});

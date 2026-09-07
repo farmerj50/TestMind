@@ -1,8 +1,14 @@
-import type { SecurityHttpExchange } from "./http-exchange.js";
-import { applyResourceIdMutation, detectResourceIdCandidates } from "./http-exchange.js";
-import { probeScoped, type ProbeResult, type ProbeScope } from "./http-client.js";
+import type { SecurityHttpExchange, ResourceIdCandidate, BodyResourceIdCandidate } from "./http-exchange.js";
+import {
+  applyResourceIdMutation,
+  detectResourceIdCandidates,
+  applyResourceIdMutationInBody,
+  detectResourceIdCandidatesInBody,
+} from "./http-exchange.js";
+import { probeScoped, probeEvidence, type ProbeResult, type ProbeScope } from "./http-client.js";
 import { computeDifferential, type ExchangeDiff } from "./differential.js";
 import { buildValidation, type SecurityValidation } from "./validation.js";
+import { scanForSensitiveData } from "./sensitive-data.js";
 
 export type LiveSecuritySeverity = "info" | "low" | "medium" | "high" | "critical";
 export type LiveSecurityCheckStatus = "passed" | "failed" | "skipped" | "info";
@@ -36,6 +42,21 @@ export type BrowserCorsReadResult = ProbeResult & {
 export type LiveSecurityTestOptions = {
   browserCorsRead?: (url: string, timeoutMs: number) => Promise<BrowserCorsReadResult>;
   browserCorsReadAttempts?: number;
+  /** Ticket LST.3/LST.4: set when a prior exchange in this same live session already tripped
+   * the sensitive-data circuit breaker. Session-level persistence of that state lives in the
+   * caller (runner/live-security-session.ts) - this function only decides, per call, whether to
+   * run active probes at all and whether THIS call trips the breaker. */
+  sessionAlreadyStopped?: boolean;
+  /** Ticket LST.4, tier 1: explicit opt-in allowing active probes against a captured
+   * POST/PUT/PATCH baseline, not just GET. When set, the IDOR/BOLA mutation probe preserves the
+   * real captured method (and mutates a JSON body id field when the URL has no id to mutate)
+   * instead of always downgrading to a synthesized GET. Every other active probe's own
+   * construction is unchanged - they still only ever build inert GET/HEAD requests. */
+  allowMutatingActiveProbes?: boolean;
+  /** Ticket LST.4, tier 2: DELETE is a materially higher-risk method than POST/PUT/PATCH, so it
+   * requires this SEPARATE opt-in in addition to allowMutatingActiveProbes above - never on its
+   * own. */
+  allowDeleteActiveProbes?: boolean;
 };
 
 export type LiveSecurityTestResult = {
@@ -45,6 +66,15 @@ export type LiveSecurityTestResult = {
   probes: LiveSecurityProbe[];
   idsFound: number;
   derivedUrls: string[];
+  /** Ticket LST.3: true if this call detected sensitive data outside the test identity's own
+   * baseline and stopped active probing. The caller must persist this onto the session so every
+   * later exchange in the same session also stops (see sessionAlreadyStopped above). */
+  sensitiveDataStopped: boolean;
+  /** Ticket TRC.1/TRC.3: each check's supporting probe(s), computed once here via
+   * findSupportingProbes so the frontend's reproduction traceability panel reads a single
+   * source of truth instead of re-implementing the correlation logic in TypeScript the browser
+   * can't import from this backend module. Keyed by check.id, which is unique within one result. */
+  supportingProbesByCheckId: Record<string, LiveSecurityProbe[]>;
 };
 
 type IdHint = { path: string; value: string };
@@ -85,6 +115,17 @@ function isSuccess(status: number | undefined) {
 
 function isAuthDeny(status: number | undefined) {
   return status === 401 || status === 403 || status === 407;
+}
+
+// Ticket LST.2: names the existing "a mutated-identity probe actually returned real data"
+// signal - previously inlined at the IDOR check's `isSuccess(idProbe.status) &&
+// idProbe.body.length > 10` - as the identity boundary the sensitive-data circuit breaker
+// (LST.3) reacts to. This does NOT mean "different shape than baseline"; bodyLooksSameData()
+// (used elsewhere for confidence scoring) stays a separate, orthogonal signal - a same-shaped
+// response for a different, non-owned ID is exactly the classic IDOR proof, not a reason to
+// trust it less.
+function isForeignIdentityResponse(status: number | undefined, body: string): boolean {
+  return isSuccess(status) && body.length > 10;
 }
 
 function headerValue(headers: Record<string, string> | undefined, name: string) {
@@ -334,6 +375,100 @@ function routeEvidence(context: RouteContext, extra: Record<string, unknown> = {
     baselineStatus: context.baselineStatus,
     ...extra,
   };
+}
+
+// Ticket TRC.1: conservative label-based fallback for checks whose evidence carries no URL at
+// all (method-tampering-head, benign-query-marker, the XSS/injection probes, the CORS checks,
+// unauthenticated-direct-access). Each of these fires at most once - or, for the CORS
+// credentialed-read loop, N *intentional* repeats of the exact same probe - per exchange today,
+// so a label-prefix match is unambiguous in practice, not just "probably fine." Only reached by
+// findSupportingProbes when no URL-based or correlation-key match exists.
+const CHECK_ID_TO_PROBE_LABEL_PREFIX: Record<string, string> = {
+  "method-tampering-head": "HEAD method probe",
+  "benign-query-marker": "benign query marker probe",
+  "xss-reflection-probe": "XSS reflection marker probe",
+  "injection-error-probe": "injection parser error probe",
+  "idor-url-mutation": "alternate ID probe",
+  "unauthenticated-direct-access": "unauthenticated replay",
+  "cors-wildcard-credentials": "cross-origin preflight probe",
+  "active-cors-origin-probe": "cross-origin preflight probe",
+};
+
+/**
+ * Ticket TRC.1: correlates a LiveSecurityCheck back to the specific probe(s) in the same
+ * result's `probes` array that produced it - needed for reproduction traceability (TRC.3),
+ * since checks and probes are two separate arrays in the same LiveSecurityTestResult with no
+ * explicit link today. Deterministic precedence, never a first-match guess:
+ *   1. Exact evidence URL + matching method.
+ *   2. Exact evidence URL alone (method not recorded on the evidence).
+ *   3. A check-specific correlation key (sensitive-data-stop's evidence.probe label).
+ *   4. A conservative label-based fallback (CHECK_ID_TO_PROBE_LABEL_PREFIX above).
+ * If more than one probe matches at whichever level resolves the check, ALL of them are
+ * returned - a triager seeing "these N probes may support this finding" is correct; a
+ * confidently wrong single probe is not.
+ */
+export function findSupportingProbes(check: LiveSecurityCheck, probes: LiveSecurityProbe[]): LiveSecurityProbe[] {
+  const evidence = (check.evidence ?? {}) as Record<string, unknown>;
+
+  const evidenceUrls: Array<{ url: string; method?: string }> = [];
+  if (typeof evidence.url === "string") {
+    evidenceUrls.push({ url: evidence.url, method: typeof evidence.method === "string" ? evidence.method : undefined });
+  }
+  if (Array.isArray(evidence.probes)) {
+    for (const entry of evidence.probes as Array<Record<string, unknown>>) {
+      if (typeof entry.url === "string") {
+        evidenceUrls.push({ url: entry.url, method: typeof entry.method === "string" ? entry.method : undefined });
+      }
+    }
+  }
+  // derived-detail-auth:<url> checks encode their target url in the check id itself.
+  const derivedDetailUrl = check.id.match(/^derived-detail-auth:(.+)$/);
+  if (derivedDetailUrl) evidenceUrls.push({ url: derivedDetailUrl[1] });
+
+  if (evidenceUrls.length > 0) {
+    const withMethod = evidenceUrls.filter((e): e is { url: string; method: string } => typeof e.method === "string");
+    if (withMethod.length > 0) {
+      const exact = probes.filter((p) => withMethod.some((e) => e.url === p.result.url && e.method === p.result.method));
+      if (exact.length > 0) return exact;
+    }
+    const urlOnly = probes.filter((p) => evidenceUrls.some((e) => e.url === p.result.url));
+    if (urlOnly.length > 0) return urlOnly;
+  }
+
+  if (typeof evidence.probe === "string") {
+    const byCorrelationKey = probes.filter((p) => p.label === evidence.probe);
+    if (byCorrelationKey.length > 0) return byCorrelationKey;
+  }
+
+  const fallbackPrefix = CHECK_ID_TO_PROBE_LABEL_PREFIX[check.id];
+  if (fallbackPrefix) {
+    const byPrefix = probes.filter((p) => p.label.startsWith(fallbackPrefix));
+    if (byPrefix.length > 0) return byPrefix;
+  }
+
+  return [];
+}
+
+// Ticket LST.3: the sensitive-data circuit breaker. Scans the FULL raw response body (never
+// the already-truncated bodySnippet - truncation could cut off the very content that matters)
+// via sensitive-data.ts's classifier. The evidence attached to the resulting check still only
+// ever uses probeEvidence()'s bodySnippet (redacted + 220-char capped, the existing convention
+// for every other check in this file) - the raw body that triggered the stop is never itself
+// persisted anywhere.
+function sensitiveDataStopCheck(probeLabel: string, result: ProbeResult, context: RouteContext): LiveSecurityCheck | null {
+  const scan = scanForSensitiveData(result.body);
+  if (!scan.sensitive) return null;
+  const categories = [...new Set(scan.matches.map((match) => match.category))];
+  return failedCheck(
+    "sensitive-data-stop",
+    `Active testing stopped: ${probeLabel} response for ${context.pathname} exposed sensitive data`,
+    "critical",
+    "sensitive_data_exposure",
+    "A01:2021 Broken Access Control",
+    "API3:2023 Excessive Data Exposure",
+    `A ${probeLabel} response contained ${categories.join(", ")}-shaped data that does not belong to the authorized test identity. All further active testing in this session has stopped - TestMind does not continue exploring exposed data once a finding is proven.`,
+    { ...routeEvidence(context), probe: probeLabel, categories, ...probeEvidence(probeLabel, result) }
+  );
 }
 
 function withProbeParam(rawUrl: string, name: string, value: string): string | null {
@@ -847,7 +982,12 @@ export async function runLiveSecurityTests(
   const checks: LiveSecurityCheck[] = [];
   const probes: LiveSecurityProbe[] = [];
   const method = exchange.request.method.toUpperCase();
-  const activeProbeAllowed = method === "GET";
+  // Ticket LST.4: the state-changing tier requires allowMutatingActiveProbes; DELETE additionally
+  // requires allowDeleteActiveProbes on top of that - never DELETE from allowDeleteActiveProbes
+  // alone. GET always stays allowed regardless of either opt-in (today's baseline behavior).
+  const stateChangingProbesAllowed =
+    Boolean(options.allowMutatingActiveProbes) && (method !== "DELETE" || Boolean(options.allowDeleteActiveProbes));
+  const activeProbeAllowed = method === "GET" || stateChangingProbesAllowed;
   const baselineBody = exchange.response?.body ?? "";
   const baselineJson = parseJson(baselineBody);
   const jsonKeys = baselineJson ? collectJsonKeys(baselineJson).size : 0;
@@ -856,7 +996,36 @@ export async function runLiveSecurityTests(
   const context = buildRouteContext(exchange, ids, authStripped.removed.length, jsonKeys);
   const baselineSucceeded = isSuccess(exchange.response?.status);
   const activeBaselineProbeAllowed = activeProbeAllowed && baselineSucceeded;
-  const idCandidates = detectResourceIdCandidates(exchange.request.url).slice(0, 2);
+  // Ticket LST.4: body-level candidates only gathered when the state-changing tier is opted
+  // into AND the captured request actually carried a body - detectResourceIdCandidatesInBody
+  // already returns [] for a missing/non-JSON body, but the option check keeps this explicit
+  // about when a JSON body's id fields become mutation targets versus just the URL's.
+  const idCandidates: Array<ResourceIdCandidate | BodyResourceIdCandidate> = [
+    ...detectResourceIdCandidates(exchange.request.url).slice(0, 2),
+    ...(stateChangingProbesAllowed ? detectResourceIdCandidatesInBody(exchange.request.postData).slice(0, 2) : []),
+  ];
+
+  // Ticket LST.3: the sensitive-data circuit breaker. Every active probe in this function is
+  // dispatched through `activeProbe` below rather than calling probeScoped directly - once
+  // `stopped` flips true (from this session or a prior exchange in the same live session via
+  // options.sessionAlreadyStopped), activeProbe returns null immediately and genuinely never
+  // sends another request, so tripping mid-sequence (e.g. on probe 3 of 5) really does prevent
+  // probes 4 and 5 from ever going out.
+  let stopped = Boolean(options.sessionAlreadyStopped);
+  async function activeProbe(
+    probeLabel: string,
+    url: string,
+    probeOpts: { method: string; headers: Record<string, string>; timeoutMs?: number; body?: string }
+  ): Promise<ProbeResult | null> {
+    if (stopped) return null;
+    const result = await probeScoped(scope, url, probeOpts);
+    const stopCheck = sensitiveDataStopCheck(probeLabel, result, context);
+    if (stopCheck) {
+      checks.push(stopCheck);
+      stopped = true;
+    }
+    return result;
+  }
 
   checks.push(
     infoCheck(
@@ -880,6 +1049,17 @@ export async function runLiveSecurityTests(
       }
     )
   );
+
+  if (options.sessionAlreadyStopped) {
+    checks.push(
+      skippedCheck(
+        "active-probes-session-stopped",
+        `Active testing skipped for ${context.pathname}: session already stopped`,
+        "A prior exchange in this live session exposed sensitive data outside the authorized test identity, so all further active testing stopped for the rest of this session. Start a new session to resume.",
+        routeEvidence(context)
+      )
+    );
+  }
 
   if (!activeProbeAllowed) {
     checks.push(
@@ -979,16 +1159,32 @@ export async function runLiveSecurityTests(
   const acac = headerValue(exchange.response?.headers, "access-control-allow-credentials");
   const capturedWildcardCredentialed = acao === "*" && /true/i.test(acac);
 
-  const corsProbe = await probeScoped(scope, exchange.request.url, {
-    method: "OPTIONS",
-    headers: {
-      Origin: TEST_ORIGIN,
-      "Access-Control-Request-Method": method === "OPTIONS" ? "GET" : method,
-      "Access-Control-Request-Headers": "authorization,content-type",
-    },
-    timeoutMs: 5_000,
-  });
-  probes.push({ label: "cross-origin preflight probe", result: corsProbe });
+  // The CORS preflight is otherwise unconditional (matches this file's existing "Passive checks
+  // and the safe CORS preflight still ran" convention for the plain method !== GET case - OPTIONS
+  // never triggers side effects on a well-behaved server, same rationale as the HEAD
+  // method-tampering probe) - but "stopped" means stopped, with no exceptions: once the
+  // sensitive-data circuit breaker has tripped (either earlier in this same exchange, or from a
+  // prior exchange in the session via sessionAlreadyStopped), TestMind sends zero further
+  // outbound probe requests of any kind, not even a believed-inert one.
+  const corsProbe: ProbeResult = stopped
+    ? { method: "OPTIONS", url: exchange.request.url, profile: undefined, body: "", bodyLength: 0, bodySnippet: "", headers: {}, error: "Active testing stopped" }
+    : await probeScoped(scope, exchange.request.url, {
+        method: "OPTIONS",
+        headers: {
+          Origin: TEST_ORIGIN,
+          "Access-Control-Request-Method": method === "OPTIONS" ? "GET" : method,
+          "Access-Control-Request-Headers": "authorization,content-type",
+        },
+        timeoutMs: 5_000,
+      });
+  if (!stopped) {
+    probes.push({ label: "cross-origin preflight probe", result: corsProbe });
+    const corsStopCheck = sensitiveDataStopCheck("cross-origin preflight probe", corsProbe, context);
+    if (corsStopCheck) {
+      checks.push(corsStopCheck);
+      stopped = true;
+    }
+  }
   const probedAcao = headerValue(corsProbe.headers, "access-control-allow-origin");
   const probedAcac = headerValue(corsProbe.headers, "access-control-allow-credentials");
   const credentialedCorsSuspicious = (probedAcao === "*" || probedAcao === TEST_ORIGIN) && /true/i.test(probedAcac);
@@ -997,13 +1193,21 @@ export async function runLiveSecurityTests(
     0,
     Math.min(VALIDATION_REPEAT_COUNT, Math.trunc(options.browserCorsReadAttempts ?? VALIDATION_REPEAT_COUNT))
   );
-  if (credentialedCorsSuspicious && activeProbeAllowed && baselineSucceeded && authStripped.removed.length > 0 && probedAcao === TEST_ORIGIN) {
-    for (let attempt = 0; attempt < VALIDATION_REPEAT_COUNT; attempt += 1) {
-      const corsRead = await probeScoped(scope, exchange.request.url, {
-        method: "GET",
-        headers: { ...exchange.request.headers, Origin: TEST_ORIGIN },
-        timeoutMs: 5_000,
-      });
+  if (
+    credentialedCorsSuspicious &&
+    activeProbeAllowed &&
+    !stopped &&
+    baselineSucceeded &&
+    authStripped.removed.length > 0 &&
+    probedAcao === TEST_ORIGIN
+  ) {
+    for (let attempt = 0; attempt < VALIDATION_REPEAT_COUNT && !stopped; attempt += 1) {
+      const corsRead = await activeProbe(
+        attempt === 0 ? "credentialed CORS read probe" : "credentialed CORS read reproduction",
+        exchange.request.url,
+        { method: "GET", headers: { ...exchange.request.headers, Origin: TEST_ORIGIN }, timeoutMs: 5_000 }
+      );
+      if (!corsRead) break;
       corsReadAttempts.push(corsRead);
       probes.push({
         label: attempt === 0 ? "credentialed CORS read probe" : "credentialed CORS read reproduction",
@@ -1016,11 +1220,12 @@ export async function runLiveSecurityTests(
     options.browserCorsRead &&
     browserCorsReadAttempts > 0 &&
     activeProbeAllowed &&
+    !stopped &&
     baselineSucceeded &&
     hasRequestHeader(exchange.request.headers, "cookie") &&
     (capturedWildcardCredentialed || credentialedCorsSuspicious)
   ) {
-    for (let attempt = 0; attempt < browserCorsReadAttempts; attempt += 1) {
+    for (let attempt = 0; attempt < browserCorsReadAttempts && !stopped; attempt += 1) {
       const browserRead = await options.browserCorsRead(exchange.request.url, 7_000);
       corsReadAttempts.push(browserRead);
       probes.push({
@@ -1028,6 +1233,15 @@ export async function runLiveSecurityTests(
         result: browserRead,
         diff: computeDifferential(exchange, browserRead),
       });
+      const browserStopCheck = sensitiveDataStopCheck(
+        attempt === 0 ? "browser credentialed CORS read proof" : "browser credentialed CORS read reproduction",
+        browserRead,
+        context
+      );
+      if (browserStopCheck) {
+        checks.push(browserStopCheck);
+        stopped = true;
+      }
     }
   }
   const corsValidation = buildCorsValidation(
@@ -1093,14 +1307,14 @@ export async function runLiveSecurityTests(
     );
   }
 
-  if (activeProbeAllowed) {
-    const headProbe = await probeScoped(scope, exchange.request.url, {
+  if (activeProbeAllowed && !stopped) {
+    const headProbe = await activeProbe("HEAD method probe", exchange.request.url, {
       method: "HEAD",
       headers: exchange.request.headers,
       timeoutMs: 5_000,
     });
-    probes.push({ label: "HEAD method probe", result: headProbe });
-    if (statusIn(headProbe.status, 500, 599)) {
+    if (headProbe) probes.push({ label: "HEAD method probe", result: headProbe });
+    if (headProbe && statusIn(headProbe.status, 500, 599)) {
       checks.push(
         failedCheck(
           "method-tampering-head",
@@ -1117,83 +1331,87 @@ export async function runLiveSecurityTests(
       checks.push(
         infoCheck(
           "method-tampering-head",
-          `Method handling: HEAD ${context.pathname} returned ${headProbe.status ?? "no response"}`,
+          `Method handling: HEAD ${context.pathname} returned ${headProbe?.status ?? "no response"}`,
           "Compared method handling by sending a safe HEAD request to the captured GET endpoint.",
-          routeEvidence(context, { status: headProbe.status, error: headProbe.error })
+          routeEvidence(context, { status: headProbe?.status, error: headProbe?.error })
         )
       );
     }
 
     const markerUrl = withProbeMarker(exchange.request.url);
     if (markerUrl && markerUrl !== exchange.request.url) {
-      const markerProbe = await probeScoped(scope, markerUrl, {
+      const markerProbe = await activeProbe("benign query marker probe", markerUrl, {
         method: "GET",
         headers: exchange.request.headers,
         timeoutMs: 5_000,
       });
-      probes.push({ label: "benign query marker probe", result: markerProbe, diff: computeDifferential(exchange, markerProbe) });
-      if (statusIn(markerProbe.status, 500, 599) || ERROR_DISCLOSURE_RE.test(markerProbe.body)) {
-        checks.push(
-          failedCheck(
-            "benign-query-marker",
-            `Benign query marker on ${context.pathname} returned ${markerProbe.status ?? "no response"}`,
-            "medium",
-            "input_validation",
-            "A03:2021 Injection",
-            "API8:2023 Security Misconfiguration",
-            "Adding a harmless query parameter caused a server error or error disclosure.",
-            routeEvidence(context, { status: markerProbe.status, error: markerProbe.error })
-          )
-        );
-      } else {
-        checks.push(
-          passedCheck(
-            "benign-query-marker",
-            `Benign query marker on ${context.pathname} returned ${markerProbe.status ?? "no response"}`,
-            "Adding tm_probe=1 did not produce a server error or error disclosure.",
-            routeEvidence(context, { status: markerProbe.status, error: markerProbe.error })
-          )
-        );
-      }
-    }
-
-    if (activeBaselineProbeAllowed) {
-      const reflection = reflectionProbe(exchange.request.url, exchange.id);
-      if (reflection.url) {
-        const reflected = await probeScoped(scope, reflection.url, {
-          method: "GET",
-          headers: exchange.request.headers,
-          timeoutMs: 5_000,
-        });
-        probes.push({ label: "XSS reflection marker probe", result: reflected, diff: computeDifferential(exchange, reflected) });
-        const rawMarkupReflected = reflectedRawMarkup(reflected.body, reflection.token);
-        const markerReflected = reflectedProbeToken(reflected.body, reflection.token);
-        const browserRelevantResponse = isHtmlLikeContentType(headerValue(reflected.headers, "content-type"));
-        if (rawMarkupReflected && browserRelevantResponse) {
+      if (markerProbe) {
+        probes.push({ label: "benign query marker probe", result: markerProbe, diff: computeDifferential(exchange, markerProbe) });
+        if (statusIn(markerProbe.status, 500, 599) || ERROR_DISCLOSURE_RE.test(markerProbe.body)) {
           checks.push(
             failedCheck(
-              "xss-reflection-probe",
-              `XSS/reflection probe for ${context.pathname} reflected unencoded markup`,
+              "benign-query-marker",
+              `Benign query marker on ${context.pathname} returned ${markerProbe.status ?? "no response"}`,
               "medium",
-              "xss",
+              "input_validation",
               "A03:2021 Injection",
               "API8:2023 Security Misconfiguration",
-              "An inert markup marker was reflected into a browser-rendered response without output encoding.",
-              routeEvidence(context, { status: reflected.status, markerReflected, rawMarkupReflected, contentType: headerValue(reflected.headers, "content-type") }),
-              buildReflectionValidation(context, reflected, rawMarkupReflected, markerReflected, browserRelevantResponse)
+              "Adding a harmless query parameter caused a server error or error disclosure.",
+              routeEvidence(context, { status: markerProbe.status, error: markerProbe.error })
             )
           );
         } else {
           checks.push(
             passedCheck(
-              "xss-reflection-probe",
-              `XSS/reflection probe for ${context.pathname} did not prove unencoded HTML reflection`,
-              markerReflected
-                ? "The marker appeared in the response, but not as unencoded markup in a browser-rendered response."
-                : "The inert markup marker was not reflected in the response.",
-              routeEvidence(context, { status: reflected.status, markerReflected, rawMarkupReflected, contentType: headerValue(reflected.headers, "content-type") })
+              "benign-query-marker",
+              `Benign query marker on ${context.pathname} returned ${markerProbe.status ?? "no response"}`,
+              "Adding tm_probe=1 did not produce a server error or error disclosure.",
+              routeEvidence(context, { status: markerProbe.status, error: markerProbe.error })
             )
           );
+        }
+      }
+    }
+
+    if (activeBaselineProbeAllowed && !stopped) {
+      const reflection = reflectionProbe(exchange.request.url, exchange.id);
+      if (reflection.url) {
+        const reflected = await activeProbe("XSS reflection marker probe", reflection.url, {
+          method: "GET",
+          headers: exchange.request.headers,
+          timeoutMs: 5_000,
+        });
+        if (reflected) {
+          probes.push({ label: "XSS reflection marker probe", result: reflected, diff: computeDifferential(exchange, reflected) });
+          const rawMarkupReflected = reflectedRawMarkup(reflected.body, reflection.token);
+          const markerReflected = reflectedProbeToken(reflected.body, reflection.token);
+          const browserRelevantResponse = isHtmlLikeContentType(headerValue(reflected.headers, "content-type"));
+          if (rawMarkupReflected && browserRelevantResponse) {
+            checks.push(
+              failedCheck(
+                "xss-reflection-probe",
+                `XSS/reflection probe for ${context.pathname} reflected unencoded markup`,
+                "medium",
+                "xss",
+                "A03:2021 Injection",
+                "API8:2023 Security Misconfiguration",
+                "An inert markup marker was reflected into a browser-rendered response without output encoding.",
+                routeEvidence(context, { status: reflected.status, markerReflected, rawMarkupReflected, contentType: headerValue(reflected.headers, "content-type") }),
+                buildReflectionValidation(context, reflected, rawMarkupReflected, markerReflected, browserRelevantResponse)
+              )
+            );
+          } else {
+            checks.push(
+              passedCheck(
+                "xss-reflection-probe",
+                `XSS/reflection probe for ${context.pathname} did not prove unencoded HTML reflection`,
+                markerReflected
+                  ? "The marker appeared in the response, but not as unencoded markup in a browser-rendered response."
+                  : "The inert markup marker was not reflected in the response.",
+                routeEvidence(context, { status: reflected.status, markerReflected, rawMarkupReflected, contentType: headerValue(reflected.headers, "content-type") })
+              )
+            );
+          }
         }
       } else {
         checks.push(
@@ -1206,36 +1424,49 @@ export async function runLiveSecurityTests(
         );
       }
 
-      const injectionUrl = injectionProbeUrl(exchange.request.url);
-      if (injectionUrl) {
-        const injectionProbe = await probeScoped(scope, injectionUrl, {
-          method: "GET",
-          headers: exchange.request.headers,
-          timeoutMs: 5_000,
-        });
-        probes.push({ label: "injection parser error probe", result: injectionProbe, diff: computeDifferential(exchange, injectionProbe) });
-        const injectionErrored = statusIn(injectionProbe.status, 500, 599) || ERROR_DISCLOSURE_RE.test(injectionProbe.body);
-        if (injectionErrored) {
-          checks.push(
-            failedCheck(
-              "injection-error-probe",
-              `Injection parser probe for ${context.pathname} returned ${injectionProbe.status ?? "error disclosure"}`,
-              "medium",
-              "injection",
-              "A03:2021 Injection",
-              "API8:2023 Security Misconfiguration",
-              "A harmless parser-stress query marker caused a server error or internal error disclosure.",
-              routeEvidence(context, { status: injectionProbe.status, error: injectionProbe.error }),
-              buildInjectionProbeValidation(context, injectionProbe)
-            )
-          );
+      if (!stopped) {
+        const injectionUrl = injectionProbeUrl(exchange.request.url);
+        if (injectionUrl) {
+          const injectionProbe = await activeProbe("injection parser error probe", injectionUrl, {
+            method: "GET",
+            headers: exchange.request.headers,
+            timeoutMs: 5_000,
+          });
+          if (injectionProbe) {
+            probes.push({ label: "injection parser error probe", result: injectionProbe, diff: computeDifferential(exchange, injectionProbe) });
+            const injectionErrored = statusIn(injectionProbe.status, 500, 599) || ERROR_DISCLOSURE_RE.test(injectionProbe.body);
+            if (injectionErrored) {
+              checks.push(
+                failedCheck(
+                  "injection-error-probe",
+                  `Injection parser probe for ${context.pathname} returned ${injectionProbe.status ?? "error disclosure"}`,
+                  "medium",
+                  "injection",
+                  "A03:2021 Injection",
+                  "API8:2023 Security Misconfiguration",
+                  "A harmless parser-stress query marker caused a server error or internal error disclosure.",
+                  routeEvidence(context, { status: injectionProbe.status, error: injectionProbe.error }),
+                  buildInjectionProbeValidation(context, injectionProbe)
+                )
+              );
+            } else {
+              checks.push(
+                passedCheck(
+                  "injection-error-probe",
+                  `Injection parser probe for ${context.pathname} returned ${injectionProbe.status ?? "no response"}`,
+                  "A harmless parser-stress query marker did not cause a server error or obvious internal error disclosure.",
+                  routeEvidence(context, { status: injectionProbe.status, error: injectionProbe.error })
+                )
+              );
+            }
+          }
         } else {
           checks.push(
-            passedCheck(
+            skippedCheck(
               "injection-error-probe",
-              `Injection parser probe for ${context.pathname} returned ${injectionProbe.status ?? "no response"}`,
-              "A harmless parser-stress query marker did not cause a server error or obvious internal error disclosure.",
-              routeEvidence(context, { status: injectionProbe.status, error: injectionProbe.error })
+              `Injection parser probe skipped for ${context.pathname}`,
+              "TestMind could not construct a scoped GET URL for the parser-stress marker.",
+              routeEvidence(context)
             )
           );
         }
@@ -1244,11 +1475,28 @@ export async function runLiveSecurityTests(
           skippedCheck(
             "injection-error-probe",
             `Injection parser probe skipped for ${context.pathname}`,
-            "TestMind could not construct a scoped GET URL for the parser-stress marker.",
+            "Active testing stopped earlier in this exchange after a sensitive data exposure finding.",
             routeEvidence(context)
           )
         );
       }
+    } else if (stopped) {
+      checks.push(
+        skippedCheck(
+          "xss-reflection-probe",
+          `XSS/reflection probe skipped for ${context.pathname}`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context)
+        )
+      );
+      checks.push(
+        skippedCheck(
+          "injection-error-probe",
+          `Injection parser probe skipped for ${context.pathname}`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context)
+        )
+      );
     } else {
       checks.push(
         skippedCheck(
@@ -1268,24 +1516,46 @@ export async function runLiveSecurityTests(
       );
     }
 
-    const idProbeFindings: Array<{ url: string; status?: number; candidate: string; value: string; sameData: boolean }> = [];
-    for (const candidate of activeBaselineProbeAllowed ? idCandidates : []) {
+    // Ticket LST.4: preserve the real captured method (and body) for this probe only when the
+    // state-changing tier is opted in - a GET baseline (the pre-existing, still-default case)
+    // is unaffected since method is already "GET" here. Every OTHER active probe in this
+    // function (method-tampering, marker, XSS, injection) still always synthesizes its own
+    // inert GET/HEAD request regardless of this option, per the frozen LST.4 contract - method
+    // preservation is scoped to the IDOR/BOLA mutation probe alone.
+    const idorProbeMethod = stateChangingProbesAllowed ? method : "GET";
+    const idProbeFindings: Array<{ url: string; method: string; status?: number; candidate: string; value: string; sameData: boolean }> = [];
+    idorLoop: for (const candidate of activeBaselineProbeAllowed && !stopped ? idCandidates : []) {
       for (const alternateValue of alternateIdValues(candidate.value).slice(0, 2)) {
-        const probeUrl = applyResourceIdMutation(exchange.request.url, candidate, alternateValue);
-        const idProbe = await probeScoped(scope, probeUrl, {
-          method: "GET",
+        if (stopped) break idorLoop;
+        const probeUrl = candidate.location === "body" ? exchange.request.url : applyResourceIdMutation(exchange.request.url, candidate, alternateValue);
+        const probeBody =
+          candidate.location === "body"
+            ? applyResourceIdMutationInBody(exchange.request.postData ?? "", candidate, alternateValue)
+            : exchange.request.postData;
+        const idProbe = await activeProbe("alternate ID probe", probeUrl, {
+          method: idorProbeMethod,
           headers: exchange.request.headers,
           timeoutMs: 5_000,
+          body: idorProbeMethod === "GET" ? undefined : probeBody,
         });
+        if (!idProbe) break idorLoop;
         probes.push({ label: "alternate ID probe", result: idProbe, diff: computeDifferential(exchange, idProbe) });
-        if (isSuccess(idProbe.status) && idProbe.body.length > 10) {
+        if (isForeignIdentityResponse(idProbe.status, idProbe.body)) {
           idProbeFindings.push({
             url: probeUrl,
+            // Ticket TRC.1: method recorded so findSupportingProbes can disambiguate by
+            // url+method when the state-changing tier (LST.4) means "alternate ID probe" no
+            // longer implies GET - two candidates could in principle mutate to the same URL
+            // via different methods.
+            method: idorProbeMethod,
             status: idProbe.status,
             candidate: candidate.paramName,
             value: alternateValue,
             sameData: bodyLooksSameData(baselineBody, idProbe.body, ids),
           });
+          // Ticket LST.5: minimum-necessary-proof - the hypothesis is already proven for this
+          // candidate once one alternate value succeeds; don't also try the second one.
+          break;
         }
       }
     }
@@ -1296,6 +1566,15 @@ export async function runLiveSecurityTests(
           `IDOR/BOLA URL mutation skipped for ${context.pathname}`,
           "Live IDOR URL mutation probes require a successful captured GET baseline.",
           routeEvidence(context, { candidates: idCandidates.map((candidate) => candidate.paramName), idsFound: ids.length, urlIds: context.urlIds })
+        )
+      );
+    } else if (stopped && idProbeFindings.length === 0) {
+      checks.push(
+        skippedCheck(
+          "idor-url-mutation",
+          `IDOR/BOLA URL mutation skipped for ${context.pathname}`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context, { candidates: idCandidates.map((candidate) => candidate.paramName) })
         )
       );
     } else if (idProbeFindings.length > 0) {
@@ -1353,11 +1632,30 @@ export async function runLiveSecurityTests(
         routeEvidence(context, { removedHeaders: authStripped.removed })
       )
     );
+  } else if (stopped) {
+    checks.push(
+      skippedCheck(
+        "unauthenticated-direct-access",
+        `Unauthenticated replay skipped for ${context.pathname}`,
+        "Active testing stopped after a sensitive data exposure finding.",
+        routeEvidence(context, { removedHeaders: authStripped.removed })
+      )
+    );
   } else if (baselineSucceeded && authStripped.removed.length > 0) {
-    const unauth = await probeScoped(scope, exchange.request.url, {
+    const unauth = await activeProbe("unauthenticated replay", exchange.request.url, {
       method: "GET",
       headers: authStripped.headers,
     });
+    if (!unauth) {
+      checks.push(
+        skippedCheck(
+          "unauthenticated-direct-access",
+          `Unauthenticated replay skipped for ${context.pathname}`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context, { removedHeaders: authStripped.removed })
+        )
+      );
+    } else {
     probes.push({ label: "unauthenticated replay", result: unauth, diff: computeDifferential(exchange, unauth) });
 
     if (isAuthDeny(unauth.status)) {
@@ -1371,12 +1669,13 @@ export async function runLiveSecurityTests(
       );
     } else if (isSuccess(unauth.status)) {
       const unauthAttempts = [unauth];
-      for (let attempt = 0; attempt < VALIDATION_REPEAT_COUNT; attempt += 1) {
-        const repeatUnauth = await probeScoped(scope, exchange.request.url, {
-          method: "GET",
-          headers: authStripped.headers,
-          timeoutMs: 5_000,
-        });
+      for (let attempt = 0; attempt < VALIDATION_REPEAT_COUNT && !stopped; attempt += 1) {
+        const repeatUnauth = await activeProbe(
+          attempt === 0 ? "unauthenticated replay validation" : "unauthenticated replay reproduction",
+          exchange.request.url,
+          { method: "GET", headers: authStripped.headers, timeoutMs: 5_000 }
+        );
+        if (!repeatUnauth) break;
         unauthAttempts.push(repeatUnauth);
         probes.push({
           label: attempt === 0 ? "unauthenticated replay validation" : "unauthenticated replay reproduction",
@@ -1415,6 +1714,7 @@ export async function runLiveSecurityTests(
         )
       );
     }
+    }
   } else {
     checks.push(
       skippedCheck(
@@ -1441,10 +1741,32 @@ export async function runLiveSecurityTests(
   }
 
   for (const url of derivedUrls) {
-    const authDetail = await probeScoped(scope, url, {
+    if (stopped) {
+      checks.push(
+        skippedCheck(
+          `derived-detail-auth:${url}`,
+          `IDOR/BOLA derived detail ${pathnameFromUrl(url)} skipped`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context, { url })
+        )
+      );
+      continue;
+    }
+    const authDetail = await activeProbe("authenticated detail probe", url, {
       method: "GET",
       headers: exchange.request.headers,
     });
+    if (!authDetail) {
+      checks.push(
+        skippedCheck(
+          `derived-detail-auth:${url}`,
+          `IDOR/BOLA derived detail ${pathnameFromUrl(url)} skipped`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context, { url })
+        )
+      );
+      continue;
+    }
     probes.push({ label: "authenticated detail probe", result: authDetail });
 
     if (!isSuccess(authDetail.status)) {
@@ -1471,10 +1793,21 @@ export async function runLiveSecurityTests(
       continue;
     }
 
-    const unauthDetail = await probeScoped(scope, url, {
+    const unauthDetail = await activeProbe("unauthenticated detail probe", url, {
       method: "GET",
       headers: authStripped.headers,
     });
+    if (!unauthDetail) {
+      checks.push(
+        skippedCheck(
+          `derived-detail-auth:${url}`,
+          `IDOR/BOLA unauthenticated detail ${pathnameFromUrl(url)} skipped`,
+          "Active testing stopped after a sensitive data exposure finding.",
+          routeEvidence(context, { url, authStatus: authDetail.status })
+        )
+      );
+      continue;
+    }
     probes.push({ label: "unauthenticated detail probe", result: unauthDetail });
 
     if (isAuthDeny(unauthDetail.status)) {
@@ -1519,5 +1852,7 @@ export async function runLiveSecurityTests(
     probes,
     idsFound: ids.length,
     derivedUrls,
+    sensitiveDataStopped: stopped,
+    supportingProbesByCheckId: Object.fromEntries(checks.map((c) => [c.id, findSupportingProbes(c, probes)])),
   };
 }

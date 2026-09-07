@@ -91,6 +91,28 @@ function emptyResult(method: string, url: string, profile: string | undefined, e
   return { method, url, profile, body: "", bodyLength: 0, bodySnippet: "", headers: {}, error };
 }
 
+// HTTP/2 pseudo-headers (":authority", ":method", ":path", ":scheme") show up in headers
+// captured via Chrome DevTools Protocol (real browser traffic exposes HTTP/2 framing details
+// CDP surfaces directly) but are not valid HTTP/1.1 header field names. undici's request()
+// throws "invalid header key" and aborts the ENTIRE outbound call if even one is present -
+// silently failing every probe that replays real captured headers (every active probe except
+// the CORS preflight, which builds its own headers from scratch rather than reusing captured
+// ones). Filtered out once, here, at the actual outbound-request boundary, so every caller of
+// probeScoped (live-security-tests.ts, experiment.ts, enterprise-bypass.ts) is protected
+// uniformly instead of each needing its own header-sanitizing discipline - this is the real
+// security/correctness boundary, not caller discipline, matching this file's own redirect-scope
+// re-validation below.
+const VALID_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+function sanitizeOutboundHeaders(headers: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!headers) return headers;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (VALID_HEADER_NAME_RE.test(key)) out[key] = value;
+  }
+  return out;
+}
+
 // Follows redirects manually (undici's bare request() does not auto-follow), re-validating
 // isWithinScope on every hop before it's requested — not just the initial URL. Without this,
 // an in-scope target that 302s to an out-of-scope/internal address would have let the
@@ -104,6 +126,7 @@ export async function probeScoped(
   const profile = opts.profile;
   const followRedirects = opts.followRedirects ?? true;
   const maxRedirects = Number.isFinite(opts.maxRedirects) ? Math.max(0, Math.trunc(opts.maxRedirects as number)) : 5;
+  const headers = sanitizeOutboundHeaders(opts.headers);
 
   let currentUrl = url;
   for (let hop = 0; ; hop++) {
@@ -117,7 +140,7 @@ export async function probeScoped(
     try {
       response = await request(currentUrl, {
         method,
-        headers: opts.headers,
+        headers,
         body: opts.body,
         signal: controller.signal as any,
       });

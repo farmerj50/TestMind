@@ -145,9 +145,12 @@ type LiveSecurityValidation = {
 type LiveSecurityProbe = {
   label: string;
   result: {
+    method?: string;
     status?: number;
     url: string;
     headers?: Record<string, string>;
+    bodyLength?: number;
+    bodySnippet?: string;
     error?: string;
     browserReadable?: boolean;
     browserBlocked?: boolean;
@@ -164,6 +167,11 @@ type LiveSecurityTestResult = {
   probes: LiveSecurityProbe[];
   idsFound: number;
   derivedUrls: string[];
+  sensitiveDataStopped?: boolean;
+  // Ticket TRC.1/TRC.3: each check's supporting probe(s), computed server-side by
+  // findSupportingProbes so the reproduction traceability panel below reads a single source of
+  // truth instead of re-implementing the correlation logic here.
+  supportingProbesByCheckId?: Record<string, LiveSecurityProbe[]>;
 };
 
 type SecurityTestState =
@@ -556,6 +564,56 @@ function compactEvidence(evidence: Record<string, unknown> | undefined) {
   return [...entries, ...extras].filter(([, value]) => value !== undefined).slice(0, 8);
 }
 
+// Reproduction traceability, Ticket TRC.3. Evidence-first, not prose-first: baseline captured
+// request -> exact active probe(s) (from the backend's supportingProbesByCheckId, Ticket TRC.1
+// - a single source of truth, never re-guessed here) -> observed outcome -> a short generated
+// replay note. Never shows a full request/response body, headers are already redacted by
+// clientExchange()/the same probeEvidence() truncation every check's evidence already uses -
+// this panel only reads what's already safe to display, it doesn't decide safety itself.
+function ReproductionTraceabilityPanel({
+  exchange,
+  supportingProbes,
+}: {
+  exchange: SecurityHttpExchange;
+  supportingProbes: LiveSecurityProbe[];
+}) {
+  const baselineStatus = exchange.response?.status ?? "no response";
+  return (
+    <div className="mt-1 rounded border border-slate-300 bg-white p-1.5 text-[11px] text-slate-800 shadow-sm">
+      <div className="font-semibold text-slate-950">Reproduction traceability</div>
+      <div className="mt-1">
+        <span className="font-medium">Baseline:</span>{" "}
+        <code>
+          {exchange.request.method} {pathnameFromUrl(exchange.request.url)}
+        </code>{" "}
+        → {baselineStatus}
+      </div>
+      {supportingProbes.length === 0 ? (
+        <div className="mt-1 text-slate-500">No specific probe could be correlated to this finding.</div>
+      ) : (
+        supportingProbes.map((probe, i) => (
+          <div key={i} className="mt-1">
+            <span className="font-medium">Probe ({probe.label}):</span>{" "}
+            <code>
+              {probe.result.method ?? "GET"} {pathnameFromUrl(probe.result.url)}
+            </code>{" "}
+            → {probe.result.status ?? "no response"}
+            {probe.result.bodySnippet && (
+              <div className="mt-0.5 text-slate-500">
+                Body preview truncated: <code>{probe.result.bodySnippet}</code>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+      <div className="mt-1 text-slate-500">
+        To reproduce: replay the request(s) above using your own authenticated test session. Auth
+        credentials are redacted here by design and are never shown.
+      </div>
+    </div>
+  );
+}
+
 function countValidationStatuses(checks: LiveSecurityCheck[]) {
   return checks.reduce(
     (counts, check) => {
@@ -738,6 +796,12 @@ export default function LiveSecurityTestPage() {
   const rateLimitWindowRef = useRef<number[]>([]);
   const stoppedRef = useRef(false);
   const analysis = useMemo(() => analyzeTraffic(exchanges, scope.allowedHosts), [exchanges, scope.allowedHosts]);
+  // Findings requiring review (below) shows traceability inline rather than only in the deeper
+  // per-request list, so a triager reading the top summary never has to go hunting for it.
+  // exchanges is capped at MAX_RETAINED_EXCHANGES and can evict an older finding's baseline
+  // request out of memory during a long session - lookups against this map degrade gracefully
+  // (ReproductionTraceabilityPanel is simply not rendered) rather than throwing.
+  const exchangesById = useMemo(() => new Map(exchanges.map((exchange) => [exchange.id, exchange])), [exchanges]);
   const capturedTrafficTotal = Math.max(capturedExchangeTotal, exchanges.length);
   const securityTestTargets = useMemo(
     () => securityCandidateExchanges.filter((exchange) => isSecurityTestTarget(exchange, scope.allowedHosts)),
@@ -1669,23 +1733,36 @@ export default function LiveSecurityTestPage() {
             <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-rose-900">
               <div className="mb-2 font-medium">Findings requiring review</div>
               <div className="space-y-2">
-                {actionableFindings.slice(0, 10).map(({ exchangeId, result, check }) => (
-                  <div key={`${exchangeId}:${check.id}`} className="rounded border border-rose-200 bg-white px-2 py-1.5 text-xs shadow-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{check.title}</span>
-                      <span className={`rounded px-1.5 py-0.5 uppercase ${securityStatusBadgeClass(check)}`}>
-                        {securityStatusLabel(check)}
-                      </span>
-                      <span className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-slate-800">
-                        {securitySeverityLabel(check)}
-                      </span>
-                      <code className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-slate-800">
-                        {pathnameFromUrl(result.targetUrl)}
-                      </code>
+                {actionableFindings.slice(0, 10).map(({ exchangeId, result, check }) => {
+                  const findingExchange = exchangesById.get(exchangeId);
+                  return (
+                    <div key={`${exchangeId}:${check.id}`} className="rounded border border-rose-200 bg-white px-2 py-1.5 text-xs shadow-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">{check.title}</span>
+                        <span className={`rounded px-1.5 py-0.5 uppercase ${securityStatusBadgeClass(check)}`}>
+                          {securityStatusLabel(check)}
+                        </span>
+                        <span className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-slate-800">
+                          {securitySeverityLabel(check)}
+                        </span>
+                        <code className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-slate-800">
+                          {pathnameFromUrl(result.targetUrl)}
+                        </code>
+                      </div>
+                      <div className="mt-1 text-rose-800">{check.validation?.conclusion ?? check.description}</div>
+                      {findingExchange ? (
+                        <ReproductionTraceabilityPanel
+                          exchange={findingExchange}
+                          supportingProbes={result.supportingProbesByCheckId?.[check.id] ?? []}
+                        />
+                      ) : (
+                        <div className="mt-1 text-slate-500">
+                          Baseline request detail is no longer retained in this browser session; see Security test results below for the full request/response trail while it is still active, or reload from stored history.
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-1 text-rose-800">{check.validation?.conclusion ?? check.description}</div>
-                  </div>
-                ))}
+                  );
+                })}
                 {actionableFindings.length > 10 && (
                   <div className="text-xs text-rose-800">Showing 10 of {actionableFindings.length} confirmed findings.</div>
                 )}
@@ -2101,6 +2178,12 @@ export default function LiveSecurityTestPage() {
                                     </span>
                                   ))}
                                 </div>
+                              )}
+                              {check.status === "failed" && (
+                                <ReproductionTraceabilityPanel
+                                  exchange={exchange}
+                                  supportingProbes={securityTest.result.supportingProbesByCheckId?.[check.id] ?? []}
+                                />
                               )}
                             </div>
                           );
