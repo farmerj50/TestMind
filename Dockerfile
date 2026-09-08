@@ -66,6 +66,7 @@ RUN set -eux; \
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     git \
     openjdk-17-jre-headless \
+    xvfb \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
@@ -108,4 +109,12 @@ COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
 COPY --from=builder /workspace/packages/testmind-core ./packages/testmind-core
 COPY tm-ai.playwright.config.mjs ./tm-ai.playwright.config.mjs
 
-CMD ["sh", "-c", "pnpm --filter api exec prisma db push --accept-data-loss && node apps/api/dist/index.js"]
+# Live Security Testing's "Headed manual browser" capture mode (runner/auth-session-stream.ts,
+# runner/live-security-session.ts) launches Chromium/patchright with headless: false — a real
+# (non-headless) browser process is used specifically to avoid the headless-detection signals
+# some login/MFA/bot-management pages key on. That still needs an X server to launch against,
+# which a production container has none of by default ("Missing X server or $DISPLAY"). The user
+# never sees this display directly either way - both headed and headless modes stream frames to
+# the browser via CDP screencast - so xvfb-run wraps the whole process in a virtual framebuffer
+# instead of a real display, satisfying the launch requirement without changing any UX.
+CMD ["sh", "-c", "pnpm --filter api exec prisma db push --accept-data-loss && xvfb-run -a --server-args='-screen 0 1280x800x24' node apps/api/dist/index.js"]
