@@ -656,7 +656,10 @@ async function collectSafeRouteWalkTargets(session: LiveSession) {
         };
       });
     })
-    .catch(() => []);
+    .catch((err: any) => {
+      console.warn(`[live-security-session] collectSafeRouteWalkTargets failed for ${session.id}:`, err?.message ?? err);
+      return [];
+    });
 
   const targets: string[] = [];
   for (const candidate of rawTargets) {
@@ -738,7 +741,10 @@ async function collectSafeClickTargets(session: LiveSession): Promise<AutomatedC
       },
       { dangerousSource: DANGEROUS_ROUTE_RE.source }
     )
-    .catch(() => []);
+    .catch((err: any) => {
+      console.warn(`[live-security-session] collectSafeClickTargets failed for ${session.id}:`, err?.message ?? err);
+      return [];
+    });
 
   return rawTargets.filter((target) => !isDangerousSignal(target.fingerprint) && !isDangerousSignal(target.label));
 }
@@ -783,7 +789,10 @@ async function collectSafeSearchTargets(session: LiveSession): Promise<Automated
       },
       { searchSource: SAFE_SEARCH_INPUT_RE.source }
     )
-    .catch(() => []);
+    .catch((err: any) => {
+      console.warn(`[live-security-session] collectSafeSearchTargets failed for ${session.id}:`, err?.message ?? err);
+      return [];
+    });
 
   return rawTargets;
 }

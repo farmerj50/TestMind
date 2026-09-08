@@ -467,7 +467,13 @@ export default function SecurityScanPage() {
   const [bbAllowDelete, setBbAllowDelete] = useState(false);
   const [bbProxyUrl, setBbProxyUrl] = useState("");
   const [bbInputMode, setBbInputMode] = useState<"live" | "paste">("live");
-  const [bbExecutionMode, setBbExecutionMode] = useState<AuthCaptureExecutionMode>("headed");
+  // Defaults to headless: "Headed manual browser" only works when a human has physical/desktop
+  // access to the machine actually running the browser process (it opens a real OS window and
+  // relies on the operator typing into it directly - the on-page preview is intentionally
+  // read-only for that mode). In any hosted deployment nobody ever has that access, so headed
+  // mode is unusable there; "Headless live preview" is the mode with working input forwarding
+  // (see LiveBrowserView's interactive prop below) and is what actually works in production.
+  const [bbExecutionMode, setBbExecutionMode] = useState<AuthCaptureExecutionMode>("headless");
   const [bbPastedCapture, setBbPastedCapture] = useState("");
   const [bbDetectedFormat, setBbDetectedFormat] = useState<"raw_http" | "curl" | "cookies" | null>(null);
   const [bbImportResult, setBbImportResult] = useState<{ sessionValid: boolean | null; statusCode?: number; warnings: string[] } | null>(null);
