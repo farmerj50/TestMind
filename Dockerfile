@@ -80,6 +80,19 @@ COPY packages/testmind-core/package.json ./packages/testmind-core/package.json
 # Install prod deps for the api workspace
 RUN pnpm --filter api... install --frozen-lockfile --prod
 
+# The base image only ships the Chromium build matching vanilla Playwright (pinned above at
+# 1.58.2). apps/api also depends on patchright (a separate stealth Playwright fork, used by
+# runner/live-security-session.ts's "Live browser capture" auth flow) at a different, newer
+# version - its own required Chromium build was never installed anywhere, so that flow failed
+# in production with "browserType.launch: Executable doesn't exist at
+# /ms-playwright/chromium-.../chrome-linux64/chrome". patchright ships the same install CLI as
+# playwright itself; install its browser into the same PLAYWRIGHT_BROWSERS_PATH alongside the
+# base image's existing Playwright browsers.
+RUN set -eux; \
+  for i in 1 2 3; do \
+    pnpm --filter api exec patchright install chromium && break || sleep 5; \
+  done
+
 # Prisma schema needed for generate
 COPY --from=builder /workspace/apps/api/prisma /app/apps/api/prisma
 

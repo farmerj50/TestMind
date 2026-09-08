@@ -98,66 +98,81 @@ function cvssForVulnClass(
 }
 
 // ── PoC step generator ────────────────────────────────────────────────────────
+//
+// Ticket TRC.4: rewritten evidence-first after the previous version was found to read
+// evidence field names (evidence.ownerProfile, evidence.objectId, evidence.attackerProfile,
+// evidence.parameter, evidence.payload, evidence.responseStatus, evidence.concurrentRequests,
+// evidence.successCount) that don't exist on SecurityFindingEvidence's real shape - every
+// vuln-class branch silently fell through to its placeholder default (OBJECT_ID, user A, INPUT)
+// on every real finding. The fix: never manufacture a specific the evidence doesn't contain.
+// Build the step sequence from the ACTUAL captured transactions first (requestResponse[]), add
+// vuln-class explanatory text AROUND that real sequence rather than substituting fields into a
+// template - the opposite construction order from the bug, and structurally harder to break the
+// same way again, since there's no per-class field name to typo or invent.
 
-function pocSteps(vulnClass: string, finding: any): string[] {
-  const location = finding.location ?? "TARGET_ENDPOINT";
-  const evidence = finding.evidence ?? {};
-
+// One static, evidence-independent closing sentence per class - never references a field that
+// might not exist, so it can never itself become a placeholder.
+function vulnClassClosingNote(vulnClass: string): string {
   switch (vulnClass) {
     case "broken_object_level_authorization":
-      return [
-        `1. Authenticate as Account A (${evidence.ownerProfile ?? "user A"}).`,
-        `2. Perform a request that returns an object with an ID (e.g. ${location}).`,
-        `3. Note the object ID in the response, e.g. \`${evidence.objectId ?? "OBJECT_ID"}\`.`,
-        `4. Log out and authenticate as Account B (${evidence.attackerProfile ?? "user B"}).`,
-        `5. Send: \`${evidence.method ?? "GET"} ${location}\` with Account B's session.`,
-        `6. Observe: response returns data belonging to Account A — object ownership not enforced.`,
-      ];
+    case "broken_object_property_level_authorization":
+      return "This demonstrates that object ownership is not enforced across the request(s) above.";
+    case "broken_function_level_authorization":
+      return "This demonstrates that a privileged function is reachable without the required role.";
     case "broken_authentication":
-      return [
-        `1. Identify an endpoint that should require authentication: \`${location}\`.`,
-        `2. Send the request with no Authorization header and no session cookie.`,
-        `3. Observe: the server returns HTTP ${evidence.responseStatus ?? "200"} with data.`,
-        `4. Any unauthenticated client can access this endpoint.`,
-      ];
+      return "This demonstrates that the endpoint is reachable without a valid authentication context.";
     case "injection":
-      return [
-        `1. Send a request to \`${location}\` with the following payload in parameter \`${evidence.parameter ?? "INPUT"}\`:`,
-        `   \`${evidence.payload ?? "' OR '1'='1"}\``,
-        `2. Observe: server returns HTTP ${evidence.responseStatus ?? "500"} or response matching pattern \`${evidence.payloadType ?? "SQLi"}\`.`,
-        `3. This indicates insufficient input validation — the payload reaches an unsafe execution context.`,
-      ];
+      return "This demonstrates that unsafe input reaches the endpoint's parser without adequate validation.";
     case "insecure_design":
-      if (finding.title?.toLowerCase().includes("race")) {
-        return [
-          `1. Authenticate as a valid user with access to \`${location}\`.`,
-          `2. Using a parallel request tool (Burp Suite Intruder, ffuf, or Python asyncio), send ${evidence.concurrentRequests ?? 15} identical requests to \`${location}\` simultaneously.`,
-          `3. Observe: ${evidence.successCount ?? "multiple"} requests return 2xx — the endpoint processed multiple requests that should only succeed once.`,
-          `4. This can be exploited to double-spend, duplicate rewards, or bypass single-use limits.`,
-        ];
-      }
-      return [`1. Navigate to ${location}.`, `2. Reproduce the described behaviour.`];
+      return "This demonstrates that concurrent or repeated requests are not guarded against a single-execution requirement.";
     case "security_misconfiguration":
-      if (finding.title?.toLowerCase().includes("introspection")) {
-        return [
-          `1. Send the following GraphQL query to \`${location}\`:`,
-          "   ```",
-          "   query { __schema { queryType { name } types { name fields { name } } } }",
-          "   ```",
-          `2. Observe: the full schema is returned, exposing all types, queries, mutations, and arguments.`,
-        ];
-      }
-      return [
-        `1. Send a request to \`${location}\`.`,
-        `2. Observe the configuration issue described: ${finding.title}.`,
-      ];
+      return "This demonstrates a configuration or metadata exposure that aids further attacks.";
+    case "ssrf":
+      return "This demonstrates that a server-side request can be redirected to an attacker-influenced target.";
     default:
-      return [
-        `1. Navigate to or send a request to \`${location}\`.`,
-        `2. Observe the behaviour described in the finding.`,
-        `3. The vulnerability is confirmed by the response captured during the automated scan.`,
-      ];
+      return "The sequence above reproduces the behavior captured during the automated scan.";
   }
+}
+
+function pocSteps(vulnClass: string, finding: any): string[] {
+  const evidence = finding.evidence ?? {};
+
+  // Prefer the finding's own real reproduction steps when present (populated by baseline.ts /
+  // intelligent-validation.ts / anomaly-baseline.ts today) - deduplicated, blanks dropped, since
+  // real scanner output can produce both.
+  if (Array.isArray(evidence.reproductionSteps)) {
+    const cleaned = [
+      ...new Set(
+        (evidence.reproductionSteps as unknown[])
+          .map((s) => (typeof s === "string" ? s.trim() : ""))
+          .filter((s) => s.length > 0)
+      ),
+    ];
+    if (cleaned.length > 0) return cleaned;
+  }
+
+  // Otherwise, build from the actual captured request/response transactions, in order.
+  const requestResponse: Array<{ method?: string; url?: string; status?: number; profile?: string }> = Array.isArray(
+    evidence.requestResponse
+  )
+    ? evidence.requestResponse
+    : [];
+
+  if (requestResponse.length > 0) {
+    const steps = requestResponse.map((rr, i) => {
+      const method = rr.method ?? "GET";
+      const url = rr.url ?? finding.location ?? "the affected endpoint";
+      const profile = rr.profile ? ` as ${rr.profile}` : "";
+      const outcome = rr.status !== undefined ? `observe HTTP ${rr.status}` : "observe the response";
+      return `${i + 1}. Send ${method} ${url}${profile}; ${outcome}.`;
+    });
+    return [...steps, `${steps.length + 1}. ${vulnClassClosingNote(vulnClass)}`];
+  }
+
+  // No captured transactions at all - the most truthful step available is a generic pointer at
+  // the endpoint, never a fabricated identifier or payload.
+  const location = finding.location ?? "the affected endpoint";
+  return [`1. Send the captured request to ${location}.`, `2. Observe the behavior described: ${finding.title ?? "see finding description"}.`];
 }
 
 // ── Impact statement generator ────────────────────────────────────────────────

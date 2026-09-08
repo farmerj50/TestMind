@@ -597,6 +597,18 @@ model SecurityAuthSession {
   baseUrl           String?
   loginUrl          String?
   scopeAcknowledged Boolean   @default(false)
+  // Live Security Testing v1, Ticket LST.4 - explicit opt-in, separate from scopeAcknowledged,
+  // for active probes to preserve the real HTTP method/mutate the real request body against a
+  // captured POST/PUT/PATCH baseline (not just synthesize a GET). allowDeleteActiveProbes is a
+  // stricter second tier, only meaningful when allowMutatingActiveProbes is also true.
+  allowMutatingActiveProbes Boolean @default(false)
+  allowDeleteActiveProbes   Boolean @default(false)
+  // Ticket LST.3 - set once any exchange in this session trips the sensitive-data circuit
+  // breaker. Checked on every subsequent runLiveSecurityTests call for this session
+  // (LiveSecurityTestOptions.sessionAlreadyStopped) so a trip genuinely stops active testing for
+  // the rest of the session, not just the one exchange that triggered it. Never reset
+  // automatically - only a new session starts clean.
+  sensitiveDataStopped      Boolean @default(false)
   successPattern    String?
   storagePath       String?
   role              String? // admin | user | other | anonymous — enterprise role-session generation

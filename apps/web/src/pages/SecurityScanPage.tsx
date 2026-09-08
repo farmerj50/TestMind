@@ -458,6 +458,13 @@ export default function SecurityScanPage() {
   const [authMode, setAuthMode] = useState<AuthMode>("enterprise");
   const [bbLoginUrl, setBbLoginUrl] = useState("");
   const [bbScopeAck, setBbScopeAck] = useState(false);
+  // Live Security Testing v1, Ticket LST.6: two-tier opt-in for active probes to preserve the
+  // real method/mutate the real request against a captured state-changing baseline, separate
+  // from bbScopeAck (which is the broader "I'm authorized" acknowledgment). allowDelete stays
+  // unchecked (and disabled) unless allowMutating is also checked - mirrors the backend's own
+  // allowDeleteActiveProbes-requires-allowMutatingActiveProbes validation.
+  const [bbAllowMutating, setBbAllowMutating] = useState(false);
+  const [bbAllowDelete, setBbAllowDelete] = useState(false);
   const [bbProxyUrl, setBbProxyUrl] = useState("");
   const [bbInputMode, setBbInputMode] = useState<"live" | "paste">("live");
   const [bbExecutionMode, setBbExecutionMode] = useState<AuthCaptureExecutionMode>("headed");
@@ -845,6 +852,8 @@ export default function SecurityScanPage() {
           baseUrl: baseUrl.trim(),
           loginUrl: bbLoginUrl.trim(),
           scopeAcknowledged: bbScopeAck,
+          allowMutatingActiveProbes: bbAllowMutating,
+          allowDeleteActiveProbes: bbAllowMutating && bbAllowDelete,
         }),
       });
       setBbSession(res.session);
@@ -875,6 +884,8 @@ export default function SecurityScanPage() {
           baseUrl: baseUrl.trim(),
           loginUrl: baseUrl.trim(),
           scopeAcknowledged: bbScopeAck,
+          allowMutatingActiveProbes: bbAllowMutating,
+          allowDeleteActiveProbes: bbAllowMutating && bbAllowDelete,
         }),
       });
       const newSession = sessionRes.session;
@@ -1730,6 +1741,32 @@ export default function SecurityScanPage() {
                     />
                     <span>I confirm this target is in-scope for my bug bounty program and I'm authorized to test it.</span>
                   </label>
+                  <label className="flex items-start gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={bbAllowMutating}
+                      onChange={(e) => {
+                        setBbAllowMutating(e.target.checked);
+                        if (!e.target.checked) setBbAllowDelete(false);
+                      }}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Allow active probes on captured POST/PUT/PATCH requests. Preserves the real request method
+                      and mutates real data to test the hypothesis. Automatically stops all active testing the
+                      moment a response reveals data that doesn't belong to your test account.
+                    </span>
+                  </label>
+                  <label className={`flex items-start gap-2 text-xs ${bbAllowMutating ? "text-slate-700" : "text-slate-400"}`}>
+                    <input
+                      type="checkbox"
+                      checked={bbAllowDelete}
+                      disabled={!bbAllowMutating}
+                      onChange={(e) => setBbAllowDelete(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Also allow active probes on captured DELETE requests (higher risk — requires the checkbox above).</span>
+                  </label>
                   {!bbSession && (
                     <Button
                       type="button"
@@ -1860,6 +1897,32 @@ export default function SecurityScanPage() {
                   className="mt-0.5"
                 />
                 <span>I confirm this target is in-scope for my bug bounty program and I'm authorized to test it.</span>
+              </label>
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={bbAllowMutating}
+                  onChange={(e) => {
+                    setBbAllowMutating(e.target.checked);
+                    if (!e.target.checked) setBbAllowDelete(false);
+                  }}
+                  className="mt-0.5"
+                />
+                <span>
+                  Allow active probes on captured POST/PUT/PATCH requests. Preserves the real request method and
+                  mutates real data to test the hypothesis. Automatically stops all active testing the moment a
+                  response reveals data that doesn't belong to your test account.
+                </span>
+              </label>
+              <label className={`flex items-start gap-2 text-xs ${bbAllowMutating ? "text-slate-700" : "text-slate-400"}`}>
+                <input
+                  type="checkbox"
+                  checked={bbAllowDelete}
+                  disabled={!bbAllowMutating}
+                  onChange={(e) => setBbAllowDelete(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>Also allow active probes on captured DELETE requests (higher risk — requires the checkbox above).</span>
               </label>
               <div className="flex items-center gap-2">
                 <Button

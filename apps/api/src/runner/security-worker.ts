@@ -629,13 +629,27 @@ async function runStatic(
         );
       });
       let parsed: any = {};
+      let parseFailed = false;
       try {
         parsed = JSON.parse(result.stdout);
-      } catch {
+      } catch (parseErr: any) {
         parsed = {};
+        parseFailed = true;
       }
       const semgrepFindings = Array.isArray(parsed?.results) ? parsed.results : [];
-      if (semgrepFindings.length === 0) {
+      if (parseFailed) {
+        // Distinct from "0 findings": semgrep ran but its output could not be parsed
+        // (e.g. truncated by maxBuffer, or non-JSON warnings mixed into stdout). Reporting
+        // this the same as a clean scan would silently hide a real scan failure.
+        findings.push({
+          type: "static_analysis",
+          severity: "info",
+          title: "Semgrep output could not be parsed",
+          description: "Semgrep ran but its JSON output could not be parsed, so results could not be read. This is not the same as a clean scan.",
+          location: repoRoot,
+          tool: "semgrep",
+        });
+      } else if (semgrepFindings.length === 0) {
         findings.push({
           type: "static_analysis",
           severity: "info",

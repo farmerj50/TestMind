@@ -11,6 +11,8 @@ import { redactAuthProfileForStorage } from "../security/redaction.js";
 import { issueStreamTicket, registerAuthSessionStreamRoutes } from "../runner/auth-session-stream.js";
 import { issueLiveTestTicket, registerLiveSecuritySessionRoutes, closeLiveSession } from "../runner/live-security-session.js";
 import { listExchangeHistory, listExperimentHistory } from "../security/live-exchange-history.js";
+import { loadPersistedExchange } from "../runner/live-security-persist.js";
+import { clientExchange } from "../security/live-exchange-serialize.js";
 import {
   callAuthBypassEndpoint,
   buildStorageStateFromCookieString,
@@ -759,6 +761,10 @@ export default async function securityRoutes(app: FastifyInstance) {
     baseUrl: z.string().url().optional(),
     loginUrl: z.string().url().optional(),
     scopeAcknowledged: z.boolean().default(false),
+    // Live Security Testing v1, Ticket LST.4 - separate, explicit opt-in for active probes to
+    // preserve the real method/mutate the real body against a captured state-changing baseline.
+    allowMutatingActiveProbes: z.boolean().default(false),
+    allowDeleteActiveProbes: z.boolean().default(false),
     role: z.string().optional(),
     bypassSecretKey: z.string().optional(),
     providerConfig: providerConfigSchema.optional(),
@@ -817,6 +823,9 @@ export default async function securityRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "External Security Assessment mode requires both baseUrl and loginUrl" });
       }
     }
+    if (body.allowDeleteActiveProbes && !body.allowMutatingActiveProbes) {
+      return reply.code(400).send({ error: "allowDeleteActiveProbes requires allowMutatingActiveProbes to also be enabled" });
+    }
     if (body.mode === "enterprise" && body.provider === "bypass" && (!body.baseUrl || !body.bypassSecretKey)) {
       return reply.code(400).send({ error: "Enterprise bypass mode requires baseUrl and a bypassSecretKey" });
     }
@@ -846,6 +855,8 @@ export default async function securityRoutes(app: FastifyInstance) {
         baseUrl: body.baseUrl,
         loginUrl: body.loginUrl,
         scopeAcknowledged: body.scopeAcknowledged,
+        allowMutatingActiveProbes: body.allowMutatingActiveProbes,
+        allowDeleteActiveProbes: body.allowDeleteActiveProbes,
         role: body.role,
         bypassSecretKey: body.bypassSecretKey,
         providerConfig: body.providerConfig,
@@ -1242,6 +1253,25 @@ export default async function securityRoutes(app: FastifyInstance) {
     } catch {
       reply.code(400).send({ error: "Invalid before cursor" });
     }
+  });
+
+  // Ticket TRC.2 (reproduction traceability): a single-exchange lookup, needed so the
+  // reproduction panel (TRC.3) can resolve a baseline exchange that's scrolled out of the
+  // client's in-memory buffer without paginating the full history. Same ownership check as
+  // /exchanges above; loadPersistedExchange itself scopes its query by (id, authSessionId)
+  // together, so an exchange id that exists but belongs to a DIFFERENT session already comes
+  // back null from that one query - never a distinguishable "found but not yours" response,
+  // so this route can't be used as an existence oracle across sessions.
+  app.get("/security/auth-sessions/:id/exchanges/:exchangeId", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { id, exchangeId } = req.params as { id: string; exchangeId: string };
+    const session = await prisma.securityAuthSession.findFirst({ where: { id, project: { ownerId: userId } } });
+    if (!session) return reply.code(404).send({ error: "Not found" });
+
+    const exchange = await loadPersistedExchange(id, exchangeId);
+    if (!exchange) return reply.code(404).send({ error: "Not found" });
+    reply.send({ exchange: clientExchange(exchange) });
   });
 
   app.get("/security/auth-sessions/:id/experiments", async (req, reply) => {

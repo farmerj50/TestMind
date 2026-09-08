@@ -640,3 +640,204 @@ export async function requestSpecHeal(prompt: HealPrompt): Promise<HealResponse>
     raw,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Target Repo Security Review v1 (Ticket TRS.2) - a two-pass LLM review of an
+// arbitrary target project's own repo, distinct from self-heal's spec-repair calls
+// above but reusing the exact same private getClient/createStructuredChatCompletion/
+// parseModelJson machinery, matching this file's established calling convention.
+
+const MAX_REVIEW_FILE_CHARS = 20_000;
+
+const securityReviewCandidateSchema = z.object({
+  title: z.string().min(1),
+  severity: z.enum(["info", "low", "medium", "high", "critical"]),
+  vulnerabilityClass: z.string().min(1),
+  lineStart: z.number().int().positive(),
+  lineEnd: z.number().int().positive(),
+  description: z.string().min(1),
+  suggestion: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+});
+
+const securityReviewCandidatesResponseSchema = z.object({
+  candidates: z.array(securityReviewCandidateSchema),
+});
+
+// Types derived from the schemas above (schema-first) rather than hand-written in parallel, so
+// the compile-time type and the runtime-validated shape can never drift apart.
+export type SecurityReviewCandidate = z.infer<typeof securityReviewCandidateSchema>;
+
+export type SecurityReviewCandidatePrompt = {
+  projectId?: string;
+  relativePath: string;
+  content: string;
+};
+
+export type SecurityReviewCandidatesResponse = {
+  candidates: SecurityReviewCandidate[];
+  raw: string;
+};
+
+const securityReviewCandidatesJsonSchema = {
+  name: "testmind_security_review_candidates",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["candidates"],
+    properties: {
+      candidates: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "severity", "vulnerabilityClass", "lineStart", "lineEnd", "description", "suggestion", "confidence"],
+          properties: {
+            title: { type: "string" },
+            severity: { type: "string" },
+            vulnerabilityClass: { type: "string" },
+            lineStart: { type: "number" },
+            lineEnd: { type: "number" },
+            description: { type: "string" },
+            suggestion: { type: "string" },
+            confidence: { type: "number" },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Pass 1 (candidate detection) of TRS.2. Reviews a single file in isolation and returns
+ * candidate issues only - a single file can't establish whether middleware is applied
+ * globally, whether an ownership check happens in a service layer, or whether auth context
+ * comes from elsewhere, so nothing from this call is persisted directly (see
+ * security/modules/llm-code-review.ts's two-pass orchestration and Pass 2 below).
+ */
+export async function requestSecurityReviewCandidates(
+  prompt: SecurityReviewCandidatePrompt
+): Promise<SecurityReviewCandidatesResponse> {
+  const openai = await getClient(prompt.projectId);
+
+  const system = [
+    "You are TestMind, a security code reviewer.",
+    "You receive one source file from a target application's repository and must identify potential security vulnerabilities in it.",
+    "You are looking at ONE file in isolation - you cannot see the rest of the repository, so flag issues as CANDIDATES that a second pass with more context will confirm, downgrade, or discard.",
+    "Report only concrete, specific issues tied to exact lines in the supplied file - never generic advice.",
+    "lineStart and lineEnd must be real 1-indexed line numbers within the supplied file content.",
+    "confidence is a number from 0 to 1 reflecting how confident you are this is a real vulnerability given only this one file's content.",
+    "Return JSON with a single key `candidates`: an array of objects with keys title, severity (info|low|medium|high|critical), vulnerabilityClass, lineStart, lineEnd, description, suggestion, confidence.",
+    "If you find nothing, return an empty candidates array.",
+  ].join(" ");
+
+  const userContent = [
+    `File: ${prompt.relativePath}`,
+    "```",
+    prompt.content.slice(0, MAX_REVIEW_FILE_CHARS),
+    "```",
+    'Respond ONLY with JSON: {"candidates": [{"title": string, "severity": string, "vulnerabilityClass": string, "lineStart": number, "lineEnd": number, "description": string, "suggestion": string, "confidence": number}]}',
+  ].join("\n\n");
+
+  const raw = await createStructuredChatCompletion({
+    openai,
+    system,
+    userContent,
+    maxTokens: 2000,
+    jsonSchema: securityReviewCandidatesJsonSchema,
+  });
+
+  const parsed = parseModelJson(raw, securityReviewCandidatesResponseSchema);
+  return { candidates: parsed.candidates ?? [], raw };
+}
+
+const securityReviewConfirmationSchema = z.object({
+  verdict: z.enum(["confirm", "downgrade", "discard"]),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string().min(1),
+});
+
+export type SecurityReviewConfirmationVerdict = z.infer<typeof securityReviewConfirmationSchema>["verdict"];
+export type SecurityReviewConfirmation = z.infer<typeof securityReviewConfirmationSchema>;
+
+export type SecurityReviewConfirmationPrompt = {
+  projectId?: string;
+  candidate: SecurityReviewCandidate;
+  fileRelativePath: string;
+  fileContent: string;
+  contextFiles: Array<{ relativePath: string; content: string }>;
+};
+
+export type SecurityReviewConfirmationResponse = {
+  result: SecurityReviewConfirmation;
+  raw: string;
+};
+
+const securityReviewConfirmationJsonSchema = {
+  name: "testmind_security_review_confirmation",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["verdict", "confidence", "rationale"],
+    properties: {
+      verdict: { type: "string" },
+      confidence: { type: "number" },
+      rationale: { type: "string" },
+    },
+  },
+} as const;
+
+/**
+ * Pass 2 (contextual confirmation) of TRS.2. Given a Pass-1 candidate plus a small bounded
+ * set of related files (imported auth middleware, called service/repository, route
+ * registration site, related model/access helper - selected by the caller, capped at
+ * MAX_CONTEXT_FILES_PER_CANDIDATE/MAX_CONTEXT_BYTES_PER_CANDIDATE in
+ * security/modules/llm-code-review.ts), asks the model to confirm, downgrade, or discard
+ * the candidate now that it has the context a single file couldn't provide.
+ */
+export async function requestSecurityReviewConfirmation(
+  prompt: SecurityReviewConfirmationPrompt
+): Promise<SecurityReviewConfirmationResponse> {
+  const openai = await getClient(prompt.projectId);
+
+  const system = [
+    "You are TestMind, a security code reviewer.",
+    "You previously flagged a CANDIDATE security issue after seeing only one file in isolation.",
+    "You are now shown that same file plus a small set of related files (middleware, service/repository code, route registration, or access-control helpers) that were not visible during the first pass.",
+    "Decide whether the candidate is a real, confirmed issue given this additional context, should be downgraded (still worth reporting but less certain than first thought), or should be discarded entirely (e.g. the missing check the candidate flagged actually happens in one of the context files).",
+    "Do not invent a new candidate - only judge the one you were given.",
+    "Return JSON with keys verdict (confirm|downgrade|discard), confidence (0-1, your revised confidence), and rationale (a short sentence citing what in the context files changed or confirmed your judgment).",
+  ].join(" ");
+
+  const userContent = [
+    `Candidate: ${prompt.candidate.title} (${prompt.candidate.vulnerabilityClass}, initial confidence ${prompt.candidate.confidence})`,
+    `Description: ${prompt.candidate.description}`,
+    `Location: ${prompt.fileRelativePath}:${prompt.candidate.lineStart}-${prompt.candidate.lineEnd}`,
+    `File: ${prompt.fileRelativePath}`,
+    "```",
+    prompt.fileContent.slice(0, MAX_REVIEW_FILE_CHARS),
+    "```",
+    prompt.contextFiles.length
+      ? prompt.contextFiles
+          .map((f) => `Context file: ${f.relativePath}\n\`\`\`\n${f.content.slice(0, MAX_REVIEW_FILE_CHARS)}\n\`\`\``)
+          .join("\n\n")
+      : "No related context files were found.",
+    'Respond ONLY with JSON: {"verdict": string, "confidence": number, "rationale": string}',
+  ].join("\n\n");
+
+  const raw = await createStructuredChatCompletion({
+    openai,
+    system,
+    userContent,
+    maxTokens: 500,
+    jsonSchema: securityReviewConfirmationJsonSchema,
+  });
+
+  const parsed = parseModelJson(raw, securityReviewConfirmationSchema);
+  return {
+    result: { verdict: parsed.verdict ?? "discard", confidence: parsed.confidence ?? 0, rationale: parsed.rationale ?? "" },
+    raw,
+  };
+}

@@ -1296,10 +1296,27 @@ async function handleSecurityTestMessage(session: LiveSession, msg: any) {
   }
 
   try {
+    // Ticket LST.4: read fresh from the DB rather than caching on the in-memory LiveSession -
+    // these three fields are exactly the ones a human can change (opt-in toggles) or that get
+    // set by a PRIOR exchange in this same session (sensitiveDataStopped), so a stale in-memory
+    // copy would either miss a just-enabled opt-in or, worse, forget that a stop already
+    // happened.
+    const authSession = await prisma.securityAuthSession.findUnique({
+      where: { id: session.id },
+      select: { allowMutatingActiveProbes: true, allowDeleteActiveProbes: true, sensitiveDataStopped: true },
+    });
     const result = await runLiveSecurityTests(exchange, session.scope, {
       browserCorsRead: (url, timeoutMs) => runCachedBrowserCorsReadProbe(session, url, timeoutMs),
       browserCorsReadAttempts: 1,
+      allowMutatingActiveProbes: authSession?.allowMutatingActiveProbes ?? false,
+      allowDeleteActiveProbes: authSession?.allowDeleteActiveProbes ?? false,
+      sessionAlreadyStopped: authSession?.sensitiveDataStopped ?? false,
     });
+    if (result.sensitiveDataStopped && !authSession?.sensitiveDataStopped) {
+      await prisma.securityAuthSession
+        .update({ where: { id: session.id }, data: { sensitiveDataStopped: true } })
+        .catch(() => {});
+    }
     broadcast(session, {
       type: "securityTestResult",
       exchangeId: exchange.id,

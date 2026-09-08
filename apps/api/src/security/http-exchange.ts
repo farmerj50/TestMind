@@ -102,3 +102,93 @@ export function applyResourceIdMutation(url: string, candidate: ResourceIdCandid
   parsed.pathname = segments.join("/");
   return parsed.toString();
 }
+
+// Live Security Testing v1, Ticket LST.4. Body-level counterpart to detectResourceIdCandidates/
+// applyResourceIdMutation above - needed because an IDOR/BOLA hypothesis on a PUT/PATCH/POST
+// endpoint often carries the resource id in a JSON body field, not the URL, and preserving the
+// real method (Ticket LST.4's whole point) is worthless if the id being tested is still only
+// ever mutated in the URL. `path` is a structural array (not a string) so re-applying the
+// mutation never has to re-parse a path expression - it just walks the same keys it found.
+export type BodyResourceIdCandidate = {
+  location: "body";
+  /** Human-readable dotted path, for display/evidence only - e.g. "order.id" or "items[0].id". */
+  paramName: string;
+  /** The real navigation key used by applyResourceIdMutationInBody. */
+  path: Array<string | number>;
+  value: string;
+};
+
+const MAX_BODY_ID_CANDIDATES = 8;
+const MAX_BODY_WALK_DEPTH = 6;
+
+function isIdShapedKey(key: string): boolean {
+  return /(^id$|id$|_id$|uuid|guid)$/i.test(key);
+}
+
+/**
+ * Scans a captured request's JSON body for fields that look like resource identifiers, the
+ * same way detectResourceIdCandidates scans a URL. Returns [] for a missing or non-JSON body -
+ * never guesses at a shape it can't parse.
+ */
+export function detectResourceIdCandidatesInBody(bodyText: string | undefined): BodyResourceIdCandidate[] {
+  if (!bodyText) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return [];
+  }
+
+  const candidates: BodyResourceIdCandidate[] = [];
+  const visit = (value: unknown, path: Array<string | number>, label: string, depth: number) => {
+    if (candidates.length >= MAX_BODY_ID_CANDIDATES || depth > MAX_BODY_WALK_DEPTH) return;
+    if (Array.isArray(value)) {
+      value.slice(0, 10).forEach((item, index) => visit(item, [...path, index], `${label}[${index}]`, depth + 1));
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (candidates.length >= MAX_BODY_ID_CANDIDATES) return;
+      const childPath = [...path, key];
+      const childLabel = label ? `${label}.${key}` : key;
+      if ((typeof child === "string" || typeof child === "number") && isIdShapedKey(key)) {
+        const stringValue = String(child);
+        if (looksLikeResourceId(stringValue)) {
+          candidates.push({ location: "body", paramName: childLabel, path: childPath, value: stringValue });
+          continue;
+        }
+      }
+      visit(child, childPath, childLabel, depth + 1);
+    }
+  };
+
+  visit(parsed, [], "", 0);
+  return candidates;
+}
+
+/**
+ * Applies exactly one body candidate mutation, leaving everything else in the body unchanged.
+ * Returns the original bodyText unmodified if the candidate's path is no longer valid against
+ * it (defensive - this function is never the source of truth for whether a candidate applies,
+ * detectResourceIdCandidatesInBody is) rather than throwing mid-probe-construction.
+ */
+export function applyResourceIdMutationInBody(bodyText: string, candidate: BodyResourceIdCandidate, newValue: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return bodyText;
+  }
+
+  let cursor: any = parsed;
+  for (let i = 0; i < candidate.path.length - 1; i++) {
+    const key = candidate.path[i];
+    if (cursor == null || typeof cursor !== "object") return bodyText;
+    cursor = cursor[key as keyof typeof cursor];
+  }
+  const lastKey = candidate.path[candidate.path.length - 1];
+  if (cursor == null || typeof cursor !== "object" || !(lastKey in cursor)) return bodyText;
+  cursor[lastKey] = newValue;
+
+  return JSON.stringify(parsed);
+}

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  builtInSecurityScanners,
   runSecurityScannerPhase,
   scannerMetadata,
   securityScannersForPhase,
@@ -97,6 +98,18 @@ test("open-source scanner phase follows selected tool ids", () => {
 test("unsupported scanner phases do not invoke scanners", async () => {
   const results = await runSecurityScannerPhase(makeContext(), "intelligent_validation");
   assert.deepEqual(results, []);
+});
+
+// Regression test for a real, confirmed bug: 3 of 14 built-in scanners (intelligent-validation,
+// graphql-audit, anomaly-baseline) were missing continueOnError: true. runSecurityScannerPhase's
+// catch block re-throws when a scanner lacks this flag, which propagates all the way out of
+// runScanPipeline and skips its single, end-of-pipeline addFindings() call - silently discarding
+// every finding already gathered from every phase that completed before the throw. Asserting this
+// for every registered scanner (not just the 3 fixed) also catches a future scanner being added
+// without the flag, not just today's fix.
+test("every built-in scanner sets continueOnError so one scanner's failure can never discard the whole scan's findings", () => {
+  const missing = builtInSecurityScanners.filter((scanner) => scanner.continueOnError !== true).map((scanner) => scanner.id);
+  assert.deepEqual(missing, []);
 });
 
 test("scannerMetadata returns metadata for one scanner result", () => {
