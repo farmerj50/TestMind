@@ -125,10 +125,10 @@ enum SecurityFindingValidationStatus {
 }
 
 model User {
-  id               String            @id
+  id               String               @id
   plan             PlanTier?
   projects         Project[]
-  createdAt        DateTime          @default(now())
+  createdAt        DateTime             @default(now())
   AgentSession     AgentSession[]
   jiraIntegrations JiraIntegration[]
   orgMemberships   OrganizationMember[]
@@ -163,55 +163,56 @@ model OrganizationMember {
 }
 
 model Project {
-  id        String   @id @default(cuid())
-  name      String
-  repoUrl   String
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id])
-  plan      PlanTier @default(free)
-  orgId     String?
-  org       Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  sharedSteps Json?   @default("{}")
-  applicationModel Json? @default("{}")
+  id                      String        @id @default(cuid())
+  name                    String
+  repoUrl                 String
+  ownerId                 String
+  owner                   User          @relation(fields: [ownerId], references: [id])
+  plan                    PlanTier      @default(free)
+  orgId                   String?
+  org                     Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  createdAt               DateTime      @default(now())
+  sharedSteps             Json?         @default("{}")
+  applicationModel        Json?         @default("{}")
   // Application Brain v1 (Ticket AB.1): optimistic-concurrency counter for
   // applicationModel writes, incremented only by lib/application-model-store.ts's
   // applyApplicationModelMerge. A dedicated counter rather than a generic updatedAt
   // (Project has none) so CAS conflicts fire only on genuine concurrent Brain writes,
   // not on unrelated Project updates.
-  applicationModelVersion Int @default(0)
+  applicationModelVersion Int           @default(0)
 
-  testRuns         TestRun[]
-  suites           TestSuite[]
-  cases            TestCase[]
-  AgentSession     AgentSession[]
-  AgentScenario    AgentScenario[]
-  jiraIntegrations JiraIntegration[]
-  integrations     Integration[]
-  secrets          ProjectSecret[]
-  securityScans    SecurityScanJob[]
-  curatedSuites    CuratedSuite[]
-  operatorJobs     OperatorJob[]
-  environments     Environment[]
-  workflows        Workflow[]
-  securityAuthSessions SecurityAuthSession[]
-  apiSpecs             ApiSpec[]
-  authIntegrations     AuthIntegration[]
-  mobileConfigs        MobileConfig[]
-  apiCollections       ApiCollection[]
+  testRuns                    TestRun[]
+  suites                      TestSuite[]
+  cases                       TestCase[]
+  AgentSession                AgentSession[]
+  AgentScenario               AgentScenario[]
+  jiraIntegrations            JiraIntegration[]
+  integrations                Integration[]
+  secrets                     ProjectSecret[]
+  securityScans               SecurityScanJob[]
+  curatedSuites               CuratedSuite[]
+  operatorJobs                OperatorJob[]
+  environments                Environment[]
+  workflows                   Workflow[]
+  securityAuthSessions        SecurityAuthSession[]
+  apiSpecs                    ApiSpec[]
+  authIntegrations            AuthIntegration[]
+  mobileConfigs               MobileConfig[]
+  apiCollections              ApiCollection[]
   humanInterventionCandidates HumanInterventionCandidate[]
-  operatorSchedules    OperatorSchedule[]
+  operatorSchedules           OperatorSchedule[]
+  interactiveUiSessions       InteractiveUiSession[]
 }
 
 model GitAccount {
-  id        String   @id @default(cuid())
-  provider  String   @default("github")
-  userId    String
-  token     String
+  id           String   @id @default(cuid())
+  provider     String   @default("github")
+  userId       String
+  token        String
   githubUserId Int?
   githubLogin  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([provider, userId])
   @@index([userId])
@@ -244,9 +245,10 @@ model TestRun {
   reportPath    String?
   artifactsJson Json?
 
-  results            TestResult[]
-  TestHealingAttempt TestHealingAttempt[]
+  results                     TestResult[]
+  TestHealingAttempt          TestHealingAttempt[]
   humanInterventionCandidates HumanInterventionCandidate[]
+  interactiveUiSession        InteractiveUiSession?
 
   @@index([rerunOfId])
   @@index([projectId, createdAt])
@@ -270,28 +272,32 @@ model TestSuite {
 }
 
 model TestCase {
-  id              String         @id @default(cuid())
-  projectId       String
-  project         Project        @relation(fields: [projectId], references: [id])
-  suiteId         String?
-  suite           TestSuite?     @relation(fields: [suiteId], references: [id])
-  curatedSuiteId  String?
-  curatedSuite    CuratedSuite?  @relation(fields: [curatedSuiteId], references: [id])
+  id                     String                @id @default(cuid())
+  projectId              String
+  project                Project               @relation(fields: [projectId], references: [id])
+  suiteId                String?
+  suite                  TestSuite?            @relation(fields: [suiteId], references: [id])
+  curatedSuiteId         String?
+  curatedSuite           CuratedSuite?         @relation(fields: [curatedSuiteId], references: [id])
   // Ticket VR.3B (Validation + Regression v1). Durable provenance for a regression test
   // generated from a confirmed SecurityFinding - a real FK (not JSON metadata) so "which
   // regression protects this finding" / "does this finding already have a regression" /
   // "which finding created this test" are real queries, not parsing.
-  securityFindingId String?
-  securityFinding   SecurityFinding? @relation(fields: [securityFindingId], references: [id])
-  key             String         @default(cuid())
-  title         String
-  priority      TestPriority   @default(medium)
-  status        TestCaseStatus @default(active)
-  type          TestCaseType   @default(functional)
-  tags          String[]       @default([])
-  preconditions String?        @db.Text
-  locators      String?        @db.Text
-  lastAiSyncAt  DateTime?
+  securityFindingId      String?
+  securityFinding        SecurityFinding?      @relation(fields: [securityFindingId], references: [id])
+  // Interactive UI Testing v1. Same durable-provenance pattern as securityFindingId above - a
+  // real FK so "which regression protects this finding" is a query, not JSON parsing.
+  interactiveUiFindingId String?
+  interactiveUiFinding   InteractiveUiFinding? @relation(fields: [interactiveUiFindingId], references: [id])
+  key                    String                @default(cuid())
+  title                  String
+  priority               TestPriority          @default(medium)
+  status                 TestCaseStatus        @default(active)
+  type                   TestCaseType          @default(functional)
+  tags                   String[]              @default([])
+  preconditions          String?               @db.Text
+  locators               String?               @db.Text
+  lastAiSyncAt           DateTime?
 
   // Journey 1 & 2: canonical latest execution snapshot — updated on every finalized run
   lastResultStatus     TestResultStatus?
@@ -300,15 +306,16 @@ model TestCase {
   lastFailureMessage   String?           @db.Text
   lastHealedAt         DateTime?
   lastHealingAttemptId String?
-  lastSource           String?           // "run" | "self-heal-rerun" | "qa-verify"
+  lastSource           String? // "run" | "self-heal-rerun" | "qa-verify"
 
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  results            TestResult[]
-  TestHealingAttempt TestHealingAttempt[]
-  steps             TestStep[]
-  runs              TestCaseRun[]
+  results               TestResult[]
+  TestHealingAttempt    TestHealingAttempt[]
+  steps                 TestStep[]
+  runs                  TestCaseRun[]
+  interactiveUiSessions InteractiveUiSession[]
 
   @@unique([projectId, key])
   @@index([projectId, suiteId])
@@ -324,42 +331,42 @@ model TestResult {
   testCaseId String
   testCase   TestCase @relation(fields: [testCaseId], references: [id])
 
-  status          TestResultStatus
-  durationMs      Int?
-  message         String?
-  createdAt       DateTime             @default(now())
-  healingAttempts TestHealingAttempt[]
+  status                      TestResultStatus
+  durationMs                  Int?
+  message                     String?
+  createdAt                   DateTime                     @default(now())
+  healingAttempts             TestHealingAttempt[]
   humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([runId, testCaseId])
 }
 
 model TestHealingAttempt {
-  id            String        @id @default(cuid())
-  runId         String
-  run           TestRun       @relation(fields: [runId], references: [id])
-  testResultId  String
-  testResult    TestResult    @relation(fields: [testResultId], references: [id])
-  testCaseId    String
-  testCase      TestCase      @relation(fields: [testCaseId], references: [id])
-  attempt       Int           @default(1)
-  status        HealingStatus @default(queued)
-  summary       String?
-  diff          String?
-  error         String?
-  prompt        Json?
-  response      Json?
-  artifactsPath String?
-  targetSpec    String?
-  originalSpec  String?       @db.Text
-  repairedSpec  String?       @db.Text
-  modelUsed     String?
-  repairReason  String?       @db.Text
-  confidenceScore Int?
-  executionBefore Json?
-  executionAfter  Json?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                          String                       @id @default(cuid())
+  runId                       String
+  run                         TestRun                      @relation(fields: [runId], references: [id])
+  testResultId                String
+  testResult                  TestResult                   @relation(fields: [testResultId], references: [id])
+  testCaseId                  String
+  testCase                    TestCase                     @relation(fields: [testCaseId], references: [id])
+  attempt                     Int                          @default(1)
+  status                      HealingStatus                @default(queued)
+  summary                     String?
+  diff                        String?
+  error                       String?
+  prompt                      Json?
+  response                    Json?
+  artifactsPath               String?
+  targetSpec                  String?
+  originalSpec                String?                      @db.Text
+  repairedSpec                String?                      @db.Text
+  modelUsed                   String?
+  repairReason                String?                      @db.Text
+  confidenceScore             Int?
+  executionBefore             Json?
+  executionAfter              Json?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
   humanInterventionCandidates HumanInterventionCandidate[]
 
   @@unique([testResultId, attempt])
@@ -368,25 +375,25 @@ model TestHealingAttempt {
 }
 
 model HumanInterventionCandidate {
-  id               String   @id @default(cuid())
+  id               String              @id @default(cuid())
   projectId        String
-  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   runId            String?
-  run              TestRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run              TestRun?            @relation(fields: [runId], references: [id], onDelete: SetNull)
   testResultId     String?
-  testResult       TestResult? @relation(fields: [testResultId], references: [id], onDelete: SetNull)
+  testResult       TestResult?         @relation(fields: [testResultId], references: [id], onDelete: SetNull)
   healingAttemptId String?
   healingAttempt   TestHealingAttempt? @relation(fields: [healingAttemptId], references: [id], onDelete: SetNull)
   operatorJobId    String?
-  operatorJob      OperatorJob? @relation(fields: [operatorJobId], references: [id], onDelete: SetNull)
+  operatorJob      OperatorJob?        @relation(fields: [operatorJobId], references: [id], onDelete: SetNull)
   operatorTaskId   String?
-  operatorTask     OperatorTask? @relation(fields: [operatorTaskId], references: [id], onDelete: SetNull)
-  source           String   @default("autonomous-qa")
-  reason           String   @db.Text
-  status           String   @default("open")
+  operatorTask     OperatorTask?       @relation(fields: [operatorTaskId], references: [id], onDelete: SetNull)
+  source           String              @default("autonomous-qa")
+  reason           String              @db.Text
+  status           String              @default("open")
   contextJson      Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   @@index([projectId, status])
   @@index([runId])
@@ -394,6 +401,97 @@ model HumanInterventionCandidate {
   @@index([healingAttemptId])
   @@index([operatorJobId])
   @@index([operatorTaskId])
+}
+
+// Interactive UI Testing v1. A person watches a live browser (reusing the same
+// screencast/input-forwarding machinery as Live Security Testing) while an LLM agent runs a
+// real observe-decide-act-judge loop against it - one continuous session, not a staged batch
+// job, hence its own purpose-built model group rather than an OperatorJob/Task extension.
+model InteractiveUiSession {
+  id                    String    @id @default(cuid())
+  projectId             String
+  project               Project   @relation(fields: [projectId], references: [id])
+  testRunId             String    @unique
+  testRun               TestRun   @relation(fields: [testRunId], references: [id])
+  testCaseId            String
+  testCase              TestCase  @relation(fields: [testCaseId], references: [id])
+  // Optional: resume a captured SecurityAuthSession's storageState instead of starting logged
+  // out. Read-only reuse - no changes to that table or its capture flow.
+  securityAuthSessionId String?
+  baseUrl               String
+  objective             String    @db.Text
+  status                String    @default("pending") // pending|running|paused|awaiting_review|completed|failed|stopped
+  maxTurns              Int       @default(40)
+  turnCount             Int       @default(0)
+  error                 String?
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  turns    InteractiveUiTurn[]
+  findings InteractiveUiFinding[]
+
+  @@index([projectId, createdAt])
+}
+
+model InteractiveUiTurn {
+  id                   String               @id // crypto.randomUUID(), matches the in-memory turn id
+  seq                  BigInt               @unique @default(autoincrement())
+  sessionId            String
+  session              InteractiveUiSession @relation(fields: [sessionId], references: [id])
+  pageUrlBefore        String               @db.Text
+  pageUrlAfter         String?              @db.Text
+  domSnapshotPath      String?
+  screenshotBeforePath String?
+  screenshotAfterPath  String?
+  // Compact structured snapshot, e.g. {authenticated, route, modal, visibleForm, selectedTab} -
+  // not a full world model, just enough to feed the next decision's history/coverage context
+  // and give triage reviewers state context. Deliberately unconnected to Application Brain in v1.
+  stateBeforeJson      Json?
+  stateAfterJson       Json?
+  llmModel             String?
+  // {rationale, action, expectedObservation, confidence} - rationale is an auditable testing
+  // intent ("testing whether an empty required field is rejected"), never raw chain-of-thought.
+  llmActionJson        Json?
+  // {attempted, succeeded, category} where category is agent_failure|automation_failure|
+  // environment_failure|null (null = executed cleanly, eligible for application-level judgment).
+  // Computed BEFORE the judgment call runs and gates whether its verdict may produce a finding.
+  executionJson        Json?
+  llmJudgmentJson      Json? // {verdict, isBug, severity, rationale, confidence}
+  actionType           String? // click|fill|navigate|assertText|scroll|wait|finish
+  actionTarget         String?              @db.Text
+  actionValue          String?              @db.Text
+  executedOk           Boolean?
+  consoleErrorsJson    Json?
+  networkErrorsJson    Json?
+  verdict              String? // progressing|match|mismatch|blocked|complete|error
+  confidenceScore      Int?
+  findingId            String?
+  createdAt            DateTime             @default(now())
+
+  @@index([sessionId, seq])
+}
+
+model InteractiveUiFinding {
+  id                   String               @id @default(cuid())
+  sessionId            String
+  session              InteractiveUiSession @relation(fields: [sessionId], references: [id])
+  turnId               String
+  title                String
+  expectedBehavior     String               @db.Text
+  actualBehavior       String               @db.Text
+  severity             SecuritySeverity     @default(low) // reuse existing enum, don't fork a new one
+  confidenceScore      Int
+  status               String               @default("needs_review") // needs_review|confirmed|dismissed|promoted
+  evidenceJson         Json?
+  regressionTestCaseId String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  regressionTestCases TestCase[]
+
+  @@index([sessionId, status])
 }
 
 model TestStep {
@@ -410,13 +508,13 @@ model TestStep {
 }
 
 model TestCaseRun {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   caseId    String
-  case      TestCase @relation(fields: [caseId], references: [id])
+  case      TestCase         @relation(fields: [caseId], references: [id])
   status    TestResultStatus
-  note      String?  @db.Text
+  note      String?          @db.Text
   userId    String?
-  createdAt DateTime @default(now())
+  createdAt DateTime         @default(now())
 
   @@index([caseId, createdAt])
 }
@@ -548,22 +646,22 @@ model SecurityScanJob {
 }
 
 model SecurityFinding {
-  id          String              @id @default(cuid())
-  scanId      String
-  scan        SecurityScanJob     @relation(fields: [scanId], references: [id])
-  type        SecurityFindingType
-  severity    SecuritySeverity
-  title       String
-  description String?
-  location    String?
-  tool        String?
-  evidence    Json?
-  suggestion  String?
-  status      String?
+  id               String                           @id @default(cuid())
+  scanId           String
+  scan             SecurityScanJob                  @relation(fields: [scanId], references: [id])
+  type             SecurityFindingType
+  severity         SecuritySeverity
+  title            String
+  description      String?
+  location         String?
+  tool             String?
+  evidence         Json?
+  suggestion       String?
+  status           String?
   // Ticket VR.1 - real, enum-backed, human-set validation state. null = untriaged. See the
   // enum's own doc comment for why this is a separate column/type from `status` above.
   validationStatus SecurityFindingValidationStatus?
-  createdAt   DateTime            @default(now())
+  createdAt        DateTime                         @default(now())
 
   // Ticket VR.3B - back-relation for TestCase.securityFindingId.
   regressionTestCases TestCase[]
@@ -572,55 +670,55 @@ model SecurityFinding {
 }
 
 model ApiSpec {
-  id            String   @id @default(cuid())
+  id            String          @id @default(cuid())
   projectId     String
-  project       Project  @relation(fields: [projectId], references: [id])
+  project       Project         @relation(fields: [projectId], references: [id])
   title         String
   version       String?
   sourceUrl     String?
-  specJson      Json     // raw parsed OpenAPI/Swagger object
-  endpoints     Json     // normalized endpoint list for quick preview without re-parsing
-  endpointCount Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  specJson      Json // raw parsed OpenAPI/Swagger object
+  endpoints     Json // normalized endpoint list for quick preview without re-parsing
+  endpointCount Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
   collections   ApiCollection[]
 
   @@index([projectId, createdAt])
 }
 
 model SecurityAuthSession {
-  id                String    @id @default(cuid())
-  projectId         String
-  project           Project   @relation(fields: [projectId], references: [id])
-  mode              String // enterprise | bug_bounty
-  provider          String? // clerk | auth0 | firebase | cognito | custom | manual
-  baseUrl           String?
-  loginUrl          String?
-  scopeAcknowledged Boolean   @default(false)
+  id                        String    @id @default(cuid())
+  projectId                 String
+  project                   Project   @relation(fields: [projectId], references: [id])
+  mode                      String // enterprise | bug_bounty
+  provider                  String? // clerk | auth0 | firebase | cognito | custom | manual
+  baseUrl                   String?
+  loginUrl                  String?
+  scopeAcknowledged         Boolean   @default(false)
   // Live Security Testing v1, Ticket LST.4 - explicit opt-in, separate from scopeAcknowledged,
   // for active probes to preserve the real HTTP method/mutate the real request body against a
   // captured POST/PUT/PATCH baseline (not just synthesize a GET). allowDeleteActiveProbes is a
   // stricter second tier, only meaningful when allowMutatingActiveProbes is also true.
-  allowMutatingActiveProbes Boolean @default(false)
-  allowDeleteActiveProbes   Boolean @default(false)
+  allowMutatingActiveProbes Boolean   @default(false)
+  allowDeleteActiveProbes   Boolean   @default(false)
   // Ticket LST.3 - set once any exchange in this session trips the sensitive-data circuit
   // breaker. Checked on every subsequent runLiveSecurityTests call for this session
   // (LiveSecurityTestOptions.sessionAlreadyStopped) so a trip genuinely stops active testing for
   // the rest of the session, not just the one exchange that triggered it. Never reset
   // automatically - only a new session starts clean.
-  sensitiveDataStopped      Boolean @default(false)
-  successPattern    String?
-  storagePath       String?
-  role              String? // admin | user | other | anonymous — enterprise role-session generation
-  bypassSecretKey   String? // ProjectSecret.key holding the shared secret for the /testmind/auth/session bypass contract
-  providerConfig    Json? // non-secret OAuth/IdP config (domain, clientId, audience, username) for provider-based auth
+  sensitiveDataStopped      Boolean   @default(false)
+  successPattern            String?
+  storagePath               String?
+  role                      String? // admin | user | other | anonymous — enterprise role-session generation
+  bypassSecretKey           String? // ProjectSecret.key holding the shared secret for the /testmind/auth/session bypass contract
+  providerConfig            Json? // non-secret OAuth/IdP config (domain, clientId, audience, username) for provider-based auth
   providerPasswordSecretKey String? // ProjectSecret.key holding the test account's password for provider-based auth
   providerClientSecretKey   String? // ProjectSecret.key holding the OAuth client secret, if the app is a confidential client
-  expiresAt         DateTime?
-  status            String    @default("pending") // pending | mfa_required | authenticated | captured | expired | failed
-  error             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  expiresAt                 DateTime?
+  status                    String    @default("pending") // pending | mfa_required | authenticated | captured | expired | failed
+  error                     String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   liveExchanges   SecurityLiveExchange[]
   liveExperiments SecurityLiveExperiment[]
@@ -696,13 +794,13 @@ model ProjectSecret {
 }
 
 model CuratedSuite {
-  id        String     @id @default(cuid())
+  id        String   @id @default(cuid())
   projectId String
-  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name      String
   rootRel   String
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   testCases TestCase[]
 
@@ -806,19 +904,19 @@ model OperatorJob {
   status      OperatorJobStatus @default(queued)
   objective   String?           @db.Text
   requestedBy String?
-  contextJson   Json?
-  error         String?           @db.Text
-  createdAt     DateTime          @default(now())
-  startedAt     DateTime?
-  finishedAt    DateTime?
+  contextJson Json?
+  error       String?           @db.Text
+  createdAt   DateTime          @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
 
   environmentId String?
   environment   Environment? @relation(fields: [environmentId], references: [id])
 
-  tasks     OperatorTask[]
-  artifacts OperatorArtifact[]
-  decisions OperatorDecision[]
-  approvals OperatorApproval[]
+  tasks                       OperatorTask[]
+  artifacts                   OperatorArtifact[]
+  decisions                   OperatorDecision[]
+  approvals                   OperatorApproval[]
   humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([projectId, createdAt])
@@ -844,10 +942,10 @@ model OperatorTask {
   startedAt     DateTime?
   finishedAt    DateTime?
 
-  steps     OperatorStep[]
-  artifacts OperatorArtifact[]
-  decisions OperatorDecision[]
-  approvals OperatorApproval[]
+  steps                       OperatorStep[]
+  artifacts                   OperatorArtifact[]
+  decisions                   OperatorDecision[]
+  approvals                   OperatorApproval[]
   humanInterventionCandidates HumanInterventionCandidate[]
 
   @@index([jobId])
@@ -931,16 +1029,16 @@ model OperatorApproval {
 }
 
 model Environment {
-  id               String        @id @default(cuid())
+  id               String          @id @default(cuid())
   projectId        String
-  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name             String
   baseUrl          String
   variables        Json?
-  isProtected      Boolean       @default(false)
-  requiresApproval Boolean       @default(false)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  isProtected      Boolean         @default(false)
+  requiresApproval Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
   operatorJobs     OperatorJob[]
   testRuns         TestRun[]
   workflows        Workflow[]
@@ -950,21 +1048,21 @@ model Environment {
 }
 
 model Workflow {
-  id               String        @id @default(cuid())
+  id               String       @id @default(cuid())
   projectId        String
-  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name             String
-  description      String?       @db.Text
-  workflowType     String        @default("qa-execute")
-  triggerType      String        @default("manual")
+  description      String?      @db.Text
+  workflowType     String       @default("qa-execute")
+  triggerType      String       @default("manual")
   environmentId    String?
-  environment      Environment?  @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  environment      Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
   suiteId          String?
-  approvalRequired Boolean       @default(false)
-  notifyOnFailure  Boolean       @default(true)
-  configJson       Json          @default("{}")
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  approvalRequired Boolean      @default(false)
+  notifyOnFailure  Boolean      @default(true)
+  configJson       Json         @default("{}")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   runs WorkflowRun[]
 
@@ -974,18 +1072,18 @@ model Workflow {
 }
 
 model WorkflowRun {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   workflowId    String
-  workflow      Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  status        String   @default("queued")
+  workflow      Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  status        String    @default("queued")
   operatorJobId String?
   requestedBy   String?
   approvedBy    String?
   startedAt     DateTime?
   finishedAt    DateTime?
-  error         String?  @db.Text
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  error         String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([workflowId, createdAt])
   @@index([operatorJobId])
@@ -1012,16 +1110,16 @@ model ResearchProgram {
 // Secrets (passwords, client secrets) are NOT stored here — they stay in ProjectSecret.
 
 model AuthIntegration {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name        String
-  provider    String   // auth0 | firebase | cognito | clerk | custom
-  config      Json     // non-secret fields: domain, clientId, audience, region, frontendApiUrl, etc.
-  passwordSecretKey    String? // ProjectSecret.key holding test-account password
-  clientSecretKey      String? // ProjectSecret.key holding OAuth client secret
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(cuid())
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name              String
+  provider          String // auth0 | firebase | cognito | clerk | custom
+  config            Json // non-secret fields: domain, clientId, audience, region, frontendApiUrl, etc.
+  passwordSecretKey String? // ProjectSecret.key holding test-account password
+  clientSecretKey   String? // ProjectSecret.key holding OAuth client secret
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([projectId])
 }
@@ -1029,21 +1127,21 @@ model AuthIntegration {
 // ── Mobile testing configuration ──────────────────────────────────────────────
 
 model MobileConfig {
-  id           String   @id @default(cuid())
-  projectId    String
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name         String
-  platform     String   // android | ios
-  appiumUrl    String   // Appium server URL
-  appPackage   String?  // Android: app package name
-  appActivity  String?  // Android: main activity
-  bundleId     String?  // iOS: bundle identifier
-  deviceName   String?
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name            String
+  platform        String // android | ios
+  appiumUrl       String // Appium server URL
+  appPackage      String? // Android: app package name
+  appActivity     String? // Android: main activity
+  bundleId        String? // iOS: bundle identifier
+  deviceName      String?
   platformVersion String?
-  proxyPort    Int?     // intercept traffic via TestMind proxy on this local port
-  capabilities Json?    // additional Appium capabilities
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  proxyPort       Int? // intercept traffic via TestMind proxy on this local port
+  capabilities    Json? // additional Appium capabilities
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([projectId])
 }
@@ -1054,17 +1152,17 @@ model MobileConfig {
 // SecurityScanJob, TestRun, or TestCase models.
 
 model ApiCollection {
-  id            String       @id @default(cuid())
+  id            String        @id @default(cuid())
   projectId     String
-  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   apiSpecId     String?
-  apiSpec       ApiSpec?     @relation(fields: [apiSpecId], references: [id], onDelete: SetNull)
+  apiSpec       ApiSpec?      @relation(fields: [apiSpecId], references: [id], onDelete: SetNull)
   environmentId String?
-  environment   Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  environment   Environment?  @relation(fields: [environmentId], references: [id], onDelete: SetNull)
   name          String
   baseUrl       String
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   testCases     ApiTestCase[]
   runs          ApiTestRun[]
 
@@ -1072,39 +1170,39 @@ model ApiCollection {
 }
 
 model ApiTestCase {
-  id             String        @id @default(cuid())
+  id             String          @id @default(cuid())
   collectionId   String
-  collection     ApiCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  collection     ApiCollection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   name           String?
-  method         String        // GET POST PUT PATCH DELETE HEAD OPTIONS
-  path           String        // /users/{id}
-  headers        Json?         // Record<string,string>
-  queryParams    Json?         // Record<string,string>
-  bodyJson       String?       @db.Text
+  method         String // GET POST PUT PATCH DELETE HEAD OPTIONS
+  path           String // /users/{id}
+  headers        Json? // Record<string,string>
+  queryParams    Json? // Record<string,string>
+  bodyJson       String?         @db.Text
   expectedStatus Int?
-  assertions     Json?         // Assertion[] — evaluated by api-test-worker
+  assertions     Json? // Assertion[] — evaluated by api-test-worker
   authSessionId  String?
-  timeoutMs      Int           @default(8000)
-  order          Int           @default(0)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  timeoutMs      Int             @default(8000)
+  order          Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   results        ApiTestResult[]
 
   @@index([collectionId, order])
 }
 
 model ApiTestRun {
-  id           String        @id @default(cuid())
+  id           String          @id @default(cuid())
   projectId    String
   collectionId String
-  collection   ApiCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  status       String        @default("queued") // queued running completed failed
+  collection   ApiCollection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  status       String          @default("queued") // queued running completed failed
   startedAt    DateTime?
   finishedAt   DateTime?
-  summary      Json?         // { total, passed, failed, errors, durationMs }
+  summary      Json? // { total, passed, failed, errors, durationMs }
   error        String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   results      ApiTestResult[]
 
   @@index([projectId, createdAt])
@@ -1117,12 +1215,12 @@ model ApiTestResult {
   run              ApiTestRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
   testCaseId       String
   testCase         ApiTestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
-  status           String      // passed failed error skipped
+  status           String // passed failed error skipped
   statusCode       Int?
   durationMs       Int?
-  responseHeaders  Json?       // redacted: Authorization and Cookie values removed
-  bodyPreview      String?     @db.Text  // capped at 2000 chars
-  assertionResults Json?       // [{ type, passed, actual, expected }]
+  responseHeaders  Json? // redacted: Authorization and Cookie values removed
+  bodyPreview      String?     @db.Text // capped at 2000 chars
+  assertionResults Json? // [{ type, passed, actual, expected }]
   error            String?
   createdAt        DateTime    @default(now())
 
