@@ -27,6 +27,7 @@ import {
 } from "../security/live-exchange-serialize.js";
 import { isWithinScope, type ProbeScope } from "../security/http-client.js";
 import { snippet } from "../security/redaction.js";
+import { DANGEROUS_ROUTE_RE, SAFE_SEARCH_INPUT_RE, isDangerousSignal, isStaticPath } from "../lib/safe-interaction-patterns.js";
 
 // Live Security Testing v0.1 (POC) - a person drives a real, already-authenticated
 // browser session resumed from a captured SecurityAuthSession. This session captures
@@ -66,9 +67,6 @@ const MAX_BROWSER_CORS_PROOFS_PER_SESSION = 25;
 const BROWSER_CORS_PROOF_TIMEOUT_MS = 2_500;
 const RATE_LIMIT_SIGNAL_WINDOW_MS = 60_000;
 const RATE_LIMIT_SIGNAL_THRESHOLD = 3;
-const DANGEROUS_ROUTE_RE =
-  /(logout|log-out|signout|sign-out|delete|remove|destroy|deactivate|close-account|cancel|billing|checkout|payment|purchase|subscribe|transfer|withdraw|deposit|fund|trade|buy|sell|invest|order|confirm|submit|upload|enroll|enrol|sign-up|signup|register|apply|application|finish|continue)/i;
-const SAFE_SEARCH_INPUT_RE = /(search|filter|query|find|lookup)/i;
 const VOLATILE_CORS_QUERY_PARAM_RE =
   /^(client[_-]?request[_-]?id|request[_-]?id|trace[_-]?id|correlation[_-]?id|cache[_-]?bust|cachebuster|nonce|timestamp|ts|t|_|cb|rand|random)$/i;
 const TEXT_LIKE_CONTENT_TYPE_RE =
@@ -578,10 +576,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isDangerousSignal(signal: string) {
-  return DANGEROUS_ROUTE_RE.test(signal.toLowerCase());
-}
-
 function automatedScanLimitPayload(
   session: LiveSession,
   reason: "initial" | "manual",
@@ -640,10 +634,6 @@ function isSafeRouteWalkTarget(baseUrl: string, candidate: { url: string; text: 
   }
 }
 
-function isStaticPath(pathname: string) {
-  return /\.(?:css|js|mjs|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|pdf|zip)$/i.test(pathname);
-}
-
 async function collectSafeRouteWalkTargets(session: LiveSession) {
   const rawTargets = await session.page
     .evaluate(() => {
@@ -674,31 +664,13 @@ async function collectSafeRouteWalkTargets(session: LiveSession) {
   return targets;
 }
 
-async function collectSafeClickTargets(session: LiveSession): Promise<AutomatedClickTarget[]> {
+export async function collectSafeClickTargets(session: LiveSession): Promise<AutomatedClickTarget[]> {
   const rawTargets = await session.page
     .evaluate(
       ({ dangerousSource }: { dangerousSource: string }) => {
         const doc = (globalThis as any).document;
         const win = (globalThis as any).window;
         const dangerous = new RegExp(dangerousSource, "i");
-        const visible = (el: any) => {
-          const rect = el.getBoundingClientRect?.();
-          const style = win.getComputedStyle?.(el);
-          return Boolean(rect && rect.width > 4 && rect.height > 4 && style?.visibility !== "hidden" && style?.display !== "none");
-        };
-        const labelFor = (el: any) =>
-          String(
-            el.innerText ||
-              el.getAttribute?.("aria-label") ||
-              el.getAttribute?.("title") ||
-              el.getAttribute?.("data-testid") ||
-              el.id ||
-              el.className ||
-              ""
-          )
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 120);
 
         const nodes = Array.from(
           doc.querySelectorAll(
@@ -717,13 +689,36 @@ async function collectSafeClickTargets(session: LiveSession): Promise<AutomatedC
         const targets: AutomatedClickTarget[] = [];
         const seen = new Set<string>();
         nodes.forEach((node: any, index) => {
-          if (targets.length >= 40 || !visible(node)) return;
+          // Inlined rather than a nested named helper (was `visible(el)`) - tsx's esbuild
+          // transform runs with keepNames: true, which wraps any nested named function/const-
+          // arrow defined inside a page.evaluate() callback in a `__name(...)` call; that
+          // reference doesn't exist in the isolated browser realm this callback's source text
+          // gets re-run in, so every call silently threw "ReferenceError: __name is not
+          // defined" - caught by this function's own .catch() below, so it looked like "found
+          // no click targets" rather than an error. Confirmed via a real-browser reproduction.
+          // See interactive-ui-extract.ts's header comment for the same finding in more detail.
+          const rect = node.getBoundingClientRect?.();
+          const style = win.getComputedStyle?.(node);
+          const isVisible = Boolean(rect && rect.width > 4 && rect.height > 4 && style?.visibility !== "hidden" && style?.display !== "none");
+          if (targets.length >= 40 || !isVisible) return;
           if (node.closest?.("[data-tm-ignore], [disabled], [aria-disabled='true']")) return;
           const tag = String(node.tagName || "").toLowerCase();
           const type = String(node.getAttribute?.("type") || "").toLowerCase();
           if (tag === "button" && ["submit", "reset"].includes(type)) return;
           if (node.closest?.("form") && !["button", "menu", "tab"].includes(String(node.getAttribute?.("role") || "").toLowerCase())) return;
-          const label = labelFor(node);
+          // Inlined rather than a nested named helper (was `labelFor(el)`) - same __name issue.
+          const label = String(
+            node.innerText ||
+              node.getAttribute?.("aria-label") ||
+              node.getAttribute?.("title") ||
+              node.getAttribute?.("data-testid") ||
+              node.id ||
+              node.className ||
+              ""
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 120);
           const href = String(node.getAttribute?.("href") || "");
           const signal = `${tag} ${type} ${href} ${label} ${node.getAttribute?.("aria-label") || ""} ${node.id || ""}`;
           if (!label && !node.getAttribute?.("aria-controls") && !node.getAttribute?.("data-testid")) return;
@@ -749,22 +744,23 @@ async function collectSafeClickTargets(session: LiveSession): Promise<AutomatedC
   return rawTargets.filter((target) => !isDangerousSignal(target.fingerprint) && !isDangerousSignal(target.label));
 }
 
-async function collectSafeSearchTargets(session: LiveSession): Promise<AutomatedSearchTarget[]> {
+export async function collectSafeSearchTargets(session: LiveSession): Promise<AutomatedSearchTarget[]> {
   const rawTargets = await session.page
     .evaluate(
       ({ searchSource }: { searchSource: string }) => {
         const doc = (globalThis as any).document;
         const win = (globalThis as any).window;
         const search = new RegExp(searchSource, "i");
-        const visible = (el: any) => {
-          const rect = el.getBoundingClientRect?.();
-          const style = win.getComputedStyle?.(el);
-          return Boolean(rect && rect.width > 20 && rect.height > 8 && style?.visibility !== "hidden" && style?.display !== "none");
-        };
         const nodes = Array.from(doc.querySelectorAll("input, textarea, [role='searchbox']"));
         const targets: AutomatedSearchTarget[] = [];
         nodes.forEach((node: any, index) => {
-          if (targets.length >= 12 || !visible(node)) return;
+          // Inlined rather than a nested named helper (was `visible(el)`) - see
+          // collectSafeClickTargets above for why (tsx's esbuild __name wrapping breaks
+          // page.evaluate()'s isolated-realm re-execution of nested named functions).
+          const rect = node.getBoundingClientRect?.();
+          const style = win.getComputedStyle?.(node);
+          const isVisible = Boolean(rect && rect.width > 20 && rect.height > 8 && style?.visibility !== "hidden" && style?.display !== "none");
+          if (targets.length >= 12 || !isVisible) return;
           if (node.disabled || node.readOnly || node.closest?.("[disabled], [aria-disabled='true']")) return;
           const type = String(node.getAttribute?.("type") || "text").toLowerCase();
           if (!["search", "text", ""].includes(type) && node.getAttribute?.("role") !== "searchbox") return;
