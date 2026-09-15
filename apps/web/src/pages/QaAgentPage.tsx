@@ -749,6 +749,9 @@ export default function QaAgentPage() {
     initialProjectId.current = projectId;
     resetWorkspaceData();
     setJob(null);
+    setOperatorJob(null);
+    setJobIdParam(null);
+    setOpJobIdParam(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -769,6 +772,65 @@ export default function QaAgentPage() {
     [projects, projectId]
   );
 
+  // Keeps `job`'s id in the URL (?jobId=...) the same way activeTab already does with ?tab=,
+  // so a full page revisit (nav away and back, or a hard refresh) can restore it instead of
+  // just losing the run results because component state doesn't survive a remount.
+  function setJobIdParam(jobId: string | null) {
+    const next = new URLSearchParams(searchParams);
+    if (jobId) next.set("jobId", jobId);
+    else next.delete("jobId");
+    setSearchParams(next, { replace: true });
+  }
+
+  function setOpJobIdParam(opJobId: string | null) {
+    const next = new URLSearchParams(searchParams);
+    if (opJobId) next.set("opJobId", opJobId);
+    else next.delete("opJobId");
+    setSearchParams(next, { replace: true });
+  }
+
+  // Shared by a fresh start (startJob) and a mount-time restore (see the restore effect below).
+  // onDone runs once, when the job reaches a terminal status - startJob's caller uses it to also
+  // fire the auto-chained Operator job; a restored session deliberately does NOT re-fire that
+  // chain (it already fired once, from the original start - re-triggering it on every page
+  // revisit would create a duplicate Operator job each time).
+  function pollJobUntilDone(jobId: string, onDone?: (job: QaJob) => void) {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+    pollRef.current = window.setInterval(() => {
+      apiFetch<{ job: QaJob }>(`/qa-agent/jobs/${jobId}`)
+        .then((j) => {
+          setJob(j.job);
+          if (j.job.status === "succeeded" || j.job.status === "failed") {
+            if (pollRef.current) window.clearInterval(pollRef.current);
+            // The run this job produced changes what Overview/Investigation/Coverage/Plan
+            // would show - mark them stale so revisiting the tab refetches instead of
+            // showing pre-run data.
+            setBrainLoaded(false);
+            setPlanLoaded(false);
+            setCoverageLoaded(false);
+            setRegressionCasesLoaded(false);
+            setInvestigationRuns([]);
+            onDone?.(j.job);
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+  }
+
+  function pollOperatorJobUntilDone(opJobId: string) {
+    if (opPollRef.current) window.clearInterval(opPollRef.current);
+    opPollRef.current = window.setInterval(() => {
+      apiFetch<{ job: { id: string; status: string; error?: string } }>(`/operator/jobs/${opJobId}`)
+        .then((r) => {
+          setOperatorJob(r.job);
+          if (r.job.status === "succeeded" || r.job.status === "failed") {
+            window.clearInterval(opPollRef.current!);
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+  }
+
   const startJob = async () => {
     if (!projectId) { setError("Pick a project first."); return; }
     if (!suiteId && !autonomousMode) { setError("Pick a suite to run."); return; }
@@ -786,53 +848,60 @@ export default function QaAgentPage() {
         }),
       });
       setJob(res.job);
-      if (pollRef.current) window.clearInterval(pollRef.current);
+      setJobIdParam(res.job.id);
       const capturedProjectId = res.job.projectId;
       const capturedAutonomous = res.job.autonomous === true;
-      pollRef.current = window.setInterval(() => {
-        apiFetch<{ job: QaJob }>(`/qa-agent/jobs/${res.job.id}`)
-          .then((j) => {
-            setJob(j.job);
-            if (j.job.status === "succeeded" || j.job.status === "failed") {
-              if (pollRef.current) window.clearInterval(pollRef.current);
-              // The run this job produced changes what Overview/Investigation/Coverage/Plan
-              // would show - mark them stale so revisiting the tab refetches instead of
-              // showing pre-run data.
-              setBrainLoaded(false);
-              setPlanLoaded(false);
-              setCoverageLoaded(false);
-              setRegressionCasesLoaded(false);
-              setInvestigationRuns([]);
-              if (!capturedAutonomous && operatorAfterType !== "none") {
-                apiFetch<{ job: { id: string; status: string } }>("/operator/jobs", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    projectId: capturedProjectId,
-                    type: operatorAfterType,
-                    context: { runId: j.job.runId },
-                  }),
-                }).then((opRes) => {
-                  setOperatorJob(opRes.job);
-                  opPollRef.current = window.setInterval(() => {
-                    apiFetch<{ job: { id: string; status: string; error?: string } }>(
-                      `/operator/jobs/${opRes.job.id}`
-                    ).then((r) => {
-                      setOperatorJob(r.job);
-                      if (r.job.status === "succeeded" || r.job.status === "failed") {
-                        window.clearInterval(opPollRef.current!);
-                      }
-                    }).catch(() => {});
-                  }, 3000);
-                }).catch(() => {});
-              }
-            }
-          })
-          .catch(() => {});
-      }, 2000);
+      pollJobUntilDone(res.job.id, (finishedJob) => {
+        if (!capturedAutonomous && operatorAfterType !== "none") {
+          apiFetch<{ job: { id: string; status: string } }>("/operator/jobs", {
+            method: "POST",
+            body: JSON.stringify({
+              projectId: capturedProjectId,
+              type: operatorAfterType,
+              context: { runId: finishedJob.runId },
+            }),
+          }).then((opRes) => {
+            setOperatorJob(opRes.job);
+            setOpJobIdParam(opRes.job.id);
+            pollOperatorJobUntilDone(opRes.job.id);
+          }).catch(() => {});
+        }
+      });
     } catch (err: any) {
       setError(err?.message ?? "Failed to start QA agent");
     }
   };
+
+  // Restore a job/operator-job that's still visible in the URL from a previous visit - without
+  // this, navigating away and back (a fresh mount of this page) silently lost the last run's
+  // results even though the job itself was still there server-side the whole time.
+  useEffect(() => {
+    const jobId = searchParams.get("jobId");
+    if (jobId) {
+      apiFetch<{ job: QaJob }>(`/qa-agent/jobs/${jobId}`)
+        .then((res) => {
+          setJob(res.job);
+          if (res.job.status === "queued" || res.job.status === "running") {
+            pollJobUntilDone(res.job.id);
+          }
+        })
+        .catch(() => setJobIdParam(null));
+    }
+    const opJobId = searchParams.get("opJobId");
+    if (opJobId) {
+      apiFetch<{ job: { id: string; status: string; error?: string } }>(`/operator/jobs/${opJobId}`)
+        .then((res) => {
+          setOperatorJob(res.job);
+          if (res.job.status === "queued" || res.job.status === "running") {
+            pollOperatorJobUntilDone(res.job.id);
+          }
+        })
+        .catch(() => setOpJobIdParam(null));
+    }
+    // Mount-only: this restores from whatever the URL carried when the page first loaded: a
+    // later change to activeTab (which also writes to searchParams) must not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isActive = job?.status === "queued" || job?.status === "running";
 
