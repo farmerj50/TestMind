@@ -57,8 +57,8 @@ const LIVE_SECURITY_HEAP_THROTTLE_BYTES = Number(process.env.TM_LIVE_SECURITY_HE
 const HEAP_CHECK_INTERVAL_MS = 5_000;
 const MAX_BODY_RETRIEVAL_BYTES = 512_000;
 const ACTION_CORRELATION_WINDOW_MS = 2_000;
-const MAX_AUTOMATED_SCAN_STEPS = 100;
-const MAX_INTERACTIONS_PER_PAGE = 12;
+const MAX_AUTOMATED_SCAN_STEPS = 1_000;
+const MAX_INTERACTIONS_PER_PAGE = 30;
 const MAX_SEARCH_INPUTS_PER_PAGE = 4;
 const AUTOMATED_SCAN_SETTLE_MS = 700;
 const DEFAULT_AUTOMATED_SCAN_DELAY_MS = 5_000;
@@ -71,8 +71,10 @@ const VOLATILE_CORS_QUERY_PARAM_RE =
   /^(client[_-]?request[_-]?id|request[_-]?id|trace[_-]?id|correlation[_-]?id|cache[_-]?bust|cachebuster|nonce|timestamp|ts|t|_|cb|rand|random)$/i;
 const TEXT_LIKE_CONTENT_TYPE_RE =
   /\b(application\/(?:json|[\w.+-]+\+json|xml|x-www-form-urlencoded|graphql)|text\/|multipart\/form-data)\b/i;
-const RATE_LIMIT_STATUS_CODES = new Set([429, 503, 509, 529]);
+const HARD_RATE_LIMIT_STATUS_CODES = new Set([429]);
+const SOFT_RATE_LIMIT_STATUS_CODES = new Set([503, 509, 529]);
 const WAF_RATE_LIMIT_TEXT_RE = /(error\s*1015|you are being rate limited|banned temporarily|too many requests)/i;
+const LIVE_SECURITY_TEST_TIMEOUT_MS = 90_000;
 
 type Ticket = { authSessionId: string; expiresAt: number };
 const tickets = new Map<string, Ticket>();
@@ -144,6 +146,10 @@ type LiveSession = {
   browserCorsProofCount: number;
   routeWalkSeen: Set<string>;
   routeWalkRunning: boolean;
+  // Last "siteWalk" status broadcast (see automatedScanLimitPayload) - a client that (re)connects
+  // to an already-running session has no other way to learn a scan is mid-flight, since siteWalk
+  // updates are otherwise only ever pushed reactively to sockets already attached when they fire.
+  lastSiteWalkStatus: Record<string, unknown> | null;
   routeWalkPausedByRateLimit: boolean;
   rateLimitSignals: number[];
   automatedScanDelayMs: number;
@@ -158,6 +164,21 @@ function broadcast(session: LiveSession, payload: unknown) {
   const msg = JSON.stringify(payload);
   for (const ws of session.sockets) {
     if (ws.readyState === ws.OPEN) ws.send(msg);
+  }
+}
+
+async function sendCurrentFrame(session: LiveSession, socket: WebSocket) {
+  try {
+    const frame: any = await session.cdp.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: 60,
+      fromSurface: true,
+    });
+    if (socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify({ type: "frame", data: frame.data, mimeType: "jpeg" }));
+    }
+  } catch {
+    // The continuous screencast will provide frames once the page is ready.
   }
 }
 
@@ -251,6 +272,27 @@ function hostnameFromUrl(rawUrl: string): string | null {
   }
 }
 
+function siteKey(hostname: string): string {
+  const parts = hostname.toLowerCase().split(".").filter(Boolean);
+  if (parts.length <= 2) return parts.join(".");
+  return parts.slice(-2).join(".");
+}
+
+function isSameSiteHost(baseHost: string, candidateHost: string): boolean {
+  const base = baseHost.toLowerCase();
+  const candidate = candidateHost.toLowerCase();
+  return (
+    candidate === base ||
+    candidate.endsWith(`.${base}`) ||
+    base.endsWith(`.${candidate}`) ||
+    siteKey(candidate) === siteKey(base)
+  );
+}
+
+function baseHostForSession(session: Pick<LiveSession, "baseUrl">): string | null {
+  return hostnameFromUrl(session.baseUrl);
+}
+
 function scopeSnapshot(session: LiveSession) {
   return {
     allowedHosts: session.scope.allowedHosts,
@@ -261,9 +303,19 @@ function scopeSnapshot(session: LiveSession) {
 
 function observeHost(session: LiveSession, rawUrl: string) {
   const hostname = hostnameFromUrl(rawUrl);
-  if (!hostname || session.observedHosts.has(hostname)) return;
-  session.observedHosts.add(hostname);
-  broadcast(session, { type: "scope", ...scopeSnapshot(session) });
+  if (!hostname) return;
+  let changed = false;
+  if (!session.observedHosts.has(hostname)) {
+    session.observedHosts.add(hostname);
+    changed = true;
+  }
+  const baseHost = baseHostForSession(session);
+  const allowedHosts = session.scope.allowedHosts.map((host) => host.toLowerCase());
+  if (baseHost && isSameSiteHost(baseHost, hostname) && !allowedHosts.includes(hostname)) {
+    session.scope.allowedHosts = [...session.scope.allowedHosts, hostname].sort();
+    changed = true;
+  }
+  if (changed) broadcast(session, { type: "scope", ...scopeSnapshot(session) });
 }
 
 function looksJsonBody(body: string | undefined) {
@@ -293,8 +345,10 @@ function isBufferedSecurityCandidate(exchange: SecurityHttpExchange) {
 
 function isRateLimitExchange(exchange: SecurityHttpExchange) {
   const status = exchange.response?.status;
-  if (typeof status === "number" && RATE_LIMIT_STATUS_CODES.has(status)) return true;
-  return WAF_RATE_LIMIT_TEXT_RE.test(exchange.response?.body ?? "");
+  if (typeof status !== "number") return WAF_RATE_LIMIT_TEXT_RE.test(exchange.response?.body ?? "");
+  if (HARD_RATE_LIMIT_STATUS_CODES.has(status)) return true;
+  if (!SOFT_RATE_LIMIT_STATUS_CODES.has(status)) return WAF_RATE_LIMIT_TEXT_RE.test(exchange.response?.body ?? "");
+  return Boolean(headerValue(exchange.response?.headers, "retry-after")) || WAF_RATE_LIMIT_TEXT_RE.test(exchange.response?.body ?? "");
 }
 
 function registerRateLimitSignal(session: LiveSession, source: string) {
@@ -576,19 +630,36 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function automatedScanLimitPayload(
   session: LiveSession,
   reason: "initial" | "manual",
   status: "running" | "visiting" | "done" | "failed" | "stopped" | "paused",
   extra: Record<string, unknown> = {}
 ) {
-  return {
+  const payload = {
     type: "siteWalk",
     status,
     reason,
     limit: MAX_AUTOMATED_SCAN_STEPS,
     ...extra,
   };
+  // Every call site immediately broadcasts this - recording it here, once, means a client that
+  // (re)connects later can be caught up on the current scan status instead of only ever seeing
+  // it move forward from whatever it happened to be showing when they left.
+  session.lastSiteWalkStatus = payload;
+  return payload;
 }
 
 async function detectBrowserRateLimitPage(session: LiveSession) {
@@ -621,11 +692,11 @@ async function pauseAutomatedScanIfRateLimited(session: LiveSession, progress: A
   return true;
 }
 
-function isSafeRouteWalkTarget(baseUrl: string, candidate: { url: string; text: string }) {
+function isSafeRouteWalkTarget(session: LiveSession, candidate: { url: string; text: string }) {
   try {
-    const base = new URL(baseUrl);
+    const baseHost = baseHostForSession(session);
     const url = new URL(candidate.url);
-    if (url.origin !== base.origin) return false;
+    if (!baseHost || !isSameSiteHost(baseHost, url.hostname)) return false;
     if (isStaticPath(url.pathname)) return false;
     const signal = `${url.pathname} ${url.search} ${candidate.text}`.toLowerCase();
     return !isDangerousSignal(signal);
@@ -657,7 +728,7 @@ async function collectSafeRouteWalkTargets(session: LiveSession) {
     if (!normalized) continue;
     const seenKey = `route:${normalized}`;
     if (session.routeWalkSeen.has(seenKey)) continue;
-    if (!isSafeRouteWalkTarget(session.baseUrl, { ...candidate, url: normalized })) continue;
+    if (!isSafeRouteWalkTarget(session, { ...candidate, url: normalized })) continue;
     session.routeWalkSeen.add(seenKey);
     targets.push(normalized);
   }
@@ -843,7 +914,7 @@ async function exerciseSafeSearchInputs(session: LiveSession, progress: Automate
 }
 
 async function exerciseSafePageControls(session: LiveSession, progress: AutomatedScanProgress) {
-  const baseOrigin = new URL(session.baseUrl).origin;
+  const baseHost = baseHostForSession(session);
   for (let pass = 0; pass < 2 && hasAutomatedScanBudget(progress) && !session.closed && !session.routeWalkPausedByRateLimit; pass += 1) {
     const targets = await collectSafeClickTargets(session);
     let clickedOnThisPage = 0;
@@ -873,7 +944,7 @@ async function exerciseSafePageControls(session: LiveSession, progress: Automate
 
       try {
         const after = new URL(afterUrl);
-        if (after.origin !== baseOrigin || isDangerousSignal(`${after.pathname} ${after.search}`)) {
+        if (!baseHost || !isSameSiteHost(baseHost, after.hostname) || isDangerousSignal(`${after.pathname} ${after.search}`)) {
           await session.page.goto(beforeUrl, { waitUntil: "domcontentloaded", timeout: 8_000 }).catch(() => null);
           await settleAutomatedScanPage(session);
         }
@@ -1007,6 +1078,7 @@ export async function startLiveSession(authSession: {
     browserCorsProofCount: 0,
     routeWalkSeen: new Set(),
     routeWalkRunning: false,
+    lastSiteWalkStatus: null,
     routeWalkPausedByRateLimit: false,
     rateLimitSignals: [],
     automatedScanDelayMs: DEFAULT_AUTOMATED_SCAN_DELAY_MS,
@@ -1022,6 +1094,14 @@ export async function startLiveSession(authSession: {
   cdp.on("Page.screencastFrame", (frame: any) => {
     broadcast(session, { type: "frame", data: frame.data, mimeType: "jpeg" });
     cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {});
+  });
+
+  await cdp.send("Page.startScreencast", {
+    format: "jpeg",
+    quality: 60,
+    maxWidth: VIEWPORT.width,
+    maxHeight: VIEWPORT.height,
+    everyNthFrame: 1,
   });
 
   await cdp.send("Network.enable", {
@@ -1121,16 +1201,8 @@ export async function startLiveSession(authSession: {
     broadcast(session, { type: "exchange", exchange: clientExchange(exchange) });
   });
 
-  await page.goto(authSession.baseUrl, { waitUntil: "domcontentloaded" }).catch((err: any) => {
+  await page.goto(authSession.baseUrl, { waitUntil: "commit", timeout: 15_000 }).catch((err: any) => {
     console.warn(`[live-security-session] initial navigation failed for ${session.id}:`, err?.message ?? err);
-  });
-
-  await cdp.send("Page.startScreencast", {
-    format: "jpeg",
-    quality: 60,
-    maxWidth: VIEWPORT.width,
-    maxHeight: VIEWPORT.height,
-    everyNthFrame: 1,
   });
 
   setTimeout(() => {
@@ -1310,13 +1382,17 @@ async function handleSecurityTestMessage(session: LiveSession, msg: any) {
       where: { id: session.id },
       select: { allowMutatingActiveProbes: true, allowDeleteActiveProbes: true, sensitiveDataStopped: true },
     });
-    const result = await runLiveSecurityTests(exchange, session.scope, {
-      browserCorsRead: (url, timeoutMs) => runCachedBrowserCorsReadProbe(session, url, timeoutMs),
-      browserCorsReadAttempts: 1,
-      allowMutatingActiveProbes: authSession?.allowMutatingActiveProbes ?? false,
-      allowDeleteActiveProbes: authSession?.allowDeleteActiveProbes ?? false,
-      sessionAlreadyStopped: authSession?.sensitiveDataStopped ?? false,
-    });
+    const result = await withTimeout(
+      runLiveSecurityTests(exchange, session.scope, {
+        browserCorsRead: (url, timeoutMs) => runCachedBrowserCorsReadProbe(session, url, timeoutMs),
+        browserCorsReadAttempts: 1,
+        allowMutatingActiveProbes: authSession?.allowMutatingActiveProbes ?? false,
+        allowDeleteActiveProbes: authSession?.allowDeleteActiveProbes ?? false,
+        sessionAlreadyStopped: authSession?.sensitiveDataStopped ?? false,
+      }),
+      LIVE_SECURITY_TEST_TIMEOUT_MS,
+      `Live security test timed out after ${Math.round(LIVE_SECURITY_TEST_TIMEOUT_MS / 1000)} seconds.`
+    );
     if (result.sensitiveDataStopped && !authSession?.sensitiveDataStopped) {
       await prisma.securityAuthSession
         .update({ where: { id: session.id }, data: { sensitiveDataStopped: true } })
@@ -1426,7 +1502,12 @@ export function registerLiveSecuritySessionRoutes(app: FastifyInstance) {
     const liveSession = session;
     liveSession.sockets.add(socket);
     socket.send(JSON.stringify({ type: "ready", url: liveSession.page.url(), ...scopeSnapshot(liveSession) }));
-    // A newly (re)connecting client should see traffic captured before it joined.
+    sendCurrentFrame(liveSession, socket).catch(() => {});
+    // A newly (re)connecting client should see traffic captured before it joined, and - if a
+    // scan is still mid-flight - its current status, not silence until the next status change.
+    if (liveSession.lastSiteWalkStatus) {
+      socket.send(JSON.stringify(liveSession.lastSiteWalkStatus));
+    }
     for (const exchange of liveSession.exchanges) {
       socket.send(JSON.stringify({ type: "exchange", exchange: clientExchange(exchange) }));
     }

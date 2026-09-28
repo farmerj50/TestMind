@@ -1175,6 +1175,7 @@ export default async function securityRoutes(app: FastifyInstance) {
     allowInteractiveChallengeHandling: z.boolean().default(false),
     proxyUrl: z.string().url().optional(),
     executionMode: z.enum(["headless", "headed"]).default("headed"),
+    customHeaders: z.record(z.string(), z.string()).optional(),
   });
 
   app.post("/security/auth-sessions/:id/stream-ticket", async (req, reply) => {
@@ -1198,7 +1199,8 @@ export default async function securityRoutes(app: FastifyInstance) {
       (parsed.success && parsed.data.allowInteractiveChallengeHandling) &&
       session.scopeAcknowledged;
     const proxyUrl = parsed.success ? parsed.data.proxyUrl : undefined;
-    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl, executionMode) };
+    const customHeaders = parsed.success ? parsed.data.customHeaders : undefined;
+    return { ticket: issueStreamTicket(id, allowInteractiveChallengeHandling, proxyUrl, executionMode, customHeaders) };
   });
 
   registerAuthSessionStreamRoutes(app);

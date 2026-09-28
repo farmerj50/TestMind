@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MATLAB Central Blogs | Get the inside view on MATLAB &amp; Simulink!</title>
+    <meta http-equiv="x-ua-compatible" content="IE=edge" >
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+	<meta name="description" itemprop="description" content="The best place to learn about MATLAB and Simulink from the experts at MathWorks | MATLAB Central Blogs." />
+    <meta charset="UTF-8">
+    <meta name="generator" content="WordPress 6.1.1" /> <!-- leave this for stats -->
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="twitter:card" value="summary" />
+  <meta name="twitter:url" value="https://blogs.mathworks.com" />
+  <meta name="twitter:title" value="MATLAB Central Blogs" />
+  <meta name="twitter:description" value="The best place to learn about MATLAB and Simulink from the experts at MathWorks | MATLAB Central Blogs." />
+  <meta name="twitter:image" value="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mlc-blogs-thumbnail.png" />
+  <meta prefix="og: http://ogp.me/ns#" property="og:title" content="MATLAB Central Blogs"/>
+  <meta prefix="og: http://ogp.me/ns#" property="og:description" content="The best place to learn about MATLAB and Simulink from the experts at MathWorks | MATLAB Central Blogs."/>
+  <meta prefix="og: http://ogp.me/ns#" property="og:url" content="https://blogs.mathworks.com"/>
+  <meta prefix="og: http://ogp.me/ns#" property="og:image" content="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mlc-blogs-thumbnail.png"/>
+  <meta prefix="og: http://ogp.me/ns#" property="og:image:url" content="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mlc-blogs-thumbnail.png"/>
+  <link rel="canonical" href="https://blogs.mathworks.com/" />
+  <!-- BEGIN Adobe DTM -->
+  <script type="text/javascript" src="//assets.adobedtm.com/d0cc0600946eb3957f703b9fe43c3590597a8c2c/satelliteLib-e8d23c2e444abadc572df06537e2def59c01db09.js"></script>
+  <!-- END Adobe DTM -->
+  <link href="https://blogs.mathworks.com/css/responsive/css/site7.css" rel="stylesheet" type="text/css">
+	<link href="https://blogs.mathworks.com/css/responsive/css/site7_lg.css" rel="stylesheet" media="screen and (min-width: 1200px)">
+	<link href="https://blogs.mathworks.com/css/responsive/css/site7_md.css" rel="stylesheet" media="screen and (min-width: 992px) and (max-width: 1199px)">
+	<link href="https://blogs.mathworks.com/css/responsive/css/site7_sm+xs.css" rel="stylesheet" media="screen and (max-width: 991px)">
+	<link href="https://blogs.mathworks.com/css/responsive/css/site7_sm.css" rel="stylesheet" media="screen and (min-width: 768px) and (max-width: 991px)">
+	<link href="https://blogs.mathworks.com/css/responsive/css/site7_xs.css" rel="stylesheet" media="screen and (max-width: 767px)">
+
+  <link rel="icon" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/favicon.20260513204911014.ico" type="image/x-icon"/>
+  
+  <script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/webvitals.min.20260513204911014.js"></script>
+  <script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/jquery.min.20260513204911014.js"></script>
+
+  <link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260513204911014.css" type="text/css">
+  <link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260513204911014.css" type="text/css">
+  <link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/matlabcentral.min.20260513204911014.css" type="text/css">
+
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-300.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-400.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-500.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-700.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-300.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-400.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-500.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-700.20260513204911014.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+  <link href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/mathworks.20260513204911014.woff" rel="preload" as="font" type="font/woff" crossorigin/>
+
+  <link rel="apple-touch-icon" sizes="60×60" href="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mobile_icon_60.png">
+  <link rel="apple-touch-icon" sizes="120×120" href="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mobile_icon_120.png">
+  <link rel="apple-touch-icon" sizes="180×180" href="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mobile_icon_180.png">
+  <link rel="icon" sizes="192×192" href="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mobile_icon_192.png">
+  <link rel="icon" sizes="128×128" href="https://blogs.mathworks.com/wp-content/themes/mathworks_1.0/images/mobile_icon_128.png">
+  <link href="https://use.typekit.net/xvy5baa.css" rel="stylesheet">
+  <script type="text/javascript">
+    var ajaxurl = "https://blogs.mathworks.com/wp-admin/admin-ajax.php";
+  </script>
+  <script src="/js/jquery.cookie.js"></script>
+
+  <script>$(document).ready(function() {
+  var type = 'post_date';
+  function load_posts(){
+    var count = $('.post-card').length + 1;
+    var type = 'post_date';
+    var blogger_profile = {
+      "Stuart McGarrity": "https://www.mathworks.com/matlabcentral/profile/authors/512264",
+      "Jiro Doke": "https://www.mathworks.com/matlabcentral/profile/authors/869871",
+      "Pick of the Week Team": "https://www.mathworks.com/matlabcentral/profile/authors/38777948",
+      "Ned Gulley": "https://www.mathworks.com/matlabcentral/profile/authors/140947",
+      "Loren Shure": "https://www.mathworks.com/matlabcentral/profile/authors/136425",
+      "Guy Rouleau": "https://www.mathworks.com/matlabcentral/profile/authors/1248313",
+      "Steve Eddins": "https://www.mathworks.com/matlabcentral/profile/authors/476476",
+      "Cleve Moler": "https://www.mathworks.com/matlabcentral/profile/authors/349729",
+      "Andy Campbell": "https://www.mathworks.com/matlabcentral/profile/authors/869911",
+      "Lisa Harvey": "https://www.mathworks.com/matlabcentral/profile/authors/6768264",
+      "Hans Scharler": "https://www.mathworks.com/matlabcentral/profile/authors/5863695",
+      "Tanya Kuruvilla": "https://www.mathworks.com/matlabcentral/profile/authors/19134778",
+      "Johanna Pingel": "https://www.mathworks.com/matlabcentral/profile/authors/4758135",
+      "Michio Inoue": "https://www.mathworks.com/matlabcentral/profile/authors/5397765",
+      "Madeline Carleton": "https://www.mathworks.com/matlabcentral/profile/authors/10446609",
+      "Mike Croucher": "https://www.mathworks.com/matlabcentral/profile/authors/20789457",
+      "YJ Lim":"https://www.mathworks.com/matlabcentral/profile/authors/12556787",
+      "Ciara McGahey": "https://www.mathworks.com/matlabcentral/profile/authors/38006951",
+      "Alex Roumi": "https://www.mathworks.com/matlabcentral/profile/authors/15622536",
+      "Adam Danz":"https://www.mathworks.com/matlabcentral/profile/authors/25613423",
+      "Cristian Macario":"https://www.mathworks.com/matlabcentral/profile/authors/14080662",
+      "Ganesh Rathinavel":"https://www.mathworks.com/matlabcentral/profile/authors/13753988",
+      "Kirsten McCane":"https://www.mathworks.com/matlabcentral/profile/authors/22057189",
+      "Jason Ghidella":"https://www.mathworks.com/matlabcentral/profile/authors/3473",
+      "George Amarantidis":"https://www.mathworks.com/matlabcentral/profile/authors/24225340"
+    };
+    data = { action: "more_post_ajax", count: count, type: type};
+    jQuery.ajax({
+        url: ajaxurl,
+        data: data,
+        dataType: 'json',
+        type: 'post',
+        success: function(response) {
+          var data = response;
+          $.each(data, function(i, item){
+            var profile_link = blogger_profile[item.author];
+            var commentlink = item.comment;
+            var updatecommentlink = commentlink.replace("?#view_comments", "?#view_comments");
+            var catelink = item.category;
+            var updatecatlink = catelink.replace("?", "?");
+            var updatecatlink = updatecatlink.replace("Category:", "Category:");
+            var post_card = '<div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts extra-posts"><div class="post-card"><div class="card_media add_margin_5"><a href="' + item.url + '&" title="' + item.url + '" rel="bookmark"><img alt="'+item.full_title+'" class="img-responsive" src="' + item.thumb + '" onError="this.onerror=null; this.src=\'/wp-content/themes/mathworks_1.0/images/placeholder_'+item.blog_id+'.jpg\';"></a></div><div class="card_body"><div class="panel"><div class="panel-body"><h1 class="post-title"><a href="' + item.url + '&" title="' + item.url + '" rel="bookmark">' + item.full_title + '</a>' + updatecommentlink + '</h1><p class="post-content">' + item.content + '...</p><div class="post-category">' + updatecatlink + ' </div></div></div></div></div><div class="post-card-footer add_border_top"><div class="media post-meta-data"><div class="media-left"><a href="'+item.blog_url+'/" title="'+ item.blog_name +'"><img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_'+item.blog_id+'.png" /></a></div><div class="media-body"><div class="meta-left"><p class="blogger-name"><a class="author_inline" data-locale-id="en" href="'+profile_link+'">' + item.author + '</a> on '+item.post_date+'</p><p class="blog-site"><a href="'+item.blog_url+'/">' + item.blog_name + '</a></p></div></div></div></div></div>';
+            $("#ajax-posts").append(post_card);
+          });
+          $("#more_posts").attr("disabled",false);
+          $("#more_posts").removeClass("active");
+        },
+        error : function(jqXHR, textStatus, errorThrown) {
+            console.log('fail to load more posts');
+        }
+    });
+  }
+  $("#more_posts").on("click",function(){
+    $("#more_posts").attr("disabled",true);
+    $(this).toggleClass('active');
+    load_posts();
+    $('.author_inline').unbind().click(function(e){
+	  cardGenerate(e);
+    });
+  });
+ });
+</script>    <link type="text/css" rel="stylesheet" href="/wp-content/themes/mathworks_1.0/style.css?v2.2" />
+    <script type="text/javascript" src="/wp-content/themes/mathworks_1.0/js/mathworks1.0_theme.js?v1.1"></script>
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="/js/html5shiv.js?v1.1"></script>
+      <script src="/js/respond.min.js?v1.1"></script>
+    <![endif]-->
+    <script src = "https://www.mathworks.com/matlabcentral/profile/jscript/profile_card_v1.5.js" data-app-name="blogs"></script>
+    <script type="text/x-mathjax-config">
+        MathJax.Hub.Config({
+            tex2jax: {
+                inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+                displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+        processEscapes: true
+            }
+        });
+    </script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body id="responsive_b" class="site_lang_en templateservice -has_usernav -is_full_header" data-cid="blogs">
+  <!-- 1. Header -->
+  <!-- 1a. MATLAB Central Header -->
+  
+  <a class="skip_link visually-hidden-focusable" href="#main">Skip to content</a>
+
+
+  <div class="sticky-top" id="sticky_container">
+
+  <header class="-has_matrix
+           -has_mwa
+           -has_store
+           -has_topnav
+           -has_slidingnav">
+    <nav class="navbar navbar-expand-lg" aria-label="Main navigation">
+      <div class="container-fluid container-lg">
+        <div class="d-lg-flex flex-row align-items-center" id="header_content_container">
+          <a href="https://www.mathworks.com/?s_tid=user_nav_logo" class="navbar-brand d-inline-flex">
+            
+            <img src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo-membrane.20260513204911014.svg" class="mw_logo" alt="MathWorks" width="34" height="30"/>
+          </a>
+
+          <div class="sectionHead sectionhead containsResourceName resourceClass-sectionhead">
+
+
+  <p class="d-inline-flex d-lg-none h1">
+    <a href="https://blogs.mathworks.com/" class="add_cursor_pointer">Blogs</a>
+  </p>
+  
+
+
+
+
+</div>
+
+
+          <div class="d-flex d-lg-none" id="global_mobile_actuator_container_search">
+            <button class="navbar-toggler btn collapsed" id="global_search_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_search_mobile" data-bs-target="#global_search_mobile" aria-controls="global_search_mobile" aria-expanded="false" aria-label="Toggle Search">
+              <span class="icon-search"></span>
+            </button>
+          </div>
+          <div class="navbar-collapse collapse" id="global_search_mobile">
+            <div id="global_search_mobile_placeholder"></div>
+            <div id="global_search_container">
+              <div class="sectionHeadSearchBox sectionheadsearchbox containsResourceName resourceClass-sectionheadsearchbox">
+
+
+
+
+
+
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/sectionheadsearchbox/bs5.min.20260513204911014.js"></script>
+
+
+
+
+
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/typeahead.min.20260513204911014.css" type="text/css">
+
+
+
+
+
+
+
+
+    <form name="search" id="site_search" class="site_search" action="https://www.mathworks.com/search/user-center" method="get">
+      <div class="input-group">
+        <label id="search-mathworks" class="visually-hidden" for="query">Search or ask a question</label>
+        <input type="hidden" name="c[]" id="site_search_collection" value="usercenter" disabled/>
+        <input type="search" name="q" id="query" class="form-control conjoined_search" aria-autocomplete="list" autocomplete="off" role="combobox" aria-controls="search_suggestions" aria-haspopup="listbox" aria-expanded="true" aria-activedescendant placeholder="Search or ask a question" data-site-domain="www" data-site-language="en" data-typeahead-proxy-url="https://services.mathworks.com/typeahead" data-typeahead-result-count="10" data-label-suggestions="Suggestions" data-label-see-all-results="See all results" aria-labelledby="search-mathworks"/>
+
+
+        <button type="submit" id="searchbutton" class="btn btn_color_blue btn-outline icon-search" aria-label="Search"></button>
+      </div>
+    </form>
+
+
+
+
+</div>
+
+            </div>
+          </div>
+
+
+          <div class="d-flex d-lg-none" id="global_mobile_actuator_container_navigation">
+            <button class="navbar-toggler collapsed btn" id="global_navigation_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_navigation" data-bs-target="#global_navigation" aria-controls="global_navigation" aria-expanded="false" aria-label="${alwaystranslate:'Toggle Main Navigation'}">
+              <span class="icon-menu-full"></span>
+            </button>
+          </div>
+          <div class="collapse navbar-collapse" id="global_navigation">
+            
+            <div class="topNavigation topnavigation containsResourceName resourceClass-topnavigation">
+
+
+
+  <ul class="navbar-nav flex-grow-1 align-items-lg-center mb-0">
+    
+    
+      <li class="nav-item dropdown" id="globalnav_item_helpcenter">
+        
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/help/?s_tid=user_nav_help" class="nav-link ">
+
+    
+
+    
+      
+      MATLAB Help Center</a>
+
+    
+    
+  
+
+        
+      </li>
+    
+      <li class="nav-item dropdown" id="globalnav_item_community">
+        
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/?s_tid=user_nav_community" class="nav-link active ">
+
+    
+
+    
+      
+      Community</a>
+
+    
+    
+  
+
+        
+      </li>
+    
+      <li class="nav-item dropdown" id="globalnav_item_learning">
+        
+  
+  
+  
+
+  
+
+  <a href="https://matlabacademy.mathworks.com/?s_tid=user_nav_learning" class="nav-link ">
+
+    
+
+    
+      
+      Learning</a>
+
+    
+    
+  
+
+        
+      </li>
+    
+
+    
+    <li class="nav-item  -alignment_lg_end" id="globalnav_item_matlab">
+      
+      
+
+      
+  
+  
+  
+
+  
+
+  <a href="https://login.mathworks.com/embedded-login/landing.html?cid=getmatlab&s_tid=gn_getml" style="display:none !important;" class="not-logged-in btn btn_color_blue d-block d-lg-inline-flex ">
+
+    
+
+    
+      
+      Get MATLAB</a>
+
+    
+    
+  
+
+      
+  
+  
+  
+
+  
+
+  <a href="https://login.mathworks.com/embedded-login/landing.html?cid=getmatlab&s_tid=gn_getml" style="display:none !important;" class="logged-in btn btn_color_blue d-block d-lg-inline-flex ">
+
+    
+
+    
+      
+      MATLAB</a>
+
+    
+    
+  
+
+
+    </li>
+
+    
+    
+      <li class="nav-item dropdown -alignment_lg_end" id="globalnav_item_mwa">
+        <a href="#" class="nav-link headernav_login mwa-nav_login" id="mwanav_item_login" style="display: none;" aria-label="Sign In to Your MathWorks Account">
+          Sign In <span class="sr-only visually-hidden">to Your MathWorks Account</span>
+        </a>
+
+        <a href="#" class="nav-link headernav_logout dropdown-toggle" id="mwanav_actuator" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" style="display: none;" title="Access your MathWorks Account">
+          <span class="mwanav_avatar mwa_image_drop_down"></span>
+          <span class="mobile_account_name visually_hidden_xxl visually_hidden_xl visually_hidden_lg hidden-md hidden-lg"></span>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-lg-end" id="mwanav_dropdown_menu">
+          <li id='mwanav_item_account'><a class='mwa-account dropdown-item'>My Account</a></li>
+          <li id='mwanav_item_community'><a class='mwa-community-profile dropdown-item'>My Community Profile</a></li>
+          <li id='mwanav_item_associate'><a class='mwa-link-license dropdown-item'>Link License</a></li>
+          <li><hr class="dropdown-divider"/></li>
+          <li id='mwanav_item_logout'><a class='mwa-logout dropdown-item'>Sign Out</a></li>
+        </ul>
+      </li>
+    
+
+    
+
+    
+
+    <li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_cta_support">
+      
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/support/contact_us.html" id="mobile_cta_support" class="nav-link ">
+
+    
+
+    
+      <span class="icon-phone"></span>
+      Contact MathWorks Support</a>
+
+    
+    
+  
+
+    </li>
+
+    <li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_cta_corporate">
+      
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/" id="mobile_cta_corporate" class="nav-link ">
+
+    
+
+    
+      <span class="icon-membrane"></span>
+      Visit mathworks.com</a>
+
+    
+    
+  
+
+    </li>
+
+    <li class="nav-item dropdown d-none d-lg-block -alignment_lg_end" id="globalnav_item_search">
+      <a href="#" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="${alwaystranslate:&quot;Search&quot;}"><span class="icon-search"></span></a>
+      <div class="dropdown-menu">
+        <div class="container-lg">
+          <div class="row align-items-center">
+            
+            
+              <div class="col">
+                <div id="global_search_desktop_placeholder"></div>
+              </div>
+            
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <li class="nav-item d-none d-lg-block -alignment_lg_end" id="globalnav_item_matrix">
+      <mw-matrix lang="en" tier="DOTCOM" env="prod" bsversion="bs5" class="nav-link" host="https://www.mathworks.com"></mw-matrix>
+    </li>
+  </ul>
+
+
+  
+
+
+</div>
+
+          </div>
+        </div>
+
+        
+      </div>
+    </nav>
+  </header>
+
+
+
+
+    <div class="subnav" id="subnav">
+      <div class="subnav_container">
+        <div class="container-fluid container-lg">
+          <div class="row">
+            <div class="col-12">
+              <div class="slidingNav slidingnav containsResourceName resourceClass-slidingnav">
+
+<div id="sliding_nav" class="splide" data-item-per-page="8">
+  <div class="splide__track">
+    <ul class="splide__list">
+      
+        
+          <li id="mlcsubnav_answers" class="splide__slide  mlcsubnav_answers">
+            
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/answers/index/?s_tid=gn_mlc_an">
+
+    
+
+    
+      
+      &nbsp;MATLAB Answers</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+          <li id="mlcsubnav_fx" class="splide__slide  mlcsubnav_fx">
+            
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/fileexchange/?s_tid=gn_mlc_fx_files">
+
+    
+
+    
+      
+      File Exchange</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+          <li id="mlcsubnav_cody" class="splide__slide  mlcsubnav_cody">
+            
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/cody/?s_tid=gn_mlc_cody">
+
+    
+
+    
+      
+      Cody</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+          <li id="mlcsubnav_playground" class="splide__slide  mlcsubnav_playground">
+            
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/playground?s_tid=gn_mlc_playground">
+
+    
+
+    
+      
+      AI Chat Playground</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+          <li id="mlcsubnav_discussions" class="splide__slide  mlcsubnav_discussions">
+            
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/discussions?s_tid=gn_mlc_disc">
+
+    
+
+    
+      
+      Discussions</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+          <li id="mlcsubnav_contests" class="splide__slide  mlcsubnav_contests">
+            
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/contests.html?s_tid=gn_mlc_contests">
+
+    
+
+    
+      
+      Contests</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+          <li id="mlcsubnav_blogs" class="splide__slide active mlcsubnav_blogs">
+            
+  
+  
+  
+
+  
+
+  <a href="https://blogs.mathworks.com/?s_tid=gn_mlc_blg">
+
+    
+
+    
+      
+      Blogs</a>
+
+    
+    
+  
+
+          </li>
+        
+        
+      
+        
+        <li id="mlcsubnav_more" class="splide__slide dropdown mlcsubnav_more">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">More<span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            
+              <li>
+                
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/content/communities.html?s_tid=gn_mlc_tbc_dl" class="dropdown-item ">
+
+    
+
+    
+      
+      Communities</a>
+
+    
+    
+  
+
+                
+              </li>
+            
+              <li>
+                
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/community/onramps/mlc_treasure_hunt?s_tid=gn_mlc_hunt" class="dropdown-item ">
+
+    
+
+    
+      
+      Treasure Hunt</a>
+
+    
+    
+  
+
+                
+              </li>
+            
+              <li>
+
+
+
+
+
+
+  <a href="https://www.mathworks.com/matlabcentral/profile/authors/search?s_tid=gn_mlc_people" class="dropdown-item ">
+
+    
+
+    
+      
+      People</a>
+
+    
+    
+  
+
+                
+              </li>
+            
+              <li>
+                
+  
+  
+  
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/content/community-advisors.html?s_tid=gn_mlc_cab" class="dropdown-item ">
+
+    
+
+    
+      
+      Community Advisors</a>
+
+    
+    
+  
+
+                
+              </li>
+            
+              <li>
+                
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/profile/badges/all?s_tid=gn_mlc_bdgs" class="dropdown-item ">
+
+    
+
+    
+      
+      Virtual Badges</a>
+
+    
+    
+  
+
+                
+              </li>
+            
+              <li>
+                
+  
+  
+  
+
+  
+
+  <a href="https://www.mathworks.com/matlabcentral/content/about.html?s_tid=gn_mlc_about" class="dropdown-item ">
+
+    
+
+    
+      
+      About</a>
+
+    
+    
+  
+
+                
+              </li>
+            
+          </ul>
+        </li>
+      
+    </ul>
+  </div>
+</div>
+<div>
+  <div class="cq-placeholder" data-emptytext="Sliding Navigation"></div>
+</div>
+
+    
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/splide.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/slidingnav.min.20260513204911014.css" type="text/css">
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/splide.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/slidingnav.min.20260513204911014.js"></script>
+
+
+</div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+
+
+
+
+  </div>
+
+
+<div class="cssjs containsResourceName section resourceClass-cssjs">    
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/mathworks-aem.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/searchrefine.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/card.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/search.min.20260513204911014.css" type="text/css">
+</div>
+
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/showmoretoggle.min.20260513204911014.css" type="text/css">
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/showmoretoggle.min.20260513204911014.js"></script>
+</div>
+
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/form.min.20260513204911014.css" type="text/css">
+</div>
+
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/accordion.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/alert.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/band.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/blockquote.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/image.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/inpagenav.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/table.min.20260513204911014.css" type="text/css">
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/accordion.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260513204911014.js"></script>
+</div>
+
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/button.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/downsize.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/upsize.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/tags.min.20260513204911014.css" type="text/css">
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5-footer.min.20260513204911014.css" type="text/css">
+
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/akamai.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/substitutepricing.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/tags.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/signinanalytics.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/spotlight.min.20260513204911014.js"></script>
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260513204911014.js"></script>
+
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/corporatenav.min.20260513204911014.js"></script>
+
+<div class="modal-backdrop fade show" id="corporate_nav_modal"></div>
+
+<link rel="stylesheet" href="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/matrixmenu.min.20260513204911014.css" type="text/css">
+<script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/matrixmenu.min.20260513204911014.js"></script>
+<script>
+  $('.matrix_affordance_container_mobile button').on('click', function() { $('#matrix_collapse').collapse('toggle') })
+</script>
+
+
+<script src = "https://www.mathworks.com/matlabcentral/jscript/userarea-typeahead-v1.js" defer></script>
+<script type="text/javascript">
+  document.addEventListener("DOMContentLoaded", function () {
+      const typeaheadConfigs = [
+          {
+              selector: '#query',
+              collection: 'blogs',
+              appLabel: 'Blogs',
+              blankState: 'true'
+          }
+      ];
+
+      typeaheadConfigs.forEach(config => {
+          const inputElement = document.querySelector(config.selector);
+          if (inputElement) {
+              const typeaheadElement = document.createElement('userarea-typeahead');
+              typeaheadElement.setAttribute('input-selector', config.selector);
+              typeaheadElement.setAttribute('collection', config.collection);
+              typeaheadElement.setAttribute('app-label', config.appLabel);
+              typeaheadElement.setAttribute('env', 'prod');
+              typeaheadElement.setAttribute('site-language', 'en');
+              typeaheadElement.setAttribute('blank-state', config.blankState);
+              document.body.appendChild(typeaheadElement);
+          }
+      });
+  });
+</script><!-- Horo Nav: Start -->
+<div class="horizontal_nav d-none d-lg-block">
+	<div class="horizontal_nav_container">
+		<div class="container">
+			<div class="row">
+        <div class="col-md-8 col-lg-9">
+          <nav class="navbar navbar-expand-lg" aria-label="Local Navigation">
+            <div class="collapse navbar-collapse" id="local_navigation">
+              <div class="localNavigation localnav containsResourceName resourceClass-localnav">
+                <ul class="navbar-nav" id="localnav_navbar">
+                  		<li class="all-blogs nav-item dropdown">
+			<a class="nav-link dropdown-toggle" href="" data-toggle="dropdown" data-bs-toggle="dropdown" role="button" aria-expanded="false">All MathWorks Blogs</a>
+			<ul class="dropdown-menu blogger_list">
+			<li class="mw_blogs_26"><div><a class="all-blog-title" href="https://blogs.mathworks.com/matlab/"><img src="/wp-content/themes/mathworks_1.0/images/26.jpg"/ alt="The MATLAB Blog">The MATLAB Blog</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/matlab/2026/08/20/running-local-llms-with-matlab-using-opencode-and-ollama-on-a-mac/" rel="bookmark">Running local LLMs with MATLAB using OpenCode and Ollama on a Mac</a></p></li><li class="mw_blogs_6"><div><a class="all-blog-title" href="https://blogs.mathworks.com/simulink/"><img src="/wp-content/themes/mathworks_1.0/images/6.jpg"/ alt="Guy on Simulink">Guy on Simulink</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/simulink/2026/08/12/trade-studies-with-agentic-ai-powered-mbse/" rel="bookmark">Trade Studies with Agentic-AI-powered MBSE</a></p></li><li class="mw_blogs_4"><div><a class="all-blog-title" href="https://blogs.mathworks.com/community/"><img src="/wp-content/themes/mathworks_1.0/images/4.jpg"/ alt="MATLAB Community">MATLAB Community</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/community/2026/09/16/collaborative-optimization-on-the-cody-frontier/" rel="bookmark">Collaborative Optimization on the Cody Frontier</a></p></li><li class="mw_blogs_17"><div><a class="all-blog-title" href="https://blogs.mathworks.com/deep-learning/"><img src="/wp-content/themes/mathworks_1.0/images/17.jpg"/ alt="Artificial Intelligence">Artificial Intelligence</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/deep-learning/2026/09/15/from-differential-equations-to-data-exploring-inverse-problems-with-pinnlab/" rel="bookmark">From Differential Equations to Data: Exploring Inverse Problems with PINNLab</a></p></li><li class="mw_blogs_12"><div><a class="all-blog-title" href="https://blogs.mathworks.com/developer/"><img src="/wp-content/themes/mathworks_1.0/images/12.jpg"/ alt="Developer Zone">Developer Zone</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/developer/2025/09/29/tldr-too-long-didnt-run-part-4-incremental-testing-in-ci/" rel="bookmark">TL;DR: Too Long; Didn’t Run: Part 4 – Incremental Testing in CI</a></p></li><li class="mw_blogs_2"><div><a class="all-blog-title" href="https://blogs.mathworks.com/videos/"><img src="/wp-content/themes/mathworks_1.0/images/2.jpg"/ alt="Stuart’s MATLAB Videos">Stuart’s MATLAB Videos</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/videos/2026/09/17/debugging-example-wrong-mat-file-format-fix-attempt-2/" rel="bookmark">Debugging Example:  Wrong MAT-File Format Fix &#8211; Attempt 2</a></p></li><li class="mw_blogs_14"><div><a class="all-blog-title" href="https://blogs.mathworks.com/headlines/"><img src="/wp-content/themes/mathworks_1.0/images/14.jpg"/ alt="Behind the Headlines">Behind the Headlines</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/headlines/2025/10/30/understanding-pig-emotions-to-improve-animal-welfare/" rel="bookmark">Understanding pig emotions to improve animal welfare</a></p></li><li class="mw_blogs_3"><div><a class="all-blog-title" href="https://blogs.mathworks.com/pick/"><img src="/wp-content/themes/mathworks_1.0/images/3.jpg"/ alt="Pick of the Week">Pick of the Week</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/pick/2026/09/14/tokalab-an-open-access-virtual-tokamak-for-education-and-research/" rel="bookmark">TokaLab: An Open Access Virtual Tokamak for Education and Research</a></p></li><li class="mw_blogs_15"><div><a class="all-blog-title" href="https://blogs.mathworks.com/iot/"><img src="/wp-content/themes/mathworks_1.0/images/15.jpg"/ alt="Internet of Things">Internet of Things</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/iot/2026/07/23/matlab-kalman-filtering-for-thingspeak-sensor-data/" rel="bookmark">MATLAB Kalman Filtering for ThingSpeak Sensor Data!?</a></p></li><li class="mw_blogs_16"><div><a class="all-blog-title" href="https://blogs.mathworks.com/student-lounge/"><img src="/wp-content/themes/mathworks_1.0/images/16.jpg"/ alt="Student Lounge">Student Lounge</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/student-lounge/2026/09/08/how-clemson-students-built-a-180-mph-driverless-racecar/" rel="bookmark">How Clemson Students Built a 180 mph Driverless Racecar</a></p></li><li class="mw_blogs_19"><div><a class="all-blog-title" href="https://blogs.mathworks.com/japan-community/"><img src="/wp-content/themes/mathworks_1.0/images/19.jpg"/ alt="MATLAB ユーザーコミュニティー">MATLAB ユーザーコミュニティー</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/japan-community/2026/09/17/agentic-ai-for-5g-engineering-turning-ai-assistants-into-wireless-experts-jp/" rel="bookmark">5G 無線通信システム開発におけるAgentic AI：AIアシスタントを無線通信の専門家へ</a></p></li><li class="mw_blogs_23"><div><a class="all-blog-title" href="https://blogs.mathworks.com/startups/"><img src="/wp-content/themes/mathworks_1.0/images/23.jpg"/ alt="Startups, Accelerators, and Entrepreneurs">Startups, Accelerators, and Entrepreneurs</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/startups/2026/09/09/startup-spotlight-safecubed-brings-technical-expertise-to-safety-critical-development/" rel="bookmark">Startup Spotlight: safecubed Brings Technical Expertise to Safety-Critical Development</a></p></li><li class="mw_blogs_29"><div><a class="all-blog-title" href="https://blogs.mathworks.com/autonomous-systems/"><img src="/wp-content/themes/mathworks_1.0/images/29.jpg"/ alt="Autonomous Systems">Autonomous Systems</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/autonomous-systems/2026/08/13/from-hd-maps-to-photorealistic-driving-video-with-roadrunner-matlab-and-nvidia-cosmos/" rel="bookmark">From HD Maps to Photorealistic Driving Video with RoadRunner, MATLAB, and NVIDIA Cosmos</a></p></li><li class="mw_blogs_30"><div><a class="all-blog-title" href="https://blogs.mathworks.com/finance/"><img src="/wp-content/themes/mathworks_1.0/images/30.jpg"/ alt="Quantitative Finance">Quantitative Finance</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/finance/2026/08/11/responding-to-sr-26-2-from-strategic-interpretation-to-practical-evidence-part-4-of-4/" rel="bookmark">Responding to SR 26-2: From Strategic Interpretation to Practical Evidence | Part 4 of 4</a></p></li><li class="mw_blogs_34"><div><a class="all-blog-title" href="https://blogs.mathworks.com/graphics-and-apps/"><img src="/wp-content/themes/mathworks_1.0/images/34.jpg"/ alt="MATLAB Graphics and App Building">MATLAB Graphics and App Building</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/graphics-and-apps/2026/07/13/developing-a-mass-spring-damper-app-using-mvc-architecture-and-simulink/" rel="bookmark">Developing a Mass Spring Damper App using MVC Architecture and Simulink</a></p></li><li class="mw_blogs_38"><div><a class="all-blog-title" href="https://blogs.mathworks.com/semiconductors/"><img src="/wp-content/themes/mathworks_1.0/images/38.jpg"/ alt="Semiconductor Design and Verification">Semiconductor Design and Verification</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/semiconductors/2026/09/08/demystifying-the-dark-art-of-analog-design-with-agentic-ai/" rel="bookmark">Demystifying the Dark Art of Analog Design with Agentic AI</a></p></li><li class="mw_blogs_39"><div><a class="all-blog-title" href="https://blogs.mathworks.com/digitaleng/"><img src="/wp-content/themes/mathworks_1.0/images/39.jpg"/ alt="Digital Engineering De-coded">Digital Engineering De-coded</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/digitaleng/2026/09/10/the-real-roi-of-simulation-preventing-errors-before-they-exist/" rel="bookmark">The Real ROI of Simulation: Preventing Errors Before They Exist</a></p></li><li class="mw_blogs_40"><div><a class="all-blog-title" href="https://blogs.mathworks.com/engineering/"><img src="/wp-content/themes/mathworks_1.0/images/40.jpg"/ alt="Engineering Workflows">Engineering Workflows</a></div><p class="all-blog-post"><a href="https://blogs.mathworks.com/engineering/2026/08/20/how-do-we-know-our-system-will-actually-work/" rel="bookmark">How Do We Know Our System Will Actually Work?</a></p></li>			</ul>
+		</li>
+			                  <li><a href="https://blogs.mathworks.com/feedmlc" target="_blank">All Blogs RSS Feed&nbsp;<span class="icon-rss-enclosed icon_16"></span></a></li>
+                </ul>
+              </div>
+            </div>
+          </nav>
+        </div>
+			</div>
+		</div>
+	</div>
+</div>
+<!-- Horo Nav: End -->
+
+<!-- Conjoined Header: End -->
+<div class="content_container">
+  <div class="landing_page add_margin_20">
+          <div class="full_banner small">
+        <div class="carousel slide" data-ride="carousel">
+          <div class="carousel-inner">
+            <div class="item active" style="background-image:url(/blogs/wp-content/themes/mathworks_1.0/images/landing-banner.jpg);"><img src="/wp-content/themes/mathworks_1.0/images/landing-banner.jpg" class="d-block d-sm-none">
+              <div class="carousel-caption add_font_color_white">
+                <div class="container text-center">
+                  <div class="row">
+                    <div class="col-xs-12">
+                      <h1 class="heading">Get the inside view on MATLAB and Simulink</h1>
+                      <h2 class="subheading">Insights and information from the engineers who design, build and support MathWorks products</h2>
+                    </div>
+                    <div class="col-xs-12">
+                    <a href="/feedmlc" class="btn btn_color_orange add_margin_20 subscribe-to-all-blog" target="_blank">All Blogs RSS Feed&nbsp;<span class="icon-rss-enclosed icon_16"></span></a>
+                    <a href="/blogger/" class="btn meet-blogger add_margin_20 btn_color_orange">Meet All Bloggers</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+  <div class="container">
+  	<div class="row">
+      <div class="col-xs-12">
+        <div class="row">
+	<div class="col-xs-12 col-sm-6">
+		<h1 class="sort-title">Recently Published Posts</h1>
+	</div>
+	<div class="col-xs-12 col-sm-6">
+		<div class="dropdown home-dropdown float-end">
+			<a href="#" class="btn btn-block btn_color_blue dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+				List by <span class="caret"></span>
+			</a>
+		  <ul class="dropdown-menu">
+		    <li><a class="dropdown-item" href="/">Most recent</a></li>
+		    <li><a class="dropdown-item" href="/?sort=1">Most commented</a></li>
+				<li role="separator" class="divider dropdown-item" style="border-top: 1px solid #e6e6e6;"></li>
+				<li><a class="dropdown-item" href="/">All Posts</a></li>
+				<li><a class="dropdown-item" href="/?bid=19">Japan Community Blog Posts</a></li>
+		  </ul>
+		</div>
+	</div>
+</div>
+<div class="row">
+  <div class="col-xs-12 add_margin_20">
+	  <div class="first-post">
+			<div class="row first-post-row">
+				<div class="col-xs-12 col-sm-4 first-post-img">
+					<div class="top-left"><span class="label label-warning">日本语</span></div>		      <a href="https://blogs.mathworks.com/japan-community/?p=14791" title="5G 無線通信システム開発におけるAgentic AI：AIアシスタントを無線通信の専門家へ" rel="bookmark">
+		        <img alt="5G 無線通信システム開発におけるAgentic AI：AIアシスタントを無線通信の専門家へ" src="http://blogs.mathworks.com/semiconductors/files/2026/09/AgenticAIIntro-1024x377.png" class="post-thumb" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_19.jpg';">
+		      </a>
+		    </div>
+		    <div class="col-xs-12 col-sm-8 first-post-content">
+		      <div class="panel">
+		        <div class="panel-body">
+		          <h1 class="media-heading post-title"><a href="https://blogs.mathworks.com/japan-community/?p=14791"  class="post-title">5G 無線通信システム開発におけるAgentic AI：AIアシスタントを無線通信の専門家へ</a>
+															</h1>
+		          <p class="post-content">
+		            ※この投稿は 2026 年 9 月 2 日に  Semiconductor Design and Verification へ 投稿されたものの抄訳です。
+--
+
+AI コーディングアシスタントをめぐる熱気は、いくら強調してもしすぎることはありません。エンジニアは GitHub...
+		          </p>
+		          <div class="post-category">
+		            <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/japan-community/category/artificial-intelligence">Artificial Intelligence,</a></dd> <dd><a href="https://blogs.mathworks.com/japan-community/category/major-category/%e6%a9%9f%e8%83%bd%e3%81%a8%e4%bd%bf%e3%81%84%e6%96%b9">機能と使い方,</a></dd> <dd><a href="https://blogs.mathworks.com/japan-community/category/%e7%94%9f%e6%88%90ai">生成AI</a></dd> </dl>		          </div>
+		        </div>
+		      </div>
+		      <div class="post-card-footer add_border_top">
+		        <div class="media post-meta-data">
+		          <div class="media-left">
+		            <a href="https://blogs.mathworks.com/japan-community" title="MATLAB ユーザーコミュニティー">
+		              <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_19.png" />
+		            </a>
+		          </div>
+		          <div class="media-body">
+		            <div class="meta-left">
+		              <p class="blogger-name">
+		                <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/5397765?s_tid=blg_to_profile">Michio Inoue</a> on Sep 17		              </p>
+		              <p class="blog-site">
+		                <a href="https://blogs.mathworks.com/japan-community">
+		                  MATLAB ユーザーコミュニティー		                </a>
+		              </p>
+		            </div>
+		          </div>
+		        </div>
+		      </div>
+		    </div>
+			</div>
+	  </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/videos/?p=6773" title="Debugging Example:  Wrong MAT-File Format Fix - Attempt 2" rel="bookmark">
+          <img alt="Debugging Example:  Wrong MAT-File Format Fix - Attempt 2" class="img-responsive" src="https://blogs.mathworks.com/videos/wp-content/blogs.dir/2/files/thumbnail-arrow.jpeg" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_2.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/videos/?p=6773" title="Debugging Example:  Wrong MAT-File Format Fix - Attempt 2" rel="bookmark">Debugging Example:  Wrong MAT-File Format Fix - Attempt 2</a>
+								            </h1>
+            <p class="post-content">
+              Here I make a second attempt to fix the problem that was reported in my MATLAB web app, ditching the try catch statement from...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/videos/category/app-designer">App Designer,</a></dd> <dd><a href="https://blogs.mathworks.com/videos/category/code-along">Code-Along,</a></dd> <dd><a href="https://blogs.mathworks.com/videos/category/video">Format: Video,</a></dd> <dd><a href="https://blogs.mathworks.com/videos/category/web-apps">Web Apps</a></dd> </dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="https://blogs.mathworks.com/videos" title="Stuart’s MATLAB Videos">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_2.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/512264?s_tid=blg_to_profile">Stuart McGarrity</a> on Sep 17, 2026            </p>
+            <p class="blog-site">
+              <a href="https://blogs.mathworks.com/videos">
+                Stuart’s MATLAB Videos              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/community/?p=10387" title="Collaborative Optimization on the Cody Frontier" rel="bookmark">
+          <img alt="Collaborative Optimization on the Cody Frontier" class="img-responsive" src="https://blogs.mathworks.com/community/files/cody_clueless_answer_map.png" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_4.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/community/?p=10387" title="Collaborative Optimization on the Cody Frontier" rel="bookmark">Collaborative Optimization on the Cody Frontier</a>
+								<a class="landing-comment" href="https://blogs.mathworks.com/community/?p=10387#view_comments"><span class="icon-feedback icon_16"></span><span>7</span></a>            </h1>
+            <p class="post-content">
+              
+
+I want to tell you a story of the spontaneous emergence of a spectacular collaboration. Four people, previously unknown to each other, created...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'></dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="https://blogs.mathworks.com/community" title="MATLAB Community">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_4.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/140947?s_tid=blg_to_profile">Ned Gulley</a> on Sep 16, 2026            </p>
+            <p class="blog-site">
+              <a href="https://blogs.mathworks.com/community">
+                MATLAB Community              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/deep-learning/?p=19374" title="From Differential Equations to Data: Exploring Inverse Problems with PINNLab" rel="bookmark">
+          <img alt="From Differential Equations to Data: Exploring Inverse Problems with PINNLab" class="img-responsive" src="https://blogs.mathworks.com/deep-learning/files/2026/09/Figure-1-PINNLab-Blog.png" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_17.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/deep-learning/?p=19374" title="From Differential Equations to Data: Exploring Inverse Problems with PINNLab" rel="bookmark">From Differential Equations to Data: Exploring Inverse Problems with PINNLab</a>
+								            </h1>
+            <p class="post-content">
+              
+
+
+
+
+
+
+
+Guest writers: Mohan Parthasarathy and Padmanabhan Seshaiyer, PhD
+
+Mohan Parthasarathy is a student at Thomas Jefferson High School...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/deep-learning/category/deep-learning">Deep Learning</a></dd> </dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="https://blogs.mathworks.com/deep-learning" title="Artificial Intelligence">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_17.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/4758135?s_tid=blg_to_profile">Johanna Pingel</a> on Sep 15, 2026            </p>
+            <p class="blog-site">
+              <a href="https://blogs.mathworks.com/deep-learning">
+                Artificial Intelligence              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/pick/?p=17422" title="TokaLab: An Open Access Virtual Tokamak for Education and Research" rel="bookmark">
+          <img alt="TokaLab: An Open Access Virtual Tokamak for Education and Research" class="img-responsive" src="https://blogs.mathworks.com/pick/wp-content/blogs.dir/3/files/TokaLab_1.png" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_3.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/pick/?p=17422" title="TokaLab: An Open Access Virtual Tokamak for Education and Research" rel="bookmark">TokaLab: An Open Access Virtual Tokamak for Education and Research</a>
+								            </h1>
+            <p class="post-content">
+              Mike's pick this week is TokaLab by Riccardo Rossi and the TokaLab Team. TokaLab was nominated by Temo Vekua.TokaLab is an open-access virtual...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/pick/category/picks">Picks</a></dd> </dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="https://blogs.mathworks.com/pick" title="Pick of the Week">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_3.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/20789457?s_tid=blg_to_profile">Mike Croucher</a> on Sep 14, 2026            </p>
+            <p class="blog-site">
+              <a href="https://blogs.mathworks.com/pick">
+                Pick of the Week              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/digitaleng/?p=171" title="The Real ROI of Simulation: Preventing Errors Before They Exist" rel="bookmark">
+          <img alt="The Real ROI of Simulation: Preventing Errors Before They Exist" class="img-responsive" src="http://blogs.mathworks.com/digitaleng/files/2026/09/SAE-ARP4754-Rev-A.jpg" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_39.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/digitaleng/?p=171" title="The Real ROI of Simulation: Preventing Errors Before They Exist" rel="bookmark">The Real ROI of Simulation: Preventing Errors Before They Exist</a>
+								            </h1>
+            <p class="post-content">
+              In my previous blogs, I’ve emphasized the importance of simulation for early verification as the key ROI of Digital Engineering.
+
+I’ll be honest up...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/digitaleng/category/digital-transformation-survey">Digital Transformation Survey</a></dd> </dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="http://blogs.mathworks.com/digitaleng" title="Digital Engineering De-coded">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_39.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              Mike Anthony on Sep 10, 2026            </p>
+            <p class="blog-site">
+              <a href="http://blogs.mathworks.com/digitaleng">
+                Digital Engineering De-coded              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/startups/?p=1647" title="Startup Spotlight: safecubed Brings Technical Expertise to Safety-Critical Development" rel="bookmark">
+          <img alt="Startup Spotlight: safecubed Brings Technical Expertise to Safety-Critical Development" class="img-responsive" src="https://blogs.mathworks.com/startups/wp-content/blogs.dir/23/files/2026/08/mathworks_safecubed.png" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_23.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/startups/?p=1647" title="Startup Spotlight: safecubed Brings Technical Expertise to Safety-Critical Development" rel="bookmark">Startup Spotlight: safecubed Brings Technical Expertise to Safety-Critical Development</a>
+								            </h1>
+            <p class="post-content">
+              For companies developing safety-critical systems, building a working product is only part of the challenge. They also need to prove that the product...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/startups/category/startup-spotlights">Startup Spotlights</a></dd> </dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="http://blogs.mathworks.com/startups" title="Startups, Accelerators, and Entrepreneurs">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_23.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/10446609?s_tid=blg_to_profile">Madeline Carleton</a> on Sep 9, 2026            </p>
+            <p class="blog-site">
+              <a href="http://blogs.mathworks.com/startups">
+                Startups, Accelerators, and Entrepreneurs              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/semiconductors/?p=693" title="Demystifying the Dark Art of Analog Design with Agentic AI" rel="bookmark">
+          <img alt="Demystifying the Dark Art of Analog Design with Agentic AI" class="img-responsive" src="https://blogs.mathworks.com/semiconductors/wp-content/blogs.dir/38/files/2026/09/Blog1-2.png" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_38.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/semiconductors/?p=693" title="Demystifying the Dark Art of Analog Design with Agentic AI" rel="bookmark">Demystifying the Dark Art of Analog Design with Agentic AI</a>
+								            </h1>
+            <p class="post-content">
+              The word agent comes from the Latin verb agere, meaning “to do” or “to act.” In common parlance, an agent acts on behalf of...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'></dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="http://blogs.mathworks.com/semiconductors" title="Semiconductor Design and Verification">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_38.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              Samaksh Sinha on Sep 8, 2026            </p>
+            <p class="blog-site">
+              <a href="http://blogs.mathworks.com/semiconductors">
+                Semiconductor Design and Verification              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <div class="col-xs-12 col-sm-6 col-md-4 add_margin_20 posts initial-posts">
+    <div class="post-card">
+      <div class="card_media add_margin_5">
+				        <a href="https://blogs.mathworks.com/student-lounge/?p=13598" title="How Clemson Students Built a 180 mph Driverless Racecar" rel="bookmark">
+          <img alt="How Clemson Students Built a 180 mph Driverless Racecar" class="img-responsive" src="https://blogs.mathworks.com/student-lounge/wp-content/blogs.dir/16/files/2026/09/Picture1.png" onError="this.onerror=null;this.src='/wp-content/themes/mathworks_1.0/images/placeholder_16.jpg';">
+        </a>
+      </div>
+      <div class="card_body">
+        <div class="panel">
+          <div class="panel-body">
+            <h1 class="post-title">
+                <a href="https://blogs.mathworks.com/student-lounge/?p=13598" title="How Clemson Students Built a 180 mph Driverless Racecar" rel="bookmark">How Clemson Students Built a 180 mph Driverless Racecar</a>
+								            </h1>
+            <p class="post-content">
+              
+This blog is in collaboration with University of Clemson's Deep Orange student development team and New Eagle.
+
+Graduate students in the Deep...
+            </p>
+            <div class="post-category">
+              <dl class='post_category_tag'><dt><strong>Category:</strong>&nbsp; </dt><dd><a href="https://blogs.mathworks.com/student-lounge/category/automated-driving">Automated driving,</a></dd> <dd><a href="https://blogs.mathworks.com/student-lounge/category/auto">Automotive</a></dd> </dl>            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="post-card-footer add_border_top">
+      <div class="media post-meta-data">
+        <div class="media-left">
+          <a href="https://blogs.mathworks.com/student-lounge" title="Student Lounge">
+            <img class="bloger_sm_avatar" src="/wp-content/themes/mathworks_1.0/images/color_16.png" />
+          </a>
+        </div>
+        <div class="media-body">
+          <div class="meta-left">
+            <p class="blogger-name">
+              <a class="author_inline" data-locale-id="en" href="https://www.mathworks.com/matlabcentral/profile/authors/19134778?s_tid=blg_to_profile">Tanya Kuruvilla</a> on Sep 8, 2026            </p>
+            <p class="blog-site">
+              <a href="https://blogs.mathworks.com/student-lounge">
+                Student Lounge              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  	<div class="col-xs-12 col-sm-12 col-md-4">
+    <h1>Featured Categories</h1>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Code-Along&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Code-Along</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Level: Advanced&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Level: Advanced</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Level: Basic&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Level: Basic</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=MATLAB Basics&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">MATLAB Basics</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Simulink&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Simulink</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Advanced MATLAB&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Advanced MATLAB</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=MATLAB Mobile&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">MATLAB Mobile</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=MATLAB Central&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">MATLAB Central</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=What's new%3F&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">What's new?</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Debugging&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Debugging</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Modeling&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Modeling</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Colormap&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Colormap</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Fourier transforms&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Fourier transforms</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=History&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">History</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Precision&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Precision</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=People&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">People</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Software Design&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Software Design</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Testing&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Testing</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Continuous Integration&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Continuous Integration</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Internet of Things&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Internet of Things</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=MATLAB&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">MATLAB</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Automotive&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Automotive</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Video&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Video</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Deep Learning&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Deep Learning</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=ユーザー紹介&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">ユーザー紹介</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=MATLAB Expo&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">MATLAB Expo</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Startup Community News&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Startup Community News</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=Autonomous Navigation with Brian Douglas&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">Autonomous Navigation with Brian Douglas</a>
+	    	<a class="tag_component tag_large" href="https://www.mathworks.com/search.html?q=New Features&c%5B%5D=entire_site&fq%5B%5D=subcollection:community/blogs">New Features</a>
+	  </div>
+</div>
+
+<div class="row add_margin_20" id="ajax-posts">
+
+</div>
+
+<div class="row text-center">
+	<div class="col-xs-12">
+		<button class="btn btn_color_blue has-spinner" id="more_posts" name="post_date">
+			<span class="spinner"><span class="icon-spinner icon-refresh icon_16"></span></span>
+			Load more posts		</button>
+	</div>
+</div>
+      </div>
+  	</div>
+	</div>
+</div>
+
+<!-- 3. Main Footer -->
+
+   </div>
+</div>
+
+<!-- Start of wp_footer -->
+<!-- End of wp_footer -->
+<!-- closes container -->
+<!-- 3b. Getting mw_footer -->
+<footer id="footer" class="bs-footer" translate="no">
+    <!-- FAT FOOTER - Begin -->
+  <div class="container">
+    <div id="location_content" style="display:none;"></div>
+      <div class="modal fade" id="country-unselected" tabindex="-1" aria-hidden="true" translate="no">
+      <div id="country-select-container">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <object type="image/svg+xml" width="167px" class="mw_logo" alt="MathWorks" data="https://www.mathworks.com/images/responsive/global/pic-header-mathworks-logo2.svg">
+                <img alt="MathWorks" width="167px" src="https://www.mathworks.com/images/responsive/global/pic-header-mathworks-logo.png">
+              </object>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="row">
+                <div class="col-12">
+                  <span class="icon-globe icon_32"></span>
+                  <h1 class="text-dark d-inline-block"> Select a Web Site</h1>
+                  <p>Choose a web site to get translated content where available and see local events and offers.
+                </div>
+              </div>
+              <p>You can  select a web site from the following list:</p>
+              <div class="row add_margin_30">
+                <div class="col-sm-4 col-md-3">
+                  <h3 class="add_bottom_rule">Americas</h3>
+                  <ul class="list-unstyled">
+                    <li><a href="https://blogs.mathworks.com/?" class="domain_selector_link" data-country-code="LA" data-subdomain="la" data-lang="es" data-default-lang="true" data-selected-text="América Latina" data-recommended-text="América Latina" data-do-not-rewrite="true">Am&eacute;rica Latina</a> (Español)</li>
+                    <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="CA" data-subdomain="www" data-lang="en" data-do-not-rewrite="true">Canada</a> (English)</li>
+                    <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="US" data-subdomain="www" data-lang="en" data-default-lang="true" data-selected-text="United States" data-recommended-text="United States" data-do-not-rewrite="true">United States</a> (English)</li>
+                  </ul>
+                </div>
+                <div class="col-sm-4 col-md-6">
+                  <h3 class="add_bottom_rule">Europe</h3>
+                  <div class="row">
+                    <div class="col-6 col-sm-12 col-md-6">
+                      <ul class="list-unstyled add_margin_0_sm">
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="BE" data-subdomain="nl" data-lang="en" data-do-not-rewrite="true">Belgium</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="DK" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Denmark</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="DE" data-subdomain="de" data-lang="de" data-default-lang="true" data-selected-text="Deutschland" data-recommended-text="Deutschland" data-do-not-rewrite="true">Deutschland</a> (Deutsch)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="ES" data-subdomain="es" data-lang="es" data-default-lang="true" data-selected-text="España" data-recommended-text="España" data-do-not-rewrite="true">España</a> (Español)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en"  class="domain_selector_link" data-country-code="FI" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Finland</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="FR" data-subdomain="fr" data-lang="fr" data-default-lang="true" data-selected-text="France" data-recommended-text="France" data-do-not-rewrite="true">France</a> (Français)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="IE" data-subdomain="uk" data-lang="en" data-do-not-rewrite="true">Ireland</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="IT" data-subdomain="it" data-lang="it" data-default-lang="true" data-selected-text="Italia" data-recommended-text="Italia" data-do-not-rewrite="true">Italia</a> (Italiano)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="LU" data-subdomain="nl" data-lang="en" data-do-not-rewrite="true">Luxembourg</a> (English)</li>
+                      </ul>
+                    </div>
+                    <div class="col-6 col-sm-12 col-md-6">
+                      <ul class="list-unstyled">
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="NL" data-subdomain="nl" data-lang="en" data-default-lang="true" data-selected-text="Benelux" data-recommended-text="Netherlands" data-do-not-rewrite="true">Netherlands</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="NO" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Norway</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="AT" data-subdomain="de" data-lang="de" data-do-not-rewrite="true">Österreich</a> (Deutsch)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="PT" data-subdomain="www" data-lang="en" data-do-not-rewrite="true">Portugal</a> (English)</li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="Sweden" data-subdomain="se" data-lang="en" data-default-lang="true" data-selected-text="Nordic" data-recommended-text="Sweden" data-do-not-rewrite="true">Sweden</a> (English)</li>
+                        <li>Switzerland
+                          <ul class="list-unstyled add_indent_20">
+                            <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="de" data-selected-text="Schweiz" data-recommended-text="Schweiz" data-do-not-rewrite="true">Deutsch</a></li>
+                            <li><a href="https://blogs.mathworks.com/?from=en" id="swiss_english" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="en" data-default-lang="true" data-selected-text="Switzerland" data-recommended-text="Switzerland" data-do-not-rewrite="true">English</a></li>
+                            <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="fr" data-selected-text="Suisse" data-recommended-text="Suisse" data-do-not-rewrite="true">Français</a></li>
+                          </ul>
+                        </li>
+                        <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="GB" data-subdomain="uk" data-lang="en" data-default-lang="true" data-selected-text="United Kingdom" data-recommended-text="United Kingdom" data-do-not-rewrite="true">United Kingdom</a> (English)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-sm-4 col-md-3">
+                  <h3 class="add_bottom_rule">Asia Pacific</h3>
+                  <ul class="list-unstyled">
+                    <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="AU" data-subdomain="au" data-lang="en" data-default-lang="true" data-selected-text="Australia" data-recommended-text="Australia" data-do-not-rewrite="true">Australia</a> (English)</li>
+                    <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="IN" data-subdomain="in" data-lang="en" data-default-lang="true" data-selected-text="India" data-recommended-text="India" data-do-not-rewrite="true">India</a> (English)</li>
+                    <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="NZ" data-subdomain="au" data-lang="en" data-do-not-rewrite="true">New Zealand</a> (English)</li>
+                    <li>中国
+                          <ul class="list-unstyled add_indent_20">
+                            <li><a href="https://blogs.mathworks.com/?from=cn" class="domain_selector_link" data-country-code="CN" data-subdomain="ww2" data-lang="zh" data-default-lang="true" data-selected-text="中国" data-recommended-text="中国" data-do-not-rewrite="true">简体中文</a></li>
+                            <li><a href="https://blogs.mathworks.com/?from=en" class="domain_selector_link" data-country-code="CN" data-subdomain="ww2" data-lang="en" data-default-lang="true" data-selected-text="China" data-recommended-text="China" data-do-not-rewrite="true">English</a></li>
+                          </ul>
+                     </li>
+                    <li><a href="https://blogs.mathworks.com/?from=jp" class="domain_selector_link" data-country-code="JP" data-subdomain="jp" data-lang="ja" data-default-lang="true" data-selected-text="日本" data-recommended-text="日本" data-do-not-rewrite="true">日本</a> (日本語)</li>
+                    <li><a href="https://blogs.mathworks.com/?from=kr" class="domain_selector_link" data-country-code="KR" data-subdomain="kr" data-lang="ko" data-default-lang="true" data-selected-text="한국" data-recommended-text="한국" data-do-not-rewrite="true">한국</a> (한국어)</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="text-center"><a href="https://www.mathworks.com/company/aboutus/contact_us.html?s_tid=dmselect_cta#offices" class="worldwide_link">Contact your local office</a></p>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+
+  </div>
+  <!-- FAT FOOTER - End -->
+	<!-- BASIC FOOTER CONTENT - Begin -->
+      <div class="container">
+    <div class="footer" translate="no">
+      <div class="row">
+        <div class="col-12 col-md-9">
+          <ul class="footernav" id="footernav" style="padding-left: unset;" data-privacy="Your Privacy Choices">
+            <li class="footernav_patents"><a href="https://www.mathworks.com/company/aboutus/policies_statements/trust-center.html?s_tid=gf_tc">Trust Center</a></li>
+            <li class="footernav_trademarks"><a href="https://www.mathworks.com/company/aboutus/policies_statements/trademarks.html?s_tid=gf_trd">Trademarks</a></li>
+            <li class="footernav_privacy"><a href="https://www.mathworks.com/company/aboutus/policies_statements.html?s_tid=gf_priv">Privacy Policy</a></li>
+            <li class="footernav_piracy"><a href="https://www.mathworks.com/company/aboutus/policies_statements/piracy.html?s_tid=gf_pir">Preventing Piracy</a></li>
+            <li class="footernav_status"><a href="https://status.mathworks.com/?s_tid=gf_application">Application Status</a></li>
+            <li class="footernav_terms"><a href="https://www.mathworks.com/matlabcentral/content/terms-of-use.html?s_tid=gf_terms">Terms of Use</a></li>
+            <li class="footernav_contactus"><a href="https://www.mathworks.com/company/aboutus/contact_us.html?s_tid=gf_contact">Contact Us</a></li>
+          </ul>
+            <script src="https://www.mathworks.com/etc.clientlibs/mathworks/clientlibs/customer-ui/components/footernavigation.min.20260513204911014.js"></script>
+            <p class="copyright" translate="no">&copy; 1994-2026 The MathWorks, Inc.</p>
+          </div>
+          <div class="col-12 col-md-3">
+              <div class="add_margin_20 float-end">
+                <ul class="countrynav" id="countrynav" style="list-style: none;">
+                  <li class="footernav_country">
+                    <a onclick="$('#country-unselected').modal('show');" style="cursor: pointer;">
+                      <span class="icon-globe icon_color_quinary icon_16"></span>
+                        United States                    </a>
+                  </li>
+                </ul>
+              </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <!-- BEGIN Adobe DTM -->
+  <script type="text/javascript">
+  try {
+  _satellite.pageBottom();
+  } catch (e) {
+  //something went wrong
+  }
+  </script>
+  <!-- END Adobe DTM -->
+  </div>
+  <!-- BASIC FAT FOOTER CONTENT - End -->
+</footer>
+  <script src="/js/responsive/scripts/lightbox-min.js"></script>
+	<script>
+	  $(document).ready(function ($) {
+
+		// delegate calls to data-toggle="lightbox"
+		$(document).delegate('*[data-toggle="lightbox"]', 'click', function(event) {
+		  event.preventDefault();
+		  return $(this).ekkoLightbox({
+			onShown: function() {
+				if ($('.ekko-lightbox-container iframe').length) {
+				  $(".ekko-lightbox-container iframe").attr("scrolling","no");
+				  $(".ekko-lightbox-container iframe").load(lightboxIframeHeight);
+				}
+			},
+			onNavigate: function(direction, itemIndex) {
+			  if (window.console) {
+				return console.log('Navigating '+direction+'. Current item: '+itemIndex);
+			  }
+			}
+		  });
+		});
+
+		// resize
+		$(window).resize(lightboxIframeHeight)
+
+		// lightbox height function
+		function lightboxIframeHeight() {
+			if ($('.ekko-lightbox-container iframe').length) {
+				whichIframeHeight = $('.ekko-lightbox-container iframe').contents().find('body').height() + 20;
+				$(".ekko-lightbox-container iframe").css("height",whichIframeHeight);
+			}
+		}
+
+		//Programatically call
+		$('#open-image').click(function (e) {
+		  e.preventDefault();
+		  $(this).ekkoLightbox();
+		});
+		$('#open-youtube').click(function (e) {
+		  e.preventDefault();
+		  $(this).ekkoLightbox();
+		});
+	  });
+	</script>
+  </body>
+</html>
+</div>

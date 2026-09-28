@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Template Last Modified: 2026-07-01T08:36:56-04:00 --><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/favicon.20260902221426407.ico" type="image/x-icon">
+<link rel='canonical' href='https://www.mathworks.com/matlabcentral/cody'><meta http-equiv="X-UA-Compatible" content="IE=edge">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/webvitals.min.20260902221426407.js"></script><link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/matlabcentral.min.20260902221426407.css" type="text/css">
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-300.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-400.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-500.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-700.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-300.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-400.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-500.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-700.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/mathworks.20260902221426407.woff" rel="preload" as="font" type="font/woff" crossorigin>
+<script id="analyticsDigitalData">digitalData = {
+ "pageInstanceID" : document.title,
+ "page" : {
+   "pageInfo" : {
+     "pageID" : window.location.pathname.replace(/\/$/, '').replace(/\.(\w)+$/, ''),
+     "destinationURL" : window.location.href
+   },
+   "category" : {
+     "primaryCategory" : "matlabcentral",
+     "subCategory1" : "matlabcentral/cody",
+     "subCategory2" : ""
+   },
+   "attributes" : {
+    }
+ },
+ "product" : [ {
+   "productInfo" : { }
+ } ],
+ "component" : [ ],
+ "events" : [ ],
+ "user": [ ]
+};
+</script><script>(function(g,b,d,f){(function(a,c,d){if(a){var e=b.createElement("style");e.id=c;e.innerHTML=d;a.appendChild(e)}})(b.getElementsByTagName("head")[0],"at-body-style",d);setTimeout(function(){var a=b.getElementsByTagName("head")[0];if(a){var c=b.getElementById("at-body-style");c&&a.removeChild(c)}},f)})(window,document,"[class*='personalization-container']:not([id^='web-application']) {opacity: 0 !important}",1E3);</script><script src="//assets.adobedtm.com/d0cc0600946eb3957f703b9fe43c3590597a8c2c/satelliteLib-e8d23c2e444abadc572df06537e2def59c01db09.js" async></script><title>MATLAB Cody - MATLAB Central
+</title>
+<meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="s5TFaD_Qq_FcJbW75UhAdKcas--_of9n-CqjtF4ESWMjKZH-GTUrxMRHe8Q6jlAKjolizyLKykEX7OZuINFcbg" />
+
+<script src="/matlabcentral/jscript/userarea-typeahead-v1.js"></script>
+  <script type="text/javascript">
+    document.addEventListener("DOMContentLoaded", function () {
+      const possibleSelectors = ['#query', '#cody_in_page_search_problems'];
+      possibleSelectors.forEach(selector => {
+        const inputElement = document.querySelector(selector);
+        if (inputElement) {
+          const customElement = document.createElement('userarea-typeahead');
+          customElement.setAttribute('input-selector', selector);
+          customElement.setAttribute('collection', 'cody_problem');
+          customElement.setAttribute('app-label', 'Cody');
+          customElement.setAttribute('env', "prod");
+          customElement.setAttribute('site-language', 'en');
+          customElement.setAttribute('blank-state', 'true');
+          document.body.appendChild(customElement);
+        }
+      });
+    });
+</script>
+
+
+                                <script>!function(a){var e="https://s.go-mpulse.net/boomerang/",t="addEventListener";if("False"=="True")a.BOOMR_config=a.BOOMR_config||{},a.BOOMR_config.PageParams=a.BOOMR_config.PageParams||{},a.BOOMR_config.PageParams.pci=!0,e="https://s2.go-mpulse.net/boomerang/";if(window.BOOMR_API_key="LERXA-6VNES-W6PXS-U8C7F-BXSZH",function(){function n(e){a.BOOMR_onload=e&&e.timeStamp||(new Date).getTime()}if(!a.BOOMR||!a.BOOMR.version&&!a.BOOMR.snippetExecuted){a.BOOMR=a.BOOMR||{},a.BOOMR.snippetExecuted=!0;var i,_,o,r=document.createElement("iframe");if(a[t])a[t]("load",n,!1);else if(a.attachEvent)a.attachEvent("onload",n);r.src="javascript:void(0)",r.title="",r.role="presentation",(r.frameElement||r).style.cssText="width:0;height:0;border:0;display:none;",o=document.getElementsByTagName("script")[0],o.parentNode.insertBefore(r,o);try{_=r.contentWindow.document}catch(O){i=document.domain,r.src="javascript:var d=document.open();d.domain='"+i+"';void(0);",_=r.contentWindow.document}_.open()._l=function(){var a=this.createElement("script");if(i)this.domain=i;a.id="boomr-if-as",a.src=e+"LERXA-6VNES-W6PXS-U8C7F-BXSZH",BOOMR_lstart=(new Date).getTime(),this.body.appendChild(a)},_.write("<bo"+'dy onload="document._l();">'),_.close()}}(),"".length>0)if(a&&"performance"in a&&a.performance&&"function"==typeof a.performance.setResourceTimingBufferSize)a.performance.setResourceTimingBufferSize();!function(){if(BOOMR=a.BOOMR||{},BOOMR.plugins=BOOMR.plugins||{},!BOOMR.plugins.AK){var e=""=="true"?1:0,t="",n="mm6qf6qx332eg2vnq2pa-f-02145c8a7-clientnsv4-s.akamaihd.net",i="false"=="true"?2:1,_={"ak.v":"41","ak.cp":"1460359","ak.ai":parseInt("195948",10),"ak.ol":"0","ak.cr":11,"ak.ipv":4,"ak.proto":"h2","ak.rid":"8cc37ed6","ak.r":50502,"ak.a2":e,"ak.m":"x","ak.n":"essl","ak.cport":57905,"ak.gh":"23.47.125.6","ak.quicv":"","ak.tlsv":"tls1.3","ak.0rtt":"","ak.0rtt.ed":"","ak.csrc":"-","ak.acc":"","ak.t":"1789757086","ak.ak":"hOBiQwZUYzCg5VSAfCLimQ==suRBb4D6VmYZ/Q9V64GY+wjIPR5SUAnlMd7Z9QvzYOkGbFczcnyVc97sPJp0AXIO89WGStKACAWmKyA05azklhzg1D+YDOiroCBtFAYXKHDleDIbS4y7Gg6UoN26x8d9fc7OT0aTuCdHxNKCVxFdzZGu99n2/+pG2bFjI0WYPDmOoHQ2yTF6THtnpo5wjbT8bxQq9IB70b9hQBlN5NHIV17jkWWbz15qoUc0ZV69sxbK7nYxGRo0xa7Pi+R/nMpJLFMO3PzL+a+TyW3lCt+LlIILr189C6OeK0rCf4a4xDyXVdqqSK13sU5VTpgP245snNCRcJRjNbeP0Mp/w3GOK3LS81ih+bZomh5mwtbTHPIzD9yyyDIdGxmLm+SlRuzuajrrme1jzpz+beWSteYaC505nvWZR/iDjufLT2Unn44=","ak.pv":"302","ak.dpoabenc":"","ak.tf":i};if(""!==t)_["ak.ruds"]=t;var o={i:!1,av:function(e){var t="http.initiator";if(e&&(!e[t]||"spa_hard"===e[t]))_["ak.feo"]=void 0!==a.aFeoApplied?1:0,BOOMR.addVar(_)},rv:function(){var a=["ak.cport","ak.cr","ak.csrc","ak.gh","ak.ipv","ak.m","ak.n","ak.ol","ak.proto","ak.quicv","ak.tlsv","ak.0rtt","ak.0rtt.ed","ak.r","ak.acc","ak.t","ak.tf"];BOOMR.removeVar(a)}};BOOMR.plugins.AK={akVars:_,akDNSPreFetchDomain:n,init:function(){if(!o.i){var a=BOOMR.subscribe;a("before_beacon",o.av,null,null),a("onbeacon",o.rv,null,null),o.i=!0}return this},is_complete:function(){return!0}}}}()}(window);</script></head>
+<body class="site_lang_en templateservice 
+		  
+		  
+		  
+		  
+ 		  
+		  -has_usernav
+		  -is_full_header
+		  
+		  " data-cid="cody">
+		<a class="skip_link visually-hidden-focusable" href="#main">Skip to content</a>
+
+		
+		
+
+
+	<div class="sticky-top" id="sticky_container">
+		
+
+	<header class="-has_matrix
+					 -has_mwa
+					 -has_store
+					 -has_topnav
+					 -has_subnav
+					 -has_slidingnav"><nav class="navbar navbar-expand-lg" aria-label="Main navigation"><div class="container-fluid container-lg">
+				<div class="d-lg-flex flex-row align-items-center" id="header_content_container">
+					<a href="/?s_tid=user_nav_logo" class="navbar-brand d-inline-flex">
+						
+						<img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo-membrane.20260902221426407.svg" class="mw_logo" alt="MathWorks" width="34" height="30"></a>
+
+					<div class="sectionHead sectionhead containsResourceName resourceClass-sectionhead">
+
+
+	<h1 class="d-inline-flex d-lg-none h1">
+		<a href="/matlabcentral/cody/" class="add_cursor_pointer">Cody</a>
+		
+</h1>	
+
+
+
+
+</div>
+
+
+					<div class="d-flex d-lg-none" id="global_mobile_actuator_container_search">
+						<button class="navbar-toggler btn collapsed" id="global_search_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_search_mobile" data-bs-target="#global_search_mobile" aria-controls="global_search_mobile" aria-expanded="false" aria-label="Toggle Search">
+							<span class="icon-search"></span>
+						</button>
+					</div>
+					<div class="navbar-collapse collapse" id="global_search_mobile">
+						<div id="global_search_mobile_placeholder"></div>
+						<div id="global_search_container">
+							<div class="sectionHeadSearchBox sectionheadsearchbox containsResourceName resourceClass-sectionheadsearchbox">
+
+	
+
+	
+		
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/sectionheadsearchbox/bs5.min.20260902221426407.js"></script><link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/typeahead.min.20260902221426407.css" type="text/css">
+<form name="search" id="site_search" class="site_search" action="/search/user-center" method="get">
+			<div class="input-group">
+				<label id="search-mathworks" class="visually-hidden" for="query">Search or ask a question</label>
+				<input type="hidden" name="c[]" id="site_search_collection" value="usercenter" disabled><input type="search" name="q" id="query" class="form-control conjoined_search" aria-autocomplete="list" autocomplete="off" role="combobox" aria-controls="search_suggestions" aria-haspopup="listbox" aria-expanded="true" aria-activedescendant placeholder="Search or ask a question" data-site-domain="www" data-site-language="en" data-typeahead-proxy-url="https://services.mathworks.com/typeahead" data-typeahead-result-count="10" data-label-suggestions="Suggestions" data-label-see-all-results="See all results" aria-labelledby="search-mathworks"><button type="button" id="clearsearch" class="btn btn_color_blue btn-outline icon-remove visually-hidden-focusable" aria-label="Clear search"></button>
+				
+				
+				<button type="submit" id="searchbutton" class="btn btn_color_blue btn-outline icon-search" aria-label="Search"></button>
+			</div>
+		</form>
+	
+
+	
+
+</div>
+
+						</div>
+					</div>
+
+
+					<div class="d-flex d-lg-none" id="global_mobile_actuator_container_navigation">
+						<button class="navbar-toggler collapsed btn" id="global_navigation_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_navigation" data-bs-target="#global_navigation" aria-controls="global_navigation" aria-expanded="false" aria-label="Toggle Main Navigation">
+							<span class="icon-menu-full"></span>
+						</button>
+					</div>
+					<div class="collapse navbar-collapse" id="global_navigation">
+						
+						<div class="topNavigation topnavigation containsResourceName resourceClass-topnavigation">
+
+
+
+	<ul class="navbar-nav flex-grow-1 align-items-lg-center mb-0">
+<li class="nav-item dropdown" id="globalnav_item_helpcenter">
+				
+	
+	
+	
+
+	
+
+	<a href="/help/?s_tid=user_nav_help" class="nav-link ">
+
+		
+
+		
+			
+			MATLAB Help Center</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_community">
+				
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/?s_tid=user_nav_community" class="nav-link active ">
+
+		
+
+		
+			
+			Community</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_learning">
+				
+	
+	
+	
+
+	
+
+	<a href="https://matlabacademy.mathworks.com/?s_tid=user_nav_learning" class="nav-link ">
+
+		
+
+		
+			
+			Learning</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+
+		
+		<li class="nav-item  -alignment_lg_end" id="globalnav_item_matlab">
+			
+			
+
+			
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&amp;s_tid=user_nav_getml" style="display:none !important;" class="not-logged-in btn btn_color_blue d-block d-lg-inline-flex " data-link="lead" data-offertype="trial">
+
+		
+
+		
+			
+			Get MATLAB</a>
+
+		
+		
+	
+
+			
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&amp;s_tid=user_nav_getml" style="display:none !important;" class="logged-in btn btn_color_blue d-block d-lg-inline-flex " data-link="lead" data-offertype="trial">
+
+		
+
+		
+			
+			MATLAB</a>
+
+		
+		
+	
+
+
+		</li>
+
+		
+		
+			<li class="nav-item dropdown -alignment_lg_end" id="globalnav_item_mwa">
+				<a href="#" class="nav-link headernav_login mwa-nav_login" id="mwanav_item_login" style="display: none;" aria-label="Sign In to Your MathWorks Account">
+					Sign In
+				</a>
+
+				<a href="#" class="nav-link headernav_logout dropdown-toggle" id="mwanav_actuator" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" style="display: none;" title="Access your MathWorks Account">
+					<span class="mwanav_avatar mwa_image_drop_down"></span>
+					<span class="mobile_account_name visually_hidden_xxl visually_hidden_xl visually_hidden_lg hidden-md hidden-lg"></span>
+				</a>
+				<ul class="dropdown-menu dropdown-menu-lg-end" id="mwanav_dropdown_menu">
+<li id="mwanav_item_account"><a class="mwa-account dropdown-item">My Account</a></li>
+					<li id="mwanav_item_community"><a class="mwa-community-profile dropdown-item">My Community Profile</a></li>
+					<li id="mwanav_item_associate"><a class="mwa-link-license dropdown-item">Link License</a></li>
+					<li><hr class="dropdown-divider"></li>
+					<li id="mwanav_item_logout"><a class="mwa-logout dropdown-item">Sign Out</a></li>
+				</ul>
+</li>
+		
+
+		
+
+		
+
+		<li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_cta_support">
+			
+	
+	
+	
+
+	
+
+	<a href="/support/contact_us.html" id="mobile_cta_support" class="nav-link ">
+
+		
+
+		
+			<span class="icon-phone"></span>
+			Contact MathWorks Support</a>
+
+		
+		
+	
+
+		</li>
+
+		<li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_cta_corporate">
+			
+	
+	
+	
+
+	
+
+	<a href="/" id="mobile_cta_corporate" class="nav-link ">
+
+		
+
+		
+			<span class="icon-membrane"></span>
+			Visit mathworks.com</a>
+
+		
+		
+	
+
+		</li>
+
+		<li class="nav-item dropdown d-none d-lg-block -alignment_lg_end" id="globalnav_item_search">
+			<a href="#" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Search"><span class="icon-search"></span></a>
+			<div class="dropdown-menu">
+				<div class="container-lg">
+					<div class="row align-items-center">
+						
+						
+							<div class="col">
+								<div id="global_search_desktop_placeholder"></div>
+							</div>
+						
+					</div>
+				</div>
+			</div>
+		</li>
+
+		<li class="nav-item d-none d-lg-block -alignment_lg_end" id="globalnav_item_matrix">
+			<mw-matrix lang="en" tier="DOTCOM" env="prod" bsversion="bs5" class="nav-link" host="https://www.mathworks.com"></mw-matrix>
+</li>
+	</ul>
+</div>
+
+					</div>
+				</div>
+
+				
+			</div>
+		</nav></header><nav class="subnav" id="subnav"><div class="subnav_container">
+				<div class="container-fluid container-lg">
+					<div class="row">
+						<div class="col-12">
+							<div class="slidingNav slidingnav containsResourceName resourceClass-slidingnav">
+
+<div id="sliding_nav" class="splide" data-item-per-page="9">
+	<div class="splide__track">
+		<ul class="splide__list">
+<li id="mlcsubnav_answers" class="splide__slide  mlcsubnav_answers">
+						
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/answers/index/?s_tid=gn_mlc_an" class=" ">
+
+		
+
+		
+			
+			MATLAB Answers</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+					<li id="mlcsubnav_fx" class="splide__slide  mlcsubnav_fx">
+						
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/fileexchange/?s_tid=gn_mlc_fx_files" class=" ">
+
+		
+
+		
+			
+			File Exchange</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+					<li id="mlcsubnav_cody" class="splide__slide active mlcsubnav_cody">
+						
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/cody/?s_tid=gn_mlc_cody" class=" ">
+
+		
+
+		
+			
+			Cody</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+					<li id="mlcsubnav_playground" class="splide__slide  mlcsubnav_playground">
+						
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/playground?s_tid=gn_mlc_playground" class=" ">
+
+		
+
+		
+			
+			AI Chat Playground</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+					<li id="mlcsubnav_discussions" class="splide__slide  mlcsubnav_discussions">
+						
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/discussions?s_tid=gn_mlc_disc" class=" ">
+
+		
+
+		
+			
+			Discussions</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+					<li id="mlcsubnav_contests" class="splide__slide  mlcsubnav_contests">
+						
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/contests.html?s_tid=gn_mlc_contests" class=" ">
+
+		
+
+		
+			
+			Contests</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+					<li id="mlcsubnav_blogs" class="splide__slide  mlcsubnav_blogs">
+						
+	
+	
+	
+
+	
+
+	<a href="https://blogs.mathworks.com/?s_tid=gn_mlc_blg" class=" ">
+
+		
+
+		
+			
+			Blogs</a>
+
+		
+		
+	
+
+					</li>
+				
+				
+			
+				
+				<li id="mlcsubnav_post" class="splide__slide dropdown mlcsubnav_post">
+					<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Post<span class="caret"></span></a>
+					<ul class="dropdown-menu ">
+<li class=" ">
+								
+								<p class="dropdown-header">MATLAB Answers</p>
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/answers/questions/new/?s_tid=gn_mlc_ans_ask_post" class="dropdown-item ">
+
+		
+
+		
+			
+			Ask a question</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+								<p class="dropdown-header">Discussions</p>
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/discussions?s_tid=gn_mlc_disc_discussion_post&amp;form=open&amp;tab=disc" class="dropdown-item ">
+
+		
+
+		
+			
+			Start a Discussion</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/discussions?s_tid=gn_mlc_disc_praise_post&amp;form=open&amp;tab=praise" class="dropdown-item ">
+
+		
+
+		
+			
+			Praise Someone</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/discussions?s_tid=gn_mlc_disc_article_post&amp;form=open&amp;tab=article" class="dropdown-item ">
+
+		
+
+		
+			
+			Write an Article</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/discussions?s_tid=gn_mlc_disc_poll_post&amp;form=open&amp;tab=poll" class="dropdown-item ">
+
+		
+
+		
+			
+			Create a Poll</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+								<p class="dropdown-header">File Exchange</p>
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/fileexchange/my-file-exchange?s_tid=fx_post" class="dropdown-item ">
+
+		
+
+		
+			
+			Submit Code or Toolbox</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+								<p class="dropdown-header">Cody</p>
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/cody/problems/new?s_tid=cody_new_post" class="dropdown-item ">
+
+		
+
+		
+			
+			Create a Cody Problem</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+					</ul>
+</li>
+			
+				
+				<li id="mlcsubnav_more" class="splide__slide dropdown mlcsubnav_more">
+					<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">More<span class="caret"></span></a>
+					<ul class="dropdown-menu dropdown-menu-end">
+<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/content/communities.html?s_tid=gn_mlc_tbc_dl" class="dropdown-item ">
+
+		
+
+		
+			
+			Communities</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/community/onramps/mlc_treasure_hunt?s_tid=gn_mlc_hunt" class="dropdown-item ">
+
+		
+
+		
+			
+			Treasure Hunt</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/profile/authors/search?s_tid=gn_mlc_people" class="dropdown-item ">
+
+		
+
+		
+			
+			People</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/content/community-advisors.html?s_tid=gn_mlc_cab" class="dropdown-item ">
+
+		
+
+		
+			
+			Community Advisors</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/profile/badges/all?s_tid=gn_mlc_bdgs" class="dropdown-item ">
+
+		
+
+		
+			
+			Virtual Badges</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+							<li class=" ">
+								
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/content/about.html?s_tid=gn_mlc_about" class="dropdown-item ">
+
+		
+
+		
+			
+			About</a>
+
+		
+		
+	
+
+								
+							</li>
+							
+						
+					</ul>
+</li>
+			
+		</ul>
+</div>
+</div>
+<div>
+	<div class="cq-placeholder" data-emptytext="Sliding Navigation"></div>
+</div>
+
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/splide.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/slidingnav.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/splide.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/slidingnav.min.20260902221426407.js"></script>
+</div>
+
+						</div>
+					</div>
+				</div>
+			</div>
+		</nav><div class="localnav" id="localnav">
+		<div class="localnav_container">
+			<div class="container-fluid container-lg">
+				<div class="row">
+					<div class="col-12">
+						<nav class="navbar navbar-expand-lg" aria-label="Local Navigation"><button class="navbar-toggler" type="button" id="localnav_actuator" data-toggle="collapse" data-bs-toggle="collapse" data-target="#local_navigation" data-bs-target="#local_navigation" aria-controls="localnav" aria-expanded="false" aria-label="Toggle navigation"><span class="icon-kebab"></span></button>
+							<div class="collapse navbar-collapse" id="local_navigation">
+								<div class="localNavigation localnav containsResourceName resourceClass-localnav">
+
+
+
+	
+	<ul class="navbar-nav" id="localnav_navbar">
+ <li class="nav-item" id="cody_home_list"><a href="/matlabcentral/cody/" class="active nav-link">Home</a></li> <li class="nav-item" id="cody_groups_list"><a href="/matlabcentral/cody/groups" class="nav-link">Problem Groups</a></li> <li class="nav-item" id="cody_problems_list"><a href="/matlabcentral/cody/problems" class="nav-link">Problems</a></li> <li class="nav-item dropdown"><a href="" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false">My Cody</a><ul class="dropdown-menu"><li id="activities"><a href="/matlabcentral/cody/players/42269956" class="dropdown-item">Activities</a></li><li id="progress"><a href="/matlabcentral/cody/players/42269956/progress" class="dropdown-item">Progress</a></li><li id="solved"><a href="/matlabcentral/cody/players/42269956/solved" class="dropdown-item">Solved</a></li><li id="solve_later"><a href="/matlabcentral/cody/players/42269956/solve_later" class="dropdown-item">Solve Later</a></li><li id="created_problems"><a href="/matlabcentral/cody/players/42269956/created" class="dropdown-item">My Problems</a></li><li id="created_groups"><a href="/matlabcentral/cody/players/42269956/created_groups" class="dropdown-item">My Groups</a></li><li id="badges"><a href="/matlabcentral/cody/players/42269956/badges" class="dropdown-item">Badges</a></li><li id="preferences"><a href="/matlabcentral/cody/players/42269956/notifications/new" class="dropdown-item">Preferences</a></li></ul></li> <li class="nav-item" id="nav_players_list"><a href="/matlabcentral/cody/players" class="nav-link">Players</a></li> <li class="nav-item" id="nav_create_problem"><a href="/matlabcentral/cody/problems/new" class="disabled nav-link" title="You must have a score of at least 200 points to create a problem.">Create Problem</a></li> <li class="nav-item dropdown"><a href="" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false">More</a><ul class="dropdown-menu"><li id="nav_solution_list"><a href="/matlabcentral/cody/solutions" class="dropdown-item">Solutions</a></li><li id="cody_recent_activitiy_id"><a href="/matlabcentral/cody/activities" class="dropdown-item">Recent Activity</a></li></ul></li> <li class="nav-item" id="nav_about_cody"><a href="https://www.mathworks.com/matlabcentral/content/cody/about.html" class="nav-link">Help</a></li>
+</ul>
+</div>
+
+							</div>
+						</nav>
+</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+
+	</div>
+
+
+
+
+
+		
+
+		<div class="content_container" id="content_container">
+			
+				
+
+<main id="main" tabindex="-1"><section><div class="mainParsys parsys containsResourceName resourceClass-parsys">
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+
+<style>
+html,html body{font-size:14px}#cody_welcome_banner{background:url(https://www.mathworks.com/images/responsive/supporting/matlabcentral/cody/cody-welcome-banner.png) no-repeat center center;background-size:cover}#cody_welcome_banner .welcome_banner_computer_container{max-height:366px;aspect-ratio:653/367;background:url(https://www.mathworks.com/images/responsive/supporting/matlabcentral/cody/cody-welcome-banner-computer-empty.png) no-repeat center center;background-size:contain;display:flex;align-items:center;justify-content:center}@media (max-width:575.98px){#cody_welcome_banner .welcome_banner_computer_container{padding:16px;border-radius:var(--mw-ws-global-border-radius);background-image:none;background-color:var(--mw-ws-helper-bg-white)}}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty){flex-wrap:wrap;gap:8px 10px}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty) li{padding:0}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty) li.mw_card_meta_difficulty{width:100%}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty) li.mw_card_meta_difficulty [class*=icon-circle-]{color:var(--mw-ws-helper-color-mediumgray)}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty) li:nth-child(2){text-align:left}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty) li:nth-child(3){text-align:right}.mw_card .mw_card_footer ul.list-unstyled:has(li.mw_card_meta_difficulty) li #groupCard-difficultyIcon span[aria-hidden=true]{display:inline-flex;flex-direction:row;flex-wrap:nowrap;gap:2px}.table#contributors td.player_information{word-break:break-word}.table#contributors li:last-child,.table#contributors td p:last-child,.table#contributors ul:last-child{margin-bottom:0}.table#contributors td.contributon_details ul.contributon_details_list{display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;justify-content:space-between}.table#contributors td.contributon_details ul.contributon_details_list>li{width:calc(20% - 8px);text-align:center}.table#contributors td.contributon_details ul.contributon_details_list>li .contributon_detail_count{margin-bottom:4px;font-size:20px;display:block}.table#contributors td.contributon_details ul.contributon_details_list>li .contributon_detail_count.highlighted{font-weight:700}@container (min-width:480px) and (max-width:768.98px){#search_results_container .table#contributors th.cell_45{width:95%!important}#search_results_container .table#contributors th.cell_50{width:1px;max-width:1px;padding:0;font-size:0;overflow:hidden}#search_results_container .table#contributors td.contributor_information{width:100%;border-bottom:none;display:block}#search_results_container .table#contributors td.contributon_details{width:100%;display:block}}@media (max-width:575.98px){#search_results_container .table#contributors{--mw-ws-table-font-size:13px!important;--mw-ws-table-collapse-td-width:30%}#search_results_container .table#contributors td.contributor_information .avatar-img-local{width:40px;aspect-ratio:1/1}#search_results_container .table#contributors td.contributor_information .contributor_information_bio{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}#search_results_container .table#contributors td.contributon_details .contributon_details_list{zoom:0.85;justify-content:flex-start}#search_results_container .table#contributors td.contributon_details .contributon_details_list>li{width:calc(33% - 8px);text-align:center}}@media (min-width:576px) and (max-width:1199.98px){#search_results_container .table#contributors td.contributon_details .contributon_details_list{zoom:0.9}}.table#contributors td.contributor_information .avatar-img-local{aspect-ratio:1/1}@media (min-width:768px){.mw_ws_accordion_container.-presentation_tab.-presentation_borderless .accordion_tab_control:has(a.btn):before{content:none}}.spinner-border{--bs-spinner-border-width:4px;width:48px;height:48px;color:var(--mw-ws-alert-info)}.btn-link{--bs-link-color:var(--mw-ws-global-link-color);--bs-btn-hover-color:var(--mw-ws-global-link-hover-color);--bs-btn-active-color:var(--mw-ws-global-link-color);text-decoration:none}.activity-list img{min-width:50px}.activity-list-content p:last-child{margin-bottom:0}@media (max-width:575.98px){.activity-list img{min-width:35px}}#homepage_sidebar .activity-list img{min-width:24px;aspect-ratio:1/1}#leaf_meta{padding-top:6px;padding-bottom:20px;margin-bottom:2.25rem;border-bottom:1px solid var(--mw-ws-global-border-color);font-size:1.0714285714rem}#leaf_meta .post_meta_container{gap:4px 30px}#leaf_meta .author_inline{font-weight:500}#leaf_meta .contributor_info [class*=icon-]{line-height:1}#leaf_meta .post_meta_container .post_meta_detail{color:var(--mw-ws-helper-color-mediumgray);display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:4px}#leaf_meta #accepted_label{color:var(--mw-ws-helper-color-green);font-weight:700}#leaf_meta_ctas{width:100%}#leaf_meta .btn-link{color:var(--mw-ws-global-link-color);border:none;font-size:1.0714285714rem;text-decoration:underline;text-decoration-color:var(--mw-ws-helper-border-color-transparent)}#leaf_meta .btn-link:hover{color:var(--mw-ws-global-link-hover-color);text-decoration-color:var(--mw-ws-global-link-hover-color)}@media (min-width:992px){body:has(#leaf_meta) #sticky_container:not(.-is_locked) #localnav{background-color:var(--mw-ws-helper-bg-gray)!important}body:has(#leaf_meta) #sticky_container:not(.-is_locked) #localnav .navbar{background:var(--mw-ws-helper-bg-gray)!important}#leaf_meta{padding-top:6px;padding-bottom:20px}}@media (max-width:991.98px){#leaf_meta{padding-top:20px;padding-bottom:16px}}#mobile_cta_container{width:100%;position:fixed;bottom:-40px;left:50%;transform:translateX(-50%);transition:bottom 0.3s ease;z-index:5}#mobile_cta_container.cta_show{bottom:0}#mobile_cta_content_container{width:100%;border-top:1px solid var(--mw-ws-global-border-color);background:var(--mw-ws-helper-bg-white)}#mobile_cta_content{max-width:300px;padding:20px;margin:0 auto;background:var(--mw-ws-helper-bg-white)}.mobile_cta_actuator_container{height:39px;padding:1px 1px 0;margin:0 auto -1px;aspect-ratio:191/40;background:var(--mw-ws-global-border-color);position:relative;z-index:2;mask-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 191 40" preserveAspectRatio="none"><path d="M19.14,5.18L0,40h191l-20.26-35.01c-1.79-3.09-5.09-4.99-8.65-4.99H27.91c-3.65,0-7.01,1.99-8.76,5.18Z" fill="white"/></svg>');mask-repeat:no-repeat;mask-size:100% 100%;mask-position:0 0}.mobile_cta_actuator{height:39px;padding:1px;aspect-ratio:191/40;background:var(--mw-ws-helper-bg-white);display:flex;align-items:center;flex-direction:row;flex-wrap:nowrap;justify-content:center;position:relative;z-index:2;mask-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 191 40" preserveAspectRatio="none"><path d="M19.14,5.18L0,40h191l-20.26-35.01c-1.79-3.09-5.09-4.99-8.65-4.99H27.91c-3.65,0-7.01,1.99-8.76,5.18Z" fill="white"/></svg>');mask-repeat:no-repeat;mask-size:100% 100%;mask-position:0 0}.mobile_cta_actuator_container .btn-link{width:90%;height:36px;padding:0;border:none;text-decoration:none!important;outline-offset:-9px}.add_list_separators_y>li:not(:last-child){padding-bottom:0.5rem;border-bottom:1px solid var(--mw-ws-global-border-color)}
+</style>
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/jquery.min.20260902221426407.js"></script>
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/card.min.20260902221426407.css" type="text/css">
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/mathworks-aem.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/searchrefine.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/search.min.20260902221426407.css" type="text/css">
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/form.min.20260902221426407.css" type="text/css">
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/accordion.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/alert.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/band.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/blockquote.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/image.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/inpagenav.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/table.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/accordion.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260902221426407.js"></script>
+</div>
+<div class="targetcontainer containsResourceName resourceClass-targetcontainer section">
+
+
+
+<div class="personalization-container " id="web-application-body-container">
+	<div>
+<div class="targetContent parsys containsResourceName resourceClass-parsys"><div class="container-fluid">
+  <div class="row">
+      <div id="cody_welcome_banner" class="band add_padding_0 add_background_color_darkblue welcome_banner">
+  <div class="container">
+    <div class="row add_padding_bottom_60">
+      <div class="col-12 col-md-5 add_padding_12 d-flex flex-column justify-content-center">
+          <h1 class="add_margin_20"><strong>Welcome to Cody</strong></h1>
+          <ul class="add_list_spacing_12">
+            <li class="add_font_color_white">A fun <strong>community coding game</strong> to challenge your skills and learn MATLAB.</li>
+            <li class="add_font_color_white">Coding problems for <strong>all skill levels</strong>, beginners to advanced.</li>
+            <li class="add_font_color_white"><strong>Learn from other players</strong> how to improve your code.</li>
+          </ul>
+          <p class="text-md-start text-center">
+            <a href="#" data-bs-toggle="modal" data-bs-target="#how_cody_works" class="btn btn-outline btn_color_blue">How Cody Works</a>
+          </p>
+       </div>
+        <div class="col-12 col-md-7 d-flex flex-column justify-content-center mt-5">
+        <div class="welcome_banner_computer_container">
+          <div class="first_step text-center">
+              <h2 class="h3 add_font_color_orange add_margin_12">Get Started with Cody</h2>
+              <p class="small add_font_color_mediumgray add_margin_12">EARN THIS SOLVER BADGE</p>
+              <img src="/images/responsive/supporting/matlabcentral/cody/badges/solver.png" alt="Group Badge" class="add_margin_10" style="width: 60px">
+              <p>
+                <a href="/matlabcentral/cody/problems/1/solutions/new?s_tid=mlc_cody_home_solve" class="btn btn_color_blue add_margin_0">Solve Your First Problem Now</a>
+              </p>
+            </div>
+          </div>
+       </div>
+     </div>
+   </div>
+</div>
+<div class="band welcome_intro add_background_color_gray add_margin_32 add_padding_0 d-none d-md-block">
+  <div class="container">
+    <div class="row my-2">
+      <div class="col text-center text-md-start">
+      </div>
+    </div>
+  </div>
+</div>
+
+<ps class="modal fade" id="how_cody_works" tabindex="-1" aria-labelledby="how_cody_works_label" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <p class="modal-title" id="how_cody_works_label">How Cody Works</p>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Cody is a free community game where you solve MATLAB coding problems. It is a fun way to challenge your skills and learn MATLAB.</p>
+        <ul>
+          <li><strong>Coding problems</strong> cover all skill levels, from beginner to advanced.</li>
+          <li><strong>Two ways to play:</strong>
+            <ul>
+              <li>Find and solve <strong>individual problems</strong> that interest you.</li>
+              <li>Work through a <strong>problem group</strong>.  A problem group is like a playlist of coding problems. Two popular problem groups for MATLAB beginners are <a href=/matlabcentral/cody/groups/172>Basics on Vectors</a> and <a href=/matlabcentral/cody/groups/1110>MATLAB Onramp Practice</a>.</li>
+            </ul>
+          </li>
+          <li><strong>Learn from other players</strong> how to improve your code. </li>
+          <li><strong>Create your own coding problems</strong> and share them with the community.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+</style>
+
+
+
+  </div>
+</div>
+
+
+<div class="container add_padding_top_12">
+  <div class="row">
+      <div class="col-12 col-md-9">
+        <div id="homepage_tabs" class="mw_ws_accordion_container -presentation_tab -has_borderless_content">
+          <ul class="list-unstyled accordion_tab_control" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="btn" type="button" role="tab" data-bs-toggle="collapse" data-bs-target="#featured_problem_groups_tab_selector" aria-expanded="true" aria-controls="featured_problem_groups_tab_selector">
+                Featured Problem Groups
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="btn collapsed" type="button" role="tab" data-bs-toggle="collapse" data-bs-target="#popular_problems_tab_selector" aria-expanded="false" aria-controls="popular_problems_tab_selector">
+                Popular Problems
+              </button>
+            </li>
+          </ul>
+          <div class="accordion" id="cody_landing_tabs">
+            <div class="accordion-item">
+              <div class="accordion-header">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#featured_problem_groups_tab_selector" aria-expanded="true" aria-controls="featured_problem_groups_tab_selector">
+                  Featured Problem Groups
+                </button>
+              </div>
+              <div id="featured_problem_groups_tab_selector" class="accordion-collapse collapse show" data-bs-parent="#cody_landing_tabs">
+                <div class="accordion-body" tabindex="0">
+                  
+<div id="MATLABBasics_header" class="d-flex flex-row align-items-center justify-content-between add_margin_32">
+  <h2 class="add_font_color_orange add_margin_0">MATLAB Basics</h2>
+    <a href="/matlabcentral/cody/groups">View All Problem Groups</a>
+</div>
+<div id="MATLABBasics" class="add_margin_32"></div>
+
+
+<div id="BeyondtheBasics_header" class="d-flex flex-row align-items-center justify-content-between add_margin_32">
+  <h2 class="add_font_color_orange add_margin_0">Beyond the Basics</h2>
+</div>
+<div id="BeyondtheBasics" class="add_margin_32"></div>
+
+
+                  <div class="d-flex flex-row align-items-center add_margin_32">
+  <h2 class="add_font_color_orange add_margin_0">Trending Groups</h2>
+</div>
+<div id="groupCards-trendingGroups" class="add_margin_32"></div>
+  <div class="d-flex flex-row align-items-center add_margin_32">
+    <h2 class="add_font_color_orange add_margin_0">Recently Added Groups</h2>
+  </div>
+  <div id="groupCards-newGroups" class="add_margin_32"></div>
+
+
+                  <p><a href="/matlabcentral/cody/groups">View All Problem Groups</a></p>
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <div class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#popular_problems_tab_selector" aria-expanded="false" aria-controls="popular_problems_tab_selector">
+                  Popular Problems
+                </button>
+              </div>
+              <div id="popular_problems_tab_selector" class="accordion-collapse collapse" data-bs-parent="#cody_landing_tabs">
+                <div class="accordion-body" tabindex="0">
+                  <div id="all_problems_home" class="remove_left_padding">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="homepage_sidebar" class="col-12 col-md-3">
+        <div id="cody_discussions_channel" class="border mb-4">
+          
+<div class="cody_discussions_channel_header p-2 d-flex flex-wrap justify-content-between border-bottom">
+  <div class="discussions_title">
+    <h3 class="add_margin_0">
+      Discussions
+    </h3>
+  </div>
+  <span class="discussions_create_new">
+    <span>
+      <a href="/matlabcentral/discussions/cody">View All / Create</a>
+    </span>
+  </span>
+</div>
+
+<div class="search search_classic"
+  data-search-proxy-url="https://www.mathworks.com/searchresults/results"
+  data-thumbnail-orientation="none"
+  data-thumbnail-text-align="center"
+  data-pre-filters="[&quot;discussion-id:(cody)&quot;]"
+  data-collections="[&quot;discussions&quot;]"
+  data-subcollections="[&quot;discussions&quot;]"
+  data-collection-field-labels="asset_id, subcollection, asset_type, asset_type_name, id, asset_language, url, updated_at, thumbnail, thumbnail_search, title_*, status, latest_activity, latest_activity_url, latest_activity_by, latest_activity_by_id, latest_activity_by_url, author_id, asked_by, asked_by_url, created_at, pinned"
+  data-sortby="pinned desc,updated_at desc"
+  data-rows="4"
+  data-site-domain="www"
+  data-site-language="en"
+  data-locale-id="en"
+>
+  <div id="search_results_container" class="add_margin_0"></div>
+</div>
+
+        </div>
+        <div id="recent_activities" class="border border-bottom-0 text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+  </div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</section><div>
+<div class="modalParsys parsys containsResourceName resourceClass-parsys">
+</div>
+</div>
+
+		
+
+
+	<div id="location_content" style="display:none;"></div>
+
+	<div class="modal fade" id="country-unselected" tabindex="-1" aria-labelledby="domain_selector_label" style="padding-left: 0px; display:none;" aria-modal="true" role="dialog">
+		<div class="modal-dialog modal-xl">
+			<div class="modal-content">
+				<div class="modal-header">
+					<img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo.20260902221426407.svg" class="mw_logo -presentation_light" alt="MathWorks" width="173" height="35"><img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo-rev.20260902221426407.svg" class="mw_logo -presentation_dark" alt="MathWorks" width="173" height="35"><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+
+					<p class="h1 icon-globe" id="domain_selector_label">Select a Web Site</p>
+					<p>Choose a web site to get translated content where available and see local events and offers. Based on your location, we recommend that you select: <strong class="recommended-country"></strong>.</p>
+					<div class="default-recommendation">
+						<p><a href="#" id="recommended_domain_button" class="btn btn_color_blue" data-lang="en"><span class="recommended-country"></span></a></p>
+					</div>
+
+					<div class="ch-recommendation" style="display:none;">
+						<ul class="list-inline">
+<li class="list-inline-item add_margin_5 d-block d-md-inline-block"><a href="//ch.mathworks.com" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ch" data-lang="en" data-recommended-text="Switzerland" data-default-lang="true" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (English)</a></li>
+							<li class="list-inline-item add_margin_5 d-block d-md-inline-block"><a href="//ch.mathworks.com" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ch" data-lang="de" data-recommended-text="Schweiz" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (Deutsch)</a></li>
+							<li class="list-inline-item add_margin_5 d-block d-md-inline-block"><a href="//ch.mathworks.com" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ch" data-lang="fr" data-recommended-text="Suisse" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (Français)</a></li>
+						</ul>
+</div>
+					<div class="zh-recommendation" style="display:none;">
+						<ul class="list-inline">
+<li class="list-inline-item"><a href="//ww2.mathworks.cn" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ww2" data-lang="zh" data-recommended-text="中国" data-default-lang="true" data-do-not-rewrite="true"><strong class="recommended-country"></strong>（简体中文）</a></li>
+							<li class="list-inline-item"><a href="//ww2.mathworks.cn" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ww2" data-lang="en" data-recommended-text="China" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (English)</a></li>
+						</ul>
+</div>
+
+					<p>You can also select a web site from the following list</p>
+					<div class="alert alert-warning" role="alert" id="china_performance_alert" style="display:none;"> <span class="alert_icon icon-alert-warning"></span>
+						<p class="alert_heading"><strong>How to Get Best Site Performance</strong></p>
+						<p>Select the China site (in Chinese or English) for best site performance. Other MathWorks country sites are not optimized for visits from your location.</p>
+					</div>
+					<div class="row add_margin_30">
+						<div class="col-12 col-sm-4 col-lg-3">
+							<p class="h3 add_bottom_rule">Americas</p>
+							<ul class="list-unstyled">
+<li>
+<a href="//la.mathworks.com" class="domain_selector_link" data-country-code="LA" data-subdomain="la" data-lang="es" data-default-lang="true" data-selected-text="América Latina" data-recommended-text="América Latina" data-do-not-rewrite="true">América Latina</a> (Español)</li>
+								<li>
+<a href="//www.mathworks.com" class="domain_selector_link" data-country-code="CA" data-subdomain="www" data-lang="en" data-do-not-rewrite="true">Canada</a> (English)</li>
+								<li>
+<a href="//www.mathworks.com" class="domain_selector_link" data-country-code="US" data-subdomain="www" data-lang="en" data-default-lang="true" data-selected-text="United States" data-recommended-text="United States" data-do-not-rewrite="true">United States</a> (English)</li>
+							</ul>
+</div>
+						<div class="col-12 col-sm-4 col-lg-6">
+							<p class="h3 add_bottom_rule">Europe</p>
+							<div class="row">
+								<div class="col-6 col-sm-12 col-lg-6">
+									<ul class="list-unstyled">
+<li>
+<a href="//nl.mathworks.com" class="domain_selector_link" data-country-code="BE" data-subdomain="nl" data-lang="en" data-do-not-rewrite="true">Belgium</a> (English)</li>
+										<li>
+<a href="//se.mathworks.com" class="domain_selector_link" data-country-code="DK" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Denmark</a> (English)</li>
+										<li>
+<a href="//de.mathworks.com" class="domain_selector_link" data-country-code="DE" data-subdomain="de" data-lang="de" data-default-lang="true" data-selected-text="Deutschland" data-recommended-text="Deutschland" data-do-not-rewrite="true">Deutschland</a> (Deutsch)</li>
+										<li>
+<a href="//es.mathworks.com" class="domain_selector_link" data-country-code="ES" data-subdomain="es" data-lang="es" data-default-lang="true" data-selected-text="España" data-recommended-text="España" data-do-not-rewrite="true">España</a> (Español)</li>
+										<li>
+<a href="//se.mathworks.com" class="domain_selector_link" data-country-code="FI" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Finland</a> (English)</li>
+										<li>
+<a href="//fr.mathworks.com" class="domain_selector_link" data-country-code="FR" data-subdomain="fr" data-lang="fr" data-default-lang="true" data-selected-text="France" data-recommended-text="France" data-do-not-rewrite="true">France</a> (Français)</li>
+										<li>
+<a href="//uk.mathworks.com" class="domain_selector_link" data-country-code="IE" data-subdomain="uk" data-lang="en" data-do-not-rewrite="true">Ireland</a> (English)</li>
+										<li>
+<a href="//it.mathworks.com" class="domain_selector_link" data-country-code="IT" data-subdomain="it" data-lang="it" data-default-lang="true" data-selected-text="Italia" data-recommended-text="Italia" data-do-not-rewrite="true">Italia</a> (Italiano)</li>
+										<li>
+<a href="//nl.mathworks.com" class="domain_selector_link" data-country-code="LU" data-subdomain="nl" data-lang="en" data-do-not-rewrite="true">Luxembourg</a> (English)</li>
+									</ul>
+</div>
+								<div class="col-6 col-sm-12 col-lg-6">
+									<ul class="list-unstyled">
+<li>
+<a href="//nl.mathworks.com" class="domain_selector_link" data-country-code="NL" data-subdomain="nl" data-lang="en" data-default-lang="true" data-selected-text="Benelux" data-recommended-text="Netherlands" data-do-not-rewrite="true">Netherlands</a> (English)</li>
+										<li>
+<a href="//se.mathworks.com" class="domain_selector_link" data-country-code="NO" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Norway</a> (English)</li>
+										<li>
+<a href="//de.mathworks.com" class="domain_selector_link" data-country-code="AT" data-subdomain="de" data-lang="de" data-do-not-rewrite="true">Österreich</a> (Deutsch)</li>
+										<li>
+<a href="//www.mathworks.com" class="domain_selector_link" data-country-code="PT" data-subdomain="www" data-lang="en" data-do-not-rewrite="true">Portugal</a> (English)</li>
+										<li>
+<a href="//se.mathworks.com" class="domain_selector_link" data-country-code="SE" data-subdomain="se" data-lang="en" data-default-lang="true" data-selected-text="Nordic" data-recommended-text="Sweden" data-do-not-rewrite="true">Sweden</a> (English)</li>
+										<li>Switzerland
+											<ul class="list-unstyled add_indent_20">
+<li><a href="//ch.mathworks.com" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="de" data-selected-text="Schweiz" data-recommended-text="Schweiz" data-do-not-rewrite="true">Deutsch</a></li>
+												<li><a href="//ch.mathworks.com" id="swiss_english" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="en" data-default-lang="true" data-selected-text="Switzerland" data-recommended-text="Switzerland" data-do-not-rewrite="true">English</a></li>
+												<li><a href="//ch.mathworks.com" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="fr" data-selected-text="Suisse" data-recommended-text="Suisse" data-do-not-rewrite="true">Français</a></li>
+											</ul>
+</li>
+										<li>
+<a href="//uk.mathworks.com" class="domain_selector_link" data-country-code="GB" data-subdomain="uk" data-lang="en" data-default-lang="true" data-selected-text="United Kingdom" data-recommended-text="United Kingdom" data-do-not-rewrite="true">United Kingdom</a> (English)</li>
+									</ul>
+</div>
+							</div>
+						</div>
+						<div class="col-12 col-sm-4 col-lg-3">
+							<p class="h3 add_bottom_rule">Asia Pacific</p>
+							<ul class="list-unstyled">
+<li>
+<a href="//au.mathworks.com" class="domain_selector_link" data-country-code="AU" data-subdomain="au" data-lang="en" data-default-lang="true" data-selected-text="Australia" data-recommended-text="Australia" data-do-not-rewrite="true">Australia</a> (English)</li>
+								<li>
+<a href="//in.mathworks.com" class="domain_selector_link" data-country-code="IN" data-subdomain="in" data-lang="en" data-default-lang="true" data-selected-text="India" data-recommended-text="India" data-do-not-rewrite="true">India</a> (English)</li>
+								<li>
+<a href="//au.mathworks.com" class="domain_selector_link" data-country-code="NZ" data-subdomain="au" data-lang="en" data-do-not-rewrite="true">New Zealand</a> (English)</li>
+								<li>中国
+									<ul class="list-unstyled add_indent_20">
+<li><a href="//ww2.mathworks.cn" class="domain_selector_link" data-country-code="CN" data-subdomain="ww2" data-lang="zh" data-default-lang="true" data-selected-text="中国" data-recommended-text="中国" data-do-not-rewrite="true">简体中文</a></li>
+										<li><a href="//ww2.mathworks.cn" class="domain_selector_link" data-country-code="CN" data-subdomain="ww2" data-lang="en" data-default-lang="true" data-selected-text="China" data-recommended-text="China" data-do-not-rewrite="true">English</a></li>
+									</ul>
+</li>
+								<li>
+<a href="//jp.mathworks.com" class="domain_selector_link" data-country-code="JP" data-subdomain="jp" data-lang="ja" data-default-lang="true" data-selected-text="日本" data-recommended-text="日本" data-do-not-rewrite="true">日本</a> (日本語)</li>
+								<li>
+<a href="//kr.mathworks.com" class="domain_selector_link" data-country-code="KR" data-subdomain="kr" data-lang="ko" data-default-lang="true" data-selected-text="한국" data-recommended-text="한국" data-do-not-rewrite="true">한국</a> (한국어)</li>
+							</ul>
+</div>
+					</div>
+					<p class="text-center"><a href="#" class="worldwide_link" data-do-not-rewrite="true">Contact your local office</a></p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	
+    
+
+
+
+
+
+
+
+
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/domainselector.min.20260902221426407.js"></script></main>
+</div>
+		
+		
+
+<footer id="footer"><div class="primary_footer" id="primary_footer">
+			<div class="container-fluid container-lg">
+				<div class="row align-items-start">
+					<div class="col-12 col-md-9">
+						<nav><div class="footerNavigation footernavigation containsResourceName resourceClass-footernavigation">
+
+
+
+	<ul class="list-inline " id="footernav" data-privacy="Your Privacy Choices">
+<li class="list-inline-item" id="footernav_footernav_patents">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/policies_statements/trust-center.html?s_tid=gf_tc" class=" ">
+
+		
+
+		
+			
+			Trust Center</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_trademarks">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/policies_statements/trademarks.html?s_tid=gf_trd" class=" ">
+
+		
+
+		
+			
+			Trademarks</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_privacy">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/policies_statements.html?s_tid=gf_priv" class=" ">
+
+		
+
+		
+			
+			Privacy Policy</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_piracy">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/policies_statements/piracy.html?s_tid=gf_pir" class=" ">
+
+		
+
+		
+			
+			Preventing Piracy</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_status">
+			
+	
+	
+	
+
+	
+
+	<a href="https://status.mathworks.com/?s_tid=gf_application" class=" ">
+
+		
+
+		
+			
+			Application Status</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_terms">
+			
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/content/terms-of-use.html?s_tid=gf_terms" class=" ">
+
+		
+
+		
+			
+			Terms of Use</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_contactus">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/contact_us.html?s_tid=gf_contact" class=" ">
+
+		
+
+		
+			
+			 Contact Us</a>
+
+		
+		
+	
+
+		</li>
+	</ul>
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/footernavigation.min.20260902221426407.js"></script>
+</div>
+
+							
+						</nav><p class="copyright">© 1994-2026 The MathWorks, Inc.</p>
+					</div>
+					<div class="col-12 col-md-3">
+						<div id="countrynav" class="d-flex justify-content-end">
+							<button class="btn btn-outline btn_countrynav companion_btn add_margin_20" id="domainButton" data-toggle="modal" data-bs-toggle="modal" data-target="#country-unselected" data-bs-target="#country-unselected">
+								<span class="visually-hidden sr-only">Select a Web Site</span>
+								<span class="icon-globe"></span>
+								<span id="countrySelectorButtonText">United States</span>
+							</button>
+						</div>
+					</div>
+					
+				</div>
+			</div>
+		</div>
+	
+	
+</footer><link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/button.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/downsize.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/upsize.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/tags.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5-footer.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/akamai.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/substitutepricing.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/tags.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/domainredirect.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/signinanalytics.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/spotlight.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/matlabcentral.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/corporatenav.min.20260902221426407.js"></script><div class="modal-backdrop fade show" id="corporate_nav_modal"></div>
+			
+			
+
+			
+			<a href="#" id="go-top" class="btn btn_color_mediumgray" tabindex="0" aria-hidden="true" aria-label="Back to top"><span class="icon-arrow-open-up icon_24"></span></a>
+			<link rel="stylesheet" href="/matlabcentral/cody/assets/application-81a1a9afa328125af5db783edfab445cdc5d7da848e7812d31f77cd082cf6cef.css" />
+
+<script src="/matlabcentral/cody/assets/application-4d2cacb0b4dc4586c38bbe2fee739037a48f5abed52cee97b8f666758a74376b.js"></script>
+  <script>
+    var groupCardDivId ="MATLABBasics";
+    var groups = [{"id":172,"name":"Basics on Vectors","description":"These problems test the basic skills on vector processing.","problemsCount":11,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/172","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/172/show_image/1557346691.jpg","recentSolversCount":9607,"difficultyRating":"easy-medium","difficultyValue":1.3219444},{"id":282,"name":"Basics on π","description":"π is also called as Archimedes' constant. The historically first exact formula for π, based on infinite series, was not available until a millennium later, when in the 14th century the Madhava-Leibniz series was discovered in Indian mathematics.","problemsCount":10,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/282","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/282/show_image/1557346815.jpg","recentSolversCount":678,"difficultyRating":"easy-medium","difficultyValue":1.3455411},{"id":174,"name":"Basics - Rounding","description":"These problems will test the skills in rounding. ","problemsCount":10,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/174","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/174/show_image/1557346706.jpg","recentSolversCount":3200,"difficultyRating":"easy-medium","difficultyValue":1.4012761},{"id":7,"name":"CUP Challenge","description":"Problems developed by MathWorks in collaboration with Cambridge University Press publishers.","problemsCount":11,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/7","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/7/show_image/1661872413.jpg","recentSolversCount":4405,"difficultyRating":"easy-medium","difficultyValue":1.408899},{"id":78,"name":"Introduction to MATLAB","description":"New to Cody? Start solving simple MATLAB problems that will test your basic MATLAB skills.\nIf you are new to MATLAB, you can start with MATLAB Onramp, which is a two-hour introductory tutorial on commonly used MATLAB features and workflows.","problemsCount":23,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/78","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/78/show_image/1721673513.jpg","recentSolversCount":10110,"difficultyRating":"easy-medium","difficultyValue":1.4708002},{"id":286,"name":"Basics - Cell Arrays","description":"Cell Arrays can contain data of varying types and sizes. Questions in this group will challenge your understanding about Cell Arrays.","problemsCount":10,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/286","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/286/show_image/1680158352.jpg","recentSolversCount":1453,"difficultyRating":"easy-medium","difficultyValue":1.6635793},{"id":1110,"name":"MATLAB Onramp Practice","description":"Practice your introductory MATLAB skills with these simple coding problems.\nThese problems are based on the skills you learn in MATLAB Onramp, a free, two-hour tutorial on introductory MATLAB features and workflows.","problemsCount":15,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/1110","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/1110/show_image/1611961592.jpg","recentSolversCount":5259,"difficultyRating":"easy-medium","difficultyValue":1.678584},{"id":345,"name":"Basics - Binary Logic","description":"The modern binary number system was studied in Europe in the 16th and 17th centuries by Thomas Harriot, Juan Caramuel y Lobkowitz, and Gottfried Leibniz. However, systems related to binary numbers have appeared earlier in multiple cultures including ancient Egypt, China, and India. Leibniz was specifically inspired by the Chinese I Ching.","problemsCount":10,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/345","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/345/show_image/1557346851.jpg","recentSolversCount":1101,"difficultyRating":"medium","difficultyValue":1.7070382},{"id":285,"name":"Basics - Triangles","description":"Triangle based interesting problems are presented in this group.","problemsCount":9,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/285","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/285/show_image/1557346827.jpg","recentSolversCount":1421,"difficultyRating":"medium","difficultyValue":1.7344}];
+
+    var addGroupCards = $.addGroupCardComponents();
+    addGroupCards.renderGroupCards(groupCardDivId, groups);
+  </script>
+  <script>
+    var groupCardDivId ="BeyondtheBasics";
+    var groups = [{"id":13,"name":"Indexing II","description":"More problems that require operating on a subset of elements from a vector or matrix. ","problemsCount":22,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/13","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/13/show_image/1506522797.jpg","recentSolversCount":186,"difficultyRating":"easy-medium","difficultyValue":1.5953712},{"id":29,"name":"Sequences \u0026 Series II","description":"Incrementally solve more problems based on sequences and series.","problemsCount":15,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/29","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/29/show_image/1557345414.jpg","recentSolversCount":97,"difficultyRating":"easy-medium","difficultyValue":1.6018413},{"id":31,"name":"Matrix Patterns II","description":"Create even more patterned matrices.","problemsCount":15,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/31","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/31/show_image/1557345427.jpg","recentSolversCount":90,"difficultyRating":"easy-medium","difficultyValue":1.6078905},{"id":28,"name":"Strings II","description":"String together characters in the correct case.","problemsCount":21,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/28","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/28/show_image/1557345408.jpg","recentSolversCount":49,"difficultyRating":"easy-medium","difficultyValue":1.616033},{"id":23,"name":"Matrix Manipulation II","description":"If only moving things around in real life were this easy.","problemsCount":19,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/23","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/23/show_image/1557345372.jpg","recentSolversCount":89,"difficultyRating":"easy-medium","difficultyValue":1.6249021},{"id":45,"name":"Number Manipulation II","description":"Manipulate more numbers from one form to another.","problemsCount":15,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/45","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/45/show_image/1557346526.jpg","recentSolversCount":52,"difficultyRating":"easy-medium","difficultyValue":1.6935381},{"id":19,"name":"Matrix Manipulation I","description":"Test your knowledge of matrix manipulations such as shift, flip, and transpose to solve these problems.","problemsCount":16,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/19","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/19/show_image/1557345337.jpg","recentSolversCount":124,"difficultyRating":"medium","difficultyValue":1.7337171},{"id":48,"name":"Project Euler I","description":"Solve Project Euler problems using MATLAB.","problemsCount":10,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/48","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/48/show_image/1582304128.jpg","recentSolversCount":906,"difficultyRating":"medium","difficultyValue":1.7609639},{"id":50,"name":"Project Euler II","description":"More problems inspired by Project Euler.","problemsCount":12,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/50","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/50/show_image/1560197906.jpg","recentSolversCount":72,"difficultyRating":"medium","difficultyValue":1.8847117}];
+
+    var addGroupCards = $.addGroupCardComponents();
+    addGroupCards.renderGroupCards(groupCardDivId, groups);
+  </script>
+  <script>
+    var addGroupCards = $.addGroupCardComponents();
+
+    let trendingGroupCardDivId = 'groupCards-trendingGroups';
+    let trendingGroups = [{"id":52300,"name":"High School Challenge","description":"This group contains problems for high school students so that they can practice their programming skills in MATLAB.","problemsCount":50,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/52300","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/52300/show_image/1666827973.jpg","recentSolversCount":188,"difficultyRating":"easy-medium","difficultyValue":1.2759843},{"id":282,"name":"Basics on π","description":"π is also called as Archimedes' constant. The historically first exact formula for π, based on infinite series, was not available until a millennium later, when in the 14th century the Madhava-Leibniz series was discovered in Indian mathematics.","problemsCount":10,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/282","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/282/show_image/1557346815.jpg","recentSolversCount":678,"difficultyRating":"easy-medium","difficultyValue":1.3455411},{"id":78,"name":"Introduction to MATLAB","description":"New to Cody? Start solving simple MATLAB problems that will test your basic MATLAB skills.\nIf you are new to MATLAB, you can start with MATLAB Onramp, which is a two-hour introductory tutorial on commonly used MATLAB features and workflows.","problemsCount":23,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/78","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/78/show_image/1721673513.jpg","recentSolversCount":10110,"difficultyRating":"easy-medium","difficultyValue":1.4708002},{"id":1110,"name":"MATLAB Onramp Practice","description":"Practice your introductory MATLAB skills with these simple coding problems.\nThese problems are based on the skills you learn in MATLAB Onramp, a free, two-hour tutorial on introductory MATLAB features and workflows.","problemsCount":15,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/1110","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/1110/show_image/1611961592.jpg","recentSolversCount":5259,"difficultyRating":"easy-medium","difficultyValue":1.678584}];
+    addGroupCards.renderGroupCards(trendingGroupCardDivId, trendingGroups);
+
+    let newGroupCardDivId = 'groupCards-newGroups';
+    let newGroups = [{"id":98321,"name":"Systems Engineering","description":"Explore a set of interesting and practical MATLAB problems inspired by systems engineering. From requirement engineering to systems architetcure and systems verification, these challenges help you build system-level thinking.\nDesigned to be engaging, hands-on, and progressive, this problem group is perfect for learners, whether you're a student or an engineer, these interesting problems will sharpen your modelling, analytical, and computational skills.","problemsCount":12,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/98321","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/98321/show_image/1788196201.jpg","recentSolversCount":10,"difficultyRating":"easy","difficultyValue":1.0},{"id":98300,"name":"Basic Geometry","description":"Simple Geometry. Nothing else.","problemsCount":12,"solvedCount":0,"percentageComplete":0.0,"url":"/matlabcentral/cody/matlabcentral/cody/groups/98300","image":"/responsive_image/200/150/0/0/0/cache/matlabcentral/cody/group/98300/show_image/1787585200.jpg","recentSolversCount":6,"difficultyRating":"easy-medium","difficultyValue":1.4}];
+    addGroupCards.renderGroupCards(newGroupCardDivId, newGroups);
+  </script>
+  <script>
+    loadAjaxData('/matlabcentral/cody/home/all_problems', '#all_problems_home');
+    loadAjaxData('/matlabcentral/cody/home/recent_activities', '#recent_activities');
+  </script>
+
+  <script>
+    const notif_node = document.getElementById("create_problem_notification");
+    if (notif_node) {
+      let props = {"parentId":"create_problem_notification","minScore":200};
+      let onlineLearningCodyAdapter = new OnlineLearningCodyAdapter();
+      onlineLearningCodyAdapter.showCreateProblemRedirectModal(notif_node, props);
+    }
+  </script>
+
+<script src = "/matlabcentral/jscript/announcements_v2.js" data-app-name ="Cody"></script>
+<script src = "https://www.mathworks.com/matlabcentral/profile/jscript/profile_card_v1.5.js" data-app-name="cody" data-locale="en"></script>
+
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/mathworks-aem.min.20260610154046257.js"></script>
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/search.min.20260513204911014.js"></script>
+
+<script type="text/javascript">
+  // makerzone callout javascript
+  $(document).ready(function() {
+    $(".random_callout").each(function() {
+      var callouts = $(this).find(".panel");
+      callouts.hide().eq(Math.floor((Math.random()*callouts.length))).show();
+    });
+
+    $("a.disabled").on("click",function(event){
+	event.preventDefault();
+    });
+
+  });
+</script>
+<script>
+//visual indicator for spam moderation pending contents for moderators
+</script>
+
+
+			
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/matrixmenu.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/matrixmenu.min.20260902221426407.js"></script>
+<script type="text/javascript"  src="/ToUX1MY4KWXx47mRP0MK/1iOuhpQVSbQ2hX/aG4BHUZtAQ/FkI/KZ0l7UGA"></script><script type="text/javascript"  src="/ToUX1MY4KWXx47mRP0MK/fNOuhpiD/ZR8IHUZtAQ/G0w/APjxhdjE4?v=5c00b2ae-6582-efeb-9b21-d7c4a117172f" defer></script></body>
+</html>

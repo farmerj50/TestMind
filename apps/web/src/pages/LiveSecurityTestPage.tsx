@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import { Download, FileJson } from "lucide-react";
 import { useApi, apiUrl } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -30,17 +31,25 @@ const TERMINAL_CLOSE_CODES = new Set([1000, 1001, 4003, 4004]);
 const MAX_SECURITY_TEST_CONCURRENCY = 20;
 const HUMAN_PACE_DELAY_MS = 5_000;
 const MAX_DISPATCH_DELAY_MS = 60_000;
-const AUTOMATED_SCAN_STEP_LIMIT = 100;
+const AUTOMATED_SCAN_STEP_LIMIT = 1_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_PAUSE_THRESHOLD = 5;
-const RATE_LIMIT_STATUSES = new Set([429, 503, 509, 529]);
+const HARD_RATE_LIMIT_STATUSES = new Set([429]);
+const SOFT_RATE_LIMIT_STATUSES = new Set([503, 509, 529]);
+const WAF_RATE_LIMIT_TEXT_RE = /(error\s*1015|you are being rate limited|banned temporarily|too many requests)/i;
 const MAX_RETAINED_EXCHANGES = 500;
 const MAX_SECURITY_CANDIDATE_EXCHANGES = 5_000;
 const MAX_RETAINED_SECURITY_TESTS = 5_000;
 const MAX_SEEN_EXCHANGE_IDS = 10_000;
 const MAX_CLIENT_BODY_CHARS = 64_000;
 const MAX_CLIENT_POST_DATA_CHARS = 32_000;
+const SECURITY_TEST_WATCHDOG_MS = 100_000;
+const SECURITY_TEST_WATCHDOG_INTERVAL_MS = 5_000;
+const REPORT_EXCHANGE_FETCH_CONCURRENCY = 6;
+const MAX_REPORT_BODY_SNIPPET_CHARS = 800;
 const STALE_EXCHANGE_ERROR_RE = /unknown exchange\b.*scrolled out of the buffer/i;
+const SENSITIVE_REPORT_QUERY_PARAM_RE =
+  /(token|secret|password|passwd|pwd|authorization|auth|session|csrf|xsrf|jwt|bearer|access[_-]?token|refresh[_-]?token|api[_-]?key|signature|sig|code)/i;
 const VOLATILE_SECURITY_QUERY_PARAM_RE =
   /^(client[_-]?request[_-]?id|request[_-]?id|trace[_-]?id|correlation[_-]?id|cache[_-]?bust|cachebuster|nonce|timestamp|ts|t|_|cb|rand|random)$/i;
 const INTENSITY_PRESETS: Record<PresetScanIntensity, Pick<TrafficControlState, "concurrency" | "dispatchDelayMs" | "maxActiveTests">> = {
@@ -175,9 +184,36 @@ type LiveSecurityTestResult = {
 };
 
 type SecurityTestState =
-  | { status: "running" }
+  | { status: "running"; startedAt: number }
   | { status: "done"; result: LiveSecurityTestResult }
   | { status: "error"; error: string };
+
+type SecurityExperimentHistoryItem = {
+  id: string;
+  authSessionId: string;
+  baselineExchangeId: string | null;
+  baselineUrl: string;
+  baselineMethod: string;
+  kind: string;
+  requestJson: unknown;
+  resultStatus: number | null;
+  resultBody: string | null;
+  diffJson: unknown;
+  securityTestResultJson: unknown;
+  error: string | null;
+  createdAt: string;
+};
+
+type LiveSecurityReportRow = {
+  id: string;
+  exchangeId: string | null;
+  createdAt: string | null;
+  baselineMethod: string;
+  baselineUrl: string;
+  result?: LiveSecurityTestResult;
+  error?: string;
+  exchange?: SecurityHttpExchange;
+};
 
 type LiveTrafficTotals = {
   apiCount: number;
@@ -305,6 +341,399 @@ function compactClientExchange(exchange: SecurityHttpExchange): SecurityHttpExch
   };
 }
 
+function redactUrlForReport(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (SENSITIVE_REPORT_QUERY_PARAM_RE.test(key)) parsed.searchParams.set(key, "[redacted]");
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function oneLine(value: unknown, fallback = "") {
+  const text = value === undefined || value === null || value === "" ? fallback : String(value);
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function truncateReportText(value: string | undefined, maxChars = MAX_REPORT_BODY_SNIPPET_CHARS) {
+  if (!value) return undefined;
+  const text = value.trim();
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}...[truncated ${text.length - maxChars} chars]`;
+}
+
+function markdownInlineCode(value: string) {
+  return `\`${value.replace(/`/g, "'")}\``;
+}
+
+function markdownListText(value: unknown, fallback = "none") {
+  const text = oneLine(value, fallback);
+  return text.length === 0 ? fallback : text.replace(/\\/g, "\\\\");
+}
+
+function safeFilePart(value: string) {
+  return value.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "live-security";
+}
+
+function statusLabel(status: number | undefined) {
+  return typeof status === "number" ? String(status) : "no response";
+}
+
+function baselineMethodForReport(row: LiveSecurityReportRow) {
+  return (row.exchange?.request.method ?? row.baselineMethod ?? "GET").toUpperCase();
+}
+
+function baselineUrlForReport(row: LiveSecurityReportRow) {
+  return row.exchange?.request.url ?? row.baselineUrl ?? row.result?.targetUrl ?? "";
+}
+
+function isReportFinding(check: LiveSecurityCheck) {
+  if (check.status !== "failed") return false;
+  const validationStatus = check.validation?.status;
+  return !validationStatus || ["confirmed", "likely", "suspected", "inconclusive"].includes(validationStatus);
+}
+
+function compactEvidenceSummary(check: LiveSecurityCheck) {
+  return compactEvidence(check.evidence).map(([key, value]) => ({
+    key,
+    value: formatEvidenceValue(key, value),
+  }));
+}
+
+function compactEvidenceMarkdown(check: LiveSecurityCheck) {
+  const entries = compactEvidenceSummary(check);
+  if (entries.length === 0) return "";
+  return entries.map((entry) => `${entry.key}=${entry.value}`).join("; ");
+}
+
+function reportProbeSummary(probe: LiveSecurityProbe) {
+  return {
+    label: probe.label,
+    method: probe.result.method ?? "GET",
+    url: redactUrlForReport(probe.result.url),
+    status: probe.result.status ?? null,
+    bodyLength: probe.result.bodyLength ?? null,
+    bodySnippet: truncateReportText(probe.result.bodySnippet),
+    error: probe.result.error,
+    browserReadable: probe.result.browserReadable,
+    browserBlocked: probe.result.browserBlocked,
+    browserSkipped: probe.result.browserSkipped,
+    browserOrigin: probe.result.browserOrigin,
+  };
+}
+
+function supportingProbesForCheck(result: LiveSecurityTestResult, check: LiveSecurityCheck) {
+  const specific = result.supportingProbesByCheckId?.[check.id] ?? [];
+  return specific.length > 0 ? specific : result.probes.slice(0, 2);
+}
+
+function reportRequestLine(method: string | undefined, url: string) {
+  return `${(method || "GET").toUpperCase()} ${redactUrlForReport(url)}`;
+}
+
+function reportProbeLine(probe: LiveSecurityProbe) {
+  return reportRequestLine(probe.result.method, probe.result.url);
+}
+
+function buildReproductionSteps(row: LiveSecurityReportRow, result: LiveSecurityTestResult, check: LiveSecurityCheck) {
+  const baselineUrl = baselineUrlForReport(row) || result.targetUrl;
+  const host = hostnameFromUrl(baselineUrl);
+  const baselineStatus = row.exchange?.response?.status;
+  const supportingProbes = supportingProbesForCheck(result, check);
+  const checkId = check.id.toLowerCase();
+  const steps = [
+    `Sign in with an authorized test account that can reach ${host || "the target host"}, using a non-production test environment when possible.`,
+    `Replay or capture the authorized baseline request ${reportRequestLine(baselineMethodForReport(row), baselineUrl)} and confirm the baseline status is ${statusLabel(baselineStatus)}.`,
+  ];
+
+  if (checkId === "unauthenticated-direct-access") {
+    steps.push("Open a clean browser profile or API client and remove app credentials from the request, including cookies, Authorization, API key, session, and CSRF/XSRF headers.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Send the unauthenticated replay ${reportProbeLine(probe)} and record the response status (${statusLabel(probe.result.status)}).`);
+    }
+    steps.push("Secure behavior is a 401/403 response or a public-only response with no protected data.");
+  } else if (checkId.startsWith("derived-detail-auth")) {
+    steps.push("From the protected list or collection response, use the derived detail URL shown in the supporting probe.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Replay ${oneLine(probe.label, "the derived-detail probe")} as ${reportProbeLine(probe)} and record the response status (${statusLabel(probe.result.status)}).`);
+    }
+    steps.push("Repeat the detail request without app credentials; secure behavior is 401/403/404 or no protected data.");
+  } else if (checkId === "idor-url-mutation") {
+    steps.push("Using the same authorized test session, replace the captured resource identifier with the alternate identifier used by the probe.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Replay the alternate-ID request ${reportProbeLine(probe)} and record the response status (${statusLabel(probe.result.status)}).`);
+    }
+    steps.push("Secure behavior is 403/404 or data limited to resources owned by the signed-in test identity.");
+  } else if (checkId === "cors-wildcard-credentials" || checkId === "active-cors-origin-probe") {
+    steps.push("From an untrusted test origin such as https://attacker.invalid, send the preflight/read request shown in the supporting probe.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Replay the CORS probe ${reportProbeLine(probe)} with the probe Origin header and record the response status (${statusLabel(probe.result.status)}).`);
+    }
+    steps.push("Check that Access-Control-Allow-Origin and Access-Control-Allow-Credentials do not allow credentialed reads from the untrusted origin.");
+  } else if (checkId === "method-tampering-head") {
+    steps.push("Change only the HTTP method to HEAD while keeping the same path, query string, and safe request headers.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Send ${reportProbeLine(probe)} and record the response status (${statusLabel(probe.result.status)}).`);
+    }
+    steps.push("Secure behavior is a safe 2xx/3xx/4xx response, not a 5xx server error.");
+  } else if (checkId === "benign-query-marker") {
+    steps.push("Add the harmless marker query parameter used by TestMind to the same GET request.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Send ${reportProbeLine(probe)} and record the response status (${statusLabel(probe.result.status)}).`);
+    }
+    steps.push("Secure behavior is normal routing or validation, without server errors or internal error disclosure.");
+  } else if (checkId === "xss-reflection-probe") {
+    steps.push("Add the inert reflection marker query parameter used by TestMind to the same GET request.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Send ${reportProbeLine(probe)} and inspect whether the marker is reflected unencoded in browser-rendered content.`);
+    }
+    steps.push("Secure behavior is output encoding, escaping, or no reflection of the marker.");
+  } else if (checkId === "injection-error-probe") {
+    steps.push("Add the harmless parser-stress query marker used by TestMind to the same GET request.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Send ${reportProbeLine(probe)} and record whether the response is a 5xx or exposes framework/database error text.`);
+    }
+    steps.push("Secure behavior is safe rejection or normal handling, without server errors or internal diagnostics.");
+  } else if (checkId === "sensitive-data-stop") {
+    steps.push("Replay only the supporting probe that stopped active testing; do not continue enumerating or exploring exposed records.");
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(`Send ${reportProbeLine(probe)} and verify the response contains the sensitive-data category named in the finding evidence.`);
+    }
+  } else if (checkId === "sensitive-json-fields") {
+    steps.push("Inspect the captured JSON response body from the baseline request.");
+    steps.push("Verify whether the fields named in the evidence are truly secrets, tokens, sessions, passwords, or other restricted values.");
+  } else if (checkId === "error-disclosure") {
+    steps.push("Inspect the captured baseline response body for stack traces, database errors, framework exceptions, or internal failure details.");
+  } else {
+    for (const probe of supportingProbes.slice(0, 5)) {
+      steps.push(
+        `Replay probe "${oneLine(probe.label, "probe")}" as ${reportProbeLine(probe)} and note the response status (${statusLabel(probe.result.status)}).`
+      );
+    }
+  }
+
+  if (check.validation?.expectedBehavior) {
+    steps.push(`Expected secure behavior: ${oneLine(check.validation.expectedBehavior)}`);
+  }
+  const observed = oneLine(check.validation?.observedBehavior ?? check.validation?.conclusion ?? check.description);
+  if (observed) {
+    steps.push(`Observed result to verify: ${observed}`);
+  }
+  steps.push("Do not paste production credentials into the report; use your own authorized test session when replaying.");
+  return steps;
+}
+
+function liveSecurityReportRowFromResult(
+  exchangeId: string,
+  result: LiveSecurityTestResult,
+  exchange?: SecurityHttpExchange
+): LiveSecurityReportRow {
+  return {
+    id: `live-${exchangeId}`,
+    exchangeId,
+    createdAt: null,
+    baselineMethod: exchange?.request.method ?? "GET",
+    baselineUrl: exchange?.request.url ?? result.targetUrl,
+    result,
+    exchange,
+  };
+}
+
+function buildLiveSecurityJsonReport(authSessionId: string, rows: LiveSecurityReportRow[], generatedAt: string) {
+  const completedRows = rows.filter((row) => row.result);
+  const erroredRows = rows.filter((row) => row.error);
+  const findings = completedRows.flatMap((row) => {
+    const result = row.result;
+    return result
+      ? result.checks
+          .filter(isReportFinding)
+          .map((check) => ({
+            exchangeId: row.exchangeId,
+            testRunId: row.id,
+            createdAt: row.createdAt,
+            title: check.title,
+            severity: securitySeverityLabel(check),
+            status: securityStatusLabel(check),
+            validationStatus: check.validation?.status ?? null,
+            confidence: check.validation?.confidence ?? null,
+            targetUrl: redactUrlForReport(result.targetUrl),
+            reproductionSteps: buildReproductionSteps(row, result, check),
+          }))
+      : [];
+  });
+
+  return {
+    generatedAt,
+    authSessionId,
+    summary: {
+      testRuns: rows.length,
+      completedRuns: completedRows.length,
+      erroredRuns: erroredRows.length,
+      findingsRequiringReview: findings.length,
+      uniqueTargets: new Set(rows.map((row) => row.result?.targetUrl ?? row.baselineUrl).filter(Boolean)).size,
+    },
+    findings,
+    runs: rows.map((row) => {
+      const result = row.result;
+      return {
+        id: row.id,
+        exchangeId: row.exchangeId,
+        createdAt: row.createdAt,
+        baseline: {
+          method: baselineMethodForReport(row),
+          url: redactUrlForReport(baselineUrlForReport(row)),
+          status: row.exchange?.response?.status ?? null,
+        },
+        error: row.error ?? null,
+        result: result
+          ? {
+              targetUrl: redactUrlForReport(result.targetUrl),
+              idsFound: result.idsFound,
+              derivedUrls: result.derivedUrls.map(redactUrlForReport),
+              sensitiveDataStopped: result.sensitiveDataStopped ?? false,
+              checks: result.checks.map((check) => ({
+                id: check.id,
+                title: check.title,
+                status: check.status,
+                severity: securitySeverityLabel(check),
+                vulnerabilityClass: check.vulnerabilityClass,
+                owaspCategory: check.owaspCategory,
+                owaspApiCategory: check.owaspApiCategory,
+                description: check.description,
+                validation: check.validation ?? null,
+                evidenceSummary: compactEvidenceSummary(check),
+                reproductionSteps: isReportFinding(check) ? buildReproductionSteps(row, result, check) : [],
+              })),
+              probes: result.probes.map(reportProbeSummary),
+            }
+          : null,
+      };
+    }),
+  };
+}
+
+function buildLiveSecurityMarkdownReport(authSessionId: string, rows: LiveSecurityReportRow[], generatedAt: string) {
+  const completedRows = rows.filter((row) => row.result);
+  const erroredRows = rows.filter((row) => row.error);
+  const findings = completedRows.flatMap((row) =>
+    row.result
+      ? row.result.checks
+          .filter(isReportFinding)
+          .map((check) => ({ row, result: row.result!, check }))
+      : []
+  );
+  const lines: string[] = [
+    "# Live Security Test Report",
+    "",
+    `Generated: ${generatedAt}`,
+    `Auth session: ${authSessionId}`,
+    "",
+    "## Summary",
+    "",
+    `- Test runs: ${rows.length}`,
+    `- Completed runs: ${completedRows.length}`,
+    `- Errored runs: ${erroredRows.length}`,
+    `- Findings requiring review: ${findings.length}`,
+    `- Unique targets: ${new Set(rows.map((row) => row.result?.targetUrl ?? row.baselineUrl).filter(Boolean)).size}`,
+    "",
+    "Credentials, cookies, and sensitive query parameters are redacted or omitted. Replay steps require an authorized test session.",
+    "",
+    "## Findings Requiring Review",
+    "",
+  ];
+
+  if (findings.length === 0) {
+    lines.push("No confirmed, likely, suspected, or inconclusive failed checks were recorded.", "");
+  } else {
+    findings.forEach(({ row, result, check }, index) => {
+      const baselineUrl = baselineUrlForReport(row) || result.targetUrl;
+      const evidence = compactEvidenceMarkdown(check);
+      const supportingProbes = supportingProbesForCheck(result, check);
+      lines.push(`### ${index + 1}. ${markdownListText(check.title, "Security finding")}`, "");
+      lines.push(`- Severity: ${securitySeverityLabel(check)}`);
+      lines.push(`- Status: ${securityStatusLabel(check)}`);
+      lines.push(`- Validation: ${check.validation ? `${validationLabel(check.validation.status)} (${check.validation.confidence}%)` : "not validated"}`);
+      lines.push(`- Target: ${markdownInlineCode(redactUrlForReport(result.targetUrl))}`);
+      lines.push(
+        `- Baseline: ${markdownInlineCode(`${baselineMethodForReport(row)} ${redactUrlForReport(baselineUrl)}`)} -> ${statusLabel(row.exchange?.response?.status)}`
+      );
+      if (evidence) lines.push(`- Evidence: ${markdownListText(evidence)}`);
+      lines.push(`- Conclusion: ${markdownListText(check.validation?.conclusion ?? check.description)}`, "");
+      lines.push("Reproduction steps:");
+      buildReproductionSteps(row, result, check).forEach((step, stepIndex) => {
+        lines.push(`${stepIndex + 1}. ${markdownListText(step)}`);
+      });
+      if (supportingProbes.length > 0) {
+        lines.push("", "Supporting probes:");
+        supportingProbes.slice(0, 5).forEach((probe) => {
+          lines.push(
+            `- ${markdownListText(probe.label, "probe")}: ${markdownInlineCode(`${probe.result.method ?? "GET"} ${redactUrlForReport(probe.result.url)}`)} -> ${statusLabel(probe.result.status)}`
+          );
+          const snippet = truncateReportText(probe.result.bodySnippet);
+          if (snippet) lines.push(`  Body preview: ${markdownInlineCode(snippet)}`);
+        });
+      }
+      lines.push("");
+    });
+  }
+
+  lines.push("## All Test Runs", "");
+  rows.forEach((row, index) => {
+    if (row.error) {
+      lines.push(`### ${index + 1}. ${markdownListText(row.baselineUrl || row.exchangeId || row.id, "Security test")}`, "");
+      lines.push(`- Result: error`);
+      lines.push(`- Error: ${markdownListText(row.error)}`);
+      lines.push("");
+      return;
+    }
+    if (!row.result) return;
+    const failedChecks = row.result.checks.filter(isReportFinding);
+    lines.push(`### ${index + 1}. ${markdownListText(pathnameFromUrl(row.result.targetUrl) || row.result.targetUrl, "Security test")}`, "");
+    lines.push(`- Baseline: ${markdownInlineCode(`${baselineMethodForReport(row)} ${redactUrlForReport(baselineUrlForReport(row) || row.result.targetUrl)}`)}`);
+    lines.push(`- Checks: ${row.result.checks.length}`);
+    lines.push(`- Active probes: ${row.result.probes.length}`);
+    lines.push(`- Findings requiring review: ${failedChecks.length}`);
+    lines.push("");
+  });
+
+  return `${lines.join("\n").trim()}\n`;
+}
+
+function downloadTextFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex]);
+      }
+    })
+  );
+  return results;
+}
+
 function isJsonResponse(exchange: SecurityHttpExchange) {
   const contentType = headerValue(exchange.response?.headers, "content-type");
   return /\bapplication\/(?:json|[\w.+-]+\+json)\b/i.test(contentType) || looksJson(exchange.response?.body);
@@ -380,8 +809,23 @@ function countsTowardActiveTestBudget(test: SecurityTestState) {
   return !(test.status === "error" && STALE_EXCHANGE_ERROR_RE.test(test.error));
 }
 
-function isRateLimitedStatus(status: number | undefined) {
-  return typeof status === "number" && RATE_LIMIT_STATUSES.has(status);
+function hasRetryAfter(headers: Record<string, string> | undefined) {
+  return Boolean(headerValue(headers, "retry-after").trim());
+}
+
+function isRateLimitLikeResponse(status: number | undefined, headers: Record<string, string> | undefined, body: string | undefined) {
+  if (typeof status !== "number") return WAF_RATE_LIMIT_TEXT_RE.test(body ?? "");
+  if (HARD_RATE_LIMIT_STATUSES.has(status)) return true;
+  if (!SOFT_RATE_LIMIT_STATUSES.has(status)) return WAF_RATE_LIMIT_TEXT_RE.test(body ?? "");
+  return hasRetryAfter(headers) || WAF_RATE_LIMIT_TEXT_RE.test(body ?? "");
+}
+
+function isRateLimitedExchange(exchange: SecurityHttpExchange) {
+  return isRateLimitLikeResponse(exchange.response?.status, exchange.response?.headers, exchange.response?.body);
+}
+
+function isRateLimitedProbe(probe: LiveSecurityProbe) {
+  return isRateLimitLikeResponse(probe.result.status, probe.result.headers, probe.result.bodySnippet);
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -404,7 +848,7 @@ function parseRetryAfterMs(value: string | undefined) {
 }
 
 function rateLimitHitsFromResult(result: LiveSecurityTestResult) {
-  return result.probes.filter((probe) => isRateLimitedStatus(probe.result.status)).length;
+  return result.probes.filter(isRateLimitedProbe).length;
 }
 
 function retryAfterMsFromResult(result: LiveSecurityTestResult) {
@@ -614,6 +1058,74 @@ function ReproductionTraceabilityPanel({
   );
 }
 
+function ReproductionStepsPanel({
+  row,
+  result,
+  check,
+}: {
+  row: LiveSecurityReportRow;
+  result: LiveSecurityTestResult;
+  check: LiveSecurityCheck;
+}) {
+  const baselineUrl = baselineUrlForReport(row) || result.targetUrl;
+  const baselineStatus = row.exchange ? statusLabel(row.exchange.response?.status) : "status not retained";
+  const correlatedProbes = result.supportingProbesByCheckId?.[check.id] ?? [];
+  const displayProbes = correlatedProbes.length > 0 ? correlatedProbes : result.probes.slice(0, 2);
+  const reproductionSteps = buildReproductionSteps(row, result, check);
+
+  return (
+    <div className="mt-1 rounded border border-slate-300 bg-white p-1.5 text-[11px] text-slate-800 shadow-sm">
+      <div className="font-semibold text-slate-950">Steps to reproduce</div>
+      <ol className="mt-1 list-decimal space-y-1 pl-4">
+        {reproductionSteps.map((step, index) => (
+          <li key={index} className="break-words">
+            {step}
+          </li>
+        ))}
+      </ol>
+
+      <div className="mt-2 border-t border-slate-200 pt-1">
+        <div className="font-semibold text-slate-950">Supporting request trail</div>
+        <div className="mt-1">
+          <span className="font-medium">Baseline:</span>{" "}
+          <code className="break-all">
+            {baselineMethodForReport(row)} {pathnameFromUrl(baselineUrl)}
+          </code>{" "}
+          -&gt; {baselineStatus}
+        </div>
+        {!row.exchange && (
+          <div className="mt-1 text-slate-500">
+            Full baseline request detail is no longer retained in this browser session; the steps above use the stored test target and probe metadata.
+          </div>
+        )}
+        {correlatedProbes.length === 0 && displayProbes.length > 0 && (
+          <div className="mt-1 text-slate-500">
+            No exact supporting probe was correlated to this finding; showing recent active probes for context.
+          </div>
+        )}
+        {displayProbes.length === 0 ? (
+          <div className="mt-1 text-slate-500">No active probe was needed for this finding; reproduce it from the baseline response.</div>
+        ) : (
+          displayProbes.map((probe, i) => (
+            <div key={i} className="mt-1">
+              <span className="font-medium">Probe ({probe.label}):</span>{" "}
+              <code className="break-all">
+                {probe.result.method ?? "GET"} {pathnameFromUrl(probe.result.url)}
+              </code>{" "}
+              -&gt; {probe.result.status ?? "no response"}
+              {probe.result.bodySnippet && (
+                <div className="mt-0.5 break-words text-slate-500">
+                  Body preview truncated: <code>{probe.result.bodySnippet}</code>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function countValidationStatuses(checks: LiveSecurityCheck[]) {
   return checks.reduce(
     (counts, check) => {
@@ -785,6 +1297,7 @@ export default function LiveSecurityTestPage() {
   const [adaptiveDelayMs, setAdaptiveDelayMs] = useState(0);
   const [rateLimitHitCount, setRateLimitHitCount] = useState(0);
   const [securityQueueTick, setSecurityQueueTick] = useState(0);
+  const [securityExporting, setSecurityExporting] = useState<"markdown" | "json" | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -793,14 +1306,15 @@ export default function LiveSecurityTestPage() {
   const securityQueueTimerRef = useRef<number | null>(null);
   const lastSecurityDispatchAtRef = useRef(0);
   const trafficControlRef = useRef<TrafficControlState>(DEFAULT_TRAFFIC_CONTROL);
+  const securityTestsRef = useRef<Record<string, SecurityTestState>>({});
   const rateLimitWindowRef = useRef<number[]>([]);
   const stoppedRef = useRef(false);
   const analysis = useMemo(() => analyzeTraffic(exchanges, scope.allowedHosts), [exchanges, scope.allowedHosts]);
   // Findings requiring review (below) shows traceability inline rather than only in the deeper
   // per-request list, so a triager reading the top summary never has to go hunting for it.
   // exchanges is capped at MAX_RETAINED_EXCHANGES and can evict an older finding's baseline
-  // request out of memory during a long session - lookups against this map degrade gracefully
-  // (ReproductionTraceabilityPanel is simply not rendered) rather than throwing.
+  // request out of memory during a long session. Step rendering degrades gracefully by falling
+  // back to the stored target and probe metadata.
   const exchangesById = useMemo(() => new Map(exchanges.map((exchange) => [exchange.id, exchange])), [exchanges]);
   const capturedTrafficTotal = Math.max(capturedExchangeTotal, exchanges.length);
   const securityTestTargets = useMemo(
@@ -865,7 +1379,7 @@ export default function LiveSecurityTestPage() {
   const effectiveDispatchDelayMs = trafficControl.adaptiveThrottling
     ? Math.max(trafficControl.dispatchDelayMs, adaptiveDelayMs)
     : trafficControl.dispatchDelayMs;
-  const capturedRateLimitResponses = exchanges.filter((exchange) => isRateLimitedStatus(exchange.response?.status)).length;
+  const capturedRateLimitResponses = exchanges.filter(isRateLimitedExchange).length;
   const probeRateLimitResponses = Object.values(securityTests).reduce(
     (count, test) => count + (test.status === "done" ? rateLimitHitsFromResult(test.result) : 0),
     0
@@ -884,6 +1398,108 @@ export default function LiveSecurityTestPage() {
 
   function sendAutomationPacing(control: TrafficControlState = trafficControlRef.current, adaptiveMs = adaptiveDelayMs) {
     sendInput({ type: "automationPacing", dispatchDelayMs: routeWalkDelayMs(control, adaptiveMs) });
+  }
+
+  async function fetchAllSecurityTestHistory(): Promise<SecurityExperimentHistoryItem[]> {
+    const experiments: SecurityExperimentHistoryItem[] = [];
+    const seenCursors = new Set<string>();
+    let before: string | null = null;
+    for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+      const query: string = before ? `?limit=200&before=${encodeURIComponent(before)}` : "?limit=200";
+      const page: { experiments: SecurityExperimentHistoryItem[]; nextCursor: string | null } = await apiFetch<{
+        experiments: SecurityExperimentHistoryItem[];
+        nextCursor: string | null;
+      }>(
+        `/security/auth-sessions/${authSessionId}/experiments${query}`
+      );
+      experiments.push(...page.experiments.filter((experiment) => experiment.kind === "securityTest"));
+      if (!page.nextCursor || seenCursors.has(page.nextCursor)) break;
+      seenCursors.add(page.nextCursor);
+      before = page.nextCursor;
+    }
+    return experiments;
+  }
+
+  async function buildSecurityReportRows() {
+    const history = await fetchAllSecurityTestHistory();
+    const rows: LiveSecurityReportRow[] = history.map((experiment) => {
+      const result = experiment.securityTestResultJson as LiveSecurityTestResult | null;
+      const exchangeId = experiment.baselineExchangeId ?? result?.exchangeId ?? null;
+      return {
+        id: experiment.id,
+        exchangeId,
+        createdAt: experiment.createdAt,
+        baselineMethod: experiment.baselineMethod || "GET",
+        baselineUrl: experiment.baselineUrl || result?.targetUrl || "",
+        result: result ?? undefined,
+        error: experiment.error ?? undefined,
+      };
+    });
+
+    const persistedExchangeIds = new Set(rows.map((row) => row.exchangeId).filter(Boolean) as string[]);
+    for (const [exchangeId, test] of Object.entries(securityTestsRef.current)) {
+      if (persistedExchangeIds.has(exchangeId)) continue;
+      const exchange = exchangesById.get(exchangeId);
+      rows.push({
+        id: `live-${exchangeId}`,
+        exchangeId,
+        createdAt: null,
+        baselineMethod: exchange?.request.method ?? "GET",
+        baselineUrl: exchange?.request.url ?? (test.status === "done" ? test.result.targetUrl : ""),
+        result: test.status === "done" ? test.result : undefined,
+        error: test.status === "error" ? test.error : undefined,
+        exchange,
+      });
+    }
+
+    const exchangeIds = Array.from(new Set(rows.map((row) => row.exchangeId).filter(Boolean) as string[]));
+    const exchangePairs = await mapWithConcurrency(exchangeIds, REPORT_EXCHANGE_FETCH_CONCURRENCY, async (exchangeId) => {
+      const cached = exchangesById.get(exchangeId);
+      if (cached) return [exchangeId, cached] as const;
+      try {
+        const res = await apiFetch<{ exchange: SecurityHttpExchange }>(
+          `/security/auth-sessions/${authSessionId}/exchanges/${encodeURIComponent(exchangeId)}`
+        );
+        return [exchangeId, compactClientExchange(res.exchange)] as const;
+      } catch {
+        return [exchangeId, undefined] as const;
+      }
+    });
+    const exchangeMap = new Map(exchangePairs.filter(([, exchange]) => exchange).map(([exchangeId, exchange]) => [exchangeId, exchange!]));
+
+    return rows
+      .map((row) => ({
+        ...row,
+        exchange: row.exchange ?? (row.exchangeId ? exchangeMap.get(row.exchangeId) : undefined),
+      }))
+      .sort((a, b) => {
+        const aTime = a.createdAt ? Date.parse(a.createdAt) : Number.MAX_SAFE_INTEGER;
+        const bTime = b.createdAt ? Date.parse(b.createdAt) : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+  }
+
+  async function downloadSecurityReport(format: "markdown" | "json") {
+    if (!authSessionId || securityExporting) return;
+    setSecurityExporting(format);
+    setError(null);
+    try {
+      const rows = await buildSecurityReportRows();
+      if (rows.length === 0) throw new Error("No saved live security test results were found yet.");
+      const generatedAt = new Date().toISOString();
+      const filenameBase = `live-security-${safeFilePart(authSessionId)}-${generatedAt.replace(/[:.]/g, "-")}`;
+      if (format === "json") {
+        const report = buildLiveSecurityJsonReport(authSessionId, rows, generatedAt);
+        downloadTextFile(`${filenameBase}.json`, JSON.stringify(report, null, 2), "application/json");
+      } else {
+        const report = buildLiveSecurityMarkdownReport(authSessionId, rows, generatedAt);
+        downloadTextFile(`${filenameBase}.md`, report, "text/markdown");
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to download live security report.");
+    } finally {
+      setSecurityExporting(null);
+    }
   }
 
   function clearReconnectTimer() {
@@ -930,7 +1546,7 @@ export default function LiveSecurityTestPage() {
     });
 
     if (trafficControlRef.current.pauseOnSustainedRateLimit && rateLimitWindowRef.current.length >= RATE_LIMIT_PAUSE_THRESHOLD) {
-      const reason = "Paused after sustained 429/503+ responses.";
+      const reason = "Paused after sustained rate-limit or WAF responses.";
       setActiveTestingPaused(true);
       setActiveTestingPauseReason(reason);
       setAutoSecurityTesting(false);
@@ -998,6 +1614,10 @@ export default function LiveSecurityTestPage() {
   }, [trafficControl]);
 
   useEffect(() => {
+    securityTestsRef.current = securityTests;
+  }, [securityTests]);
+
+  useEffect(() => {
     if (!connected || sessionStopped) return;
     sendAutomationPacing(trafficControl, adaptiveDelayMs);
     // sendAutomationPacing reads only the websocket ref plus the supplied values.
@@ -1036,6 +1656,38 @@ export default function LiveSecurityTestPage() {
       return changed ? next : prev;
     });
   }, [exchanges, securityCandidateExchanges]);
+
+  useEffect(() => {
+    if (sessionStopped) return;
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      const staleIds = Object.entries(securityTestsRef.current)
+        .filter(([, test]) => {
+          if (test.status !== "running") return false;
+          const startedAt = typeof test.startedAt === "number" ? test.startedAt : 0;
+          return now - startedAt >= SECURITY_TEST_WATCHDOG_MS;
+        })
+        .map(([exchangeId]) => exchangeId);
+      if (staleIds.length === 0) return;
+      const staleIdSet = new Set(staleIds);
+      setSecurityTests((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const exchangeId of staleIdSet) {
+          const current = next[exchangeId];
+          if (!current || current.status !== "running") continue;
+          changed = true;
+          next[exchangeId] = {
+            status: "error",
+            error: `Timed out after ${Math.round(SECURITY_TEST_WATCHDOG_MS / 1000)} seconds; continuing with the next queued test.`,
+          };
+        }
+        return changed ? next : prev;
+      });
+      setSecurityQueueTick((tick) => tick + 1);
+    }, SECURITY_TEST_WATCHDOG_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [sessionStopped]);
 
   async function stopSession() {
     stoppedRef.current = true;
@@ -1164,6 +1816,46 @@ export default function LiveSecurityTestPage() {
         }
       } catch (err) {
         console.warn("[LiveSecurityTestPage] failed to hydrate exchange history:", err);
+      }
+    }
+
+    // Companion to hydrateHistory() above: that one restores captured traffic on remount, but
+    // securityTests (per-exchange check/finding results) was still resetting to empty on every
+    // remount even though nothing server-side had actually restarted - the underlying session,
+    // its captures, and any still-running automated scan all kept going the whole time. This
+    // restores terminal test results the same way hydrateHistory() restores exchanges: from the
+    // server's durable experiment history (GET .../experiments, kind="securityTest" rows), not
+    // by re-running anything.
+    async function hydrateSecurityTestResults() {
+      // The server caps each /experiments page at 200 regardless of the requested limit, and a
+      // long-running scan can easily produce more results than that (one real session had 859) -
+      // a single page silently left most of a large session's results unrestorable. Page through
+      // with the "before" cursor until exhausted or MAX_RETAINED_SECURITY_TESTS is reached (the
+      // same ceiling the live in-memory accumulation already uses), merging incrementally so the
+      // UI fills in progressively rather than waiting for every page before showing anything.
+      let cursor: string | undefined;
+      let fetched = 0;
+      try {
+        for (let pageCount = 0; pageCount < 50; pageCount += 1) {
+          if (cancelled) return;
+          const page = await apiFetch<{ experiments: SecurityExperimentHistoryItem[]; nextCursor: string | null }>(
+            `/security/auth-sessions/${authSessionId}/experiments?limit=200${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`
+          );
+          if (cancelled) return;
+          const hydrated: Record<string, SecurityTestState> = {};
+          for (const item of page.experiments) {
+            if (item.kind !== "securityTest" || !item.baselineExchangeId || !item.securityTestResultJson) continue;
+            hydrated[item.baselineExchangeId] = { status: "done", result: item.securityTestResultJson as LiveSecurityTestResult };
+          }
+          // Live WS results (prev) win over hydrated ones for the same exchange id - connect()
+          // runs concurrently and may already have delivered a newer result for one of these.
+          setSecurityTests((prev) => ({ ...hydrated, ...prev }));
+          fetched += page.experiments.length;
+          if (!page.nextCursor || fetched >= MAX_RETAINED_SECURITY_TESTS) break;
+          cursor = page.nextCursor;
+        }
+      } catch (err) {
+        console.warn("[LiveSecurityTestPage] failed to hydrate security test results:", err);
       }
     }
 
@@ -1337,6 +2029,7 @@ export default function LiveSecurityTestPage() {
     }
 
     hydrateHistory();
+    hydrateSecurityTestResults();
     connect();
     return () => {
       cancelled = true;
@@ -1408,7 +2101,8 @@ export default function LiveSecurityTestPage() {
 
     setSecurityTests((prev) => {
       const next = { ...prev };
-      for (const exchange of selected) next[exchange.id] = { status: "running" };
+      const startedAt = Date.now();
+      for (const exchange of selected) next[exchange.id] = { status: "running", startedAt };
       return next;
     });
     lastSecurityDispatchAtRef.current = Date.now();
@@ -1429,6 +2123,33 @@ export default function LiveSecurityTestPage() {
       return;
     }
     if (singleBlockedSecurityHost) allowHost(singleBlockedSecurityHost, true);
+  }
+
+  function resetActiveSecurityQueue() {
+    clearSecurityQueueTimer();
+    lastSecurityDispatchAtRef.current = 0;
+    rateLimitWindowRef.current = [];
+    setAdaptiveDelayMs(0);
+    setRateLimitHitCount(0);
+    setSecurityTests({});
+    setActiveTestingPaused(false);
+    setActiveTestingPauseReason(null);
+    setAutoSecurityTesting(true);
+    setSecurityQueueTick((tick) => tick + 1);
+  }
+
+  function authorizeBlockedSecurityHosts() {
+    if (!connected || sessionStopped || scopeBlockedSecurityHosts.length === 0) return;
+    for (const host of scopeBlockedSecurityHosts) sendInput({ type: "allowHost", host });
+    setScope((prev) => ({
+      ...prev,
+      allowedHosts: Array.from(new Set([...prev.allowedHosts, ...scopeBlockedSecurityHosts])).sort(),
+    }));
+    setError(null);
+    setActiveTestingPaused(false);
+    setActiveTestingPauseReason(null);
+    setAutoSecurityTesting(true);
+    setSecurityQueueTick((tick) => tick + 1);
   }
 
   function startAutomatedScan() {
@@ -1540,6 +2261,27 @@ export default function LiveSecurityTestPage() {
             <Button type="button" size="sm" variant="outline" disabled={sessionStopped} onClick={reduceActiveRate}>
               Reduce rate
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={sessionStopped || securityTestAttempts.length === 0}
+              onClick={resetActiveSecurityQueue}
+              title="Clear in-browser active-test state and requeue captured API candidates"
+            >
+              Reset queue
+            </Button>
+            {scopeBlockedSecurityHosts.length > 1 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!connected || sessionStopped}
+                onClick={authorizeBlockedSecurityHosts}
+              >
+                Authorize hosts ({scopeBlockedSecurityHosts.length})
+              </Button>
+            )}
             <Button type="button" size="sm" disabled={capturedApiActionDisabled} onClick={runCapturedApiAction}>
               <span className="inline-flex items-center gap-1.5">
                 {securityTestingActive && <InlineSpinner />}
@@ -1606,7 +2348,7 @@ export default function LiveSecurityTestPage() {
                   rate: <code>{rateLabel(effectiveDispatchDelayMs)}</code>
                 </span>
                 <span className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700">
-                  429/503+: <code>{rateLimitedResponses}</code>
+                  rate-limit/WAF: <code>{rateLimitedResponses}</code>
                 </span>
                 <span className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700">
                   adaptive: <code>{adaptiveDelayMs}ms</code>
@@ -1719,7 +2461,7 @@ export default function LiveSecurityTestPage() {
                   checked={trafficControl.pauseOnSustainedRateLimit}
                   onChange={(e) => setTrafficControl((current) => ({ ...current, pauseOnSustainedRateLimit: e.target.checked }))}
                 />
-                Pause on sustained 429/503+
+                Pause on sustained rate-limit/WAF
               </label>
               {(adaptiveDelayMs > 0 || rateLimitHitCount > 0) && (
                 <Button type="button" size="sm" variant="outline" onClick={resetAdaptiveThrottle}>
@@ -1750,16 +2492,11 @@ export default function LiveSecurityTestPage() {
                         </code>
                       </div>
                       <div className="mt-1 text-rose-800">{check.validation?.conclusion ?? check.description}</div>
-                      {findingExchange ? (
-                        <ReproductionTraceabilityPanel
-                          exchange={findingExchange}
-                          supportingProbes={result.supportingProbesByCheckId?.[check.id] ?? []}
-                        />
-                      ) : (
-                        <div className="mt-1 text-slate-500">
-                          Baseline request detail is no longer retained in this browser session; see Security test results below for the full request/response trail while it is still active, or reload from stored history.
-                        </div>
-                      )}
+                      <ReproductionStepsPanel
+                        row={liveSecurityReportRowFromResult(exchangeId, result, findingExchange)}
+                        result={result}
+                        check={check}
+                      />
                     </div>
                   );
                 })}
@@ -1860,9 +2597,37 @@ export default function LiveSecurityTestPage() {
             <CardTitle className="text-base">
               Security test results ({completedSecurityTests} completed{erroredSecurityTests > 0 ? `, ${erroredSecurityTests} failed` : ""})
             </CardTitle>
-            <span className="text-xs text-slate-500">
-              Showing latest {recentSecurityTestAttempts.length}
-            </span>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="text-xs text-slate-500">
+                Showing latest {recentSecurityTestAttempts.length} of {securityTestAttempts.length}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title="Download Markdown report with reproduction steps"
+                disabled={securityExporting !== null}
+                onClick={() => downloadSecurityReport("markdown")}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {securityExporting === "markdown" ? <InlineSpinner /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />}
+                  Report
+                </span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title="Download JSON results"
+                disabled={securityExporting !== null}
+                onClick={() => downloadSecurityReport("json")}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {securityExporting === "json" ? <InlineSpinner /> : <FileJson className="h-3.5 w-3.5" aria-hidden="true" />}
+                  JSON
+                </span>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="max-h-[420px] space-y-2 overflow-y-auto">
             {recentSecurityTestAttempts.map(({ exchangeId, test }) => {
@@ -2180,9 +2945,10 @@ export default function LiveSecurityTestPage() {
                                 </div>
                               )}
                               {check.status === "failed" && (
-                                <ReproductionTraceabilityPanel
-                                  exchange={exchange}
-                                  supportingProbes={securityTest.result.supportingProbesByCheckId?.[check.id] ?? []}
+                                <ReproductionStepsPanel
+                                  row={liveSecurityReportRowFromResult(exchange.id, securityTest.result, exchange)}
+                                  result={securityTest.result}
+                                  check={check}
                                 />
                               )}
                             </div>

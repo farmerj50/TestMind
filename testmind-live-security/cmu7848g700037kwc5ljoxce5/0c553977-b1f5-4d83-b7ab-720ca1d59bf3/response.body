@@ -1,0 +1,2211 @@
+<!doctype html>
+<html lang="en">
+<head>
+	
+	<meta charset="utf-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<meta name="description" content="MathWorks takes your privacy seriously. See what personal data we collect from you when you use our products and services. Find out more about your rights and options."/>
+
+	<link rel="icon" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/favicon.20260902221426407.ico" type="image/x-icon"/>
+	<link rel="canonical" href="https://www.mathworks.com/company/trust-center/privacy-policy.html"/>
+	<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+	
+	
+	<meta property="og:url" content="https://www.mathworks.com/company/trust-center/privacy-policy.html"/>
+	<meta property="og:description" content="MathWorks takes your privacy seriously. See what personal data we collect from you when you use our products and services. Find out more about your rights and options."/>
+	<meta property="og:title" content="MathWorks Privacy Policy"/>
+	<meta property="og:type" content="website"/>
+	
+
+	
+
+	
+	
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/webvitals.min.20260902221426407.js"></script>
+
+
+
+
+	
+	
+
+	
+	
+	
+
+	
+
+	
+	
+		
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260902221426407.css" type="text/css">
+
+
+
+		
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260902221426407.css" type="text/css">
+
+
+
+	
+	
+	
+	
+
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-300.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-400.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-500.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-700.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-300.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-400.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-500.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-700.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin/>
+	<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/mathworks.20260902221426407.woff" rel="preload" as="font" type="font/woff" crossorigin/>
+
+	
+		<script id="analyticsDigitalData"> digitalData = {
+  "pageInstanceID" : "https://www.mathworks.com/company/trust-center/privacy-policy.html",
+  "page" : {
+    "pageInfo" : {
+      "pageID" : "https://www.mathworks.com/company/trust-center/privacy-policy.html",
+      "destinationURL" : "https://www.mathworks.com/company/trust-center/privacy-policy.html"
+    },
+    "category" : {
+      "subCategory1" : "company/trust-center",
+      "subCategory2" : "company/trust-center/privacy-policy",
+      "pageType" : "coabtps"
+    },
+    "attributes" : {
+      "recommendationEntityId" : "dc33358e6590da8114919cf8bdb8ce26a69fae29"
+    }
+  },
+  "product" : [ {
+    "productInfo" : { }
+  } ],
+  "component" : [ ]
+};</script>
+		<script>(function(g,b,d,f){(function(a,c,d){if(a){var e=b.createElement("style");e.id=c;e.innerHTML=d;a.appendChild(e)}})(b.getElementsByTagName("head")[0],"at-body-style",d);setTimeout(function(){var a=b.getElementsByTagName("head")[0];if(a){var c=b.getElementById("at-body-style");c&&a.removeChild(c)}},f)})(window,document,"[class*='personalization-container']:not([id^='web-application']) {opacity: 0 !important}",1E3);</script> <script src="//assets.adobedtm.com/d0cc0600946eb3957f703b9fe43c3590597a8c2c/satelliteLib-e8d23c2e444abadc572df06537e2def59c01db09.js" async></script>
+
+	
+	
+
+	
+
+	
+
+	<title>MathWorks Privacy Policy - MATLAB &amp; Simulink</title>
+	
+
+
+
+
+                                <script>!function(a){var e="https://s.go-mpulse.net/boomerang/",t="addEventListener";if("False"=="True")a.BOOMR_config=a.BOOMR_config||{},a.BOOMR_config.PageParams=a.BOOMR_config.PageParams||{},a.BOOMR_config.PageParams.pci=!0,e="https://s2.go-mpulse.net/boomerang/";if(window.BOOMR_API_key="LERXA-6VNES-W6PXS-U8C7F-BXSZH",function(){function n(e){a.BOOMR_onload=e&&e.timeStamp||(new Date).getTime()}if(!a.BOOMR||!a.BOOMR.version&&!a.BOOMR.snippetExecuted){a.BOOMR=a.BOOMR||{},a.BOOMR.snippetExecuted=!0;var i,_,o,r=document.createElement("iframe");if(a[t])a[t]("load",n,!1);else if(a.attachEvent)a.attachEvent("onload",n);r.src="javascript:void(0)",r.title="",r.role="presentation",(r.frameElement||r).style.cssText="width:0;height:0;border:0;display:none;",o=document.getElementsByTagName("script")[0],o.parentNode.insertBefore(r,o);try{_=r.contentWindow.document}catch(O){i=document.domain,r.src="javascript:var d=document.open();d.domain='"+i+"';void(0);",_=r.contentWindow.document}_.open()._l=function(){var a=this.createElement("script");if(i)this.domain=i;a.id="boomr-if-as",a.src=e+"LERXA-6VNES-W6PXS-U8C7F-BXSZH",BOOMR_lstart=(new Date).getTime(),this.body.appendChild(a)},_.write("<bo"+'dy onload="document._l();">'),_.close()}}(),"".length>0)if(a&&"performance"in a&&a.performance&&"function"==typeof a.performance.setResourceTimingBufferSize)a.performance.setResourceTimingBufferSize();!function(){if(BOOMR=a.BOOMR||{},BOOMR.plugins=BOOMR.plugins||{},!BOOMR.plugins.AK){var e=""=="true"?1:0,t="",n="mm6qf6qx332eg2vnpoza-f-2ac72c68c-clientnsv4-s.akamaihd.net",i="false"=="true"?2:1,_={"ak.v":"41","ak.cp":"1460359","ak.ai":parseInt("195948",10),"ak.ol":"0","ak.cr":13,"ak.ipv":4,"ak.proto":"h2","ak.rid":"8c31ede9","ak.r":50502,"ak.a2":e,"ak.m":"x","ak.n":"essl","ak.cport":54040,"ak.gh":"23.47.125.6","ak.quicv":"","ak.tlsv":"tls1.3","ak.0rtt":"","ak.0rtt.ed":"","ak.csrc":"-","ak.acc":"","ak.t":"1789754290","ak.ak":"hOBiQwZUYzCg5VSAfCLimQ==JLl2XJjUgcIoyDWWh3CgSV+kSnexLKL4p2oEZm34DJDHzV7mtc0Uajsn8EbwBI4qWx9lNtazF+jQU9YpJUAHNPHByAmcGlkmbsfYTOA232hgcHT/UR82xoUgtgS805whcv4q8yFzOamnP79iHiw9nHFTqkg2YfJilkA6oWCx6BjVHcj+sohEQk585S8UkKN6aUokOoWqUht35S48j82+Iavz9swIqfvbvf3HL0zQlhOwtQnz3ji5hB3WrEnjdGVB1yBpk1QJ0LkNDSOZey4O3rcT7XGnLHCPNPCnhCyCgJl+US/b6J6RkKBnzfa4i+VphpG2YvzA9qwXWzcMcGCfm+9t1r31O4y6Mqem1s8NXbfYLLvNdQsfqE78SJ2B1dK28ahM7nl9yOsVit2NTasZb+YbfIls7HqrPbPfH003RSk=","ak.pv":"302","ak.dpoabenc":"","ak.tf":i};if(""!==t)_["ak.ruds"]=t;var o={i:!1,av:function(e){var t="http.initiator";if(e&&(!e[t]||"spa_hard"===e[t]))_["ak.feo"]=void 0!==a.aFeoApplied?1:0,BOOMR.addVar(_)},rv:function(){var a=["ak.cport","ak.cr","ak.csrc","ak.gh","ak.ipv","ak.m","ak.n","ak.ol","ak.proto","ak.quicv","ak.tlsv","ak.0rtt","ak.0rtt.ed","ak.r","ak.acc","ak.t","ak.tf"];BOOMR.removeVar(a)}};BOOMR.plugins.AK={akVars:_,akDNSPreFetchDomain:n,init:function(){if(!o.i){var a=BOOMR.subscribe;a("before_beacon",o.av,null,null),a("onbeacon",o.rv,null,null),o.i=!0}return this},is_complete:function(){return!0}}}}()}(window);</script></head>
+
+
+
+	<body class="site_lang_en  
+		  
+		  
+		  
+		  
+ 		  -has_corporatenav
+		  
+		  
+		  
+		  " data-cid="mktg">
+		<a class="skip_link visually-hidden-focusable" href="#main">Skip to content</a>
+
+		
+
+	<header class="-has_matrix
+					 -has_mwa
+					 -has_store
+					 -has_topnav
+					 
+					 ">
+		<nav class="navbar navbar-expand-lg" aria-label="Main navigation">
+			<div class="container-fluid container-lg">
+				<div class="d-lg-flex flex-row align-items-center" id="header_content_container">
+					<a href="/?s_tid=gn_logo" class="navbar-brand d-inline-block">
+						<img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo-rev.20260902221426407.svg" class="mw_logo" alt="MathWorks" width="148" height="30"/>
+						
+					</a>
+
+					
+
+					<div class="d-flex d-lg-none" id="global_mobile_actuator_container_search">
+						<button class="navbar-toggler btn collapsed" id="global_search_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_search_mobile" data-bs-target="#global_search_mobile" aria-controls="global_search_mobile" aria-expanded="false" aria-label="Toggle Search">
+							<span class="icon-search"></span>
+						</button>
+					</div>
+					<div class="navbar-collapse collapse" id="global_search_mobile">
+						<div id="global_search_mobile_placeholder"></div>
+						<div id="global_search_container">
+							<div class="sectionHeadSearchBox sectionheadsearchbox containsResourceName resourceClass-sectionheadsearchbox">
+
+	
+		
+		<form name="search" id="site_search" class="site_search" action="/search.html" method="get">
+			<div class="input-group">
+				<label id="search-mathworks" class="visually-hidden sr-only" for="query">Search MathWorks.com</label>
+				<input type="hidden" name="c[]" value="entire_site"/>
+				<input type="search" name="q" id="query" class="form-control rounded-start" placeholder="Search MathWorks.com" autocomplete="off" data-site-domain="www" data-site-language="en"/>
+				<button type="button" id="clearsearch" class="btn btn_color_blue icon-remove visually-hidden-focusable" aria-label="Clear search"></button>
+				<button type="submit" id="searchbutton" class="btn btn_color_blue icon-search" aria-label="Search"></button>
+			</div>
+		</form>
+	
+
+	
+
+	
+
+</div>
+
+						</div>
+					</div>
+
+
+					<div class="d-flex d-lg-none" id="global_mobile_actuator_container_navigation">
+						<button class="navbar-toggler collapsed btn" id="global_navigation_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_navigation" data-bs-target="#global_navigation" aria-controls="global_navigation" aria-expanded="false" aria-label="Toggle Main Navigation">
+							<span class="icon-menu-full"></span>
+						</button>
+					</div>
+					<div class="collapse navbar-collapse" id="global_navigation">
+						
+						<div class="topNavigation topnavigation containsResourceName resourceClass-topnavigation">
+
+
+
+	<ul class="navbar-nav flex-grow-1 align-items-lg-center mb-0">
+		
+		
+			<li class="nav-item dropdown" id="globalnav_item_products">
+				
+	
+	
+	
+
+	
+
+	<a href="/products.html?s_tid=nav_products" class="nav-link ">
+
+		
+
+		
+			
+			Products</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_solutions">
+				
+	
+	
+	
+
+	
+
+	<a href="/solutions.html?s_tid=nav_solutions" class="nav-link ">
+
+		
+
+		
+			
+			Solutions</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_learn">
+				
+				
+					<a href="#" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+						Learn
+					</a>
+					<div class="dropdown-menu">
+						<div class="container-lg">
+							<div class="mainParsys parsys containsResourceName resourceClass-parsys"><div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  ">
+
+	
+		<div class=" col-12 col-lg-8 d-flex flex-column "><div class="aac60a99-7f7f-4d47-970e-aec00a5723ab parsys containsResourceName resourceClass-parsys"><div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  ">
+
+	
+		<div class=" col-12 col-lg-4 "><div class="80698336-994f-499e-a17d-4016faea1756 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="globalnav_section_title">Training</p>
+<ul class="list-unstyled">
+ <li><a href="/learn/training.html?s_tid=nav_learn_training">Training Overview</a></li>
+ <li><a href="https://matlabacademy.mathworks.com/?s_tid=nav_learn_mlac">Self-Paced Online Courses</a></li>
+ <li><a href="/learn/training/classroom-courses.html?s_tid=nav+learn_classroom">Classroom Courses</a></li>
+ <li><a href="/learn/training/certification.html?s_tid=nav_learn_certification">MathWorks Certification Program</a></li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-12 col-lg-4 "><div class="755baf42-b699-4cd8-bc82-0bcca29bd064 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="globalnav_section_title">Events</p>
+<ul class="list-unstyled">
+ <li><a href="/company/events.html?s_tid=nav_learn_events">MATLAB and Simulink Events</a></li>
+ <li><a href="/company/events/conferences/search-proceedings.html?s_tid=nav_learn_proceedings&q=&page=1">Event Proceedings</a></li>
+ <li><a href="/videos/search.html?s_tid=nav_learn_webinars&q=&fq%5B%5D=video-external-category:recwebinar&page=1">On-Demand Webinars</a></li>
+ <li><a href="/academia/students/competitions.html?s_tid=nav_learn_comps">Competitions and Hackathons</a></li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-12 col-lg-4 "><div class="7126096f-3d8e-44f5-bb5f-e82d4f1dc2e7 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="globalnav_section_title">Learning Resources</p>
+<ul class="list-unstyled">
+ <li><a href="/academia/educators.html?s_tid=nav_learn_teach">Teach with MATLAB</a></li>
+ <li><a href="/academia/research.html?s_tid=nav_learn_research">Research with MATLAB</a></li>
+ <li><a href="/academia/students.html?s_tid=nav_learn_students">Student Programs</a></li>
+ <li><a href="/academia/books.html?s_tid=nav_learn_books">Books</a></li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+<div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  mt-auto d-none d-lg-block ">
+
+	
+		<div class=" col-lg-4 "><div class="49d1cea7-1177-44e0-aa7b-69d7774587ac parsys containsResourceName resourceClass-parsys"><div class="button containsResourceName resourceClass-button section">
+
+
+
+	
+	
+	
+	
+
+	<div class="d-grid">
+
+	<a href="/company/aboutus/contact_us.html?s_tid=nav_learn_contact" class="btn btn_color_blue add_margin_20 btn-outline " role="button">
+
+		
+
+		
+			
+			Contact us</a>
+
+		
+		
+	</div>
+
+
+
+
+
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+<div class="horizontalrule containsResourceName section resourceClass-horizontalrule">
+
+<hr/>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  add_link_underline">
+	<p>Visit the <a href="https://www.mathworks.com/help/?s_tid=nav_learn_hc">Help Center</a> to explore product documentation, engage with community forums, check release notes, and more.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-lg-4 d-none d-lg-flex col-xl-3 offset-xl-1 "><div class="6c271095-d40d-4eba-b02a-657255faf52e parsys containsResourceName resourceClass-parsys"><div class="cqPanel containsResourceName resourceClass-panel section">
+
+
+
+<div class="panel panel-default  ">
+	
+
+	
+
+	
+	<div class="panel-heading add_background_cover add_min_height_150 https___www_mathworks_com_shared_content_corporate_nav_learn__jcr_content_mainParsys_columns_copy_6c271095_d40d_4eba_b02a_657255faf52e_panel_copy_headerImage" style="background-image: url('https://www.mathworks.com/shared-content/corporate-nav/learn/_jcr_content/mainParsys/columns_copy/6c271095-d40d-4eba-b02a-657255faf52e/panel_copy/headerImage.adapt.1200.low.jpg/1789665139950.jpg');">
+		
+
+	
+		
+			
+			<style data-aem-src="/content/dam/mathworks/mathworks-dot-com/images/responsive/supporting/videos/video-portal-thumbnail.jpg">
+				@media screen and (min-width: 992px) { .https___www_mathworks_com_shared_content_corporate_nav_learn__jcr_content_mainParsys_columns_copy_6c271095_d40d_4eba_b02a_657255faf52e_panel_copy_headerImage { background-image: url(https://www.mathworks.com/shared-content/corporate-nav/learn/_jcr_content/mainParsys/columns_copy/6c271095-d40d-4eba-b02a-657255faf52e/panel_copy/headerImage.adapt.full.medium.jpg/1789665139950.jpg) !important; }}
+				@media screen and (min-width: 768px) and (max-width: 991px){ .https___www_mathworks_com_shared_content_corporate_nav_learn__jcr_content_mainParsys_columns_copy_6c271095_d40d_4eba_b02a_657255faf52e_panel_copy_headerImage { background-image: url(https://www.mathworks.com/shared-content/corporate-nav/learn/_jcr_content/mainParsys/columns_copy/6c271095-d40d-4eba-b02a-657255faf52e/panel_copy/headerImage.adapt.full.low.jpg/1789665139950.jpg) !important; }}
+			</style>
+		
+		
+		
+	
+
+		
+		
+			
+		
+	</div>
+
+	<div class="panel-body null">
+		
+			
+			
+				
+			
+			
+			<div class="panelParsys parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="h3 add_margin_5">MATLAB and Simulink Videos</p>
+<p class="add_margin_10">Learn about products, watch demonstrations, and explore what's new.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="actionlink containsResourceName section resourceClass-actionlink">
+
+
+
+	
+	
+	
+	
+	
+
+	
+
+	<a href="/videos.html?s_tid=nav_learn_spotlight_videos" class=" icon-chevron add_margin_20 add_margin_0 stretched-link ">
+
+		
+
+		
+			
+			Explore videos</a>
+
+		
+		
+	
+
+
+
+</div>
+
+</div>
+
+		
+	</div>
+
+	
+	
+
+</div>
+
+
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260902221426407.css" type="text/css">
+
+
+
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+
+</div>
+
+						</div>
+					</div>
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_company">
+				
+				
+					<a href="#" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+						Company
+					</a>
+					<div class="dropdown-menu">
+						<div class="container-lg">
+							<div class="mainParsys parsys containsResourceName resourceClass-parsys"><div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  ">
+
+	
+		<div class=" col-12 col-lg-8 d-flex flex-column "><div class="aac60a99-7f7f-4d47-970e-aec00a5723ab parsys containsResourceName resourceClass-parsys"><div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  ">
+
+	
+		<div class=" col-12 col-lg-4 "><div class="80698336-994f-499e-a17d-4016faea1756 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="globalnav_section_title">About MathWorks</p>
+<ul class="list-unstyled">
+ <li><a href="/company.html?s_tid=nav_company_about_us">Overview</a></li>
+ <li><a href="/company/aboutus/mission_values.html?s_tid=nav_company_mv">Mission and Values</a></li>
+ <li><a href="/company/aboutus/sustainability.html?s_tid=nav_company_sustainability">Sustainability at MathWorks</a></li>
+ <li><a href="/company/aboutus/soc_mission.html?s_tid=nav_company_sm">Social Mission</a></li>
+ <li><a href="/company/customer-stories.html?s_tid=nav_company_cs">Customer Stories</a></li>
+ <li><a href="/company/aboutus/founders.html?s_tid=nav_company_founders">Founders</a></li>
+ <li><a href="/company/aboutus/contact_us.html#offices&s_tid=nav_company_offices">Worldwide Offices</a></li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-12 col-lg-4 "><div class="755baf42-b699-4cd8-bc82-0bcca29bd064 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="globalnav_section_title">Careers</p>
+<ul class="list-unstyled">
+ <li><a href="/company/jobs/opportunities.html?s_tid=nav_company_careers">Overview</a></li>
+ <li><a href="/company/jobs/opportunities/search/?s_tid=nav_company_jobs">Job Search</a></li>
+ <li><a href="/company/jobs/teams-roles.html?s_tid=nav_company_teams">Teams and Roles</a></li>
+ <li><a href="/company/jobs/students.html?s_tid=nav_company_students">Students and New Careers</a></li>
+ <li><a href="/company/jobs/apply/sign_in?s_tid=nav_company_careers_act">Careers Account</a></li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-12 col-lg-4 "><div class="cb6530a3-f91b-435f-bb1e-986d8f7b4b25 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="globalnav_section_title">Newsroom</p>
+<ul class="list-unstyled">
+ <li><a href="/content/dam/mathworks/fact-sheet/2026-company-factsheet-8-5x11-8282v27.pdf?s_tid=nav_company_news" target="_blank">Newsroom Home</a></li>
+ <li><a href="/content/dam/mathworks/fact-sheet/2026-company-factsheet-8-5x11-8282v27.pdf" target="_blank">Company Fact Sheet</a></li>
+ <li><a href="/company/newsroom/press-releases.html?s_tid=nav_company_pr">Press Releases</a></li>
+ <li><a href="/company/newsroom/contact.html?s_tid=nav_company_contact_pr">Contact PR</a></li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+<div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  mt-auto d-none d-lg-block ">
+
+	
+		<div class=" col-lg-4 "><div class="49d1cea7-1177-44e0-aa7b-69d7774587ac parsys containsResourceName resourceClass-parsys"><div class="button containsResourceName resourceClass-button section">
+
+
+
+	
+	
+	
+	
+
+	<div class="d-grid">
+
+	<a href="/company/aboutus/contact_us.html?s_tid=nav_company_contact" class="btn btn_color_blue add_margin_0 btn-outline " role="button">
+
+		
+
+		
+			
+			Contact us</a>
+
+		
+		
+	</div>
+
+
+
+
+
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-lg-4 d-none d-lg-flex col-xl-3 offset-xl-1 "><div class="6c271095-d40d-4eba-b02a-657255faf52e parsys containsResourceName resourceClass-parsys"><div class="cqPanel containsResourceName resourceClass-panel section">
+
+
+
+<div class="panel panel-default add_margin_0 ">
+	
+
+	
+
+	
+	<div class="panel-heading add_background_cover add_min_height_150 https___www_mathworks_com_shared_content_corporate_nav_company__jcr_content_mainParsys_columns_6c271095_d40d_4eba_b02a_657255faf52e_panel_headerImage" style="background-image: url('https://www.mathworks.com/shared-content/corporate-nav/company/_jcr_content/mainParsys/columns/6c271095-d40d-4eba-b02a-657255faf52e/panel/headerImage.adapt.1200.low.jpg/1789665121592.jpg');">
+		
+
+	
+		
+			
+			<style data-aem-src="/content/dam/mathworks/mathworks-dot-com/images/responsive/supporting/company/jobs/what-we-do/careers-what-we-do-page-thumbnail.jpg">
+				@media screen and (min-width: 992px) { .https___www_mathworks_com_shared_content_corporate_nav_company__jcr_content_mainParsys_columns_6c271095_d40d_4eba_b02a_657255faf52e_panel_headerImage { background-image: url(https://www.mathworks.com/shared-content/corporate-nav/company/_jcr_content/mainParsys/columns/6c271095-d40d-4eba-b02a-657255faf52e/panel/headerImage.adapt.full.medium.jpg/1789665121592.jpg) !important; }}
+				@media screen and (min-width: 768px) and (max-width: 991px){ .https___www_mathworks_com_shared_content_corporate_nav_company__jcr_content_mainParsys_columns_6c271095_d40d_4eba_b02a_657255faf52e_panel_headerImage { background-image: url(https://www.mathworks.com/shared-content/corporate-nav/company/_jcr_content/mainParsys/columns/6c271095-d40d-4eba-b02a-657255faf52e/panel/headerImage.adapt.full.low.jpg/1789665121592.jpg) !important; }}
+			</style>
+		
+		
+		
+	
+
+		
+		
+			
+		
+	</div>
+
+	<div class="panel-body null">
+		
+			
+			
+				
+			
+			
+			<div class="panelParsys parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="h3 add_margin_5">What We Do</p>
+<p class="add_margin_10">Explore our core products and how they’re used to accelerate the pace of engineering and science.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="actionlink containsResourceName section resourceClass-actionlink">
+
+
+
+	
+	
+	
+	
+	
+
+	
+
+	<a href="/company/jobs/resources/what-we-do.html?s_tid=nav_company_wwd" class=" icon-chevron add_margin_20 add_margin_0 stretched-link ">
+
+		
+
+		
+			
+			Learn more</a>
+
+		
+		
+	
+
+
+
+</div>
+
+</div>
+
+		
+	</div>
+
+	
+	
+
+</div>
+
+
+    
+
+
+
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+
+</div>
+
+						</div>
+					</div>
+				
+			</li>
+		
+			<li class="nav-item dropdown -alignment_lg_end" id="globalnav_item_help">
+				
+	
+	
+	
+
+	
+
+	<a href="/help/?s_tid=nav_help_doc" class="nav-link ">
+
+		
+
+		
+			
+			Help Center</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+
+		
+		<li class="nav-item  d-none d-lg-block add_background_color_blue -alignment_lg_end" id="globalnav_item_matlab">
+			
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&s_tid=gn_getml" style="display:none;" class="not-logged-in btn btn_color_blue btn-outline " data-link="lead" data-offerType="trial">
+
+		
+
+		
+			
+			Get MATLAB</a>
+
+		
+		
+	
+
+			
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&s_tid=gn_getml" style="display:none;" class="logged-in btn btn_color_blue btn-outline " data-link="lead" data-offerType="trial">
+
+		
+
+		
+			
+			MATLAB</a>
+
+		
+		
+	
+
+
+			
+			
+
+		</li>
+
+		
+		
+			<li class="nav-item dropdown -alignment_lg_end" id="globalnav_item_mwa">
+				<a href="#" class="nav-link headernav_login mwa-nav_login" id="mwanav_item_login" style="display: none;" aria-label="Sign In to Your MathWorks Account">
+					Sign In
+				</a>
+
+				<a href="#" class="nav-link headernav_logout dropdown-toggle" id="mwanav_actuator" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" style="display: none;" title="Access your MathWorks Account">
+					<span class="mwanav_avatar mwa_image_drop_down"></span>
+					<span class="mobile_account_name visually_hidden_xxl visually_hidden_xl visually_hidden_lg hidden-md hidden-lg"></span>
+				</a>
+				<ul class="dropdown-menu dropdown-menu-lg-end" id="mwanav_dropdown_menu">
+					<li id='mwanav_item_account'><a class='mwa-account dropdown-item'>My Account</a></li>
+					<li id='mwanav_item_community'><a class='mwa-community-profile dropdown-item'>My Community Profile</a></li>
+					<li id='mwanav_item_associate'><a class='mwa-link-license dropdown-item'>Link License</a></li>
+					<li><hr class="dropdown-divider"/></li>
+					<li id='mwanav_item_logout'><a class='mwa-logout dropdown-item'>Sign Out</a></li>
+				</ul>
+			</li>
+		
+
+		<li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_divider"><hr class="dropdown-divider"/></li>
+
+		<li class="nav-item d-block d-sm-flex gap-3 d-lg-none" id="globalnav_item_mobile_ctas">
+			
+				
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&s_tid=gn_getml" style="display:none !important;" class="not-logged-in btn btn-outline btn_color_orange d-block flex-grow-1 companion_btn " data-link="lead" data-offerType="trial">
+
+		
+
+		
+			
+			Get MATLAB</a>
+
+		
+		
+	
+
+				
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&s_tid=gn_getml" style="display:none !important;" class="logged-in btn btn-outline btn_color_orange d-block flex-grow-1 companion_btn " data-link="lead" data-offerType="trial">
+
+		
+
+		
+			
+			MATLAB</a>
+
+		
+		
+	
+
+				
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/contact_us.html?s_tid=gn_ps" class="btn btn-outline btn_color_blue d-block flex-grow-1 companion_btn ">
+
+		
+
+		
+			
+			Contact Us</a>
+
+		
+		
+	
+
+			
+		</li>
+
+		
+
+		
+
+		<li class="nav-item dropdown d-none d-lg-block -alignment_lg_end" id="globalnav_item_search">
+			<a href="#" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Search"><span class="icon-search"></span></a>
+			<div class="dropdown-menu">
+				<div class="container-lg">
+					<div class="row align-items-center">
+						
+						<div class="col-12 col-lg-4">
+							<p class="h1">Search</p>
+						</div>
+						<div class="col-12 col-lg-8">
+							<div id="global_search_desktop_placeholder"></div>
+						</div>
+						
+						
+					</div>
+				</div>
+			</div>
+		</li>
+
+		
+	</ul>
+
+
+	
+
+
+</div>
+
+					</div>
+				</div>
+
+				
+			</div>
+		</nav>
+	</header>
+
+
+
+		
+
+
+	<div class="sticky-top" id="sticky_container">
+		
+		<div class="sectionHead sectionhead containsResourceName resourceClass-sectionhead">
+
+	<div class="section_banner" id="section_banner">
+		<div class="container-fluid container-lg">
+			<div class="row align-items-center">
+				<div class="col-12">
+					<div class="section_banner_title">
+						
+						<p class="h1">
+							<a href="/company/trust-center.html" class="add_cursor_pointer">Trust Center</a>
+							
+						</p>
+						
+						
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+
+
+
+</div>
+
+		
+		
+	</div>
+
+
+
+
+
+		
+
+		<div class="content_container" id="content_container">
+			<div class="container-fluid container-lg">
+				
+
+<main id="main" tabindex="-1">
+	
+	<section><div class="mainParsys parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text add_margin_20 ">
+	<h1>MathWorks Privacy Policy</h1>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  ">
+
+	
+		<div class=" col-12 col-md-9 "><div class="22a5f5e5-7876-46c0-a600-6cacf1364bd1 parsys containsResourceName resourceClass-parsys"><div class="reference parbase containsResourceName resourceClass-reference section">
+
+
+<div class="cq-dd-paragraph"><div class="1 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p><i>Updated March 25, 2026</i></p>
+<p>The MathWorks, Inc. (“MathWorks”) and its <a href="/company/aboutus/contact_us.html#offices">worldwide offices</a> take your privacy seriously. This Privacy Policy describes what personal data we collect from you when you interact with MathWorks or use our products and services. It explains how we use your personal data and what rights and options you have. This Privacy Policy also describes our <a href="/company/aboutus/policies_statements.html#part1_7">compliance with global privacy laws, including the California Consumer Privacy Act (CCPA) and the European Union General Data Protection Regulation (GDPR)</a>.</p>
+<p>MathWorks does not sell or rent your information. We only disclose your information to third parties for the limited purposes described in this Privacy Policy.</p>
+<p>This Privacy Policy is presented in two parts. Part One describes our privacy practices generally. Part Two provides details on specific products and services, including our <a href="/company/aboutus/policies_statements.html#part2_2">web site</a> and our use of <a href="/company/aboutus/policies_statements.html#part2_3">cookies</a>.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h2><a name="part1" id="part1"></a>Part One: MathWorks Privacy Practices</h2>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_1" id="part1_1"></a>1. Information We Collect</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MathWorks may collect certain types of information about you when you access and use our products and services, visit our web site, or interact with us in other ways such as attending a MathWorks event. The categories of information we collect are:</p>
+<ul>
+ <li>Name and contact information, such as your first and last name, phone number, mailing address, email address, and country.</li>
+ <li>Organizational information, such as the name of your company or institution and your role and title.</li>
+ <li>Account information, such as your MathWorks Account&nbsp;login and password. We also may store account information that you provide to us relating to your accounts with third-party service providers, if you choose to integrate your MathWorks Account with your accounts on third-party services.</li>
+ <li>Payment information, such as your credit card number, if you make a purchase from us.</li>
+ <li>License information, such as the MathWorks products and services you have purchased and the licensed users and devices for those products.</li>
+ <li>Usage information, such as which MathWorks products and services you are using, which third-party products or services you are using that integrate with MathWorks products or services, when you access or use the products and services, error reports, and performance data. This includes web analytics information, such as the pages on our web site that you visited and the links you clicked on.</li>
+ <li>Device and network information, such as your IP address, operating system, preferred language, SSL certificates, and browser type.</li>
+ <li>The content of your communications to us, such as feedback, customer support requests, and technical support requests. These may include emails or recordings of phone calls.</li>
+ <li>Other information that you submit to MathWorks voluntarily, such as requests for information about upcoming events, files and data that you store using MathWorks online services, and submissions to community areas of the MathWorks web site.</li>
+</ul>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_2" id="part1_2"></a>2. How We Collect Information</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>We collect usage, device, and network information when you access our web site or use our products. The rest of the information listed above may come directly from you; from our authorized resellers and distributors, affiliates, vendors, or other business partners, such as companies that help us organize events; or from an organization or guardian who has authority to provide the information on your behalf.</p>
+<p>In cases where your organization licenses or purchases products or services that you use, creates an account on your behalf, or otherwise administers your use of MathWorks products and services, your use may be subject to your organization’s policies. Your license administrators can access certain information about you, such as your name, email address, the products to which you have access under your organization’s license,&nbsp;and information about your usage of those products. MathWorks is not responsible for the privacy or security practices of your organization, which may differ from those set forth in this Privacy Policy. If your organization is administering your use of MathWorks products and services, please direct your privacy inquiries to your organization or administrator.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_3" id="part1_3"></a>3. How We Use Your Information</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>We use the personal information that we collect for the following purposes:</p>
+<ul>
+ <li>To provide products, services, and support requested by you or on your behalf.</li>
+ <li>To process and ship orders that you place with us or that are placed on your behalf, and to provide you with documentation or other material in support of such orders.</li>
+ <li>To authenticate and secure your MathWorks Account or your use of our products and services.</li>
+ <li>To manage licenses and ascertain use of our products and services.</li>
+ <li>To administer and improve our products and services, including our web site.</li>
+ <li>To enable delivery of consulting or training services and participation in seminars, trade shows, and other events.</li>
+ <li>To provide any communication or material necessary to respond to an order for a product or service, a request for support or information, or an application for a seminar, trade show, or other event.</li>
+ <li>To solicit optional feedback in the form of surveys measuring customer satisfaction with MathWorks products, services, and events.</li>
+ <li>To notify you of new products, updates, or other information related to purchases or your information requests.</li>
+ <li>To provide important information regarding the renewal of agreements, version upgrades, and other notifications about products and services that you license or use.</li>
+ <li>To send promotional material about our company, products, services, and events and, in some cases, on behalf of related third-party products, services, and events. You may&nbsp;<a href="#part1_5">opt out of receiving promotional materials by email</a>.</li>
+ <li>To market and sell our products and services. You may opt out of marketing emails. MathWorks does not use personal information of K–12 students with school accounts for marketing purposes.&nbsp;</li>
+ <li>To allow you to integrate MathWorks products and services with third-party services at your request. This Privacy Policy does not apply to any such third-party services.</li>
+ <li>To process an employment-related request or application from you, subject to a separate Careers Privacy Policy.</li>
+ <li>To enforce our agreements or comply with obligations imposed by applicable laws, regulations, or a court or administrative order. We may be required to disclose an individual’s personal information in response to a lawful request by public authorities, including to meet national security or law enforcement requirements.</li>
+</ul>
+<p>We may store your information outside your country of residence, wherever we or our third-party service providers operate.</p>
+<p>We may retain your information for as long as needed to fulfill the purposes outlined in this Privacy Policy, or as allowed or required by law. We may also retain and use your information as necessary to comply with our legal obligations, resolve disputes, prevent fraud and abuse, and enforce our agreements. We determine how long to retain your information based on its purpose and usefulness. For example, if you once consented to receiving marketing emails but subsequently did not communicate with us or use any of our products or services, we may delete your information. However, if you have a perpetual license to one of our products, we may need to maintain a record of your license indefinitely.</p>
+<p>See&nbsp;<a href="#part2">Part Two</a>&nbsp;below for detailed information about how each of our products and services, including our web site, collects and uses data.&nbsp;<a href="#part2">Part Two also describes</a>&nbsp;our use of&nbsp;<a href="#part2_3">cookies</a>,&nbsp;<a href="#part2_4">web analytics</a>, and&nbsp;<a href="#part2_5">“Do Not Track” settings</a>.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_4" id="part1_4"></a>4. Reasons We Share Your Information</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MathWorks will not sell or rent your personal information to other companies. We will not disclose your personal information to other companies, except in the limited manner and for the limited purposes described in this Privacy Policy.</p>
+<p>MathWorks may share information with affiliates, partners, service providers, authorized resellers and distributors, and other third parties in order to fulfill the limited purposes described in <a href="#part1_3">Section 3 above</a>. These entities may be located throughout the world and fall into the following categories:</p>
+<ul>
+ <li>Web and systems infrastructure providers (e.g., providers of storage, databases, metrics, license management, business intelligence, social media, analytics, security services, and other information technology services)</li>
+ <li>Providers of products and services for business operations (e.g., accounting systems, contract management, payment processing, order fulfillment, support)</li>
+ <li>Affiliates and authorized distributors who may use information for MathWorks business purposes including marketing, sales, and support of MathWorks products and services</li>
+ <li>Event management, service providers, and co-sponsors for in-person and online events such as competitions, conferences, webinars, and training sessions (e.g., event registration, course credentials, distribution of materials)</li>
+</ul>
+<p>MathWorks may release current or past user information to third parties for limited purposes, such as investigative and enforcement purposes, in the event MathWorks believes that usage is (i) in violation of applicable MathWorks terms, and/or (ii) associated with the commission of unlawful acts. MathWorks may also disclose aggregate information that does not personally identify individuals to third parties.</p>
+<p>When we disclose personal information, we use a contract requiring the recipient to protect your personal data in compliance with law. If you have questions about the safeguards that we use to protect your data or would like to request a copy, you can contact us at <a href="mailto:privacy@mathworks.com">privacy@mathworks.com</a>.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_5" id="part1_5"></a>5. Your Choices About Your Information</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p><b>Opting out of marketing and sales commercial email communications</b></p>
+<p>MathWorks sends many types of email including product usage resources, event announcements, training opportunities, and details of release updates. We also may contact you for marketing or sales purposes using the information provided to us by you or on your behalf through our web site or through our sales channels, resellers and distributors, or business partners such as those who help us manage events. You may choose not to receive these types of communications.</p>
+<p>To opt out, you can unsubscribe online using the&nbsp;<a href="https://go2.mathworks.com/preference-center" target="_blank" data-link="lead" data-offerType="elqev">email list removal form</a>&nbsp;or follow the opt-out instructions contained in emails you receive.</p>
+<p><b>Informational communications</b></p>
+<p>For licensed customers, including trial users, we contact you for purposes of communicating with you about the MathWorks products or services that you are licensing or using. These are transactional messages that provide information about, for example, software updates, upcoming renewals, and new releases to which you have access under your current license. You cannot opt out of these messages while you have an active license because they contain important information about your licensed products and the services you are using.</p>
+<p><b>Blocking cookies and web-based advertising</b></p>
+<p>You can use browser settings and third-party services to block cookies, advertisements, and certain other kinds of information transmitted over the Internet. For more details, consult your web browser’s documentation and help pages, and see our sections below on cookies and third-party advertising.</p>
+<p><b>Changing, correcting, or deleting your personal information</b></p>
+<p><a href="https://login.mathworks.com/embedded-login/signin.html" target="_blank">MathWorks Account</a>&nbsp;holders may make changes and corrections to personal information online. If you have other questions or requests about your personal information, or wish to exercise any of your legal rights involving your personal information, please submit a <a href="/company/aboutus/data-subject-access-request.html?s_tid=sp_ban_cs" target="_blank">Customer Support privacy request</a> or contact us at&nbsp;<a href="mailto:privacy@mathworks.com">privacy@mathworks.com</a>.</p>
+<p>In some cases, we may not be able to fully comply with your requests. For example, even if you request that we delete your personal information, we may need to retain your data for legal purposes. In these cases, we will respond to your request and explain the extent to which we were able to comply.</p>
+<p><b>Connecting with third-party services</b></p>
+<p>If you choose to connect MathWorks products to third-party cloud services, such as online file storage, you will be asked to provide MathWorks with access to your account and files. MathWorks may store information about your account, including an access token, that will enable the MathWorks products to connect with the third-party cloud service. MathWorks will be able to access any accounts and files to which you authorize access on the third-party cloud service.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_6" id="part1_6"></a>6. Information Submitted to Community Areas</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>Users may submit information to community areas of MathWorks web sites that may be publicly accessible. For instance, users may create a community profile that includes a personal bio and social media links, participate in contests in MATLAB Central, contribute files and products to File Exchange and Add-On Explorer, rate and review tools in File Exchange and Add-On Explorer, or submit questions and comments to ThingSpeak™ Community. The content you submit to these community areas, including personal information, may not be subject to the protections afforded information collected in other sections of the MathWorks web site. The content you submit will be accessible from any part of the world via the Internet, and any information your submissions contain may be used by MathWorks and the public, both within and outside the country from which you posted.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_7" id="part1_7"></a>7. Compliance with Privacy Laws</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MathWorks complies with applicable privacy laws, including the EU General Data Protection Regulation (GDPR) and the California Consumer Privacy Act (CCPA), and adheres to fair information practice principles. These principles include: notice, choice, accountability for onward transfer, security, data integrity and purpose limitation, access, and recourse, enforcement, and liability.</p>
+<p><b>GDPR, CCPA/CPRA, and global privacy laws</b></p>
+<p>If you are subject to the GDPR or other applicable privacy laws, you have the right to make certain requests about your personal data. You may exercise these rights by submitting a <a href="/company/aboutus/data-subject-access-request.html?s_tid=sp_ban_cs" target="_blank">Customer Support privacy request</a> or contacting us at <a href="mailto:privacy@mathworks.com">privacy@mathworks.com</a>, or for California residents, calling our toll-free phone number at (833) 917-2250. You may make a request relating to your own personal data, but not data about another person without legal authorization. In order to comply with legal requirements to verify your identity before responding to a personal data request, MathWorks will ask for certain information including your first name, last name, email address, and geographic region. MathWorks will not discriminate or retaliate against you for exercising your privacy rights conferred by law.</p>
+<p>You have the right to request access to your personal data, request that MathWorks correct your personal data so that it is accurate and up to date, or request that your personal data be restricted or removed.</p>
+<p>You have the right to object to the processing of your personal data on the grounds that the processing is not lawful. You have the right to data portability, the right to withdraw consent to processing, and the right to lodge a complaint with a supervisory authority.</p>
+<p>You also have the right to object to the processing of your personal data for direct marketing purposes at any time and free of charge.</p>
+<p>MathWorks generally relies on legitimate interests, also known as business purposes, as the lawful basis for processing personal data. Specific legitimate interests are listed in Section 3 (How We Use Your Information) above. In addition, when you enter into a legal or business transaction with us, such as a purchase, a software license, or other legal contract, we need to store and use personal information associated with that transaction to enforce our rights under the transaction and to meet our legal obligations to you or to government authorities. We rely on consent when you give us information for a specified reason, such as registering for an event. If you choose not to provide information, our ability to provide you with certain products and services may be limited to the extent that such products and services depend on the information.</p>
+<p>For CCPA/CPRA purposes: (1)The categories of personal information collected by MathWorks are “identifiers” and “Internet or other electronic network activity information.” (2) “Sharing” is limited to placing cookies and non-identifiable information that can be accessed by third-party social media networks as described in Part Two, Section 4 (Web analytics, social media, and third-party advertising) below.</p>
+<p>For GDPR purposes, MathWorks representative is The MathWorks GmbH, Weihenstephaner Str. 6, 81673 München, Germany.</p>
+<p><b>Data Privacy Framework and privacy inquiries</b></p>
+<p>MathWorks complies with the EU-U.S. Data Privacy Framework (EU-U.S. DPF), the UK Extension to the EU-U.S. DPF, and the Swiss-U.S. Data Privacy Framework (Swiss-U.S. DPF) as set forth by the U.S. Department of Commerce. MathWorks has certified to the U.S. Department of Commerce that it adheres to the EU-U.S. Data Privacy Framework Principles (EU-U.S. DPF Principles) with regard to the processing of personal data received from the European Union in reliance on the EU-U.S. DPF and from the United Kingdom (and Gibraltar) in reliance on the UK Extension to the EU-U.S. DPF. MathWorks has certified to the U.S. Department of Commerce that it adheres to the Swiss-U.S. Data Privacy Framework Principles (Swiss-U.S. DPF Principles) with regard to the processing of personal data received from Switzerland in reliance on the Swiss-U.S. DPF. If there is any conflict between the terms in this privacy policy and the EU-U.S. DPF Principles and/or the Swiss-U.S. DPF Principles, the Principles shall govern. MathWorks remains liable in cases of onward transfer to third parties in accordance with the DPF and applicable privacy laws. MathWorks is subject to the investigatory and enforcement powers of the Federal Trade Commission (FTC). <a href="https://www.dataprivacyframework.gov/s/" target="_blank">Learn more about the Data Privacy Framework (DPF) program and view our certification</a>. (Note: to view MathWorks certification in the DPF directory, please search for “The MathWorks”.)</p>
+<p>In compliance with privacy laws and the DPF, MathWorks commits to resolve complaints about your privacy and our collection or use of your personal information. Individuals with inquiries or complaints regarding this Privacy Policy should first contact MathWorks by emailing <a href="mailto:privacy@mathworks.com">privacy@mathworks.com</a> or by sending mail to the following address: Head of Customer Service, MathWorks, 1 Apple Hill Drive, Natick, MA 01760. Sensitive personal information may be sent by fax to 1-508-647-7061.</p>
+<p>MathWorks has further committed to refer unresolved privacy complaints under the DPF to an independent dispute resolution mechanism, the BBB National Programs Data Privacy Framework Services, operated by BBB National Programs based in the United States. If you do not receive timely acknowledgment of your complaint, or if your complaint is not satisfactorily addressed, you can get more information and file a complaint using the <a href="https://bbbprograms.org/programs/all-programs/dpf-consumers" target="_blank">BBB National Programs Dispute Resolution Process</a>. This service is provided free of charge to you. Please note that if your complaint is not resolved through these channels, under limited circumstances, a binding arbitration option may be available.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part1_8" id="part1_8"></a>8. Changes to the Privacy Policy</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MathWorks may modify this Privacy Policy at any time, and such modifications shall be effective immediately upon posting of the modified Privacy Policy. Notification of material changes to this Privacy Policy will be provided by noting a new "updated" date at the top of this Privacy Policy.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h2><a name="part2" id="part2"></a>Part Two: Privacy in Specific MathWorks Products and Services</h2>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_1" id="part2_1"></a>1. MathWorks Account</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>Most MathWorks products and services are accessed using your MathWorks Account. Your name, email address, country, and the reason for your use of MathWorks products and services are required to create a MathWorks Account. This information is provided by either you or your organization at the time the account is created. We do not allow children under 13 to create a MathWorks Account. Accounts for children must be created by an authorized adult who can consent on the child’s behalf.</p>
+<p>You have the option of using&nbsp;<a href="/mathworks-account/content/two-step-verification/frequently-asked-questions.html">Two-Step Verification</a>&nbsp;for your MathWorks Account. This option can be enabled or disabled from the Security Settings page when you are signed in to your MathWorks Account. If you enable Two-Step Verification, you will provide an email address or phone number where we can send you verification codes. We will only use this information for the purpose of sending you verification messages. MathWorks uses a third-party communications provider to send the text messages used for Two-Step Verification. We have a contract that requires the communications provider to keep your phone number confidential, only use it for the purpose of sending verification codes, and only retain it as required by law. You may also be able to receive verification codes via a third-party app that you choose to install on your mobile device.</p>
+<p>When you are signed in to your MathWorks Account, MathWorks can link your login and usage with licenses and subscriptions to MathWorks products and services to which you have access.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_2" id="part2_2"></a>2. Web site and online services</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>When you visit the MathWorks web site and otherwise use our online services, we collect usage, device, and network information such as your IP address, the type of operating system and web browser you are using, and which areas you visit. We may use data collected in web server log files, JavaScript code, and cookies (as further described below). We use this information for purposes such as administering our web site, helping to diagnose problems with our technology infrastructure, providing visitors with relevant content, and analyzing visitors’ behavior to better understand their needs.</p>
+<p>The MathWorks web site also has several forms and additional collection methods that request contact, payment, and other information. Providing this information is optional, but you may be unable to complete certain transactions, obtain certain services, or access certain features of the MathWorks web site or software without providing the requested information. When you voluntarily submit information to us through a form on our web site and that information is not part of a legal or business transaction (for example, if you download a white paper or send us feedback), you consent to the storage and use of your information for the purpose for which it was submitted and your information may also be used for sales and marketing purposes unless you&nbsp;<a href="#part1_5">opt out</a>.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_3" id="part2_3"></a>3. Cookies</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>When you visit the MathWorks web site or otherwise use our online services, one or more cookies are placed on (or read from) your machine if your browser is set to accept cookies. A cookie is a small data file that we transfer to your computer’s hard drive through your web browser. A cookie consists of a simple code that is used to access your account information, maintain current session data, gather broad demographic information, and help analyze web site traffic. MathWorks may use the information in cookies for a variety of purposes including, but not limited to, market research and improving the content of our web site. Cookies may also be accessible to third parties for the web analytics, social media, and advertising purposes described below.</p>
+<p>Some cookies are used for internal purposes, such as keeping you signed in to your MathWorks Account or telling us which pages you have visited. Other cookies are shared with third parties; see the&nbsp;<a href="#part2_4">web analytics, social media, and third-party advertising section</a>&nbsp;below for an explanation of how these are used. MathWorks also sets cookies that look at your preferences when you use the web site so that MathWorks may offer you tailored marketing information that you may be interested in.<br></p>
+<p>Although web browsers typically allow cookies by default, you may choose not to receive cookies by modifying the settings of your web browser to disable cookies. Where required, you may opt out of cookies that are not essential to provide the web site or online service. You can also set your browser to notify you when you receive a cookie, giving you the chance to decide whether to accept it. If you choose to decline cookies, you may not be able to take advantage of all the features of the MathWorks web site and online services.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_4" id="part2_4"></a>4. Web analytics, social media, and third-party advertising</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MathWorks engages a third-party web traffic analysis company to log aggregate information coming through our web site on our behalf. MathWorks controls how that data may and may not be used. When you visit our web site, the third-party web traffic analysis company may use technical tracking methods such as cookies (which may be listed under the domains mathworks.com, mathworks.demdex.net, or 2o7.net), and web beacons, on our behalf, and may receive information about your browsing on our web site. We may also use these technical tracking methods in emails to determine whether the recipients have opened such emails, clicked on links contained in those emails, and continued to browse our web site.</p>
+<p>We direct the third-party web traffic analysis company to collect information that is unique to individual visitors. The information collected is not personally identifiable to the third-party web traffic analysis company. We do not share any personally identifiable information, such as your name, mailing address, or email address, with the third-party web traffic analysis company.</p>
+<p>MathWorks may work with select third-party partners who use cookies, web beacons, and other storage technologies to provide measurement services and serve you MathWorks related content, including MathWorks advertisements, on their web sites or elsewhere on the Internet, based on your prior visits to our web site. We allow third-party companies, including social media web sites, to collect certain anonymous information when you share or bookmark content from our web site. We do not provide any personally identifiable information to these third-party companies. However, if these companies already have information about you or have also stored cookies on your computer, they may be able to match the non-identifiable information with their existing information to identify you.</p>
+<p>California residents may exercise their right to opt-out of behavioral advertising by clicking the “Your Privacy Choices” link below. If you wish to opt-out of behavioral advertising on third-party web sites, visit the <a href="https://thenai.org/how-to-opt-out/" target="_blank">Network Advertising Initiative</a> web site or <a href="https://digitaladvertisingalliance.org/" target="_blank">Digital Advertising Alliance</a> web site.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3 id="part2_5">5. Do Not Track</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>Like most other companies, our web site and online services are not consistently configured to respond to browsers' "Do Not Track" signals because at this time no formal "Do Not Track" standard has been adopted.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_6" id="part2_6"></a>6. Customer service and technical support</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>Support calls may be recorded and used for internal training and auditing purposes. We inform callers if their call is being recorded or monitored, and obtain consent as required by law. Recordings are deleted periodically according to company policy. Other communications related to support, such as email, the chat feature on our web site, and form submissions, are retained in MathWorks systems (including those maintained by affiliates, partners, and/or service providers as described in “Reasons We Share Your Information” above) for purposes of providing support, tracking support issues and improving our products.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_7" id="part2_7"></a>7. MathWorks Store</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p><a href="/store/" target="_blank" data-link="store">MathWorks Store</a> has security measures in place to protect the order information under our control against loss, misuse, destruction, and alteration. We use industry-standard security measures called TLS encryption. Encryption helps protect your credit card number and personal information by scrambling the data in transit to the MathWorks Store. We encrypt every order. MathWorks does not store your full credit card number, but stores information about the payment and transaction including an order number, obfuscated credit card number (with XXXX substituted for some digits), and expiration date. MathWorks uses a PCI-compliant third-party vendor to securely process your order. When you submit an order through the MathWorks Store, you are submitting your payment information directly to the third-party vendor, which then may pass your information to financial intermediaries such as banks.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_8" id="part2_8"></a>8. Product installation, licensing, and usage</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>The information we collect in connection with product installation, licensing, and usage allows us to understand your requirements, to ensure effective licensing of our products, and to provide you with information that you may need for support in the future.</p>
+<p>To enable you to use our products, we may request or collect information such as your name, email address, physical location, phone number, title, company name, and/or system user name. Such information may be used to activate, register, confirm, or update your product or license.</p>
+<p>Most MathWorks products and services contain technology for license management and for the prevention of unlicensed use. Most MathWorks products and services also contain technology that sends user experience information to MathWorks both in the course of normal usage and in the event of a software crash. This technology causes the products and services to send messages to MathWorks over the Internet that contain network, device, license, and usage information.</p>
+<p>At the time of installation or activation, MathWorks software may collect network and device information including your MAC address, IP address, computer hostname and username, and operating system version. On an ongoing basis, when you use MathWorks products and services, MathWorks software may periodically collect network, device, account, license, and usage information, including which license you are linked with and which products and features you are using. License administrators may set up accounts for licensed users and view information about use by licensed users such as which products the users have access to and whether the products have been activated.</p>
+<p>User experience information transmitted may include the products, features, and services you accessed, the length of your session, errors that occurred, your IP address, a license identifier, and your email address if you choose to submit it when sending an error report. Desktop users can opt out of sending user experience information during installation or in MATLAB preferences. MathWorks has technical and organizational restrictions in place that limit access to your product usage information. MathWorks does not share this information with third parties except for web and systems infrastructure vendors with whom we have a contract.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_9" id="part2_9"></a>9. MATLAB Online, Simulink Online,&nbsp;MATLAB Drive, MATLAB Mobile, MATLAB Drive Connector, and Cloud Center</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>Most MathWorks online services require you to sign in with your MathWorks Account. In addition to information that we normally collect for our web site and online products and services, if you have chosen to integrate our services with a third-party service, MathWorks may store authentication information for the third-party service.</p>
+<p>When you store files using our online services, your files are stored with a third-party web and systems infrastructure vendor with whom MathWorks has a contract. If you are working offline, your files are stored on your own device until you are back online.</p>
+<p>If you store files using our online services, they can only be accessed by you unless you choose to share them. Even if you have an account through an organization, like a company or university, others in your organization can only see your files if you choose to share them. Select MathWorks personnel serving in certain information technology roles have access limited to deployment, backup, and recovery operations. These personnel all have signed confidentiality agreements.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_10" id="part2_10"></a>10. MATLAB Copilot, Simulink Copilot, and Polyspace Copilot</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MATLAB Copilot, Simulink Copilot, and Polyspace Copilot require you to sign in with your MathWorks Account. Information sent to these programs is transmitted for processing to a third-party cloud service provider with whom MathWorks has a service contract. Request information is not stored by MathWorks or third-party services after the request is completed.</p>
+<p>You can choose to share feedback with MathWorks via the thumbs-up and thumbs-down buttons in the product. This feedback is stored and used for improving MathWorks products and services.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_11" id="part2_11"></a>11. ThingSpeak™</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>ThingSpeak requires you to sign in with your MathWorks Account. MathWorks stores any information that you provide for integration between ThingSpeak and MathWorks or third-party services, such as authentication credentials and code files. MathWorks also stores data that you choose to send to ThingSpeak. You can choose to make that data public or private. Public data is generally displayed with your MathWorks Account login and a link to your MathWorks Account profile. Access to your private data and apps is protected by API keys that you may reset at any time.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_12" id="part2_12"></a>12. Authentication system for educational institutions</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>For students and personnel at educational institutions that elect to use a federated identity management system, such as Shibboleth, the institution directs the user to a portal where the user signs in. After sign-in, MathWorks receives information from the institution including the user’s identifier and organizational affiliation. If provided by the institution, MathWorks also receives the user’s name and email address. The user is then guided to complete their MathWorks Account, which is prepopulated with this information.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_13" id="part2_13"></a>13. MATLAB Grader</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MATLAB Grader may require you to sign in with your MathWorks Account. Where MATLAB Grader is accessed in conjunction with an educational institution’s learning management system, MathWorks receives only anonymized user IDs through MATLAB Grader that MathWorks cannot associate to any individual. When MATLAB Grader is used in this manner, MathWorks does not store, process, or transmit personally identifiable information or confidential data in connection with MATLAB Grader. Your organization or account administrator may access assignments you have completed and your progress on the assignments.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_14" id="part2_14"></a>14. MATLAB Course Designer</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MATLAB Course Designer requires you to sign in with your MathWorks Account. Your organization may have a license that provides you with access to MATLAB Course Designer; in such case, your organization or account administrator may access information about your usage, including courses you have completed and your progress on the courses. Where courses created with MATLAB Course Designer are accessed in conjunction with an educational institution’s learning management system, information about your progress on the courses is shared with that system. MathWorks is not responsible for the privacy or security practices of your organization, which may differ from those set forth in this Privacy Policy. If your organization is administering your use of MathWorks products and services, please direct your privacy inquiries to your organization or administrator.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_15" id="part2_15"></a>15. Online Training Courses</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>Online Training Courses may&nbsp;require you to sign in with your MathWorks Account.&nbsp;Your organization may have a license that provides you with access to Online Training Suite, a collection of Online Training Courses; in such case, your organization or account administrator may access&nbsp;information about your usage, including&nbsp;training you have completed and your progress on the training.&nbsp;MathWorks is not responsible for the privacy or security practices of your organization, which may differ from those set forth in this Privacy Policy. If your organization is administering your use of MathWorks products and services, please direct your privacy inquiries to your organization or administrator.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_16" id="part2_16"></a>16. Online textbooks, learning management systems, and other online learning environments</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>When you access and use MathWorks products or services through an online learning platform, such as an online course, online textbook, or learning management system hosted by your institution, MathWorks does not collect personal information about you unless it is sent by the institution hosting the learning management system. The educational institution controls the information sent by the learning management system.</p>
+<p>If an instructor provides scoring criteria and chooses to have the MathWorks learning environment score a student’s assignment, MathWorks calculates the score and sends it to the institution’s learning management system, but does not store the student’s score.</p>
+<p>Instructors have access to information that does not identify students, such as the number of people who completed assignments, the number of attempts students made, and submitted solutions. Students may voluntarily identify their assignment submissions to instructors; in this case, instructors would be able to match a student with the student’s submissions.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_17" id="part2_17"></a>17. Products and services purchased through authorized resellers and distributors</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>We share information with our authorized resellers and distributors to the extent required for them to perform their duties. We also receive information from our authorized resellers and distributors when you contact them regarding our products and services, or purchase our products or services from them. The information shared includes your contact information, organization information, license information, and the products and services in which you have expressed an interest.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_18" id="part2_18"></a>18. In-person and online events</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>If you register for, attend, or express interest in one of our in-person or online events, such as a conference or webinar, we collect your contact information and information about your organization, role, and interests related to our products and services. We may either receive this information from, or share this information with, third parties who are jointly managing or who are assisting us in managing the event. For example, these third parties may include event organizers or co-sponsors, vendors who are managing event registration, online webinar providers, or app providers who allow you to download an app for event scheduling or attendance.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<h3><a name="part2_19" id="part2_19"></a>19. Competitions</h3>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p>MathWorks supports student competitions, both by itself and in collaboration with other organizations. When you participate in a competition, MathWorks collects your contact information, the name of your educational institution, and information about your interest or expertise in MathWorks products and services. MathWorks may receive this information either directly from you, from a team leader on your behalf, or from an organization holding or supporting the competition.&nbsp;MathWorks may share this information with&nbsp;an organization holding or supporting the competition.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p><i>If you have questions about this Privacy Policy or MathWorks privacy practices, contact us at <a href="mailto:privacy@mathworks.com">privacy@mathworks.com</a>.</i></p>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div></div>
+
+</div>
+</div>
+	
+</div>
+</div>
+
+</div>
+</section>
+	
+	
+	
+		
+
+<div><div class="modalParsys parsys containsResourceName resourceClass-parsys">
+</div>
+</div>
+
+		
+
+
+	<div id="location_content" style="display:none;"></div>
+
+	<div class="modal fade" id="country-unselected" tabindex="-1" aria-labelledby="domain_selector_label" style="padding-left: 0px; display:none;" aria-modal="true" role="dialog">
+		<div class="modal-dialog modal-xl">
+			<div class="modal-content">
+				<div class="modal-header">
+					<img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo.20260902221426407.svg" class="mw_logo -presentation_light" alt="MathWorks" width="173" height="35"/>
+					<img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo-rev.20260902221426407.svg" class="mw_logo -presentation_dark" alt="MathWorks" width="173" height="35"/>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+
+					<p class="h1 icon-globe" id="domain_selector_label">Select a Web Site</p>
+					<p>Choose a web site to get translated content where available and see local events and offers. Based on your location, we recommend that you select: <strong class="recommended-country"></strong>.</p>
+					<div class="default-recommendation">
+						<p><a href="#" id="recommended_domain_button" class="btn btn_color_blue" data-lang="en"><span class="recommended-country"></span></a></p>
+					</div>
+
+					<div class="ch-recommendation" style="display:none;">
+						<ul class="list-inline">
+							<li class="list-inline-item add_margin_5 d-block d-md-inline-block"><a href="//ch.mathworks.com" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ch" data-lang="en" data-recommended-text="Switzerland" data-default-lang="true" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (English)</a></li>
+							<li class="list-inline-item add_margin_5 d-block d-md-inline-block"><a href="//ch.mathworks.com" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ch" data-lang="de" data-recommended-text="Schweiz" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (Deutsch)</a></li>
+							<li class="list-inline-item add_margin_5 d-block d-md-inline-block"><a href="//ch.mathworks.com" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ch" data-lang="fr" data-recommended-text="Suisse" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (Français)</a></li>
+						</ul>
+					</div>
+					<div class="zh-recommendation" style="display:none;">
+						<ul class="list-inline">
+							<li class="list-inline-item"><a href="//ww2.mathworks.cn" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ww2" data-lang="zh" data-recommended-text="中国" data-default-lang="true" data-do-not-rewrite="true"><strong class="recommended-country"></strong>（简体中文）</a></li>
+							<li class="list-inline-item"><a href="//ww2.mathworks.cn" class="recommendation-button btn btn-outline btn_color_blue" data-subdomain="ww2" data-lang="en" data-recommended-text="China" data-do-not-rewrite="true"><strong class="recommended-country"></strong> (English)</a></li>
+						</ul>
+					</div>
+
+					<p>You can also select a web site from the following list</p>
+					<div class="alert alert-warning" role="alert" id="china_performance_alert" style="display:none;"> <span class="alert_icon icon-alert-warning"></span>
+						<p class="alert_heading"><strong>How to Get Best Site Performance</strong></p>
+						<p>Select the China site (in Chinese or English) for best site performance. Other MathWorks country sites are not optimized for visits from your location.</p>
+					</div>
+					<div class="row add_margin_30">
+						<div class="col-12 col-sm-4 col-lg-3">
+							<p class="h3 add_bottom_rule">Americas</p>
+							<ul class="list-unstyled">
+								<li><a href="//la.mathworks.com" class="domain_selector_link" data-country-code="LA" data-subdomain="la" data-lang="es" data-default-lang="true" data-selected-text="América Latina" data-recommended-text="América Latina" data-do-not-rewrite="true">América Latina</a> (Español)</li>
+								<li><a href="//www.mathworks.com" class="domain_selector_link" data-country-code="CA" data-subdomain="www" data-lang="en" data-do-not-rewrite="true">Canada</a> (English)</li>
+								<li><a href="//www.mathworks.com" class="domain_selector_link" data-country-code="US" data-subdomain="www" data-lang="en" data-default-lang="true" data-selected-text="United States" data-recommended-text="United States" data-do-not-rewrite="true">United States</a> (English)</li>
+							</ul>
+						</div>
+						<div class="col-12 col-sm-4 col-lg-6">
+							<p class="h3 add_bottom_rule">Europe</p>
+							<div class="row">
+								<div class="col-6 col-sm-12 col-lg-6">
+									<ul class="list-unstyled">
+										<li><a href="//nl.mathworks.com" class="domain_selector_link" data-country-code="BE" data-subdomain="nl" data-lang="en" data-do-not-rewrite="true">Belgium</a> (English)</li>
+										<li><a href="//se.mathworks.com" class="domain_selector_link" data-country-code="DK" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Denmark</a> (English)</li>
+										<li><a href="//de.mathworks.com" class="domain_selector_link" data-country-code="DE" data-subdomain="de" data-lang="de" data-default-lang="true" data-selected-text="Deutschland" data-recommended-text="Deutschland" data-do-not-rewrite="true">Deutschland</a> (Deutsch)</li>
+										<li><a href="//es.mathworks.com" class="domain_selector_link" data-country-code="ES" data-subdomain="es" data-lang="es" data-default-lang="true" data-selected-text="España" data-recommended-text="España" data-do-not-rewrite="true">España</a> (Español)</li>
+										<li><a href="//se.mathworks.com" class="domain_selector_link" data-country-code="FI" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Finland</a> (English)</li>
+										<li><a href="//fr.mathworks.com" class="domain_selector_link" data-country-code="FR" data-subdomain="fr" data-lang="fr" data-default-lang="true" data-selected-text="France" data-recommended-text="France" data-do-not-rewrite="true">France</a> (Français)</li>
+										<li><a href="//uk.mathworks.com" class="domain_selector_link" data-country-code="IE" data-subdomain="uk" data-lang="en" data-do-not-rewrite="true">Ireland</a> (English)</li>
+										<li><a href="//it.mathworks.com" class="domain_selector_link" data-country-code="IT" data-subdomain="it" data-lang="it" data-default-lang="true" data-selected-text="Italia" data-recommended-text="Italia" data-do-not-rewrite="true">Italia</a> (Italiano)</li>
+										<li><a href="//nl.mathworks.com" class="domain_selector_link" data-country-code="LU" data-subdomain="nl" data-lang="en" data-do-not-rewrite="true">Luxembourg</a> (English)</li>
+									</ul>
+								</div>
+								<div class="col-6 col-sm-12 col-lg-6">
+									<ul class="list-unstyled">
+										<li><a href="//nl.mathworks.com" class="domain_selector_link" data-country-code="NL" data-subdomain="nl" data-lang="en" data-default-lang="true" data-selected-text="Benelux" data-recommended-text="Netherlands" data-do-not-rewrite="true">Netherlands</a> (English)</li>
+										<li><a href="//se.mathworks.com" class="domain_selector_link" data-country-code="NO" data-subdomain="se" data-lang="en" data-do-not-rewrite="true">Norway</a> (English)</li>
+										<li><a href="//de.mathworks.com" class="domain_selector_link" data-country-code="AT" data-subdomain="de" data-lang="de" data-do-not-rewrite="true">Österreich</a> (Deutsch)</li>
+										<li><a href="//www.mathworks.com" class="domain_selector_link" data-country-code="PT" data-subdomain="www" data-lang="en" data-do-not-rewrite="true">Portugal</a> (English)</li>
+										<li><a href="//se.mathworks.com" class="domain_selector_link" data-country-code="SE" data-subdomain="se" data-lang="en" data-default-lang="true" data-selected-text="Nordic" data-recommended-text="Sweden" data-do-not-rewrite="true">Sweden</a> (English)</li>
+										<li>Switzerland
+											<ul class="list-unstyled add_indent_20">
+												<li><a href="//ch.mathworks.com" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="de" data-selected-text="Schweiz" data-recommended-text="Schweiz" data-do-not-rewrite="true">Deutsch</a></li>
+												<li><a href="//ch.mathworks.com" id="swiss_english" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="en" data-default-lang="true" data-selected-text="Switzerland" data-recommended-text="Switzerland" data-do-not-rewrite="true">English</a></li>
+												<li><a href="//ch.mathworks.com" class="domain_selector_link" data-country-code="CH" data-subdomain="ch" data-lang="fr" data-selected-text="Suisse" data-recommended-text="Suisse" data-do-not-rewrite="true">Français</a></li>
+											</ul>
+										</li>
+										<li><a href="//uk.mathworks.com" class="domain_selector_link" data-country-code="GB" data-subdomain="uk" data-lang="en" data-default-lang="true" data-selected-text="United Kingdom" data-recommended-text="United Kingdom" data-do-not-rewrite="true">United Kingdom</a> (English)</li>
+									</ul>
+								</div>
+							</div>
+						</div>
+						<div class="col-12 col-sm-4 col-lg-3">
+							<p class="h3 add_bottom_rule">Asia Pacific</p>
+							<ul class="list-unstyled">
+								<li><a href="//au.mathworks.com" class="domain_selector_link" data-country-code="AU" data-subdomain="au" data-lang="en" data-default-lang="true" data-selected-text="Australia" data-recommended-text="Australia" data-do-not-rewrite="true">Australia</a> (English)</li>
+								<li><a href="//in.mathworks.com" class="domain_selector_link" data-country-code="IN" data-subdomain="in" data-lang="en" data-default-lang="true" data-selected-text="India" data-recommended-text="India" data-do-not-rewrite="true">India</a> (English)</li>
+								<li><a href="//au.mathworks.com" class="domain_selector_link" data-country-code="NZ" data-subdomain="au" data-lang="en" data-do-not-rewrite="true">New Zealand</a> (English)</li>
+								<li>中国
+									<ul class="list-unstyled add_indent_20">
+										<li><a href="//ww2.mathworks.cn" class="domain_selector_link" data-country-code="CN" data-subdomain="ww2" data-lang="zh" data-default-lang="true" data-selected-text="中国" data-recommended-text="中国" data-do-not-rewrite="true">简体中文</a></li>
+										<li><a href="//ww2.mathworks.cn" class="domain_selector_link" data-country-code="CN" data-subdomain="ww2" data-lang="en" data-default-lang="true" data-selected-text="China" data-recommended-text="China" data-do-not-rewrite="true">English</a></li>
+									</ul>
+								</li>
+								<li><a href="//jp.mathworks.com" class="domain_selector_link" data-country-code="JP" data-subdomain="jp" data-lang="ja" data-default-lang="true" data-selected-text="日本" data-recommended-text="日本" data-do-not-rewrite="true">日本</a> (日本語)</li>
+								<li><a href="//kr.mathworks.com" class="domain_selector_link" data-country-code="KR" data-subdomain="kr" data-lang="ko" data-default-lang="true" data-selected-text="한국" data-recommended-text="한국" data-do-not-rewrite="true">한국</a> (한국어)</li>
+							</ul>
+						</div>
+					</div>
+					<p class="text-center"><a href="#" class="worldwide_link" data-do-not-rewrite="true">Contact your local office</a></p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/alert.min.20260902221426407.css" type="text/css">
+
+
+
+
+
+
+
+
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/domainselector.min.20260902221426407.js"></script>
+
+
+
+	
+</main>
+
+			</div>
+		</div>
+		
+		
+
+<footer id="footer">
+	
+	
+	<div class="extended_footer" id="extended_footer">
+		<div class="container-fluid container-lg">
+			<div><div class="fatFooterParsys iparsys parsys resourceClass-iparsys containsResourceName"><div class="section"><div class="new containsResourceName resourceClass-new"></div>
+</div><div class="iparys_inherited"><div class="fatFooterParsys iparsys parsys containsResourceName resourceClass-par"><div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  ">
+
+	
+		<div class=" col-lg-3 mb-2 col-12 "><div class="1 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="h4 mb-0">MathWorks</p>
+<p><i>Accelerating the pace of engineering and science</i></p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="d-none d-md-block">MathWorks is the leading developer of mathematical computing software for engineers and scientists.</p>
+
+	
+		
+		
+	
+</div>
+</div>
+<div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="d-none d-md-block"><a href="/company/aboutus/contact_us.html?s_tid=m_footer_contact" data-target="same"><span class="add_font_color_darkblue">Need help? <u>Contact us</u></span></a></p>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col-lg-9 col-12 "><div class="2 parsys containsResourceName resourceClass-parsys"><div class="cqColumns containsResourceName section resourceClass-columns"><div class="row  row-cols-1 row-cols-md-5 ">
+
+	
+		<div class=" col "><div class="1 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="ef_title"><a href="#ef_products" class="dropdown-toggle" role="button" data-toggle="collapse" data-bs-toggle="collapse" aria-expanded="false" aria-controls="ef_products">Explore Products</a></p>
+<div class="collapse" id="ef_products">
+ <ul class="list-unstyled">
+  <li><a href="/products/matlab.html?s_tid=m_footer_matlab">MATLAB</a></li>
+  <li><a href="/products/simulink.html?s_tid=m_footer_simulink">Simulink</a></li>
+  <li><a href="/products/matlab/student.html?s_tid=m_footer_student">Student Software</a></li>
+  <li><a href="/hardware-support/home.html?s_tid=m_footer_hardware">Hardware Support</a></li>
+  <li><a href="/matlabcentral/fileexchange/?s_tid=m_footer_fex">File Exchange</a></li>
+ </ul>
+</div>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col "><div class="2 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="ef_title"><a href="#ef_buy" role="button" class="dropdown-toggle" data-toggle="collapse" data-bs-toggle="collapse" aria-expanded="false" aria-controls="ef_buy">Try or Buy</a></p>
+<div class="collapse" id="ef_buy">
+ <ul class="list-unstyled">
+  <li><a href="/downloads/web_downloads/?s_tid=m_footer_downloads">Downloads</a></li>
+  <li><a href="/campaigns/products/trials.html?s_tid=m_footer_try" data-link="lead" data-offerType="trial">Trial Software</a></li>
+  <li><a href="/company/aboutus/contact_us/contact_sales.html?s_tid=m_footer_sales" data-link="lead" data-offerType="Contact Sales">Contact Sales</a></li>
+  <li><a href="/pricing-licensing.html?s_tid=m_footer_pricing" data-link="lead" data-offerType="pl">Pricing and Licensing</a></li>
+  <li><a href="/store/terms?s_tid=m_footer_store" data-link="store">Store Terms and Conditions</a></li>
+ </ul>
+</div>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col "><div class="3 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="ef_title"><a href="#ef_use" role="button" class="dropdown-toggle" data-toggle="collapse" data-bs-toggle="collapse" aria-expanded="false" aria-controls="ef_use">Learn to Use</a></p>
+<div class="collapse" id="ef_use">
+ <ul class="list-unstyled">
+  <li><a href="/help/?s_tid=m_footer_doc">Documentation</a></li>
+  <li><a href="/support/learn-with-matlab-tutorials.html?s_tid=m_footer_tutorials">Tutorials</a></li>
+  <li><a href="/help/examples.html?s_tid=m_footer_examples">Examples</a></li>
+  <li><a href="/learn/training.html?s_tid=m_footer_training">Training</a></li>
+  <li><a href="/discovery.html?s_tid=m_footer_discovery">Core Concepts</a></li>
+ </ul>
+</div>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col "><div class="4 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="ef_title"><a href="#ef_support" role="button" class="dropdown-toggle" data-toggle="collapse" data-bs-toggle="collapse" aria-expanded="false" aria-controls="ef_support">Get Support</a></p>
+<div class="collapse" id="ef_support">
+ <ul class="list-unstyled">
+  <li><a href="/help/install/?s_tid=m_footer_install">Installation Help</a></li>
+  <li><a href="/matlabcentral/answers/index?s_tid=m_footer_answers">MATLAB Answers</a></li>
+  <li><a href="/services/consulting.html?s_tid=m_footer_consulting">Consulting</a></li>
+  <li><a href="/licensecenter/?s_tid=m_footer_license">License Center</a></li>
+  <li><a href="/support/contact_us.html?s_tid=m_footer_support">Contact Support</a></li>
+ </ul>
+</div>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+		<div class=" col "><div class="5 parsys containsResourceName resourceClass-parsys"><div class="text containsResourceName section resourceClass-text"><div class="mw-text  ">
+	<p class="ef_title"><a href="#ef_about" role="button" class="dropdown-toggle" data-toggle="collapse" data-bs-toggle="collapse" aria-expanded="false" aria-controls="ef_about">Company</a></p>
+<div class="collapse" id="ef_about">
+ <ul class="list-unstyled">
+  <li><a href="/company.html?s_tid=m_footer_about">About MathWorks</a></li>
+  <li><a href="/company/jobs/opportunities.html?s_tid=m_footer_careers">Careers</a></li>
+  <li><a href="/company/newsroom.html?s_tid=m_footer_newsroom">Newsroom</a><br></li>
+  <li><a href="/company/customer-stories.html?s_tid=m_footer_customerstories">Customer Stories</a></li>
+  <li><a href="/company/aboutus/soc_mission.html?s_tid=m_footer_socialmission">Social Mission</a></li>
+ </ul>
+</div>
+
+	
+		
+		
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+
+</div>
+</div>
+	
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+		</div>
+	</div>
+
+	<div class="primary_footer" id="primary_footer">
+		<div class="container-fluid container-lg">
+			<div class="row align-items-start">
+				<div class="col-12 col-md-9">
+					<nav aria-label="Footer navigation">
+						<ul class="list-inline" id="countrynav">
+							<li class="list-inline-item footernav_country">
+								<button class="btn btn-outline btn_countrynav" id="domainButton" data-bs-toggle="modal" data-bs-target="#country-unselected">
+									<span class="visually-hidden">Select a Web Site</span>
+									<span class="icon-globe"></span>
+									<span id="countrySelectorButtonText">United States</span>
+								</button>
+							</li>
+						</ul>
+						
+						<div class="footerNavigation footernavigation containsResourceName resourceClass-footernavigation">
+
+
+
+	<ul class="list-inline " id="footernav" data-privacy="Your Privacy Choices">
+		<li class="list-inline-item" id="footernav_footernav_patents">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/trust-center.html?s_tid=gf_tc" class=" ">
+
+		
+
+		
+			
+			Trust Center</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_trademarks">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/trust-center/trademarks.html?s_tid=gf_trd" class=" ">
+
+		
+
+		
+			
+			Trademarks</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_privacy">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/trust-center/privacy-policy.html?s_tid=gf_priv" class=" ">
+
+		
+
+		
+			
+			Privacy Policy</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_piracy">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/trust-center/piracy.html?s_tid=gf_pir" class=" ">
+
+		
+
+		
+			
+			Preventing Piracy</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_status">
+			
+	
+	
+	
+
+	
+
+	<a href="https://status.mathworks.com/?s_tid=gf_application" class=" ">
+
+		
+
+		
+			
+			Application Status</a>
+
+		
+		
+	
+
+		</li>
+	
+		<li class="list-inline-item" id="footernav_footernav_contactus">
+			
+	
+	
+	
+
+	
+
+	<a href="/company/aboutus/contact_us.html?s_tid=gf_contact" class=" ">
+
+		
+
+		
+			
+			Contact Us</a>
+
+		
+		
+	
+
+		</li>
+	</ul>
+
+
+
+
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/footernavigation.min.20260902221426407.js"></script>
+
+
+
+</div>
+
+						
+						<div class="footerCompanyAddress footercompanyaddress containsResourceName resourceClass-footercompanyaddress">
+
+
+	
+
+
+</div>
+
+					</nav>
+					
+					<div class="footerParsys iparsys parsys resourceClass-iparsys containsResourceName"><div class="section"><div class="new containsResourceName resourceClass-new"></div>
+</div><div class="iparys_inherited"><div class="footerParsys iparsys parsys containsResourceName resourceClass-par"></div>
+</div>
+</div>
+
+					<p class="copyright">&copy; 1994-2026 The MathWorks, Inc.</p>
+				</div>
+				<div class="col-12 col-md-3">
+					<div class="socialmedia float-md-end" id="socialmedia">
+						
+						<div><div class="socialMediaIconParsys iparsys parsys resourceClass-iparsys containsResourceName"><div class="section"><div class="new containsResourceName resourceClass-new"></div>
+</div><div class="iparys_inherited"><div class="socialMediaIconParsys iparsys parsys containsResourceName resourceClass-par"><div class="socialmediaicon containsResourceName resourceClass-socialmediaicon section">
+
+
+
+
+	<ul class="list-inline socialmedia_icons ">
+		
+			<li class="list-inline-item">
+				<a href="https://www.facebook.com/MATLAB" rel="noreferrer" target="_blank">
+					<img class="ico_facebook" alt="Facebook" width="32" height="32" src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/ico-facebook.20260902221426407.svg"/>
+				</a>
+
+				
+
+			</li>
+		
+			<li class="list-inline-item">
+				<a href="https://x.com/MATLAB" rel="noreferrer" target="_blank">
+					<img class="ico_twitter" alt="Twitter" width="32" height="32" src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/ico-twitter.20260902221426407.svg"/>
+				</a>
+
+				
+
+			</li>
+		
+			<li class="list-inline-item">
+				<a href="https://www.instagram.com/matlab/" rel="noreferrer" target="_blank">
+					<img class="ico_instagram" alt="Instagram" width="32" height="32" src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/ico-instagram.20260902221426407.svg"/>
+				</a>
+
+				
+
+			</li>
+		
+			<li class="list-inline-item">
+				<a href="https://www.youtube.com/user/MATLAB" rel="noreferrer" target="_blank">
+					<img class="ico_youtube" alt="YouTube" width="32" height="32" src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/ico-youtube.20260902221426407.svg"/>
+				</a>
+
+				
+
+			</li>
+		
+			<li class="list-inline-item">
+				<a href="https://www.linkedin.com/company/the-mathworks_2" rel="noreferrer" target="_blank">
+					<img class="ico_linkedin" alt="LinkedIn" width="32" height="32" src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/ico-linkedin.20260902221426407.svg"/>
+				</a>
+
+				
+
+			</li>
+		
+			<li class="list-inline-item">
+				<a href="/company/rss.html" rel="noreferrer">
+					<img class="ico_rss" alt="RSS" width="32" height="32" src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/ico-rss.20260902221426407.svg"/>
+				</a>
+
+				
+
+			</li>
+		
+		
+	</ul>
+
+
+
+
+</div>
+</div>
+</div>
+</div>
+</div>
+					</div>
+				</div>
+				
+			</div>
+		</div>
+	</div>
+	
+</footer>
+
+
+
+		
+			
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/button.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/downsize.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/upsize.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/tags.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5-footer.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/akamai.min.20260902221426407.js"></script>
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/substitutepricing.min.20260902221426407.js"></script>
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/tags.min.20260902221426407.js"></script>
+
+
+
+
+			
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/domainredirect.min.20260902221426407.js"></script>
+
+
+
+
+			
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/jquery.min.20260902221426407.js"></script>
+
+
+
+			
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260902221426407.js"></script>
+
+
+
+			
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/signinanalytics.min.20260902221426407.js"></script>
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/spotlight.min.20260902221426407.js"></script>
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260902221426407.js"></script>
+
+
+
+			
+			
+				
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/corporatenav.min.20260902221426407.js"></script>
+
+
+
+				<div class="modal-backdrop fade show" id="corporate_nav_modal"></div>
+			
+			
+
+			
+			<a href="#" id="go-top" class="btn btn_color_mediumgray" tabindex="0" aria-hidden="true" aria-label="Back to top"><span class="icon-arrow-open-up icon_24"></span></a>
+			<div id="web-application-footer-assets"></div>
+
+			
+
+			
+
+		
+
+	<script type="text/javascript" nonce="78761d9f44ee517aaa075d3ab6f41f5f" src="/ToUX1MY4KWXx47mRP0MK/1iOuhpQVSbQ2hX/aG4BHUZtAQ/FkI/KZ0l7UGA"></script><script type="text/javascript" nonce="78761d9f44ee517aaa075d3ab6f41f5f" src="/ToUX1MY4KWXx47mRP0MK/fNOuhpiD/ZR8IHUZtAQ/Wkg/1LGpWMzE4?v=43dffdbb-e3ea-c581-540d-9680715d172f" defer></script></body>
+
+
+</html>

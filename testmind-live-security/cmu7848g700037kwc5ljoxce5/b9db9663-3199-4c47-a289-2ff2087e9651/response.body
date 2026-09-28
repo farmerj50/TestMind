@@ -1,0 +1,2040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Template Last Modified: 2026-01-22T13:08:48-05:00 --><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/favicon.20260902221426407.ico" type="image/x-icon">
+<link rel='canonical' href='https://www.mathworks.com/support/bugreports/'><meta http-equiv="X-UA-Compatible" content="IE=edge">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/webvitals.min.20260902221426407.js"></script><link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/bootstrap5.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/bs5.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/offcanvasv5.min.20260902221426407.css" type="text/css">
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-300.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-400.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-500.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-italic-700.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-300.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-400.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-500.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/roboto/roboto-latin-normal-700.20260902221426407.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/fonts/mathworks.20260902221426407.woff" rel="preload" as="font" type="font/woff" crossorigin>
+<script>(function(g,b,d,f){(function(a,c,d){if(a){var e=b.createElement("style");e.id=c;e.innerHTML=d;a.appendChild(e)}})(b.getElementsByTagName("head")[0],"at-body-style",d);setTimeout(function(){var a=b.getElementsByTagName("head")[0];if(a){var c=b.getElementById("at-body-style");c&&a.removeChild(c)}},f)})(window,document,"[class*='personalization-container']:not([id^='web-application']) {opacity: 0 !important}",1E3);</script><script src="//assets.adobedtm.com/d0cc0600946eb3957f703b9fe43c3590597a8c2c/satelliteLib-e8d23c2e444abadc572df06537e2def59c01db09.js" async></script><title>Bugs Existing in R2026a | Bug Reports 
+</title>
+<meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="QHbeh3zb_Y08kkd4IO9AW30YIkNGqYS1efA7wymI7l3ci5G7_qjA0Ad7icubX17Jfa_v1gkX99DWyIltHko2_A" />
+
+
+                                <script>!function(a){var e="https://s.go-mpulse.net/boomerang/",t="addEventListener";if("False"=="True")a.BOOMR_config=a.BOOMR_config||{},a.BOOMR_config.PageParams=a.BOOMR_config.PageParams||{},a.BOOMR_config.PageParams.pci=!0,e="https://s2.go-mpulse.net/boomerang/";if(window.BOOMR_API_key="LERXA-6VNES-W6PXS-U8C7F-BXSZH",function(){function n(e){a.BOOMR_onload=e&&e.timeStamp||(new Date).getTime()}if(!a.BOOMR||!a.BOOMR.version&&!a.BOOMR.snippetExecuted){a.BOOMR=a.BOOMR||{},a.BOOMR.snippetExecuted=!0;var i,_,o,r=document.createElement("iframe");if(a[t])a[t]("load",n,!1);else if(a.attachEvent)a.attachEvent("onload",n);r.src="javascript:void(0)",r.title="",r.role="presentation",(r.frameElement||r).style.cssText="width:0;height:0;border:0;display:none;",o=document.getElementsByTagName("script")[0],o.parentNode.insertBefore(r,o);try{_=r.contentWindow.document}catch(O){i=document.domain,r.src="javascript:var d=document.open();d.domain='"+i+"';void(0);",_=r.contentWindow.document}_.open()._l=function(){var a=this.createElement("script");if(i)this.domain=i;a.id="boomr-if-as",a.src=e+"LERXA-6VNES-W6PXS-U8C7F-BXSZH",BOOMR_lstart=(new Date).getTime(),this.body.appendChild(a)},_.write("<bo"+'dy onload="document._l();">'),_.close()}}(),"".length>0)if(a&&"performance"in a&&a.performance&&"function"==typeof a.performance.setResourceTimingBufferSize)a.performance.setResourceTimingBufferSize();!function(){if(BOOMR=a.BOOMR||{},BOOMR.plugins=BOOMR.plugins||{},!BOOMR.plugins.AK){var e=""=="true"?1:0,t="",n="mm6qf6qx332eg2vnq6ja-f-3503752f9-clientnsv4-s.akamaihd.net",i="false"=="true"?2:1,_={"ak.v":"41","ak.cp":"1460359","ak.ai":parseInt("195948",10),"ak.ol":"0","ak.cr":14,"ak.ipv":4,"ak.proto":"h2","ak.rid":"8cd10eba","ak.r":50502,"ak.a2":e,"ak.m":"x","ak.n":"essl","ak.cport":59590,"ak.gh":"23.47.125.6","ak.quicv":"","ak.tlsv":"tls1.3","ak.0rtt":"","ak.0rtt.ed":"","ak.csrc":"-","ak.acc":"","ak.t":"1789757330","ak.ak":"hOBiQwZUYzCg5VSAfCLimQ==9Vc8MvrXa5V0vhaGtdaMfnvkLFz5KL1c1KkWomtKsabjHq6AmucJs9nuL2VAtkaq1mMMllOyJo7nosy9UV2j0p1ORgTYQ5B9guUQtgOpxk1AfTfXXH0wz14cTsrAE8cbZv5bC/y7Lne/2W7lGl/vxsvWMrxWET8+DuFQ/D6Y9nNCfxeUCjFCKC9TLxRHY44KU94MvlFYUl5EG1x3oewQmpnlQcii82xUhQn+DGRMbUrfbr+NjzhmI7rzX4AhqkD8pCfQ+TbisFJUaMe90beg/nbDT+JTYOJ6IWFREj8uz/GW72OYcJZfNWTxP+jMSm8oqkBbKildwD9VTE9q8Mw8+XG1ShIlR9JJCKojJba2fDmsNOJ3lDSqRk/bH1mnp3qN1jTsUF/zgvUkYUL1V+NNCFIYF6ro8t+G+58Ab2OJ/hU=","ak.pv":"302","ak.dpoabenc":"","ak.tf":i};if(""!==t)_["ak.ruds"]=t;var o={i:!1,av:function(e){var t="http.initiator";if(e&&(!e[t]||"spa_hard"===e[t]))_["ak.feo"]=void 0!==a.aFeoApplied?1:0,BOOMR.addVar(_)},rv:function(){var a=["ak.cport","ak.cr","ak.csrc","ak.gh","ak.ipv","ak.m","ak.n","ak.ol","ak.proto","ak.quicv","ak.tlsv","ak.0rtt","ak.0rtt.ed","ak.r","ak.acc","ak.t","ak.tf"];BOOMR.removeVar(a)}};BOOMR.plugins.AK={akVars:_,akDNSPreFetchDomain:n,init:function(){if(!o.i){var a=BOOMR.subscribe;a("before_beacon",o.av,null,null),a("onbeacon",o.rv,null,null),o.i=!0}return this},is_complete:function(){return!0}}}}()}(window);</script></head>
+<body id="template_offcanvas" class="site_lang_en templateservice offcanvas_fixed
+		  
+		  
+		  
+		  
+ 		  
+		  -has_usernav
+		  -is_full_header
+		  
+		  " data-cid="ebr">
+		<a class="skip_link visually-hidden-focusable" href="#main">Skip to content</a>
+
+		
+		
+
+
+	<div class="sticky-top" id="sticky_container">
+		
+
+	<header class="-has_matrix
+					 -has_mwa
+					 -has_store
+					 -has_topnav
+					 -has_subnav
+					 "><nav class="navbar navbar-expand-lg" aria-label="Main navigation"><div class="container-fluid container-lg">
+				<div class="d-lg-flex flex-row align-items-center" id="header_content_container">
+					<a href="/?s_tid=user_nav_logo" class="navbar-brand d-inline-flex">
+						
+						<img src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/common/resources/images/mathworks-logo-membrane.20260902221426407.svg" class="mw_logo" alt="MathWorks" width="34" height="30"></a>
+
+					<div class="sectionHead sectionhead containsResourceName resourceClass-sectionhead">
+
+
+	<h1 class="d-inline-flex d-lg-none ">
+		<a href="/support/bugreports/" class="add_cursor_pointer">Bug Reports</a>
+		
+	</h1>
+	
+
+
+
+
+</div>
+
+
+					<div class="d-flex d-lg-none" id="global_mobile_actuator_container_search">
+						<button class="navbar-toggler btn collapsed" id="global_search_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_search_mobile" data-bs-target="#global_search_mobile" aria-controls="global_search_mobile" aria-expanded="false" aria-label="Toggle Search">
+							<span class="icon-search"></span>
+						</button>
+					</div>
+					<div class="navbar-collapse collapse" id="global_search_mobile">
+						<div id="global_search_mobile_placeholder"></div>
+						<div id="global_search_container">
+<div id="bannerSearch">
+  <form id="brSearchFilter" class="filterless">
+    <div class="input-group">
+      <div class="form-control">
+        <label class="visually-hidden" for="search_terms">Search Bug Reports in %{release}</label>
+        <span class="nugget"><a href="#" title="Clear Filters" class="icon-remove"><span class="label">Clear Filters</span></a></span>
+        <input type="search" class="conjoined_search form-control" autocomplete="off" name="search_terms" id="search_terms" placeholder="Search Bug Reports in " value="">
+      </div>
+      <div class="input-group-btn">
+        <button type="button" name="submitsearch" id="submitsearch" class="btn icon-search btn_search_adjacent btn_search icon_16" tabindex="-1"></button>
+      </div>
+    </div>
+  </form>
+</div></div>
+					</div>
+
+
+					<div class="d-flex d-lg-none" id="global_mobile_actuator_container_navigation">
+						<button class="navbar-toggler collapsed btn" id="global_navigation_mobile_actuator" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-target="#global_navigation" data-bs-target="#global_navigation" aria-controls="global_navigation" aria-expanded="false" aria-label="Toggle Main Navigation">
+							<span class="icon-menu-full"></span>
+						</button>
+					</div>
+					<div class="collapse navbar-collapse" id="global_navigation">
+						
+						<div class="topNavigation topnavigation containsResourceName resourceClass-topnavigation">
+
+
+
+	<ul class="navbar-nav flex-grow-1 align-items-lg-center mb-0">
+<li class="nav-item dropdown" id="globalnav_item_helpcenter">
+				
+	
+	
+	
+
+	
+
+	<a href="/help/?s_tid=user_nav_help" class="nav-link active ">
+
+		
+
+		
+			
+			MATLAB Help Center</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_community">
+				
+	
+	
+	
+
+	
+
+	<a href="/matlabcentral/?s_tid=user_nav_community" class="nav-link ">
+
+		
+
+		
+			
+			Community</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+			<li class="nav-item dropdown" id="globalnav_item_learning">
+				
+	
+	
+	
+
+	
+
+	<a href="https://matlabacademy.mathworks.com/?s_tid=user_nav_learning" class="nav-link ">
+
+		
+
+		
+			
+			Learning</a>
+
+		
+		
+	
+
+				
+			</li>
+		
+
+		
+		<li class="nav-item  -alignment_lg_end" id="globalnav_item_matlab">
+			
+			
+
+			
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&amp;s_tid=user_nav_getml" style="display:none !important;" class="not-logged-in btn btn_color_blue d-block d-lg-inline-flex " data-link="lead" data-offertype="trial">
+
+		
+
+		
+			
+			Get MATLAB</a>
+
+		
+		
+	
+
+			
+	
+	
+	
+
+	
+
+	<a href="/campaigns/products/trials.html?prodcode=ML&amp;s_tid=user_nav_getml" style="display:none !important;" class="logged-in btn btn_color_blue d-block d-lg-inline-flex " data-link="lead" data-offertype="trial">
+
+		
+
+		
+			
+			MATLAB</a>
+
+		
+		
+	
+
+
+		</li>
+
+		
+		
+			<li class="nav-item dropdown -alignment_lg_end" id="globalnav_item_mwa">
+				<a href="#" class="nav-link headernav_login mwa-nav_login" id="mwanav_item_login" style="display: none;" aria-label="Sign In to Your MathWorks Account">
+					Sign In
+				</a>
+
+				<a href="#" class="nav-link headernav_logout dropdown-toggle" id="mwanav_actuator" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" style="display: none;" title="Access your MathWorks Account">
+					<span class="mwanav_avatar mwa_image_drop_down"></span>
+					<span class="mobile_account_name visually_hidden_xxl visually_hidden_xl visually_hidden_lg hidden-md hidden-lg"></span>
+				</a>
+				<ul class="dropdown-menu dropdown-menu-lg-end" id="mwanav_dropdown_menu">
+<li id="mwanav_item_account"><a class="mwa-account dropdown-item">My Account</a></li>
+					<li id="mwanav_item_community"><a class="mwa-community-profile dropdown-item">My Community Profile</a></li>
+					<li id="mwanav_item_associate"><a class="mwa-link-license dropdown-item">Link License</a></li>
+					<li><hr class="dropdown-divider"></li>
+					<li id="mwanav_item_logout"><a class="mwa-logout dropdown-item">Sign Out</a></li>
+				</ul>
+</li>
+		
+
+		
+
+		
+
+		<li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_cta_support">
+			
+	
+	
+	
+
+	
+
+	<a href="/support/contact_us.html" id="mobile_cta_support" class="nav-link ">
+
+		
+
+		
+			<span class="icon-phone"></span>
+			Contact MathWorks Support</a>
+
+		
+		
+	
+
+		</li>
+
+		<li class="nav-item d-block d-lg-none" id="globalnav_item_mobile_cta_corporate">
+			
+	
+	
+	
+
+	
+
+	<a href="/" id="mobile_cta_corporate" class="nav-link ">
+
+		
+
+		
+			<span class="icon-membrane"></span>
+			Visit mathworks.com</a>
+
+		
+		
+	
+
+		</li>
+
+		<li class="nav-item dropdown d-none d-lg-block -alignment_lg_end" id="globalnav_item_search">
+			<a href="#" class="nav-link dropdown-toggle" role="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Search"><span class="icon-search"></span></a>
+			<div class="dropdown-menu">
+				<div class="container-lg">
+					<div class="row align-items-center">
+						
+						
+							<div class="col">
+								<div id="global_search_desktop_placeholder"></div>
+							</div>
+						
+					</div>
+				</div>
+			</div>
+		</li>
+
+		<li class="nav-item d-none d-lg-block -alignment_lg_end" id="globalnav_item_matrix">
+			<mw-matrix lang="en" tier="DOTCOM" env="prod" bsversion="bs5" class="nav-link" host="https://www.mathworks.com"></mw-matrix>
+</li>
+	</ul>
+</div>
+
+					</div>
+				</div>
+
+				
+			</div>
+		</nav></header><div class="localnav" id="localnav">
+		<div class="localnav_container">
+			<div class="container-fluid container-lg">
+				<div class="row">
+					<div class="col-12">
+						<nav class="navbar navbar-expand-lg" aria-label="Local Navigation"><button class="navbar-toggler" type="button" id="localnav_actuator" data-toggle="collapse" data-bs-toggle="collapse" data-target="#local_navigation" data-bs-target="#local_navigation" aria-controls="localnav" aria-expanded="false" aria-label="Toggle navigation"><span class="icon-kebab"></span></button>
+							<div class="collapse navbar-collapse" id="local_navigation">
+								<div class="localNavigation localnav containsResourceName resourceClass-localnav">
+
+
+
+	
+	<ul class="navbar-nav" id="localnav_navbar">
+ <li class="nav-item" id=""><a href="/support/bugreports" class="nav-link">Bug Reports</a></li> <li class="nav-item" id=""><a href="/support/bugreports?release_filter=Fixed+in" class="nav-link">Bug Fixes by Release</a></li> <li class="nav-item" id=""><a href="/support/bugreports/manage_followed_bugs" class="nav-link">Manage Followed Bugs</a></li> <li class="nav-item" id=""><a href="/support/bug_reports/search.html" class="nav-link">Search Tips</a></li> <li class="nav-item" id=""><a href="/support/bug_reports/faq.html" class="nav-link">FAQ</a></li> <li class="nav-item" id=""><a href="/support/bugreports/report_bug" class="nav-link">Report a Bug</a></li>
+</ul>
+</div>
+
+							</div>
+						</nav>
+</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+
+	</div>
+
+
+
+
+
+		
+<div id="offcanvas_container">
+	
+
+	<div class="collapse collapse-horizontal" id="offcanvas_menu">
+		<button class="btn collapsed" id="offcanvas_actuator" type="button" data-bs-toggle="collapse" data-bs-target="#offcanvas_menu" aria-expanded="false" aria-controls="offcanvas_menu">
+			<span class="icon-offcanvas-menu"><span class="visually-hidden">Off-Canvas Navigation Menu Toggle</span></span> <span class="offcanvas_actuator_label" aria-hidden="true">Filter</span>
+		</button>
+		<div id="offcanvas_menu_content">
+			<div class="sidebar parsys containsResourceName resourceClass-parsys">
+<div class="targetcontainer containsResourceName resourceClass-targetcontainer section">
+
+
+
+<div class="personalization-container " id="web-application-offcanvas-container">
+  <div class="search_refine_v4">
+  <div id="facets_area">
+   
+      <div id="pagefacets">
+        <div id="myfacets">
+          <div class="search_refine add_margin_0">
+            <h2 class="d-none d-sm-block">Filter By</h2>
+          </div>
+          
+          <div>
+	
+<!-- if facets[:bug_type] value is nil then it will error out in .each block, hence we need to validate it first -->
+
+            <div class="search_refine mb-4">
+              <h3>Type
+                <span class="remove_category_facets" style="display:none">
+                  <a href="/support/bugreports/?action=index&amp;controller=search&amp;eirf=R2026a&amp;page=1&amp;release=R2026a">Clear</a>
+                </span>
+              </h3>
+              <div class="search_refine_scroll">
+                <ul class="list-unstyled">
+                          <li class="refinable"><a id="remove_facet_1" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=1"><span class="refine_category_count">1</span>Security Issue</a>
+                          </li>
+                          <li class="refinable"><a id="remove_facet_2" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=2"><span class="refine_category_count">65</span>Incorrect Code Generation</a>
+                          </li>
+                          <li class="refinable"><a id="remove_facet_4" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=4"><span class="refine_category_count">3</span>Accessibility Issue</a>
+                          </li>
+                          <li class="refinable"><a id="remove_facet_3" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=3"><span class="refine_category_count">160</span>Other</a>
+                          </li>
+                </ul>
+              </div>
+            </div>
+          
+          </div>
+
+          <div class="search_refine">
+            <h3>Products
+              <span class="remove_category_facets" style="display:none">
+                <a href="/support/bugreports/?action=index&amp;controller=search&amp;eirf=R2026a&amp;page=1&amp;release=R2026a">Clear</a>
+              </span>
+            </h3>
+            
+            
+	<div class="search_refine">
+		<ul class="list-unstyled">
+						<li class="refinable">
+							<a id="remove_facet_ML" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ML"><span class="refine_category_count">35</span>MATLAB</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SL"><span class="refine_category_count">43</span>Simulink</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_5G" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=5G"><span class="refine_category_count">0</span>5G Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AS"><span class="refine_category_count">2</span>AUTOSAR Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AE"><span class="refine_category_count">3</span>Aerospace Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AT"><span class="refine_category_count">1</span>Aerospace Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AA"><span class="refine_category_count">0</span>Antenna Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AU" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AU"><span class="refine_category_count">0</span>Audio Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DR"><span class="refine_category_count">1</span>Automated Driving Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BI"><span class="refine_category_count">0</span>Bioinformatics Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BL"><span class="refine_category_count">0</span>Bluetooth Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_C2" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=C2"><span class="refine_category_count">4</span>C2000 Microcontroller Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CM"><span class="refine_category_count">0</span>Communications Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VP"><span class="refine_category_count">0</span>Computer Vision Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CT"><span class="refine_category_count">0</span>Control System Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CF"><span class="refine_category_count">0</span>Curve Fitting Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DD"><span class="refine_category_count">0</span>DDS Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DO"><span class="refine_category_count">3</span>DO Qualification Kit</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_HS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=HS"><span class="refine_category_count">1</span>DSP HDL Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DS"><span class="refine_category_count">0</span>DSP System Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DA"><span class="refine_category_count">0</span>Data Acquisition Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DB"><span class="refine_category_count">0</span>Database Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DF"><span class="refine_category_count">0</span>Datafeed Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DH"><span class="refine_category_count">1</span>Deep Learning HDL Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_NN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=NN"><span class="refine_category_count">3</span>Deep Learning Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_ET" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ET"><span class="refine_category_count">0</span>Econometrics Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_EC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=EC"><span class="refine_category_count">14</span>Embedded Coder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_IT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IT"><span class="refine_category_count">0</span>Financial Instruments Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FI"><span class="refine_category_count">0</span>Financial Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_PO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PO"><span class="refine_category_count">4</span>Fixed-Point Designer</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FL"><span class="refine_category_count">0</span>Fuzzy Logic Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_GC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=GC"><span class="refine_category_count">0</span>GPU Coder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_GD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=GD"><span class="refine_category_count">0</span>Global Optimization Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_HD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=HD"><span class="refine_category_count">16</span>HDL Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_ES" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ES"><span class="refine_category_count">3</span>HDL Verifier</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_IE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IE"><span class="refine_category_count">2</span>IEC Certification Kit</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_IA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IA"><span class="refine_category_count">0</span>Image Acquisition Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_IP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IP"><span class="refine_category_count">1</span>Image Processing Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_OT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=OT"><span class="refine_category_count">1</span>Industrial Communication Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_IC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IC"><span class="refine_category_count">0</span>Instrument Control Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LS"><span class="refine_category_count">0</span>LTE Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LP"><span class="refine_category_count">0</span>Lidar Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_ME" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ME"><span class="refine_category_count">22</span>MATLAB Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_CO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CO"><span class="refine_category_count">1</span>MATLAB Compiler</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MJ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MJ"><span class="refine_category_count">0</span>MATLAB Compiler SDK</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DW"><span class="refine_category_count">0</span>MATLAB Parallel Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PR"><span class="refine_category_count">0</span>MATLAB Production Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MR"><span class="refine_category_count">0</span>MATLAB Report Generator</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TE"><span class="refine_category_count">0</span>MATLAB Test</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MW"><span class="refine_category_count">0</span>MATLAB Web App Server</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_MG" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MG"><span class="refine_category_count">2</span>Mapping Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DX" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DX"><span class="refine_category_count">0</span>Medical Imaging Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AM"><span class="refine_category_count">0</span>Mixed-Signal Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MP"><span class="refine_category_count">0</span>Model Predictive Control Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MB"><span class="refine_category_count">0</span>Model-Based Calibration Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MT"><span class="refine_category_count">0</span>Motor Control Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_NV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=NV"><span class="refine_category_count">1</span>Navigation Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_OP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=OP"><span class="refine_category_count">0</span>Optimization Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DM"><span class="refine_category_count">2</span>Parallel Computing Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PD"><span class="refine_category_count">0</span>Partial Differential Equation Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AR"><span class="refine_category_count">0</span>Phased Array System Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AB"><span class="refine_category_count">1</span>Polyspace Access</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_BD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BD"><span class="refine_category_count">1</span>Polyspace Bug Finder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BS"><span class="refine_category_count">0</span>Polyspace Bug Finder Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PA"><span class="refine_category_count">0</span>Polyspace Client for Ada</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CD"><span class="refine_category_count">0</span>Polyspace Code Prover</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CS"><span class="refine_category_count">0</span>Polyspace Code Prover Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PF"><span class="refine_category_count">0</span>Polyspace Server for Ada</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PZ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PZ"><span class="refine_category_count">0</span>Polyspace Test</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PY" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PY"><span class="refine_category_count">0</span>Polyspace as You Code</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PW"><span class="refine_category_count">0</span>Powertrain Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PM"><span class="refine_category_count">0</span>Predictive Maintenance Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RB"><span class="refine_category_count">0</span>RF Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RP"><span class="refine_category_count">0</span>RF PCB Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RF"><span class="refine_category_count">0</span>RF Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RR"><span class="refine_category_count">2</span>ROS Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RA"><span class="refine_category_count">0</span>Radar Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RI"><span class="refine_category_count">0</span>Raspberry Pi Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RL"><span class="refine_category_count">0</span>Reinforcement Learning Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RQ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RQ"><span class="refine_category_count">2</span>Requirements Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RK" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RK"><span class="refine_category_count">0</span>Risk Management Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RD"><span class="refine_category_count">0</span>RoadRunner</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RY" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RY"><span class="refine_category_count">0</span>RoadRunner Asset Library</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RN"><span class="refine_category_count">1</span>RoadRunner Scenario</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RH"><span class="refine_category_count">0</span>RoadRunner Scene Builder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RO"><span class="refine_category_count">0</span>Robotics System Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RC"><span class="refine_category_count">0</span>Robust Control Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SU" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SU"><span class="refine_category_count">0</span>STM32 Microcontroller Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SI"><span class="refine_category_count">0</span>Satellite Communications Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TF"><span class="refine_category_count">0</span>Sensor Fusion and Tracking Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SX" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SX"><span class="refine_category_count">0</span>SerDes Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SQ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SQ"><span class="refine_category_count">0</span>Signal Integrity Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SG" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SG"><span class="refine_category_count">0</span>Signal Processing Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SB"><span class="refine_category_count">1</span>SimBiology</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SE"><span class="refine_category_count">0</span>SimEvents</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SS"><span class="refine_category_count">1</span>Simscape</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BT"><span class="refine_category_count">0</span>Simscape Battery</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LD"><span class="refine_category_count">0</span>Simscape Driveline</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_PS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PS"><span class="refine_category_count">1</span>Simscape Electrical</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SH"><span class="refine_category_count">3</span>Simscape Fluids</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MS"><span class="refine_category_count">0</span>Simscape Multibody</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VR"><span class="refine_category_count">0</span>Simulink 3D Animation</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_VV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VV"><span class="refine_category_count">4</span>Simulink Check</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_CI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CI"><span class="refine_category_count">3</span>Simulink Code Inspector</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RT"><span class="refine_category_count">19</span>Simulink Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SK" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SK"><span class="refine_category_count">1</span>Simulink Compiler </a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SD"><span class="refine_category_count">0</span>Simulink Control Design</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_CV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CV"><span class="refine_category_count">1</span>Simulink Coverage</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SO"><span class="refine_category_count">0</span>Simulink Design Optimization</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DV"><span class="refine_category_count">5</span>Simulink Design Verifier</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_WT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WT"><span class="refine_category_count">2</span>Simulink Desktop Real-Time</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FB"><span class="refine_category_count">0</span>Simulink FMU Builder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FA"><span class="refine_category_count">0</span>Simulink Fault Analyzer</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PL"><span class="refine_category_count">0</span>Simulink PLC Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_XP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=XP"><span class="refine_category_count">1</span>Simulink Real-Time</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SR"><span class="refine_category_count">0</span>Simulink Report Generator</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SZ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SZ"><span class="refine_category_count">0</span>Simulink Test</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_HW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=HW"><span class="refine_category_count">3</span>SoC Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_EL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=EL"><span class="refine_category_count">0</span>Spreadsheet Link</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SF"><span class="refine_category_count">4</span>Stateflow</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_ST" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ST"><span class="refine_category_count">0</span>Statistics and Machine Learning Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SM"><span class="refine_category_count">0</span>Symbolic Math Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_ZC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ZC"><span class="refine_category_count">5</span>System Composer</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_ID" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ID"><span class="refine_category_count">0</span>System Identification Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TA"><span class="refine_category_count">0</span>Text Analytics Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TSP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TSP"><span class="refine_category_count">0</span>ThingSpeak</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_UV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=UV"><span class="refine_category_count">1</span>UAV Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VE"><span class="refine_category_count">0</span>Vehicle Dynamics Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VN"><span class="refine_category_count">0</span>Vehicle Network Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VT"><span class="refine_category_count">0</span>Vision HDL Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_WL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WL"><span class="refine_category_count">1</span>WLAN Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_WA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WA"><span class="refine_category_count">0</span>Wavelet Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LH"><span class="refine_category_count">0</span>Wireless HDL Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_WN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WN"><span class="refine_category_count">0</span>Wireless Network Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_WB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WB"><span class="refine_category_count">2</span>Wireless Testbench</a>
+						</li>
+	    </ul>
+	</div>
+
+
+          </div>	
+        </div>
+      </div>
+  </div>
+</div>
+
+</div>
+</div>
+
+</div>
+
+		</div>
+		
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/offcanvasv5.min.20260902221426407.js"></script>
+</div>
+
+
+	<div id="offcanvas_body_container">
+		<div id="offcanvas_body">
+			
+			<div class="introParsys parsys containsResourceName resourceClass-parsys">
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+
+<style>
+.offcanvas_actuator .offcanvas_actuator_label:before { 
+    content: none !important;
+}
+</style>
+</div>
+
+</div>
+
+			<div class="content_container" id="content_container">
+				<div class="container-fluid container-lg">
+					<div class="row">
+						<div class="col" id="offcanvas_fixed_menu_container"> </div>
+						<div class="col" id="offcanvas_content_container">
+							
+							<div id="offcanvas_focus_actuator" tabindex="0" class="d-block d-md-none"><span class="visually-hidden">Main Content</span></div>
+							
+
+<main id="main" tabindex="-1"><section><div class="mainParsys parsys containsResourceName resourceClass-parsys">
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/form.min.20260902221426407.css" type="text/css">
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/mathworks-aem.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/searchrefine.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/card.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/search.min.20260902221426407.css" type="text/css">
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/ladda.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/templates/bugreports.min.20260902221426407.css" type="text/css">
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+    
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/spellcheck.min.20260902221426407.js"></script>
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/nuggets.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/handlebars.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/nuggets.min.20260902221426407.js"></script>
+</div>
+<div class="cssjs containsResourceName section resourceClass-cssjs">
+
+
+
+
+
+	
+    
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/accordion.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/alert.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/band.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/blockquote.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/image.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/inpagenav.min.20260902221426407.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/table.min.20260902221426407.css" type="text/css">
+<script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/accordion.min.20260902221426407.js"></script><script src="/etc.clientlibs/mathworks/clientlibs/customer-ui/components/panel.min.20260902221426407.js"></script>
+</div>
+<div class="targetcontainer containsResourceName resourceClass-targetcontainer section">
+
+
+
+<div class="personalization-container " id="web-application-body-container">
+	<div>
+<div class="targetContent parsys containsResourceName resourceClass-parsys">
+<div class="cqColumns containsResourceName section resourceClass-columns">
+<div class="row  ">
+
+	
+		<div class=" col-12 offset-0 offset-sm-0 offset-md-0 offset-lg-0 ">
+<div class="2420e633-83fe-4c2d-9b62-4248985f27d2 parsys containsResourceName resourceClass-parsys">
+
+
+<div id='sparams' p=''></div>
+<div id='ssparams' p=''></div>
+
+<!-- EBR Modal -->
+<div class="modal fade" id="ebrModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+  <div class="modal-dialog modal-lg" role="document">
+    <div id="ebrModalContent" class="modal-content">
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="criteria_edit_modal" tabindex="-1" role="dialog" aria-labelledby="criteria_edit_modal_label">
+  <div class="fs_id" fs_id=""></div>
+  <div class="modal-dialog modal-lg" role="document">
+    <div id="fsModalContent" class="modal-content">
+      <form  class='has-validation-callback needs-validation'>
+	      <div class="modal-header">
+	        <p class="modal-title" id="criteria_edit_modal_label">Save Search Criteria</p>
+			<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+	      </div>
+	      <div class="modal-body">
+			<div id="followed_search_form"></div>
+	      </div>
+	      <div class="modal-footer">
+	        <button type="button" class="btn btn_color_blue btn-outline" data-bs-dismiss="modal" id="fs_cancel_button">Cancel</button>
+	        <button type="button" class="btn btn_color_blue" id="fs_add_button">Save Search Criteria</button>	
+	      </div>
+      </form>
+	</div>
+  </div>
+</div>
+
+
+<div id="criteria_save_success" class="alert alert-success" name="" style="display:none" role="alert">
+	<p id="criteria_save_success_title" class="alert_heading"></p>
+	<ul>
+		<li>To edit this search criteria, go to <a href='/support/bugreports/manage_followed_bugs?id=2'>Manage Followed Bugs.</a></li>
+		
+	</ul>
+</div>
+
+<div id="criteria_save_error" class="alert alert-danger" role="alert" style="display:none">
+	<p class="alert_heading">Error</p>
+	<p>Unable to save search criteria.<br>
+</div>
+
+
+
+    <div class="row">
+
+		<!-- left side area -->
+      <div class="d-none">
+      	<div class="search_refine_v4">
+  <div id="facets_area">
+   
+      <div id="pagefacets">
+        <div id="myfacets">
+          <div class="search_refine add_margin_0">
+            <h2 class="d-none d-sm-block">Filter By</h2>
+          </div>
+          
+          <div>
+	
+<!-- if facets[:bug_type] value is nil then it will error out in .each block, hence we need to validate it first -->
+
+            <div class="search_refine mb-4">
+              <h3>Type
+                <span class="remove_category_facets" style="display:none">
+                  <a href="/support/bugreports/?action=index&amp;controller=search&amp;eirf=R2026a&amp;page=1&amp;release=R2026a">Clear</a>
+                </span>
+              </h3>
+              <div class="search_refine_scroll">
+                <ul class="list-unstyled">
+                          <li class="refinable"><a id="remove_facet_1" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=1"><span class="refine_category_count">1</span>Security Issue</a>
+                          </li>
+                          <li class="refinable"><a id="remove_facet_2" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=2"><span class="refine_category_count">65</span>Incorrect Code Generation</a>
+                          </li>
+                          <li class="refinable"><a id="remove_facet_4" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=4"><span class="refine_category_count">3</span>Accessibility Issue</a>
+                          </li>
+                          <li class="refinable"><a id="remove_facet_3" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;bug_type[]=3"><span class="refine_category_count">160</span>Other</a>
+                          </li>
+                </ul>
+              </div>
+            </div>
+          
+          </div>
+
+          <div class="search_refine">
+            <h3>Products
+              <span class="remove_category_facets" style="display:none">
+                <a href="/support/bugreports/?action=index&amp;controller=search&amp;eirf=R2026a&amp;page=1&amp;release=R2026a">Clear</a>
+              </span>
+            </h3>
+            
+            
+	<div class="search_refine">
+		<ul class="list-unstyled">
+						<li class="refinable">
+							<a id="remove_facet_ML" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ML"><span class="refine_category_count">35</span>MATLAB</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SL"><span class="refine_category_count">43</span>Simulink</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_5G" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=5G"><span class="refine_category_count">0</span>5G Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AS"><span class="refine_category_count">2</span>AUTOSAR Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AE"><span class="refine_category_count">3</span>Aerospace Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AT"><span class="refine_category_count">1</span>Aerospace Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AA"><span class="refine_category_count">0</span>Antenna Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AU" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AU"><span class="refine_category_count">0</span>Audio Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DR"><span class="refine_category_count">1</span>Automated Driving Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BI"><span class="refine_category_count">0</span>Bioinformatics Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BL"><span class="refine_category_count">0</span>Bluetooth Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_C2" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=C2"><span class="refine_category_count">4</span>C2000 Microcontroller Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CM"><span class="refine_category_count">0</span>Communications Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VP"><span class="refine_category_count">0</span>Computer Vision Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CT"><span class="refine_category_count">0</span>Control System Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CF"><span class="refine_category_count">0</span>Curve Fitting Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DD"><span class="refine_category_count">0</span>DDS Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DO"><span class="refine_category_count">3</span>DO Qualification Kit</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_HS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=HS"><span class="refine_category_count">1</span>DSP HDL Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DS"><span class="refine_category_count">0</span>DSP System Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DA"><span class="refine_category_count">0</span>Data Acquisition Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DB"><span class="refine_category_count">0</span>Database Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DF"><span class="refine_category_count">0</span>Datafeed Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DH"><span class="refine_category_count">1</span>Deep Learning HDL Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_NN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=NN"><span class="refine_category_count">3</span>Deep Learning Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_ET" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ET"><span class="refine_category_count">0</span>Econometrics Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_EC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=EC"><span class="refine_category_count">14</span>Embedded Coder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_IT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IT"><span class="refine_category_count">0</span>Financial Instruments Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FI"><span class="refine_category_count">0</span>Financial Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_PO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PO"><span class="refine_category_count">4</span>Fixed-Point Designer</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FL"><span class="refine_category_count">0</span>Fuzzy Logic Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_GC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=GC"><span class="refine_category_count">0</span>GPU Coder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_GD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=GD"><span class="refine_category_count">0</span>Global Optimization Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_HD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=HD"><span class="refine_category_count">16</span>HDL Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_ES" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ES"><span class="refine_category_count">3</span>HDL Verifier</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_IE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IE"><span class="refine_category_count">2</span>IEC Certification Kit</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_IA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IA"><span class="refine_category_count">0</span>Image Acquisition Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_IP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IP"><span class="refine_category_count">1</span>Image Processing Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_OT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=OT"><span class="refine_category_count">1</span>Industrial Communication Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_IC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=IC"><span class="refine_category_count">0</span>Instrument Control Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LS"><span class="refine_category_count">0</span>LTE Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LP"><span class="refine_category_count">0</span>Lidar Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_ME" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ME"><span class="refine_category_count">22</span>MATLAB Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_CO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CO"><span class="refine_category_count">1</span>MATLAB Compiler</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MJ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MJ"><span class="refine_category_count">0</span>MATLAB Compiler SDK</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DW"><span class="refine_category_count">0</span>MATLAB Parallel Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PR"><span class="refine_category_count">0</span>MATLAB Production Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MR"><span class="refine_category_count">0</span>MATLAB Report Generator</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TE"><span class="refine_category_count">0</span>MATLAB Test</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MW"><span class="refine_category_count">0</span>MATLAB Web App Server</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_MG" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MG"><span class="refine_category_count">2</span>Mapping Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_DX" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DX"><span class="refine_category_count">0</span>Medical Imaging Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AM"><span class="refine_category_count">0</span>Mixed-Signal Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MP"><span class="refine_category_count">0</span>Model Predictive Control Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MB"><span class="refine_category_count">0</span>Model-Based Calibration Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MT"><span class="refine_category_count">0</span>Motor Control Blockset</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_NV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=NV"><span class="refine_category_count">1</span>Navigation Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_OP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=OP"><span class="refine_category_count">0</span>Optimization Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DM"><span class="refine_category_count">2</span>Parallel Computing Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PD"><span class="refine_category_count">0</span>Partial Differential Equation Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_AR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AR"><span class="refine_category_count">0</span>Phased Array System Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_AB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=AB"><span class="refine_category_count">1</span>Polyspace Access</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_BD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BD"><span class="refine_category_count">1</span>Polyspace Bug Finder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BS"><span class="refine_category_count">0</span>Polyspace Bug Finder Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PA"><span class="refine_category_count">0</span>Polyspace Client for Ada</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CD"><span class="refine_category_count">0</span>Polyspace Code Prover</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_CS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CS"><span class="refine_category_count">0</span>Polyspace Code Prover Server</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PF"><span class="refine_category_count">0</span>Polyspace Server for Ada</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PZ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PZ"><span class="refine_category_count">0</span>Polyspace Test</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PY" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PY"><span class="refine_category_count">0</span>Polyspace as You Code</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PW"><span class="refine_category_count">0</span>Powertrain Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PM"><span class="refine_category_count">0</span>Predictive Maintenance Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RB"><span class="refine_category_count">0</span>RF Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RP"><span class="refine_category_count">0</span>RF PCB Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RF"><span class="refine_category_count">0</span>RF Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RR"><span class="refine_category_count">2</span>ROS Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RA"><span class="refine_category_count">0</span>Radar Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RI"><span class="refine_category_count">0</span>Raspberry Pi Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RL"><span class="refine_category_count">0</span>Reinforcement Learning Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RQ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RQ"><span class="refine_category_count">2</span>Requirements Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RK" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RK"><span class="refine_category_count">0</span>Risk Management Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RD"><span class="refine_category_count">0</span>RoadRunner</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RY" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RY"><span class="refine_category_count">0</span>RoadRunner Asset Library</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RN"><span class="refine_category_count">1</span>RoadRunner Scenario</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RH"><span class="refine_category_count">0</span>RoadRunner Scene Builder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RO"><span class="refine_category_count">0</span>Robotics System Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_RC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RC"><span class="refine_category_count">0</span>Robust Control Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SU" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SU"><span class="refine_category_count">0</span>STM32 Microcontroller Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SI"><span class="refine_category_count">0</span>Satellite Communications Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TF"><span class="refine_category_count">0</span>Sensor Fusion and Tracking Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SX" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SX"><span class="refine_category_count">0</span>SerDes Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SQ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SQ"><span class="refine_category_count">0</span>Signal Integrity Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SG" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SG"><span class="refine_category_count">0</span>Signal Processing Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SB"><span class="refine_category_count">1</span>SimBiology</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SE"><span class="refine_category_count">0</span>SimEvents</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SS"><span class="refine_category_count">1</span>Simscape</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_BT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=BT"><span class="refine_category_count">0</span>Simscape Battery</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LD"><span class="refine_category_count">0</span>Simscape Driveline</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_PS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PS"><span class="refine_category_count">1</span>Simscape Electrical</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SH"><span class="refine_category_count">3</span>Simscape Fluids</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_MS" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=MS"><span class="refine_category_count">0</span>Simscape Multibody</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VR"><span class="refine_category_count">0</span>Simulink 3D Animation</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_VV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VV"><span class="refine_category_count">4</span>Simulink Check</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_CI" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CI"><span class="refine_category_count">3</span>Simulink Code Inspector</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_RT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=RT"><span class="refine_category_count">19</span>Simulink Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SK" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SK"><span class="refine_category_count">1</span>Simulink Compiler </a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SD" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SD"><span class="refine_category_count">0</span>Simulink Control Design</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_CV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=CV"><span class="refine_category_count">1</span>Simulink Coverage</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SO" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SO"><span class="refine_category_count">0</span>Simulink Design Optimization</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_DV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=DV"><span class="refine_category_count">5</span>Simulink Design Verifier</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_WT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WT"><span class="refine_category_count">2</span>Simulink Desktop Real-Time</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FB"><span class="refine_category_count">0</span>Simulink FMU Builder</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_FA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=FA"><span class="refine_category_count">0</span>Simulink Fault Analyzer</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_PL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=PL"><span class="refine_category_count">0</span>Simulink PLC Coder</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_XP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=XP"><span class="refine_category_count">1</span>Simulink Real-Time</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SR" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SR"><span class="refine_category_count">0</span>Simulink Report Generator</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SZ" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SZ"><span class="refine_category_count">0</span>Simulink Test</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_HW" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=HW"><span class="refine_category_count">3</span>SoC Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_EL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=EL"><span class="refine_category_count">0</span>Spreadsheet Link</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_SF" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SF"><span class="refine_category_count">4</span>Stateflow</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_ST" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ST"><span class="refine_category_count">0</span>Statistics and Machine Learning Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_SM" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=SM"><span class="refine_category_count">0</span>Symbolic Math Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_ZC" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ZC"><span class="refine_category_count">5</span>System Composer</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_ID" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=ID"><span class="refine_category_count">0</span>System Identification Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TA"><span class="refine_category_count">0</span>Text Analytics Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_TSP" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=TSP"><span class="refine_category_count">0</span>ThingSpeak</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_UV" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=UV"><span class="refine_category_count">1</span>UAV Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VE" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VE"><span class="refine_category_count">0</span>Vehicle Dynamics Blockset</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VN"><span class="refine_category_count">0</span>Vehicle Network Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_VT" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=VT"><span class="refine_category_count">0</span>Vision HDL Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_WL" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WL"><span class="refine_category_count">1</span>WLAN Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_WA" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WA"><span class="refine_category_count">0</span>Wavelet Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_LH" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=LH"><span class="refine_category_count">0</span>Wireless HDL Toolbox</a>
+						</li>
+						<!--If facet is not slected create a new facet with attribute selected = false and use it-->
+						<li class="refinable">
+							<a id="remove_facet_WN" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WN"><span class="refine_category_count">0</span>Wireless Network Toolbox</a>
+						</li>
+						<li class="refinable">
+							<a id="remove_facet_WB" class="link_facet" href="https://www.mathworks.com/support/bugreports/?&amp;product[]=WB"><span class="refine_category_count">2</span>Wireless Testbench</a>
+						</li>
+	    </ul>
+	</div>
+
+
+          </div>	
+        </div>
+      </div>
+  </div>
+</div>
+
+      </div>
+
+      <!-- right side area -->
+      <div class="col-12">
+		<div id="results_container" tabindex="-1">
+		<div class="row">
+			<div class="col-12 col-sm-7">
+			<h1 id="search_release">
+				Bugs Existing in R2026a
+			</h1>
+			</div>
+			<div class="col-12 col-sm-5">
+			<ul class="list-inline float-end me-2">
+				<li class="list-inline-item" tabindex="0" id="notify_me_icon" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Save search criteria and get notifications"><span class="icon-save icon_24 add_icon_color_darkblue add_cursor_pointer" tabindex="0" id="notify_me" data-bs-toggle="modal" data-bs-target="#criteria_edit_modal"></span></li>
+						<li class="list-inline-item" id="download_results_icon" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Download Results"><span  class="icon-download icon_24 add_icon_color_darkblue add_cursor_pointer" tabindex="0" id="download_results" ></span></li>
+			</ul>
+			</div>
+		</div>
+		<!-- top area -->
+		<div id="search_result_header">
+			<div class="row justify-content-between align-items-end">
+				<div class="col-12">
+					
+<form id="search_form" class="d-flex flex-row flex-nowrap" action="/support/bugreports/" accept-charset="UTF-8" method="get">
+    <!-- release dropdown -->      
+    <div class="form-floating d-inline-block">
+      <select name="release" id="release" class="form-select" aria-label="Select a release"><option selected="selected" value="R2026a">R2026a</option>
+<option value="R2025b">R2025b</option>
+<option value="R2025a">R2025a</option>
+<option value="R2024b">R2024b</option>
+<option value="R2024a">R2024a</option>
+<option value="R2023b">R2023b</option>
+<option value="R2023a">R2023a</option>
+<option value="R2022b">R2022b</option>
+<option value="R2022a">R2022a</option>
+<option value="R2021b">R2021b</option>
+<option value="R2021a">R2021a</option>
+<option value="R2020b">R2020b</option>
+<option value="R2020a">R2020a</option>
+<option value="R2019b">R2019b</option>
+<option value="R2019a">R2019a</option>
+<option value="R2018b">R2018b</option>
+<option value="R2018a">R2018a</option>
+<option value="R2017b">R2017b</option>
+<option value="R2017a">R2017a</option>
+<option value="R2016b">R2016b</option>
+<option value="R2016a">R2016a</option>
+<option value="R2015b">R2015b</option>
+<option value="R2015aSP1">R2015aSP1</option>
+<option value="R2015a">R2015a</option>
+<option value="R2014b">R2014b</option>
+<option value="R2014a">R2014a</option>
+<option value="R2013b">R2013b</option>
+<option value="R2013a">R2013a</option>
+<option value="R2012b">R2012b</option>
+<option value="R2012a">R2012a</option>
+<option value="R2011b">R2011b</option>
+<option value="R2011a">R2011a</option>
+<option value="R2010bSP2">R2010bSP2</option>
+<option value="R2010bSP1">R2010bSP1</option>
+<option value="R2010b">R2010b</option>
+<option value="R2010a">R2010a</option>
+<option value="R2009bSP1">R2009bSP1</option>
+<option value="R2009b">R2009b</option>
+<option value="R2009a">R2009a</option>
+<option value="R2008b">R2008b</option>
+<option value="R2008a">R2008a</option>
+<option value="R2007b">R2007b</option>
+<option value="R2007a">R2007a</option>
+<option value="R2006b">R2006b</option>
+<option value="R2006a">R2006a</option>
+<option value="R14SP3">R14SP3</option>
+<option value="R14SP2">R14SP2</option></select>
+      <label for="release">Release</label>
+    </div>  
+    <!-- sort by dropdown -->
+    
+      <div class="form-floating d-inline-block add_indent_8">
+        <select name="sort_by" id="sort_by" onchange="this.form.submit();" class="form-select" aria-label="Sort the data by:"><option value="date-descending">Modification Date (Newest - Oldest)</option>
+<option value="date-ascending">Modification Date (Oldest - Newest)</option>
+<option value="report-id-asc">Bug Report ID (Lowest - Highest)</option>
+<option value="report-id-desc">Bug Report ID (Highest - Lowest)</option>
+<option value="relevance">Relevance</option></select>
+        <label for="sort_by"> Sort By</label>
+      </div>
+    
+</form>
+				</div>
+			</div>
+		</div>
+
+		<!-- suggestion area -->
+					<div id="spellcheck_suggestions"  style="margin-top: 15px;"></div>
+
+		<!-- nugget area -->
+			
+		<!--Alert info to receive email notification -->
+		<div id="receive_email_info">
+		</div>
+		
+		<!-- table area -->
+			<div class="table_collapse">
+				<table class="table table-striped">
+				<thead id="classes_header">
+  <tr>
+    <th class="cell_75">Description</th>
+    <th class="cell_25">Fix Options</th>
+  </tr>
+</thead>
+				<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4467500" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4467500: Incorrect Code Generation: xcov function with rectangular matrix or N-D array input</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		The generated code for xcov(A)  produces incorrect results if both  these conditions are true: A  is a matrix or an N-D array If  [m,n] = size(A)  and m ~= n     
+	</p>
+	<p>
+		<em>Modified: 09/18/2026</em>
+	</p>  <a id="title_4467500" href="/support/bugreports/details/4467500"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4467500"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4458472" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4458472: Incorrect Code Generation: min and max with sparse rectangular matrix or sparse column vector input</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		The generated code for min(A)  and max(A)  might produce incorrect results if A  is a sparse rectangular matrix or a sparse column vector.  
+	</p>
+	<p>
+		<em>Modified: 09/18/2026</em>
+	</p>  <a id="title_4458472" href="/support/bugreports/details/4458472"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4458472"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="3360679" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>3360679: MATLAB might crash when deleting Simulink blocks</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		Deleting Simulink Blocks in a certain order might cause MATLAB to crash. The generated stack trace is similar to: [  0] 0x00007ffd95eac016 C:\Program Files\MATLAB\R2024b\bin\win64\sl_lang_blocks.dll+09551894 slsr::util::getNearestAncestorSRBlock+00000006  [  1] 0x00007ffd95e9405e C:\Program Files\MAT...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_3360679" href="/support/bugreports/details/3360679"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="3360679"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_1_3360679">Get R2026a Update 1</a>
+		
+		<li>
+			<a href="/support/bugreports/details/3360679#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4133964" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4133964: Incorrect Code Generation: With Boolean inputs, the generated HDL code for the Extract Bits block does not match the simulation results.</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		When your model contains an Extract Bitsblock with a Boolean input, the generated HDL code can produce a simulationmismatch. This occurs because the Simulink block treats the Boolean input as auint8 signal, while the HDL code interprets it as a 1-bit signal.     
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_4133964" href="/support/bugreports/details/4133964"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4133964"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_1_4133964">Get R2026a Update 1</a>
+		
+		<li>
+			<a href="/support/bugreports/details/4133964#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4151070" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4151070: Incorrect Code Generation: Incorrect cancellation of negative factor in inequalities during code generation</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		In rare cases, when MATLAB code contains an inequality in which both sides contain a negative factor, MATLAB Coder cancels the factor without reversing the inequality direction, resulting in incorrect code generation. For example, MATLAB Coder might transform the expression:   -2 * 2 &gt;= -2 * 1   i...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_4151070" href="/support/bugreports/details/4151070"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4151070"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_5_4151070">Get R2026a Update 5</a>
+		
+		<li>
+			<a href="/support/bugreports/details/4151070#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4142542" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4142542: Legacy pipelining settings override new pipeliningparameters in upgraded filter models.</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		When opening models saved in R2023b or R2024a in R2024b orlater that use filter blocks such as FIR Decimation or Biquad Filter, disablingthe AdderOutputPipeline   parameter on a FIR Decimation block does not fullyremove pipeline registers. Starting in R2024b, the legacy AddPipelineRegisters  paramete...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_4142542" href="/support/bugreports/details/4142542"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4142542"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_3_4142542">Get R2026a Update 3</a>
+		
+		<li>
+			<a href="/support/bugreports/details/4142542#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="3978852" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>3978852: Inefficient HDL is generated for FIR Decimator and FIR Interpolator blocks due to missing coefficient symmetry optimization</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		FIR Decimator and FIR Interpolator blocks from DSP System Toolbox can generate hardware‑intensive designs when translated to HDL. HDL Coder generates synthesizable HDL from models that use these blocks. For linear‑phase FIR filters, filter coefficients are symmetric. HDL implementations can exploit t...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_3978852" href="/support/bugreports/details/3978852"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="3978852"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_1_3978852">Get R2026a Update 1</a>
+		
+		<li>
+			<a href="/support/bugreports/details/3978852#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4037010" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4037010: Microchip Libero fails to infer ECC‑enabled RAM when HDL Coder uses syn_ramstyle='ecc' and RAM initialization is enabled.</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		When synthesizing HDL code that includes RAM blocks with the HDL block property SynthesisAttributes  = {{'syn_ramstyle','ecc'}}  and the model parameter Initialize all RAM blocks  enabled, the Microchip Libero synthesis tool does not infer ECC‑enabled RAM. This behavior is due to limitations in the t...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_4037010" href="/support/bugreports/details/4037010"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4037010"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_2_4037010">Get R2026a Update 2</a>
+		
+		<li>
+			<a href="/support/bugreports/details/4037010#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4084486" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4084486: .NET Engine throws System.ObjectDisposedException when invoking a MATLAB function with a MATLABStruct</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		When passing a MathWorks.MATLAB.Types.MATLABStruct  to MATLAB, .NET Engine might call the IDisposable.Dispose()  method on its fields. This causes the engine to throw a System.ObjectDisposedException  when invoking a MATLAB function with a MATLABStruc t.  Depending on the complexity of the struct, yo...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_4084486" href="/support/bugreports/details/4084486"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4084486"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_1_4084486">Get R2026a Update 1</a>
+		
+		<li>
+			<a href="/support/bugreports/details/4084486#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="4099304" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>4099304: SLDV incorrectly excludes -tol from the left relational boundary interval [-tol, 0) and may report some satisfiable objectives to be unsatisfiable.</strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		For relational boundary coverage involving floating‑point operands, Simulink Design Verifier (SLDV) analysis is expected to include -tol  in the left boundary interval. However, SLDV incorrectly excludes -tol  from this interval. As a result, SLDV analysis may report some left relational boundary obj...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_4099304" href="/support/bugreports/details/4099304"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="list-group list-group-flush mb-2">
+			<li class="list-group-item">
+				<button type="button" class="btn btn-link p-0 follow" geck_id="4099304"><span class="icon-add-circle"></span>Follow</button>
+			</li>
+	</ul>
+	<ul class="list-unstyled add_list_spacing_5">
+		<a class="feedback icon-chevron" href="/downloads/web_downloads/download_update?release=R2026a&amp;s_tid=ebrg_R2026a_1_4099304">Get R2026a Update 1</a>
+		
+		<li>
+			<a href="/support/bugreports/details/4099304#fix_options" class="feedback icon-chevron">View all fix options</a>
+		</li>
+	</ul>  </td>
+</tr>
+<tr>
+	<td class="bug_description add_padding_15" data-label="Description" >
+	<p class="search_title add_margin_8">
+		<a geck_id="3384495" class="ebr_modal" data-bs-toggle="modal" data-bs-target="#ebrModal" href="https://www.mathworks.com/support/bugreports/#ebrModal"><span class="visually-hidden">Bug Number</span>
+			<strong>3384495: Incorrect Code Generation: Export Function called by multiple callers via Mux generates incorrect code </strong>
+		</a>
+	</p>
+	<p class="add_margin_8">
+		The generated code is incorrect when all of these conditions are met: The function-call subsystem in the export-function referenced model is connected to an asynchronous function-call input. The parent model is rate-based. The function-call signals from different callers with different sample times a...
+	</p>
+	<p>
+		<em>Modified: 09/17/2026</em>
+	</p>  <a id="title_3384495" href="/support/bugreports/details/3384495"> Read more </a></td>
+	<td class="fix_options" data-label="Fix Options" >
+	<ul class="li
+...[truncated 91383 chars by TestMind live capture]

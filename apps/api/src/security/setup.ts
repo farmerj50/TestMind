@@ -31,6 +31,10 @@ export const securityAuthProfileSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   passwordSecretKey: z.string().optional(),
+  // Sent on every outbound scan request for this profile, regardless of auth type - e.g. a
+  // WAF-bypass header. Previously only ever populated server-side via the Burp/cURL-paste
+  // capture flow; this lets a manually-configured profile carry one directly too.
+  additionalHeaders: z.record(z.string(), z.string()).optional(),
 });
 
 export const apiSecurityFixtureSchema = z.object({

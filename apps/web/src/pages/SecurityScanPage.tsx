@@ -11,6 +11,7 @@ import { Building2, Bug, Code2, KeyRound, Plus, RefreshCw, Save, ShieldCheck, Tr
 
 type Project = { id: string; name: string };
 type ProjectSecret = { id: string; name: string; key: string; createdAt: string; updatedAt: string };
+type SecretDraft = { value: string; saving?: boolean };
 type AuthProfileConfig = {
   label: string;
   role?: string;
@@ -20,6 +21,14 @@ type AuthProfileConfig = {
   cookieValueSecretKey?: string;
   username?: string;
   passwordSecretKey?: string;
+  // Array shape (not Record) purely for stable editing - a Record keyed by the header name
+  // itself would remount/lose focus every keystroke while typing the name. Converted to
+  // Record<string,string> (dropping blank-name rows) at submit time by normalizeAuthProfile.
+  additionalHeaders?: Array<{ name: string; value: string }>;
+};
+// Wire shape actually sent to the API - matches security/types.ts's SecurityAuthProfile.
+type AuthProfilePayload = Omit<AuthProfileConfig, "additionalHeaders"> & {
+  additionalHeaders?: Record<string, string>;
 };
 type ApiFixtureConfig = {
   name?: string;
@@ -42,7 +51,7 @@ type ApiFixtureSuggestion = ApiFixtureConfig & {
   objectIdRequired?: boolean;
 };
 type SecurityTestSetup = {
-  authProfiles: AuthProfileConfig[];
+  authProfiles: AuthProfilePayload[];
   apiFixtures: ApiFixtureConfig[];
   expectedControls: string[];
   owaspCategories?: string[];
@@ -73,6 +82,21 @@ type OperatorJobRef = {
 };
 
 type AuthMode = "enterprise" | "bug_bounty";
+
+function configuredAuthCaptureExecutionMode(): AuthCaptureExecutionMode | null {
+  const configured = (import.meta.env.VITE_AUTH_CAPTURE_DEFAULT_MODE ?? "").trim().toLowerCase();
+  if (configured === "headed" || configured === "headless") return configured;
+  return null;
+}
+
+function isLocalAuthCaptureHost() {
+  if (typeof window === "undefined") return false;
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
+function defaultAuthCaptureExecutionMode(): AuthCaptureExecutionMode {
+  return configuredAuthCaptureExecutionMode() ?? (isLocalAuthCaptureHost() ? "headed" : "headless");
+}
 
 type SecurityAuthSession = {
   id: string;
@@ -348,6 +372,49 @@ function prettyJson(value: unknown) {
   return value && Array.isArray(value) && value.length ? JSON.stringify(value, null, 2) : "";
 }
 
+function projectSecretErrorMessage(err: any, fallback: string) {
+  let msg = err?.message ?? fallback;
+  try {
+    const parsed = JSON.parse(msg);
+    if (typeof parsed?.error === "string") return parsed.error;
+    if (parsed?.error?.fieldErrors) {
+      const parts: string[] = [];
+      Object.entries(parsed.error.fieldErrors as Record<string, string[]>).forEach(([key, values]) => {
+        if (values?.length) parts.push(`${key}: ${values.join(", ")}`);
+      });
+      if (parts.length) msg = parts.join(" | ");
+    }
+  } catch {
+    // Keep the original API message when it is not JSON.
+  }
+  return msg;
+}
+
+function passwordSecretName(profile: AuthProfileConfig, index: number) {
+  return `${profile.label?.trim() || `Account ${index + 1}`} password`;
+}
+
+function toProjectSecretKey(value: string) {
+  const key = value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return key || "TEST_ACCOUNT_PASSWORD";
+}
+
+function uniqueProjectSecretKey(preferred: string, secrets: ProjectSecret[]) {
+  const existing = new Set(secrets.map((secret) => secret.key));
+  const base = toProjectSecretKey(preferred).slice(0, 64).replace(/_+$/g, "") || "TEST_ACCOUNT_PASSWORD";
+  if (!existing.has(base)) return base;
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const suffixText = `_${suffix}`;
+    const candidate = `${base.slice(0, 64 - suffixText.length).replace(/_+$/g, "")}${suffixText}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `${base.slice(0, 55).replace(/_+$/g, "")}_${Date.now().toString().slice(-8)}`;
+}
+
 function splitList(value: string) {
   return value
     .split(",")
@@ -371,9 +438,9 @@ function apiFixtureKey(fixture: Pick<ApiFixtureConfig, "route" | "method">) {
   return `${(fixture.method || "GET").toUpperCase()} ${fixture.route.trim()}`;
 }
 
-function normalizeAuthProfile(profile: AuthProfileConfig): AuthProfileConfig {
+function normalizeAuthProfile(profile: AuthProfileConfig): AuthProfilePayload {
   const type = profile.type || "none";
-  const normalized: AuthProfileConfig = {
+  const normalized: AuthProfilePayload = {
     label: profile.label.trim(),
     type,
   };
@@ -393,7 +460,22 @@ function normalizeAuthProfile(profile: AuthProfileConfig): AuthProfileConfig {
       normalized.passwordSecretKey = profile.passwordSecretKey.trim();
     }
   }
+  // Custom headers apply regardless of auth type - e.g. a WAF-bypass header on a profile that
+  // otherwise has no auth at all (type "none").
+  const headerEntries = (profile.additionalHeaders || [])
+    .map((h) => ({ name: h.name.trim(), value: h.value }))
+    .filter((h) => h.name);
+  if (headerEntries.length) {
+    normalized.additionalHeaders = Object.fromEntries(headerEntries.map((h) => [h.name, h.value]));
+  }
   return normalized;
+}
+
+function toEditableAuthProfile(profile: AuthProfilePayload): AuthProfileConfig {
+  return {
+    ...profile,
+    additionalHeaders: Object.entries(profile.additionalHeaders || {}).map(([name, value]) => ({ name, value })),
+  };
 }
 
 function normalizeApiFixture(fixture: ApiFixtureConfig): ApiFixtureConfig {
@@ -450,6 +532,29 @@ function findingsCountFor(job: SecurityJob): number | null {
   return Object.values(counts).reduce((sum: number, n) => sum + (typeof n === "number" ? n : 0), 0);
 }
 
+function numberEntries(value: any): Array<[string, number]> {
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value)
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function securityAgentTargetLabel(target: any): string {
+  if (!target || typeof target !== "object") return "target";
+  if (target.kind === "scan") return target.baseUrl || "scan";
+  if (target.kind === "endpoint") {
+    const method = target.method ? `${String(target.method).toUpperCase()} ` : "";
+    return `${method}${target.endpoint || "endpoint"}`;
+  }
+  if (target.kind === "workflow") return target.workflowName || target.workflowKey || "workflow";
+  if (target.kind === "graphql") {
+    const operation = target.operationName ? ` ${target.operationName}` : "";
+    return `GraphQL${operation} ${target.endpoint || ""}`.trim();
+  }
+  if (target.kind === "session") return "session";
+  return target.kind || "target";
+}
+
 export default function SecurityScanPage() {
   const { apiFetch } = useApi();
   const [searchParams] = useSearchParams();
@@ -466,14 +571,13 @@ export default function SecurityScanPage() {
   const [bbAllowMutating, setBbAllowMutating] = useState(false);
   const [bbAllowDelete, setBbAllowDelete] = useState(false);
   const [bbProxyUrl, setBbProxyUrl] = useState("");
+  const [bbCustomHeaders, setBbCustomHeaders] = useState<Array<{ name: string; value: string }>>([{ name: "", value: "" }]);
   const [bbInputMode, setBbInputMode] = useState<"live" | "paste">("live");
-  // Defaults to headless: "Headed manual browser" only works when a human has physical/desktop
-  // access to the machine actually running the browser process (it opens a real OS window and
-  // relies on the operator typing into it directly - the on-page preview is intentionally
-  // read-only for that mode). In any hosted deployment nobody ever has that access, so headed
-  // mode is unusable there; "Headless live preview" is the mode with working input forwarding
-  // (see LiveBrowserView's interactive prop below) and is what actually works in production.
-  const [bbExecutionMode, setBbExecutionMode] = useState<AuthCaptureExecutionMode>("headless");
+  // Local dev can use the real headed Chrome profile, which is less likely to trigger
+  // bot-management blocks. Hosted deployments keep the headless live preview default because
+  // nobody has desktop access to the server-side Chrome window there.
+  const [bbExecutionMode, setBbExecutionMode] = useState<AuthCaptureExecutionMode>(() => defaultAuthCaptureExecutionMode());
+  const bbExecutionModeTouchedRef = useRef(false);
   const [bbPastedCapture, setBbPastedCapture] = useState("");
   const [bbDetectedFormat, setBbDetectedFormat] = useState<"raw_http" | "curl" | "cookies" | null>(null);
   const [bbImportResult, setBbImportResult] = useState<{ sessionValid: boolean | null; statusCode?: number; warnings: string[] } | null>(null);
@@ -513,6 +617,11 @@ export default function SecurityScanPage() {
   const [liveViewConnecting, setLiveViewConnecting] = useState(false);
   const liveWsRef = useRef<WebSocket | null>(null);
   const liveImgRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (bbExecutionModeTouchedRef.current || bbSession || liveViewOpen) return;
+    const preferredMode = defaultAuthCaptureExecutionMode();
+    if (preferredMode !== bbExecutionMode) setBbExecutionMode(preferredMode);
+  }, [bbExecutionMode, bbSession, liveViewOpen]);
   const [baseUrl, setBaseUrl] = useState("");
   const [allowedHosts, setAllowedHosts] = useState("");
   const [allowedPorts, setAllowedPorts] = useState("80,443");
@@ -546,6 +655,7 @@ export default function SecurityScanPage() {
     sources: Record<string, number>;
   } | null>(null);
   const [secrets, setSecrets] = useState<ProjectSecret[]>([]);
+  const [passwordSecretDrafts, setPasswordSecretDrafts] = useState<Record<number, SecretDraft>>({});
   const [job, setJob] = useState<SecurityJob | null>(null);
   const [recent, setRecent] = useState<SecurityJob[]>([]);
   const [recentLoaded, setRecentLoaded] = useState(false);
@@ -698,7 +808,7 @@ export default function SecurityScanPage() {
           apiFixtures: [],
           expectedControls: [],
         };
-        setAuthProfiles(setup.authProfiles || []);
+        setAuthProfiles((setup.authProfiles || []).map(toEditableAuthProfile));
         setApiFixtures(setup.apiFixtures || []);
         setAuthProfilesJson(prettyJson(setup.authProfiles || []));
         setApiFixturesJson(prettyJson(setup.apiFixtures || []));
@@ -709,6 +819,7 @@ export default function SecurityScanPage() {
         );
         setOwaspCategories(setup.owaspCategories || []);
         setSecrets(secretsRes.secrets || []);
+        setPasswordSecretDrafts({});
         setContractSuggestions([]);
         setSuggestionInventory(null);
         setSetupDirty(false);
@@ -974,12 +1085,18 @@ export default function SecurityScanPage() {
     setError(null);
     setLiveViewConnecting(true);
     try {
+      const customHeaderEntries = bbCustomHeaders
+        .map((h) => ({ name: h.name.trim(), value: h.value }))
+        .filter((h) => h.name);
       const res = await apiFetch<{ ticket: string }>(`/security/auth-sessions/${session.id}/stream-ticket`, {
         method: "POST",
         body: JSON.stringify({
           executionMode: bbExecutionMode,
           allowInteractiveChallengeHandling: false,
           ...(bbProxyUrl.trim() ? { proxyUrl: bbProxyUrl.trim() } : {}),
+          ...(customHeaderEntries.length
+            ? { customHeaders: Object.fromEntries(customHeaderEntries.map((h) => [h.name, h.value])) }
+            : {}),
         }),
       });
       const httpBase = apiUrl(`/security/auth-sessions/${session.id}/stream`);
@@ -1235,6 +1352,50 @@ export default function SecurityScanPage() {
     setSetupDirty(true);
   };
 
+  const updatePasswordSecretDraft = (index: number, patch: Partial<SecretDraft>) => {
+    setPasswordSecretDrafts((prev) => {
+      const current = prev[index] ?? { value: "" };
+      return {
+        ...prev,
+        [index]: { ...current, ...patch, value: patch.value ?? current.value ?? "" },
+      };
+    });
+  };
+
+  const createPasswordSecretForProfile = async (index: number) => {
+    if (!projectId) {
+      setError("Pick a project before saving a password secret.");
+      return;
+    }
+    const profile = authProfiles[index];
+    if (!profile) return;
+    const passwordValue = passwordSecretDrafts[index]?.value ?? "";
+    if (!passwordValue.length) {
+      setError("Enter the password, then save it as a project secret.");
+      return;
+    }
+
+    const name = passwordSecretName(profile, index);
+    const key = uniqueProjectSecretKey(name, secrets);
+    updatePasswordSecretDraft(index, { saving: true });
+    setError(null);
+    try {
+      const res = await apiFetch<{ secret: ProjectSecret }>(`/projects/${projectId}/secrets`, {
+        method: "POST",
+        body: JSON.stringify({ name, key, value: passwordValue }),
+      });
+      setSecrets((prev) => [...prev.filter((secret) => secret.id !== res.secret.id), res.secret]);
+      updateAuthProfile(index, { passwordSecretKey: res.secret.key });
+      setPasswordSecretDrafts((prev) => ({
+        ...prev,
+        [index]: { value: "", saving: false },
+      }));
+    } catch (err: any) {
+      setError(projectSecretErrorMessage(err, "Failed to save password secret"));
+      updatePasswordSecretDraft(index, { saving: false });
+    }
+  };
+
   const addAuthProfile = () => {
     const defaultSecret = secrets[0]?.key || "";
     syncAuthProfiles([
@@ -1283,9 +1444,47 @@ export default function SecurityScanPage() {
     }
   };
 
+  const addCustomHeader = (profileIndex: number) => {
+    const profile = authProfiles[profileIndex];
+    if (!profile) return;
+    updateAuthProfile(profileIndex, {
+      additionalHeaders: [...(profile.additionalHeaders || []), { name: "", value: "" }],
+    });
+  };
+
+  const updateCustomHeader = (
+    profileIndex: number,
+    headerIndex: number,
+    patch: Partial<{ name: string; value: string }>
+  ) => {
+    const profile = authProfiles[profileIndex];
+    if (!profile) return;
+    const headers = (profile.additionalHeaders || []).map((h, i) =>
+      i === headerIndex ? { ...h, ...patch } : h
+    );
+    updateAuthProfile(profileIndex, { additionalHeaders: headers });
+  };
+
+  const removeCustomHeader = (profileIndex: number, headerIndex: number) => {
+    const profile = authProfiles[profileIndex];
+    if (!profile) return;
+    updateAuthProfile(profileIndex, {
+      additionalHeaders: (profile.additionalHeaders || []).filter((_, i) => i !== headerIndex),
+    });
+  };
+
   const removeAuthProfile = (index: number) => {
     const removedLabel = authProfiles[index]?.label;
     syncAuthProfiles(authProfiles.filter((_, currentIndex) => currentIndex !== index));
+    setPasswordSecretDrafts((prev) => {
+      const next: Record<number, SecretDraft> = {};
+      Object.entries(prev).forEach(([key, draft]) => {
+        const currentIndex = Number(key);
+        if (!Number.isFinite(currentIndex) || currentIndex === index) return;
+        next[currentIndex > index ? currentIndex - 1 : currentIndex] = draft;
+      });
+      return next;
+    });
     if (removedLabel) {
       const nextFixtures = apiFixtures.map((fixture) => ({
         ...fixture,
@@ -1462,7 +1661,7 @@ export default function SecurityScanPage() {
           body: JSON.stringify(setup),
         }
       );
-      setAuthProfiles(res.setup.authProfiles || []);
+      setAuthProfiles((res.setup.authProfiles || []).map(toEditableAuthProfile));
       setApiFixtures(res.setup.apiFixtures || []);
       setAuthProfilesJson(prettyJson(res.setup.authProfiles || []));
       setApiFixturesJson(prettyJson(res.setup.apiFixtures || []));
@@ -1831,6 +2030,7 @@ export default function SecurityScanPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    bbExecutionModeTouchedRef.current = true;
                     setBbExecutionMode("headed");
                   }}
                   className={`rounded-md border p-3 text-left text-sm transition ${
@@ -1846,7 +2046,10 @@ export default function SecurityScanPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setBbExecutionMode("headless")}
+                  onClick={() => {
+                    bbExecutionModeTouchedRef.current = true;
+                    setBbExecutionMode("headless");
+                  }}
                   className={`rounded-md border p-3 text-left text-sm transition ${
                     bbExecutionMode === "headless"
                       ? "border-amber-500 bg-white text-slate-900 shadow-sm"
@@ -1893,6 +2096,65 @@ export default function SecurityScanPage() {
                   Route the live browser through a proxy — useful when the target blocks
                   server/datacenter IPs but allows your local machine's IP. Point this at your
                   local Burp listener (http://127.0.0.1:8080) or a residential proxy service.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-700">
+                    Custom headers <span className="text-slate-400 font-normal">(optional, sent on every navigation)</span>
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setBbCustomHeaders((prev) => [...prev, { name: "", value: "" }])}
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add header
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {bbCustomHeaders.map((header, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        value={header.name}
+                        onChange={(e) =>
+                          setBbCustomHeaders((prev) =>
+                            prev.map((h, i) => (i === index ? { ...h, name: e.target.value } : h))
+                          )
+                        }
+                        placeholder="Header name, e.g. X-Bypass-Secret"
+                        className="bg-white"
+                      />
+                      <Input
+                        value={header.value}
+                        onChange={(e) =>
+                          setBbCustomHeaders((prev) =>
+                            prev.map((h, i) => (i === index ? { ...h, value: e.target.value } : h))
+                          )
+                        }
+                        placeholder="Value"
+                        className="bg-white"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remove header"
+                        onClick={() =>
+                          setBbCustomHeaders((prev) =>
+                            prev.length <= 1 ? [{ name: "", value: "" }] : prev.filter((_, i) => i !== index)
+                          )
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Sent on every top-level page load in the live view — e.g. a WAF-bypass header
+                  your own site's bot protection is configured to allow through.
                 </p>
               </div>
               <label className="flex items-start gap-2 text-xs text-slate-700">
@@ -2991,7 +3253,7 @@ export default function SecurityScanPage() {
                                 className="bg-white"
                               />
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-2 md:col-span-2">
                               <label className="text-xs font-medium text-slate-600">Password secret</label>
                               <Select
                                 value={profile.passwordSecretKey || ""}
@@ -3010,6 +3272,31 @@ export default function SecurityScanPage() {
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-2">
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                  <Input
+                                    type="password"
+                                    value={passwordSecretDrafts[index]?.value || ""}
+                                    onChange={(e) => updatePasswordSecretDraft(index, { value: e.target.value })}
+                                    placeholder="Save password as encrypted project secret"
+                                    className="bg-white"
+                                    autoComplete="new-password"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => createPasswordSecretForProfile(index)}
+                                    disabled={passwordSecretDrafts[index]?.saving || !projectId}
+                                  >
+                                    <KeyRound className="h-4 w-4" />
+                                    {passwordSecretDrafts[index]?.saving ? "Saving..." : "Save password"}
+                                  </Button>
+                                </div>
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  Will be saved as {uniqueProjectSecretKey(passwordSecretName(profile, index), secrets)} and
+                                  selected for this profile.
+                                </div>
+                              </div>
                             </div>
                           </>
                         )}
@@ -3023,6 +3310,49 @@ export default function SecurityScanPage() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                    </div>
+
+                    <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-slate-600">
+                          Custom headers <span className="font-normal text-slate-400">(sent on every scan request for this profile)</span>
+                        </label>
+                        <Button type="button" size="sm" variant="outline" onClick={() => addCustomHeader(index)}>
+                          <Plus className="h-3 w-3" />
+                          Add header
+                        </Button>
+                      </div>
+                      {(profile.additionalHeaders || []).length === 0 ? (
+                        <div className="text-xs text-slate-400">None configured.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(profile.additionalHeaders || []).map((header, headerIndex) => (
+                            <div key={headerIndex} className="flex items-center gap-2">
+                              <Input
+                                value={header.name}
+                                onChange={(e) => updateCustomHeader(index, headerIndex, { name: e.target.value })}
+                                placeholder="Header name, e.g. X-Bypass-Secret"
+                                className="bg-white"
+                              />
+                              <Input
+                                value={header.value}
+                                onChange={(e) => updateCustomHeader(index, headerIndex, { value: e.target.value })}
+                                placeholder="Value"
+                                className="bg-white"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Remove header"
+                                onClick={() => removeCustomHeader(index, headerIndex)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -3513,6 +3843,86 @@ export default function SecurityScanPage() {
                     auth profiles: {job.summary.coverage.url?.authProfiles ?? 0}
                   </span>
                 </div>
+              </div>
+            )}
+            {job.summary?.securityAgentCoordinator && (
+              <div className="space-y-2 rounded border border-slate-200 bg-white px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Security agent plan
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded bg-slate-100 px-2 py-1 text-slate-700">
+                      planned: {job.summary.securityAgentCoordinator.planned ?? 0}
+                    </span>
+                    <span className="rounded bg-slate-100 px-2 py-1 text-slate-700">
+                      skipped: {job.summary.securityAgentCoordinator.skipped ?? 0}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-slate-600">Agents</div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {numberEntries(job.summary.securityAgentCoordinator.byAgent).length > 0 ? (
+                        numberEntries(job.summary.securityAgentCoordinator.byAgent).map(([agent, count]) => (
+                          <span key={agent} className="rounded bg-blue-50 px-2 py-1 text-blue-800">
+                            {agent}: {count}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-500">none</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-slate-600">Hypotheses</div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {numberEntries(job.summary.securityAgentCoordinator.byHypothesis).length > 0 ? (
+                        numberEntries(job.summary.securityAgentCoordinator.byHypothesis).map(([hypothesis, count]) => (
+                          <span key={hypothesis} className="rounded bg-indigo-50 px-2 py-1 text-indigo-800">
+                            {hypothesis.replace(/_/g, " ")}: {count}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-500">none</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {Array.isArray(job.summary.securityAgentCoordinator.topPriority) &&
+                  job.summary.securityAgentCoordinator.topPriority.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-slate-600">Top planned work</div>
+                      <div className="grid gap-2">
+                        {job.summary.securityAgentCoordinator.topPriority.slice(0, 5).map((item: any) => (
+                          <div key={item.id} className="rounded border border-slate-100 bg-slate-50 px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="font-mono text-xs text-slate-800">
+                                {securityAgentTargetLabel(item.target)}
+                              </div>
+                              <div className="flex flex-wrap gap-1 text-[11px]">
+                                <span className="rounded bg-white px-1.5 py-0.5 text-slate-700">
+                                  {item.agentType}
+                                </span>
+                                <span className="rounded bg-white px-1.5 py-0.5 text-slate-700">
+                                  {String(item.hypothesis || "").replace(/_/g, " ")}
+                                </span>
+                                <span className="rounded bg-white px-1.5 py-0.5 text-slate-700">
+                                  priority {item.priority ?? 0}
+                                </span>
+                              </div>
+                            </div>
+                            {item.reason && (
+                              <div className="mt-1 text-xs text-slate-500">
+                                {item.reason}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
             {job.summary?.openSourceTools && (

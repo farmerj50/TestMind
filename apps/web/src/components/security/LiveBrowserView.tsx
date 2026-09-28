@@ -40,7 +40,13 @@ export function LiveBrowserView({ viewport, imgRef, sendInput, className, intera
       }
       onContextMenu={(e) => e.preventDefault()}
     >
-      <img ref={imgRef} alt="Live session view" draggable={false} className="h-full w-full select-none" />
+      <img
+        ref={imgRef}
+        src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+        alt="Live session view"
+        draggable={false}
+        className="h-full w-full select-none"
+      />
     </div>
   );
 }

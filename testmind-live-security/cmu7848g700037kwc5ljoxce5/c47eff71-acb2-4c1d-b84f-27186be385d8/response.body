@@ -1,0 +1,2608 @@
+{
+  "schema": "docset_schema.json",
+  "schemaVersion": "1.0",
+  "documentation_set": {
+    "format": "helpcenter",
+    "release": "R2026a",
+    "product_list": [
+      {
+        "product": {
+          "display_name": "MATLAB",
+          "help_location": "matlab",
+          "short_name": "matlab",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab"
+              }
+            }
+          ],
+          "basecode": "ML",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink",
+          "help_location": "simulink",
+          "short_name": "simulink",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink"
+              }
+            }
+          ],
+          "basecode": "SL",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "5G Toolbox",
+          "help_location": "5g",
+          "short_name": "5g",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "5G",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Aerospace Blockset",
+          "help_location": "aeroblks",
+          "short_name": "aeroblks",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "AE",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Aerospace Toolbox",
+          "help_location": "aerotbx",
+          "short_name": "aerotbx",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "AT",
+          "alt_short_name": "aero",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Antenna Toolbox",
+          "help_location": "antenna",
+          "short_name": "antenna",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "AA",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Audio Toolbox",
+          "help_location": "audio",
+          "short_name": "audio",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "AU",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Automated Driving Toolbox",
+          "help_location": "driving",
+          "short_name": "driving",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "DR"
+        }
+      },
+      {
+        "product": {
+          "display_name": "AUTOSAR Blockset",
+          "help_location": "autosar",
+          "short_name": "autosar",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "AS",
+          "alt_short_name": "autosarblockset",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Bioinformatics Toolbox",
+          "help_location": "bioinfo",
+          "short_name": "bioinfo",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-biology"
+              }
+            }
+          ],
+          "basecode": "BI"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Bluetooth Toolbox",
+          "help_location": "bluetooth",
+          "short_name": "bluetooth",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "BL",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "C2000 Microcontroller Blockset",
+          "help_location": "ti-c2000",
+          "short_name": "ti-c2000",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "C2",
+          "alt_short_name": "c2b"
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "Cloud Integrations",
+          "help_location": "cloudcenter",
+          "short_name": "cloudcenter",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "parallel-computing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "webonlyproducts"
+              }
+            }
+          ],
+          "basecode": ""
+        }
+      },
+      {
+        "product": {
+          "display_name": "Communications Toolbox",
+          "help_location": "comm",
+          "short_name": "comm",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "CM",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Computer Vision Toolbox",
+          "help_location": "vision",
+          "short_name": "vision",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            }
+          ],
+          "basecode": "VP",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Control System Toolbox",
+          "help_location": "control",
+          "short_name": "control",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "CT",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Curve Fitting Toolbox",
+          "help_location": "curvefit",
+          "short_name": "curvefit",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "CF",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Data Acquisition Toolbox",
+          "help_location": "daq",
+          "short_name": "daq",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "test-measurement"
+              }
+            }
+          ],
+          "basecode": "DA"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Database Toolbox",
+          "help_location": "database",
+          "short_name": "database",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "database-access-and-reporting"
+              }
+            }
+          ],
+          "basecode": "DB"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Datafeed Toolbox",
+          "help_location": "datafeed",
+          "short_name": "datafeed",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            }
+          ],
+          "basecode": "DF"
+        }
+      },
+      {
+        "product": {
+          "display_name": "DDS Blockset",
+          "help_location": "dds",
+          "short_name": "dds",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "DD"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Deep Learning HDL Toolbox",
+          "help_location": "deep-learning-hdl",
+          "short_name": "deep-learning-hdl",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "data-analytics-and-machine-learning"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            }
+          ],
+          "basecode": "DH",
+          "alt_short_name": "dlhdl"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Deep Learning Toolbox",
+          "help_location": "deeplearning",
+          "short_name": "deeplearning",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "data-analytics-and-machine-learning"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "NN",
+          "alt_short_name": "nnet",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "DO Qualification Kit",
+          "help_location": "qualkitdo",
+          "short_name": "qualkitdo",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "DO",
+          "alt_short_name": "do_qualkit"
+        }
+      },
+      {
+        "product": {
+          "display_name": "DSP HDL Toolbox",
+          "help_location": "dsphdl",
+          "short_name": "dsphdl",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            }
+          ],
+          "basecode": "HS",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "DSP System Toolbox",
+          "help_location": "dsp",
+          "short_name": "dsp",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "DS",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Econometrics Toolbox",
+          "help_location": "econ",
+          "short_name": "econ",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            }
+          ],
+          "basecode": "ET",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Embedded Coder",
+          "help_location": "ecoder",
+          "short_name": "ecoder",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "EC",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Financial Instruments Toolbox",
+          "help_location": "fininst",
+          "short_name": "fininst",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            }
+          ],
+          "basecode": "IT",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Financial Toolbox",
+          "help_location": "finance",
+          "short_name": "finance",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            }
+          ],
+          "basecode": "FI",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Fixed-Point Designer",
+          "help_location": "fixedpoint",
+          "short_name": "fixedpoint",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "PO"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Fuzzy Logic Toolbox",
+          "help_location": "fuzzy",
+          "short_name": "fuzzy",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "FL",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Global Optimization Toolbox",
+          "help_location": "gads",
+          "short_name": "gads",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "GD",
+          "alt_short_name": "globaloptim",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "GPU Coder",
+          "help_location": "gpucoder",
+          "short_name": "gpucoder",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "GC",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "HDL Coder",
+          "help_location": "hdlcoder",
+          "short_name": "hdlcoder",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "HD",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "HDL Verifier",
+          "help_location": "hdlverifier",
+          "short_name": "hdlverifier",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "ES",
+          "alt_short_name": "edalink",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "IEC Certification Kit",
+          "help_location": "certkitiec",
+          "short_name": "certkitiec",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "IE",
+          "alt_short_name": "iec_certkit"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Image Acquisition Toolbox",
+          "help_location": "imaq",
+          "short_name": "imaq",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "test-measurement"
+              }
+            }
+          ],
+          "basecode": "IA"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Image Processing Toolbox",
+          "help_location": "images",
+          "short_name": "images",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            }
+          ],
+          "basecode": "IP",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Industrial Communication Toolbox",
+          "help_location": "icomm",
+          "short_name": "icomm",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "test-measurement"
+              }
+            }
+          ],
+          "basecode": "OT"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Installation and Licensing",
+          "help_location": "install",
+          "short_name": "install",
+          "product_family_list": [],
+          "basecode": ""
+        }
+      },
+      {
+        "product": {
+          "display_name": "Instrument Control Toolbox",
+          "help_location": "instrument",
+          "short_name": "instrument",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "test-measurement"
+              }
+            }
+          ],
+          "basecode": "IC"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Lidar Toolbox",
+          "help_location": "lidar",
+          "short_name": "lidar",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "LP",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "LTE Toolbox",
+          "help_location": "lte",
+          "short_name": "lte",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "LS",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Mapping Toolbox",
+          "help_location": "map",
+          "short_name": "map",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            }
+          ],
+          "basecode": "MG",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "MATLAB and Simulink Online Courses",
+          "help_location": "matlab-and-simulink-online-courses",
+          "short_name": "matlab-and-simulink-online-courses",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "webonlyproducts"
+              }
+            }
+          ],
+          "basecode": "OC"
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Coder",
+          "help_location": "coder",
+          "short_name": "coder",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "ME",
+          "alt_short_name": "matlabcoder",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Compiler",
+          "help_location": "compiler",
+          "short_name": "compiler",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "desktop-web-deployment"
+              }
+            }
+          ],
+          "basecode": "CO"
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Compiler SDK",
+          "help_location": "compiler_sdk",
+          "short_name": "compiler_sdk",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "desktop-web-deployment"
+              }
+            }
+          ],
+          "basecode": "MJ",
+          "alt_short_name": "compilersdk"
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Copilot",
+          "help_location": "matlab-copilot",
+          "short_name": "matlab-copilot",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab"
+              }
+            }
+          ],
+          "basecode": "KM",
+          "alt_short_name": "matlabcopilot"
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "MATLAB Grader",
+          "help_location": "matlabgrader",
+          "short_name": "matlabgrader",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "webonlyproducts"
+              }
+            }
+          ],
+          "basecode": "GR"
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "MATLAB Mobile",
+          "help_location": "matlabmobile",
+          "short_name": "matlabmobile",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "webonlyproducts"
+              }
+            }
+          ],
+          "basecode": "",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "MATLAB Parallel Server",
+          "help_location": "matlab-parallel-server",
+          "short_name": "matlab-parallel-server",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "parallel-computing"
+              }
+            }
+          ],
+          "basecode": "DW",
+          "alt_short_name": "distcomp_server"
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Production Server",
+          "help_location": "mps",
+          "short_name": "mps",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "desktop-web-deployment"
+              }
+            }
+          ],
+          "basecode": "PR",
+          "alt_short_name": "mts"
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Report Generator",
+          "help_location": "rptgen",
+          "short_name": "rptgen",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "database-access-and-reporting"
+              }
+            }
+          ],
+          "basecode": "MR",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Test",
+          "help_location": "matlab-test",
+          "short_name": "matlab-test",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "verification-validation"
+              }
+            }
+          ],
+          "basecode": "TE",
+          "alt_short_name": "matlabtest",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "MATLAB Web App Server",
+          "help_location": "webappserver",
+          "short_name": "webappserver",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "desktop-web-deployment"
+              }
+            }
+          ],
+          "basecode": "MW",
+          "alt_short_name": "webapps_plus"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Medical Imaging Toolbox",
+          "help_location": "medical-imaging",
+          "short_name": "medical-imaging",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            }
+          ],
+          "basecode": "DX",
+          "alt_short_name": "medical",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Mixed-Signal Blockset",
+          "help_location": "msblks",
+          "short_name": "msblks",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "AM",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Model Predictive Control Toolbox",
+          "help_location": "mpc",
+          "short_name": "mpc",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "MP",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Model-Based Calibration Toolbox",
+          "help_location": "mbc",
+          "short_name": "mbc",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "MB"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Motor Control Blockset",
+          "help_location": "mcb",
+          "short_name": "mcb",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "MT",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Navigation Toolbox",
+          "help_location": "nav",
+          "short_name": "nav",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "NV",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Optimization Toolbox",
+          "help_location": "optim",
+          "short_name": "optim",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "OP",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Parallel Computing Toolbox",
+          "help_location": "parallel-computing",
+          "short_name": "parallel-computing",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "parallel-computing"
+              }
+            }
+          ],
+          "basecode": "DM",
+          "alt_short_name": "parallel",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Partial Differential Equation Toolbox",
+          "help_location": "pde",
+          "short_name": "pde",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "PD",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Phased Array System Toolbox",
+          "help_location": "phased",
+          "short_name": "phased",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "AR",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "Polyspace Access",
+          "help_location": "polyspace_access",
+          "short_name": "polyspace_access",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "AB"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Polyspace as You Code",
+          "help_location": "payc",
+          "short_name": "payc",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "PY",
+          "alt_short_name": "polyspace_as_you_code"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Polyspace Bug Finder",
+          "help_location": "bugfinder",
+          "short_name": "bugfinder",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "BD",
+          "alt_short_name": "polyspace_bf_desktop"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Polyspace Code Prover",
+          "help_location": "codeprover",
+          "short_name": "codeprover",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "CD",
+          "alt_short_name": "polyspace_cp_desktop"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Polyspace Copilot",
+          "help_location": "polyspace_copilot",
+          "short_name": "polyspace_copilot",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "KP"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Polyspace Products for Ada",
+          "help_location": "polyspace_ada",
+          "short_name": "polyspace_ada",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "PA"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Polyspace Test",
+          "help_location": "polyspace_test",
+          "short_name": "polyspace_test",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "polyspace"
+              }
+            }
+          ],
+          "basecode": "PZ"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Powertrain Blockset",
+          "help_location": "autoblks",
+          "short_name": "autoblks",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "PW",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Predictive Maintenance Toolbox",
+          "help_location": "predmaint",
+          "short_name": "predmaint",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "data-analytics-and-machine-learning"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "PM",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Radar Toolbox",
+          "help_location": "radar",
+          "short_name": "radar",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "RA",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Raspberry Pi Blockset",
+          "help_location": "raspberrypi",
+          "short_name": "raspberrypi",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "matlab/code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "RI",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Reinforcement Learning Toolbox",
+          "help_location": "reinforcement-learning",
+          "short_name": "reinforcement-learning",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "data-analytics-and-machine-learning"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "RL",
+          "alt_short_name": "rl",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Requirements Toolbox",
+          "help_location": "slrequirements",
+          "short_name": "slrequirements",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "systems-engineering"
+              }
+            }
+          ],
+          "basecode": "RQ",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "RF Blockset",
+          "help_location": "simrf",
+          "short_name": "simrf",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "RB",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "RF PCB Toolbox",
+          "help_location": "rfpcb",
+          "short_name": "rfpcb",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "RP",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "RF Toolbox",
+          "help_location": "rf",
+          "short_name": "rf",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "RF",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Risk Management Toolbox",
+          "help_location": "risk",
+          "short_name": "risk",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            }
+          ],
+          "basecode": "RK",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "RoadRunner",
+          "help_location": "roadrunner",
+          "short_name": "roadrunner",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "RD"
+        }
+      },
+      {
+        "product": {
+          "display_name": "RoadRunner Scenario",
+          "help_location": "roadrunner-scenario",
+          "short_name": "roadrunner-scenario",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "RN",
+          "alt_short_name": "roadrunnerscenario"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Robotics System Toolbox",
+          "help_location": "robotics",
+          "short_name": "robotics",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "RO",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Robust Control Toolbox",
+          "help_location": "robust",
+          "short_name": "robust",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "RC",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "ROS Toolbox",
+          "help_location": "ros",
+          "short_name": "ros",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "RR"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Satellite Communications Toolbox",
+          "help_location": "satcom",
+          "short_name": "satcom",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "SI",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Sensor Fusion and Tracking Toolbox",
+          "help_location": "fusion",
+          "short_name": "fusion",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "TF",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "SerDes Toolbox",
+          "help_location": "serdes",
+          "short_name": "serdes",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "SX",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Signal Integrity Toolbox",
+          "help_location": "signal-integrity",
+          "short_name": "signal-integrity",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "SQ",
+          "alt_short_name": "si"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Signal Processing Toolbox",
+          "help_location": "signal",
+          "short_name": "signal",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "SG",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "SimBiology",
+          "help_location": "simbio",
+          "short_name": "simbio",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-biology"
+              }
+            }
+          ],
+          "basecode": "SB"
+        }
+      },
+      {
+        "product": {
+          "display_name": "SimEvents",
+          "help_location": "simevents",
+          "short_name": "simevents",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "event-based-modeling"
+              }
+            }
+          ],
+          "basecode": "SE",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simscape",
+          "help_location": "simscape",
+          "short_name": "simscape",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "SS",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simscape Battery",
+          "help_location": "simscape-battery",
+          "short_name": "simscape-battery",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "BT",
+          "alt_short_name": "simscapebattery"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simscape Driveline",
+          "help_location": "sdl",
+          "short_name": "sdl",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "LD",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simscape Electrical",
+          "help_location": "sps",
+          "short_name": "sps",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "PS",
+          "alt_short_name": "simscapeelectrical",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simscape Fluids",
+          "help_location": "hydro",
+          "short_name": "hydro",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "SH",
+          "alt_short_name": "simscapefluids",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simscape Multibody",
+          "help_location": "sm",
+          "short_name": "sm",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "MS",
+          "alt_short_name": "simscapemultibody",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "Simscape Multibody Link",
+          "help_location": "smlink",
+          "short_name": "smlink",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "physical-modeling"
+              }
+            }
+          ],
+          "basecode": "MS"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink 3D Animation",
+          "help_location": "sl3d",
+          "short_name": "sl3d",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "simulation-graphics-and-reporting"
+              }
+            }
+          ],
+          "basecode": "VR"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Check",
+          "help_location": "slcheck",
+          "short_name": "slcheck",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            }
+          ],
+          "basecode": "VV",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Code Inspector",
+          "help_location": "slci",
+          "short_name": "slci",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "CI"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Coder",
+          "help_location": "rtw",
+          "short_name": "rtw",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "RT",
+          "alt_short_name": "simulinkcoder",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Compiler",
+          "help_location": "slcompiler",
+          "short_name": "slcompiler",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "desktop-web-deployment"
+              }
+            }
+          ],
+          "basecode": "SK",
+          "alt_short_name": "simulinkcompiler"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Control Design",
+          "help_location": "slcontrol",
+          "short_name": "slcontrol",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "SD",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Copilot",
+          "help_location": "simulink-copilot",
+          "short_name": "simulink-copilot",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "Simulink"
+              }
+            }
+          ],
+          "basecode": "KS",
+          "alt_short_name": "slcopilot"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Coverage",
+          "help_location": "slcoverage",
+          "short_name": "slcoverage",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            }
+          ],
+          "basecode": "CV"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Design Optimization",
+          "help_location": "sldo",
+          "short_name": "sldo",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "SO",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Design Verifier",
+          "help_location": "sldv",
+          "short_name": "sldv",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            }
+          ],
+          "basecode": "DV"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Desktop Real-Time",
+          "help_location": "sldrt",
+          "short_name": "sldrt",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "rapid-prototyping"
+              }
+            }
+          ],
+          "basecode": "WT"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Fault Analyzer",
+          "help_location": "fault-analyzer",
+          "short_name": "fault-analyzer",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            }
+          ],
+          "basecode": "FA",
+          "alt_short_name": "faultanalyzer"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink FMU Builder",
+          "help_location": "fmuexport",
+          "short_name": "fmuexport",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "desktop-web-deployment"
+              }
+            }
+          ],
+          "basecode": "FB",
+          "alt_short_name": "fmubuilder"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink PLC Coder",
+          "help_location": "plccoder",
+          "short_name": "plccoder",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            }
+          ],
+          "basecode": "PL"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Real-Time",
+          "help_location": "slrealtime",
+          "short_name": "slrealtime",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "rapid-prototyping"
+              }
+            }
+          ],
+          "basecode": "XP",
+          "alt_short_name": "slrt"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Report Generator",
+          "help_location": "rptgenext",
+          "short_name": "rptgenext",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "simulation-graphics-and-reporting"
+              }
+            }
+          ],
+          "basecode": "SR",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Simulink Test",
+          "help_location": "sltest",
+          "short_name": "sltest",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "verification-validation"
+              }
+            }
+          ],
+          "basecode": "SZ",
+          "alt_short_name": "simulinktest"
+        }
+      },
+      {
+        "product": {
+          "display_name": "SoC Blockset",
+          "help_location": "soc",
+          "short_name": "soc",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            }
+          ],
+          "basecode": "HW"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Spreadsheet Link",
+          "help_location": "exlink",
+          "short_name": "exlink",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "computational-finance"
+              }
+            }
+          ],
+          "basecode": "EL"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Stateflow",
+          "help_location": "stateflow",
+          "short_name": "stateflow",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "event-based-modeling"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "systems-engineering"
+              }
+            }
+          ],
+          "basecode": "SF",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Statistics and Machine Learning Toolbox",
+          "help_location": "stats",
+          "short_name": "stats",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "data-analytics-and-machine-learning"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "ST",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "STM32 Microcontroller Blockset",
+          "help_location": "stm32b",
+          "short_name": "stm32b",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "code-generation"
+              }
+            },
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "SU",
+          "alt_short_name": "stm32"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Symbolic Math Toolbox",
+          "help_location": "symbolic",
+          "short_name": "symbolic",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "SM",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "System Composer",
+          "help_location": "systemcomposer",
+          "short_name": "systemcomposer",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "systems-engineering"
+              }
+            }
+          ],
+          "basecode": "ZC",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "System Identification Toolbox",
+          "help_location": "ident",
+          "short_name": "ident",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "ID",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Text Analytics Toolbox",
+          "help_location": "textanalytics",
+          "short_name": "textanalytics",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "data-analytics-and-machine-learning"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "math-statistics-and-optimization"
+              }
+            }
+          ],
+          "basecode": "TA",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "status": "web_only",
+          "display_name": "ThingSpeak",
+          "help_location": "thingspeak",
+          "short_name": "thingspeak",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "test-measurement"
+              }
+            },
+            {
+              "product_family": {
+                "family": "webonlyproducts"
+              }
+            }
+          ],
+          "basecode": "TSP"
+        }
+      },
+      {
+        "product": {
+          "display_name": "UAV Toolbox",
+          "help_location": "uav",
+          "short_name": "uav",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "robotics-autonomous"
+              }
+            }
+          ],
+          "basecode": "UV",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Vehicle Dynamics Blockset",
+          "help_location": "vdynblks",
+          "short_name": "vdynblks",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "control-systems"
+              }
+            }
+          ],
+          "basecode": "VE",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Vehicle Network Toolbox",
+          "help_location": "vnt",
+          "short_name": "vnt",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "test-measurement"
+              }
+            }
+          ],
+          "basecode": "VN"
+        }
+      },
+      {
+        "product": {
+          "display_name": "Vision HDL Toolbox",
+          "help_location": "visionhdl",
+          "short_name": "visionhdl",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "image-video-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            }
+          ],
+          "basecode": "VT",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Wavelet Toolbox",
+          "help_location": "wavelet",
+          "short_name": "wavelet",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "WA",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Wireless HDL Toolbox",
+          "help_location": "wireless-hdl",
+          "short_name": "wireless-hdl",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "simulink",
+                "group": "signal-processing"
+              }
+            },
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "fpga-asic-soc"
+              }
+            }
+          ],
+          "basecode": "LH",
+          "alt_short_name": "whdl",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Wireless Network Toolbox",
+          "help_location": "wireless-network",
+          "short_name": "wireless-network",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "WN",
+          "alt_short_name": "wnet",
+          "matlab_online_support": true
+        }
+      },
+      {
+        "product": {
+          "display_name": "Wireless Testbench",
+          "help_location": "wireless-testbench",
+          "short_name": "wireless-testbench",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "WB",
+          "alt_short_name": "wt"
+        }
+      },
+      {
+        "product": {
+          "display_name": "WLAN Toolbox",
+          "help_location": "wlan",
+          "short_name": "wlan",
+          "product_family_list": [
+            {
+              "product_family": {
+                "family": "matlab",
+                "group": "signal-processing"
+              }
+            }
+          ],
+          "basecode": "WL",
+          "matlab_online_support": true
+        }
+      }
+    ]
+  }
+}
