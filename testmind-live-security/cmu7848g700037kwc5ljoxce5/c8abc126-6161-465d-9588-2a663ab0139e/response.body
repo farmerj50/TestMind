@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- American English strings -->
+<strings language="en_US">
+  <string key="category">Category</string>
+  <string key="view_by">View By:</string>>
+  <string key="product_list">Product List</string>
+  <string key="installed">Installed</string>
+  <string key="not_installed">Not Installed</string>
+  <string key="product_not_installed">This product is not installed.</string>
+  <string key="web_only_product">This software is available on the web.</string>
+  <string key="installs_outside_matlab">This product installs separately from MATLAB.</string>
+  <string key="get_product">Get %t</string> <!-- Used with product name: Get Datafeed Toolbox -->
+  <string key="learn_more">Learn More</string>
+
+  <!-- In install_only, %t is reference type (ex. reftype_apps) and $u is the link text (disp_install_only_link), so the message would
+    read like: This page displays apps for installed products only. For apps in all products, view the web version of this page. -->
+  <string key="disp_install_only">This page displays %t for installed products only. For %t in all products, view the %u of this page.</string>
+  <string key="disp_install_only_link">web version</string>
+  <string key="reftype_examples">examples</string>
+  <string key="reftype_functions">functions</string>
+  <string key="reftype_blocks">blocks</string>
+  <string key="reftype_apps">apps</string>
+  
+  <string key="navlabel_using-matlab">Using MATLAB</string>
+  <string key="navlabel_using-simulink">Using Simulink</string>
+  <string key="navlabel_workflows">Workflows</string>
+  <string key="navlabel_applications">Applications</string>
+
+  <string key="nugget_filtered_by">Filtered By</string>
+  <string key="nugget_remove">Remove %t</string>
+  <string key="nugget_remove_all">Remove All</string>
+  <string key="nugget_in_or_before">In or Before %t</string> <!-- Used with release name: In or Before R2024b -->
+
+  <string key="progressbar_loading">Loading...</string>
+
+  <string key="examplelist_type">Type</string>
+  <string key="examplelist_all">All</string>
+  <string key="examplelist_matlab">MATLAB</string>
+  <string key="examplelist_simulink">Simulink</string>
+  <string key="examplelist_more_examples">View more%br%t%brExamples</string>
+  <string key="examplelist_new">New</string>
+  <string key="examplelist_new_example">New Example</string>
+  <string key="examplelist_added_in">Added in %t</string>
+  <string key="examplelist_open_script">Open Script</string>
+  <string key="examplelist_open_livescript">Open Live Script</string>
+  <string key="examplelist_open_model">Open Model</string>
+  <string key="examplelist_open_app">Open App</string>
+  <string key="examplelist_open_example">Open Example</string>
+  
+  <string key="reflist_blocktype">Block Type</string>
+  <string key="reflist_blocktype_all">All</string>
+  <string key="reflist_blocktype_block">Simulink</string>
+  <string key="reflist_blocktype_simscapeblock">Simscape</string>
+  
+  <string key="reflist_by_category">By Category</string>
+  <string key="reflist_by_alpha">Alphabetical List</string>
+
+  <string key="reflist_extcap">Extended Capability</string>
+  <string key="reflist_extcap_codegen">C/C++ Code Generation</string>
+  <string key="reflist_extcap_distributedarrays">Distributed Arrays</string>
+  <string key="reflist_extcap_fixpt">Fixed-Point Conversion</string>
+  <string key="reflist_extcap_gpuarrays">GPU Arrays</string>
+  <string key="reflist_extcap_gpucodegen">GPU Code Generation</string>
+  <string key="reflist_extcap_hdl">HDL Code Generation</string>
+  <string key="reflist_extcap_parallelautosupport">Automatic Parallel Support</string>
+  <string key="reflist_extcap_plc">PLC Code Generation</string>
+  <string key="reflist_extcap_tall">Tall Arrays</string>
+  <string key="reflist_extcap_threadsupport">Thread-Based Environment</string>
+  
+  <string key="addon">Add-Ons</string>
+
+  <string key="reflist_popover">See the %t reference page for extended capability notes and limitations.</string>
+  <string key="reflist_popover_label">Extended Capability notes and limitations</string>
+  <string key="reflist_popover_sr">Note:</string>
+  <string key="reflist_results_are_filtered">Results are filtered</string>
+  
+  <string key="reflist_added_or_updated">Added or Updated</string>
+  <string key="reflist_before_release">Before %t</string>
+
+  <string key="rn_invalid_release_date">Release notes are not available for %t1. Try our suggested notes for %t2, or make a new selection.</string>
+  <string key="rn_invalid_release_date_heading">Invalid Release Date</string>
+
+  <string key="top_nav_documentation">Documentation</string>
+  <string key="top_nav_examples">Examples</string>
+  <string key="top_nav_analysisopts">Polyspace Options</string>
+  <string key="top_nav_apps">Apps</string>
+  <string key="top_nav_blocks">Blocks</string>
+  <string key="top_nav_documentation_home">Documentation Home</string>
+  <string key="top_nav_functions">Functions</string>
+  <string key="top_nav_mdlchecks">Checks</string>
+  <string key="top_nav_mupadfunctions">MuPAD Functions</string>
+  <string key="top_nav_propertys">Properties</string>
+  <string key="top_nav_reportgens">Report Components</string>
+  <string key="top_nav_runtimechecks">Polyspace Results</string>
+  <string key="top_nav_simscapelanguages">Language Syntax</string>
+  <string key="top_nav_scenes">Scenes</string>
+  <string key="top_nav_configparams">Model Settings</string>
+
+  <string key="top_nav_frequently_used">Frequently Viewed Pages</string>
+  <string key="top_nav_no_results_header">No results in the %t category.</string>
+  <string key="top_nav_related_results">Related categories with results:</string>
+  
+  <string key="view_latest_version">You can view the latest version of this page in English.</string>
+  
+  <!-- above product landing page -->
+  <string key="help_center_title">Help Center for MATLAB, Simulink and other MathWorks products</string>
+  <string key="all_support">All Support</string>
+  <string key="support_landing">Help Center</string>
+  <string key="search_documentation">Search Documentation</string>
+  <string key="CRUX_answers">Answers</string>
+  <string key="CRUX_videos">Videos</string>
+  <string key="resources">Resources</string>
+  
+  <string key="page_not_avail">The page you were looking for is not available in this version of the documentation. </string>
+  <string key="use_search_box_or_browse">You can use the search box or browse the products to find related information. </string> <!-- Added a space at the end of sentence. Same for $page_not_avail. See g1703259 -->
+  <string key="view_archive_doc">You can also view archived documentation for prior releases.</string>
+  <string key="when_transl_doc_is_avail_you_will_see_it">Whenever translated documentation is available, you will see it; if no translation is available, you will see English documentation.</string>
+  <string key="accessing_restricted_doc"></string><!-- intentionally empty -->
+
+  <string key="explore_examples">Explore Examples</string>
+  <string key="explore_addons">Explore Add-Ons</string>
+  <string key="edit_prefs">Edit Preferences</string>
+  <string key="release_notes">Release Notes</string>
+  <string key="other_releases">Other Releases</string>
+  
+  <string key="explore_matlab">Explore MATLAB</string>
+  <string key="explore_simulink">Explore Simulink</string>
+  <string key="explore_polyspace">Explore Polyspace</string>
+  <string key="view_installation_help">View Installation Help</string>
+  <string key="installed_product">Installed Product</string>
+
+  <string key="applications_examples_start">Applications</string>
+  <string key="applications_examples_end">End Applications</string>
+  <string key="featured_examples_start">Featured</string>
+  <string key="featured_examples_end">End Featured</string>
+
+  <string key="applications">Applications</string>
+  <string key="expand_all_link">expand all</string>
+  <string key="collapse_all_link">collapse all</string>
+  <string key="current_locale_in_parenthesis">(English)</string>
+  <string key="matlab_family">MATLAB<sup><small>®</small></sup> Family</string>
+  <string key="simulink_family">Simulink<sup><small>®</small></sup> Family</string>
+  <string key="parallel-computing">Parallel Computing</string>
+  <string key="robotics-autonomous">Robotics and Autonomous Systems</string>
+  <string key="math-statistics-and-optimization">Math, Statistics, and Optimization</string>
+  <string key="data-analytics-and-machine-learning">AI, Deep Learning, Statistics, and Data Science</string>
+  <string key="control-systems">Control Systems</string>
+  <string key="signal-processing-and-communications">Signal Processing and Wireless Communications</string>
+  <string key="dsp-and-communications-systems">Signal Processing and Wireless Communications</string>
+  <string key="signal-processing">Signal Processing and Wireless Communications</string>
+  <string key="wireless-communications">Wireless Communications</string>
+  <string key="image-video-processing">Image Processing and Computer Vision</string>
+  <string key="test-measurement">Test and Measurement</string>
+  <string key="computational-finance">Computational Finance</string>
+  <string key="computational-biology">Computational Biology</string>
+  <string key="code-generation">Code Generation</string>
+  <string key="application-deployment">Application Deployment</string>
+  <string key="desktop-web-deployment">Application Deployment</string>
+  <string key="database-access-and-reporting">Database Access and Reporting</string>
+  <string key="fixed-Point_designer">Fixed-Point Designer</string>
+  <string key="event-based-modeling">Event-Based Modeling</string>
+  <string key="physical-modeling">Physical Modeling</string>
+  <string key="real-time-simulation-and-testing">Real-Time Simulation and Testing</string>
+  <string key="rapid-prototyping">Real-Time Simulation and Testing</string>
+  <string key="verification-validation">Verification, Validation, and Test</string>
+  <string key="simulation-graphics-and-reporting">Simulation Graphics and Reporting</string>
+  <string key="systems-engineering">Systems Engineering</string>
+  <string key="fpga-asic-soc">FPGA, ASIC, and SoC Development</string>
+  
+  <string key="hardware_support">Hardware Support</string>
+  <string key="hardware_catalog_link_text">Hardware Support</string>
+  <string key="hardware_catalog">For a complete list of hardware solutions, see %t.</string>
+  <string key="hardware_catalog_inproduct">For a complete list of hardware solutions, see %t.</string>
+  <string key="supplemental_software">Supplemental Software</string>
+  <string key="additional_products">Additional Products and Services</string>
+  <string key="bug_reports">Bug Reports</string>
+  <string key="installation_help">Installation Help</string>
+  <string key="community">Community</string>
+  <string key="file_exchange">File Exchange</string>
+  <string key="training_courses">Training Courses</string>
+  <string key="books">Books</string>
+  <string key="download_products">Download Products</string>
+  
+  <string key="acknowledgments">Acknowledgments</string>
+  <string key="trademarks">Trademarks</string>
+  <string key="patents">Patents</string>
+  <string key="terms_of_use">Terms of Use</string>
+  
+</strings>

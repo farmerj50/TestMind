@@ -11,7 +11,7 @@ export default defineConfig({
 
   server: {
     host: true,
-    port: 5173,
+    port: 5174,
     proxy: {
       '/tm':       { target: 'http://localhost:8787', changeOrigin: true },
       // /projects is both an SPA route (/projects, /projects/:id) and an API

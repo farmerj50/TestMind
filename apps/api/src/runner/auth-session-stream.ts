@@ -30,6 +30,7 @@ type Ticket = {
   allowInteractiveChallengeHandling: boolean;
   proxyUrl?: string;
   executionMode: AuthCaptureExecutionMode;
+  customHeaders?: Record<string, string>;
 };
 const tickets = new Map<string, Ticket>();
 
@@ -38,6 +39,7 @@ export function issueStreamTicket(
   allowInteractiveChallengeHandling = false,
   proxyUrl?: string,
   executionMode: AuthCaptureExecutionMode = "headed",
+  customHeaders?: Record<string, string>,
 ): string {
   const ticket = crypto.randomBytes(24).toString("hex");
   tickets.set(ticket, {
@@ -46,6 +48,7 @@ export function issueStreamTicket(
     allowInteractiveChallengeHandling,
     proxyUrl,
     executionMode,
+    customHeaders,
   });
   return ticket;
 }
@@ -53,12 +56,24 @@ export function issueStreamTicket(
 function consumeStreamTicket(
   sessionId: string,
   ticket: string,
-): { ok: boolean; allowInteractiveChallengeHandling: boolean; proxyUrl?: string; executionMode: AuthCaptureExecutionMode } {
+): {
+  ok: boolean;
+  allowInteractiveChallengeHandling: boolean;
+  proxyUrl?: string;
+  executionMode: AuthCaptureExecutionMode;
+  customHeaders?: Record<string, string>;
+} {
   const entry = tickets.get(ticket);
   if (!entry) return { ok: false, allowInteractiveChallengeHandling: false, executionMode: "headed" };
   tickets.delete(ticket);
   const ok = entry.expiresAt >= Date.now() && entry.sessionId === sessionId;
-  return { ok, allowInteractiveChallengeHandling: entry.allowInteractiveChallengeHandling, proxyUrl: entry.proxyUrl, executionMode: entry.executionMode };
+  return {
+    ok,
+    allowInteractiveChallengeHandling: entry.allowInteractiveChallengeHandling,
+    proxyUrl: entry.proxyUrl,
+    executionMode: entry.executionMode,
+    customHeaders: entry.customHeaders,
+  };
 }
 
 // Spoofed client-IP headers used to probe whether the target's bot/IP-reputation
@@ -108,6 +123,21 @@ function broadcast(capture: ActiveCapture, payload: unknown) {
   const msg = JSON.stringify(payload);
   for (const ws of capture.sockets) {
     if (ws.readyState === ws.OPEN) ws.send(msg);
+  }
+}
+
+async function sendCurrentFrame(capture: ActiveCapture, socket: WebSocket) {
+  try {
+    const frame: any = await capture.cdp.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: 60,
+      fromSurface: true,
+    });
+    if (socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify({ type: "frame", data: frame.data, mimeType: "jpeg" }));
+    }
+  } catch {
+    // The continuous screencast will provide frames once the page is ready.
   }
 }
 
@@ -223,10 +253,12 @@ async function startCapture(
   allowInteractiveChallengeHandling: boolean,
   proxyUrl?: string,
   executionMode: AuthCaptureExecutionMode = "headed",
+  customHeaders?: Record<string, string>,
 ): Promise<ActiveCapture> {
   const startUrl = session.loginUrl || session.baseUrl;
   if (!startUrl) throw new Error("Session has no baseUrl/loginUrl to navigate to");
   const useManagedBrowserPatches = executionMode === "headless";
+  const hasCustomHeaders = Boolean(customHeaders && Object.keys(customHeaders).length > 0);
   const includeIpTrustHeaders =
     useManagedBrowserPatches &&
     allowInteractiveChallengeHandling &&
@@ -359,8 +391,19 @@ async function startCapture(
           "Sec-CH-UA-Mobile": "?0",
           "Sec-CH-UA-Platform": '"Windows"',
           ...(includeIpTrustHeaders ? IP_TRUST_HEADERS : {}),
+          ...(customHeaders || {}),
         },
       });
+    });
+  } else if (hasCustomHeaders) {
+    // No stealth patches in this mode (headed, or headless without them applicable), but the
+    // user still asked for a custom header (e.g. a WAF-bypass secret for their own site) - same
+    // navigation-only scoping and reasoning as the block above, just without the fingerprint
+    // normalization that's specific to useManagedBrowserPatches.
+    await context.route("**/*", (route) => {
+      const request = route.request();
+      if (!request.isNavigationRequest()) return route.continue();
+      return route.continue({ headers: { ...request.headers(), ...customHeaders } });
     });
   }
   if (allowInteractiveChallengeHandling && !includeIpTrustHeaders) {
@@ -395,16 +438,16 @@ async function startCapture(
     cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {});
   });
 
-  await page.goto(startUrl, { waitUntil: "domcontentloaded" }).catch((err: any) => {
-    console.warn(`[auth-session-stream] initial navigation failed for ${session.id}:`, err?.message ?? err);
-  });
-
   await cdp.send("Page.startScreencast", {
     format: "jpeg",
     quality: 60,
     maxWidth: VIEWPORT.width,
     maxHeight: VIEWPORT.height,
     everyNthFrame: 1,
+  });
+
+  void page.goto(startUrl, { waitUntil: "commit", timeout: 15_000 }).catch((err: any) => {
+    console.warn(`[auth-session-stream] initial navigation failed for ${session.id}:`, err?.message ?? err);
   });
 
   clearInterval(capture.pollHandle);
@@ -460,7 +503,7 @@ export function registerAuthSessionStreamRoutes(app: FastifyInstance) {
       socket.close(4001, "invalid or expired ticket");
       return;
     }
-    const { ok: ticketOk, allowInteractiveChallengeHandling, proxyUrl, executionMode } = consumeStreamTicket(id, ticket);
+    const { ok: ticketOk, allowInteractiveChallengeHandling, proxyUrl, executionMode, customHeaders } = consumeStreamTicket(id, ticket);
     if (!ticketOk) {
       socket.close(4001, "invalid or expired ticket");
       return;
@@ -475,7 +518,7 @@ export function registerAuthSessionStreamRoutes(app: FastifyInstance) {
     let capture = active.get(id);
     if (!capture) {
       try {
-        capture = await startCapture(session, allowInteractiveChallengeHandling, proxyUrl, executionMode);
+        capture = await startCapture(session, allowInteractiveChallengeHandling, proxyUrl, executionMode, customHeaders);
         await setSessionStatus(id, { status: "pending", error: null });
       } catch (err: any) {
         const message = err?.message ?? String(err);
@@ -489,6 +532,7 @@ export function registerAuthSessionStreamRoutes(app: FastifyInstance) {
     const liveCapture = capture;
     liveCapture.sockets.add(socket);
     socket.send(JSON.stringify({ type: "ready", url: liveCapture.page.url(), executionMode: liveCapture.executionMode }));
+    sendCurrentFrame(liveCapture, socket).catch(() => {});
 
     socket.on("message", (data: WebSocket.RawData) => {
       handleClientMessage(liveCapture, data.toString());
