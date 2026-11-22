@@ -28,6 +28,14 @@ import securityRoutes from "./routes/security.js";
 import testBuilderRoutes from "./routes/testBuilder.js";
 import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
+import { validateProductionConfig } from "./config/validateProductionConfig.js";
+
+// env.ts already fails fast at import time for the always-required vars (DATABASE_URL,
+// REDIS_URL, SECRET_KEY, CLERK keys, CORS_ORIGINS/WEB_URL) and SECRET_KEY's byte length.
+// This adds the one check that doesn't exist there: TM_EVAL_SERVICE_URL/API_KEY must be
+// configured as a pair, not half-set, which would otherwise only surface lazily the first
+// time an evaluation run is attempted. Fails closed (throws) rather than booting half-configured.
+validateProductionConfig(process.env);
 import recorderRoutes from "./routes/recorder.js";
 import { GENERATED_ROOT, CURATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 import { validateAndNormalizeProjectUrl } from "./lib/git-url.js";
