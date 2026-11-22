@@ -216,6 +216,8 @@ model Project {
   humanInterventionCandidates HumanInterventionCandidate[]
   operatorSchedules           OperatorSchedule[]
   interactiveUiSessions       InteractiveUiSession[]
+
+  @@index([orgId])
 }
 
 model GitAccount {
