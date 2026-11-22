@@ -1,0 +1,27 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.14.4
+# Phase 3: semantic (Ragas/DeepEval) evaluation. ragas pulls in the full langchain ecosystem
+# as a hard dependency (confirmed - not something added for langchain-openai's sake). openai
+# and instructor are pinned explicitly - without both pins, pip's resolver cannot satisfy
+# ragas's unpinned `instructor` dependency against openai>=2.45.0 (required by langchain-openai)
+# in one pass; a plain `pip install -r requirements.txt` with all four packages failed with
+# ResolutionImpossible until instructor was pinned here too (confirmed by testing a from-scratch
+# venv install of this exact file).
+ragas==0.4.4
+langchain-openai==1.8.5
+openai==3.3.0
+instructor==1.17.0
+deepeval==4.3.4
+
+# Phase 4: external integration adapters. Each adapter only ever produces cases[] for the
+# existing /v1/evaluations contract - none of these are imported by main.py/metrics.py/gates.py.
+langchain-core==1.8.4
+langgraph==1.0.4
+httpx==0.28.1
+chromadb==1.5.9
+faiss-cpu==1.13.0
+psycopg2-binary==2.9.11
+langsmith==0.16.0
+opentelemetry-sdk==1.45.2
+opentelemetry-api==1.45.2

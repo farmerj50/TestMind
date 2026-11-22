@@ -349,7 +349,10 @@ function formatMissingLocatorAction(step: Step, detail?: MissingLocatorItem): st
   const why = detail
     ? `${detail.bucket}.${detail.name} on ${detail.pagePath}`
     : describeStep(step);
-  return `// Missing locator ${why}; add it to shared locators and rerun generation.`;
+  // A missing required action is an automation failure, not a successful no-op.
+  // Do not include input values in the error or weaken later assertions.
+  const failure = JSON.stringify({ code: "GENERATED_LOCATOR_MISSING", action: step.kind, locator: why });
+  return `await Promise.reject(new Error(${JSON.stringify(failure)}));`;
 }
 
 function formatIdentityMismatchAction(detail: { expected?: { urlPattern?: string; uniqueAnchor?: string }; actualPath?: string }): string {
@@ -761,6 +764,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[], options?: { lo
     "  console: { type: string; text: string; location?: { url?: string; lineNumber?: number; columnNumber?: number } }[];",
     "  pageErrors: string[];",
     "  requestFailed: { url: string; errorText?: string }[];",
+    "  responses: { url: string; status: number; requestId?: string }[];",
     "  dom: { title?: string; h1?: string; bodyText?: string; htmlSnippet?: string };",
     "};",
     "",
@@ -769,7 +773,8 @@ export function emitSpecFile(pagePath: string, tests: TestCase[], options?: { lo
     "const STEP_CAPTURE_COUNT = new WeakMap<Page, number>();",
     "",
     "function attachPageSignals(page: Page): PageSignals {",
-    "  const signals: PageSignals = { console: [], pageErrors: [], requestFailed: [], dom: {} };",
+    "  const signals: PageSignals = { console: [], pageErrors: [], requestFailed: [], responses: [], dom: {} };",
+    "  page.on('response', response => { if (signals.responses.length < 500) signals.responses.push({ url: response.url(), status: response.status(), requestId: response.headers()['x-request-id'] }); });",
     "  page.on('console', (msg) => {",
     "    signals.console.push({",
     "      type: msg.type(),",
@@ -811,6 +816,7 @@ export function emitSpecFile(pagePath: string, tests: TestCase[], options?: { lo
     "  };",
     "  await fs.mkdir(RUN_LOG_DIR, { recursive: true });",
     "  await fs.writeFile(path.join(RUN_LOG_DIR, 'page-signals.json'), JSON.stringify(payload, null, 2));",
+    "  await testInfo.attach('page-signals', { body: Buffer.from(JSON.stringify(payload)), contentType: 'application/json' });",
     "}",
     "",
     "function startLivePreview(page: Page) {",
@@ -869,6 +875,10 @@ export function emitSpecFile(pagePath: string, tests: TestCase[], options?: { lo
     "}",
     "",
     "test.beforeEach(async ({ page }) => {",
+    "  if (process.env.TM_WORKFLOW_ORIGIN) await page.context().route('**/*', async route => {",
+    "    if (new URL(route.request().url()).origin !== process.env.TM_WORKFLOW_ORIGIN) await route.abort('blockedbyclient');",
+    "    else await route.continue();",
+    "  });",
     "  attachPageSignals(page);",
     "  STEP_CAPTURE_COUNT.set(page, 0);",
     "  startLivePreview(page);",
@@ -1194,5 +1204,3 @@ export const playwrightTSAdapter = {
     return { pages: Array.from(grouped.keys()), count: (plan as any).cases?.length ?? 0 };
   },
 };
-
-

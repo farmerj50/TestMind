@@ -1,0 +1,117 @@
+[
+  {
+    "format": "screenshot.png",
+    "status": "PASS",
+    "detail": "HTTP 422; unsafe media must fail closed"
+  },
+  {
+    "format": "video.webm",
+    "status": "PASS",
+    "detail": "HTTP 422; unsafe media must fail closed"
+  },
+  {
+    "format": "html-report (/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "html-report (/_static/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "html-report (/runner/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "allure-report (/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "allure-report (/_static/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "allure-report (/runner/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "execution-log (/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "execution-log (/_static/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "execution-log (/runner/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 422; runtime canary inspection"
+  },
+  {
+    "format": "error-json (/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 200; runtime canary inspection"
+  },
+  {
+    "format": "error-json (/_static/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 200; runtime canary inspection"
+  },
+  {
+    "format": "error-json (/runner/runner-logs/)",
+    "status": "PASS",
+    "detail": "HTTP 200; runtime canary inspection"
+  },
+  {
+    "format": "allure assets alias",
+    "status": "PASS",
+    "detail": "HTTP 422"
+  },
+  {
+    "format": "/tm/generated/file",
+    "status": "PASS",
+    "detail": "HTTP 422; known project-secret inspection of each download member"
+  },
+  {
+    "format": "/tm/generated/download",
+    "status": "PASS",
+    "detail": "HTTP 422; known project-secret inspection of each download member"
+  },
+  {
+    "format": "/tm/download",
+    "status": "PASS",
+    "detail": "HTTP 422; known project-secret inspection of each download member"
+  },
+  {
+    "format": "unsupported format",
+    "status": "PASS",
+    "detail": "Unsupported opaque content rejected"
+  },
+  {
+    "format": "unscoped raw Playwright report",
+    "status": "PASS",
+    "detail": "Unscoped raw artifact route blocked"
+  },
+  {
+    "format": "private original reference",
+    "status": "PASS",
+    "detail": "Private path blocked"
+  },
+  {
+    "format": "real trace and Trace Viewer",
+    "status": "PASS",
+    "detail": "Existing live eleven-category recorder/download/viewer fixture passed"
+  },
+  {
+    "format": "project ownership",
+    "status": "PASS",
+    "detail": "Foreign owner denied on every exercised download route"
+  }
+]

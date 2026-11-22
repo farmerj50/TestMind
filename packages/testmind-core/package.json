@@ -5,6 +5,7 @@
   "type": "module",
   "main": "./framework.js",
   "types": "./framework.d.ts",
+  "description": "RECOVERY PLACEHOLDER (updated 2026-11-21). framework.js/framework.d.ts/framework-registry.js/framework-registry.d.ts restored verbatim from git HEAD (commit 4f91a29b) to repair a dependency-recovery regression. workflow/index.js/index.d.ts reconstructed from tests/workflows/contracts.test.mjs and tests/workflows/engine.test.mjs as the authoritative specification, cross-checked against every real consumer. This is a reconstruction of unfinished, in-progress work by another session - not a verified-against-original-intent implementation.",
   "exports": {
     "./framework": {
       "types": "./framework.d.ts",
@@ -15,6 +16,14 @@
       "types": "./framework-registry.d.ts",
       "import": "./framework-registry.js",
       "default": "./framework-registry.js"
+    },
+    "./workflow": {
+      "types": "./workflow/index.d.ts",
+      "import": "./workflow/index.js",
+      "default": "./workflow/index.js"
     }
+  },
+  "dependencies": {
+    "ajv": "8.17.1"
   }
 }

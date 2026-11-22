@@ -92,6 +92,8 @@ export type RouteDiscoveryAdvisor = (input: {
 }) => Promise<RouteDiscoveryHint>;
 
 type DiscoveryOptions = {
+  signal?: AbortSignal;
+  validateRequest?: (url: string) => Promise<void>;
   maxPages?: number;
   cookieString?: string;
   routeAdvisor?: RouteDiscoveryAdvisor;
@@ -1101,11 +1103,20 @@ export async function discoverSite(
   const browser = await chromium.launch({
     args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
   });
+  const abort = () => { void browser.close(); };
+  options.signal?.addEventListener('abort', abort, { once: true });
   try {
+    options.signal?.throwIfAborted();
     const context = await browser.newContext({
+      ...(options.validateRequest ? { serviceWorkers: 'block' as const } : {}),
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
       extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+
+    if (options.validateRequest) await context.route('**/*', async route => {
+      try { await options.validateRequest!(route.request().url()); await route.continue(); }
+      catch { await route.abort('blockedbyclient'); }
     });
 
     if (options.cookieString?.trim()) {
@@ -1115,6 +1126,7 @@ export async function discoverSite(
 
     return await crawlSiteInContext(baseUrl, context, seedRoutes, options);
   } finally {
+    options.signal?.removeEventListener('abort', abort);
     await browser.close();
   }
 }

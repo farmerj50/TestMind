@@ -10,7 +10,7 @@ export async function startScheduler(): Promise<void> {
     await scheduleQueue.add(
       "scheduled-trigger",
       { scheduleId: s.id, projectId: s.projectId },
-      { repeat: { pattern: s.cron }, jobId: `sched-${s.id}` }
+      { repeat: { pattern: s.cron, tz: s.timezone ?? undefined }, jobId: `sched-${s.id}` }
     );
   }
 
@@ -30,6 +30,48 @@ export async function startScheduler(): Promise<void> {
       const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } });
       if (!project) return;
 
+      const context = (schedule.contextJson ?? {}) as Record<string, any>;
+      const devAgentTemplate = context.devAgentTemplate as
+        | { mode?: string; instructionText?: string; budgetUsd?: number; maxIterations?: number; testCommand?: string; targetRepo?: string }
+        | undefined;
+
+      if (devAgentTemplate) {
+        // Each firing creates a FRESH DevAgentRun from the template, rather than ever
+        // reusing/mutating a prior run - same one-schedule-many-runs shape as every other
+        // scheduled job in this file.
+        const { buildInstructionText } = await import("../lib/dev-agent-self-improvement.js");
+        const mode = (devAgentTemplate.mode as "assigned" | "selfImprovement" | "both") ?? "selfImprovement";
+        const instructionText = await buildInstructionText(mode, projectId, devAgentTemplate.instructionText ?? null);
+
+        const run = await prisma.devAgentRun.create({
+          data: {
+            projectId,
+            mode,
+            targetRepo: devAgentTemplate.targetRepo ?? "testmind",
+            instructionText,
+            budgetUsd: devAgentTemplate.budgetUsd,
+            maxIterations: devAgentTemplate.maxIterations ?? undefined,
+            testCommand: devAgentTemplate.testCommand,
+            timezone: schedule.timezone,
+            requestedBy: project.ownerId,
+          },
+        });
+        const opJob = await prisma.operatorJob.create({
+          data: {
+            projectId,
+            type: "autonomousDev",
+            objective: `Scheduled Autonomous Dev Mode (${schedule.cron})`,
+            requestedBy: project.ownerId,
+            contextJson: { triggeredBy: "schedule", scheduleId, devAgentRunId: run.id },
+          },
+        });
+        await prisma.devAgentRun.update({ where: { id: run.id }, data: { operatorJobId: opJob.id } });
+
+        await prisma.operatorSchedule.update({ where: { id: scheduleId }, data: { lastRunAt: new Date() } });
+        await enqueueOperatorJob(opJob.id, { durable: true });
+        return;
+      }
+
       const opJob = await prisma.operatorJob.create({
         data: {
           projectId,
@@ -40,7 +82,7 @@ export async function startScheduler(): Promise<void> {
             triggeredBy: "schedule",
             scheduleId,
             autonomous: true,
-            ...(schedule.contextJson as object),
+            ...context,
           },
         },
       });
@@ -61,11 +103,11 @@ export async function startScheduler(): Promise<void> {
 }
 
 /** Register or update the repeatable entry for a single schedule. */
-export async function registerScheduleJob(scheduleId: string, projectId: string, cron: string): Promise<void> {
+export async function registerScheduleJob(scheduleId: string, projectId: string, cron: string, timezone?: string): Promise<void> {
   await scheduleQueue.add(
     "scheduled-trigger",
     { scheduleId, projectId },
-    { repeat: { pattern: cron }, jobId: `sched-${scheduleId}` }
+    { repeat: { pattern: cron, tz: timezone ?? undefined }, jobId: `sched-${scheduleId}` }
   );
 }
 

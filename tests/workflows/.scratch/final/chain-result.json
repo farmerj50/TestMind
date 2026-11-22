@@ -1,0 +1,1019 @@
+{
+  "status": "PASS",
+  "scenarios": [
+    {
+      "status": "PASS",
+      "decision": "approve",
+      "jobId": "cmw9kvvy000017kmsk8g2ylq0",
+      "workerStatus": "succeeded",
+      "requests": 8,
+      "stages": [
+        {
+          "type": "discover",
+          "status": "succeeded",
+          "input": {
+            "baseUrl": "http://127.0.0.1:49679",
+            "maxPages": 1
+          },
+          "output": {
+            "outDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project",
+            "baseUrl": "http://127.0.0.1:49679",
+            "summary": "Discovered 1 routes; generated 3 new tests across 3 spec files",
+            "specFileCount": 3,
+            "uncoveredRoutes": [
+              "/"
+            ],
+            "discoveredRoutes": [
+              {
+                "route": "/",
+                "status": 200,
+                "reachable": true
+              }
+            ],
+            "existingTestCount": 0,
+            "generatedTestCount": 3,
+            "applicationModelDiff": {
+              "newPages": [
+                "/"
+              ],
+              "changedPages": [],
+              "missingPages": [],
+              "unchangedPages": []
+            }
+          },
+          "error": null
+        },
+        {
+          "type": "verify",
+          "status": "succeeded",
+          "input": {
+            "phase": "generated-path-validation",
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project"
+          },
+          "output": {
+            "phase": "generated-path-validation",
+            "roots": [
+              {
+                "root": "C:\\Users\\gabby\\TestMind-main\\TestMind-main",
+                "relativeGeneratedDir": "testmind-acceptance-generated/playwright-ts-final-owner/final-project"
+              },
+              {
+                "root": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\apps\\api",
+                "relativeGeneratedDir": "../../testmind-acceptance-generated/playwright-ts-final-owner/final-project"
+              },
+              {
+                "root": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\apps\\web",
+                "relativeGeneratedDir": "../../testmind-acceptance-generated/playwright-ts-final-owner/final-project"
+              }
+            ],
+            "specCount": 1,
+            "expectedRoot": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project",
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project"
+          },
+          "error": null
+        },
+        {
+          "type": "execute",
+          "status": "failed",
+          "input": {
+            "phase": "initial-generated-suite",
+            "baseUrl": "http://127.0.0.1:49679",
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project"
+          },
+          "output": {
+            "phase": "wait_initial_run",
+            "summary": {
+              "total": 3,
+              "errors": 0,
+              "failed": 2,
+              "passed": 1,
+              "caseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x",
+                "cmw9kw701000m7kms54p12dli",
+                "cmw9kw70e000p7kmspcrrcl9a"
+              ],
+              "skipped": 0,
+              "passedCaseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x"
+              ]
+            },
+            "testRunId": "cmw9kvydv000h7kms2jv39erg",
+            "finalStatus": "failed",
+            "qualityGate": {
+              "passed": false,
+              "reasons": [
+                "Execution did not succeed.",
+                "2 test assertion(s) failed."
+              ]
+            },
+            "executionStatus": "failed"
+          },
+          "error": "(node:41548) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:41548) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:32620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:32620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created) Execution did not succeed. 2 test assertion(s) failed."
+        },
+        {
+          "type": "triage",
+          "status": "succeeded",
+          "input": null,
+          "output": {
+            "phase": "autonomous-triage",
+            "runId": "cmw9kvydv000h7kms2jv39erg",
+            "rootCause": {
+              "verdict": "automation-failure",
+              "evidence": [
+                {
+                  "id": "cmw9kw6zb000k7kmsena4r9x6",
+                  "kind": "assertion",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw6z4000j7kmspy1l6e0x",
+                  "failureClass": "passed"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe",
+                  "kind": "assertion",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}",
+                  "failureClass": "failed"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93",
+                  "kind": "assertion",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}",
+                  "failureClass": "failed"
+                },
+                {
+                  "id": "cmw9kw6zb000k7kmsena4r9x6-attachment-0",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw6z4000j7kmspy1l6e0x",
+                  "artifactId": "cmw9kw7v5000u7kmssj7fout1"
+                },
+                {
+                  "id": "cmw9kw6zb000k7kmsena4r9x6-attachment-1",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw6z4000j7kmspy1l6e0x",
+                  "artifactId": "cmw9kw7vh000w7kmsxri96l7l"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-0",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kw7w1000y7kmswebjve14"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-1",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kw7wq00107kms6nfugokc"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-2",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kw7x000127kmsteirpspm"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-3",
+                  "kind": "network",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-3-response-0",
+                  "kind": "network",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "status": 200
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-4",
+                  "kind": "runner-log",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kw7x900147kmsyoz0pla5"
+                },
+                {
+                  "id": "cmw9kw705000n7kms0w9y5xwe-attachment-4-text",
+                  "kind": "runner-log",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "message": "# Page snapshot\n\n```yaml\n- generic [active] [ref=e1]:\n  - heading \"Fixture\" [level=1] [ref=e2]\n  - generic [ref=e3]:\n    - text: Email\n    - textbox \"Email\" [ref=e4]\n    - button \"Continue\" [ref=e5]\n```",
+                  "artifactId": "cmw9kw7x900147kmsyoz0pla5"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-0",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kw7xk00167kmst02sxtkh"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-1",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kw7xv00187kmsu6bxrarg"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-2",
+                  "kind": "screenshot",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kw7ya001a7kmsty8qs9zd"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-3",
+                  "kind": "network",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-3-response-0",
+                  "kind": "network",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "status": 200
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-4",
+                  "kind": "runner-log",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kw7yj001c7kms6khdib10"
+                },
+                {
+                  "id": "cmw9kw70i000q7kmshuzaau93-attachment-4-text",
+                  "kind": "runner-log",
+                  "runId": "cmw9kvydv000h7kms2jv39erg",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "message": "# Page snapshot\n\n```yaml\n- generic [active] [ref=e1]:\n  - heading \"Fixture\" [level=1] [ref=e2]\n  - generic [ref=e3]:\n    - text: Email\n    - textbox \"Email\" [ref=e4]\n    - button \"Continue\" [ref=e5]\n```",
+                  "artifactId": "cmw9kw7yj001c7kms6khdib10"
+                }
+              ],
+              "findings": [
+                {
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "verdict": "automation-failure",
+                  "confidence": "supported",
+                  "hypotheses": [],
+                  "evidenceIds": [
+                    "cmw9kw705000n7kms0w9y5xwe",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-0",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-1",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-2",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-3",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-3-response-0",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-4",
+                    "cmw9kw705000n7kms0w9y5xwe-attachment-4-text"
+                  ],
+                  "explanation": "Classification is supported by correlated execution evidence.",
+                  "missingEvidence": [
+                    "trace",
+                    "api-response",
+                    "backend-log"
+                  ]
+                },
+                {
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "verdict": "automation-failure",
+                  "confidence": "supported",
+                  "hypotheses": [],
+                  "evidenceIds": [
+                    "cmw9kw70i000q7kmshuzaau93",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-0",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-1",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-2",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-3",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-3-response-0",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-4",
+                    "cmw9kw70i000q7kmshuzaau93-attachment-4-text"
+                  ],
+                  "explanation": "Classification is supported by correlated execution evidence.",
+                  "missingEvidence": [
+                    "trace",
+                    "api-response",
+                    "backend-log"
+                  ]
+                }
+              ],
+              "limitation": "Screenshots and trace attachments are linked as evidence; their presence does not prove a root cause.",
+              "evidenceIds": [
+                "cmw9kw705000n7kms0w9y5xwe",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-0",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-1",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-2",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-3",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-3-response-0",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-4",
+                "cmw9kw705000n7kms0w9y5xwe-attachment-4-text",
+                "cmw9kw70i000q7kmshuzaau93",
+                "cmw9kw70i000q7kmshuzaau93-attachment-0",
+                "cmw9kw70i000q7kmshuzaau93-attachment-1",
+                "cmw9kw70i000q7kmshuzaau93-attachment-2",
+                "cmw9kw70i000q7kmshuzaau93-attachment-3",
+                "cmw9kw70i000q7kmshuzaau93-attachment-3-response-0",
+                "cmw9kw70i000q7kmshuzaau93-attachment-4",
+                "cmw9kw70i000q7kmshuzaau93-attachment-4-text"
+              ]
+            },
+            "classifications": [
+              {
+                "type": "self-heal",
+                "title": "Form submits – /",
+                "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}",
+                "testCaseId": "cmw9kw701000m7kms54p12dli",
+                "testResultId": "cmw9kw705000n7kms0w9y5xwe"
+              },
+              {
+                "type": "self-heal",
+                "title": "Validation blocks empty submission – /",
+                "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}",
+                "testCaseId": "cmw9kw70e000p7kmspcrrcl9a",
+                "testResultId": "cmw9kw70i000q7kmshuzaau93"
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "type": "repair",
+          "status": "succeeded",
+          "input": {
+            "phase": "sequential-autonomous-repair",
+            "testTitle": "Form submits – /",
+            "testResultId": "cmw9kw705000n7kms0w9y5xwe",
+            "healingAttemptId": "cmw9kw80i001j7kms7qgbrhhy"
+          },
+          "output": {
+            "targetSpec": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project\\home.spec.ts",
+            "finalStatus": "succeeded",
+            "healingAttemptId": "cmw9kw80i001j7kms7qgbrhhy"
+          },
+          "error": null
+        },
+        {
+          "type": "verify",
+          "status": "succeeded",
+          "input": {
+            "phase": "targeted-verification",
+            "targetSpec": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project\\home.spec.ts",
+            "testResultId": "cmw9kw705000n7kms0w9y5xwe",
+            "healingAttemptId": "cmw9kw80i001j7kms7qgbrhhy"
+          },
+          "output": {
+            "phase": "wait_targeted_verify",
+            "summary": {
+              "total": 1,
+              "errors": 0,
+              "failed": 0,
+              "passed": 1,
+              "caseIds": [
+                "cmw9kw701000m7kms54p12dli"
+              ],
+              "skipped": 0,
+              "passedCaseIds": [
+                "cmw9kw701000m7kms54p12dli"
+              ]
+            },
+            "testRunId": "cmw9kwc0d001p7kmsjlx3oq0a",
+            "finalStatus": "succeeded",
+            "qualityGate": {
+              "passed": true,
+              "reasons": []
+            },
+            "executionStatus": "succeeded"
+          },
+          "error": null
+        },
+        {
+          "type": "verify",
+          "status": "succeeded",
+          "input": {
+            "phase": "full-suite-verification",
+            "healedCount": 1,
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project",
+            "failedRepairResultIds": []
+          },
+          "output": {
+            "phase": "wait_full_verify",
+            "summary": {
+              "total": 3,
+              "errors": 0,
+              "failed": 0,
+              "passed": 3,
+              "caseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x",
+                "cmw9kw701000m7kms54p12dli",
+                "cmw9kw70e000p7kmspcrrcl9a"
+              ],
+              "skipped": 0,
+              "passedCaseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x",
+                "cmw9kw701000m7kms54p12dli",
+                "cmw9kw70e000p7kmspcrrcl9a"
+              ]
+            },
+            "testRunId": "cmw9kwj3b001y7kmsk6pzv15w",
+            "finalStatus": "succeeded",
+            "qualityGate": {
+              "passed": true,
+              "reasons": []
+            },
+            "executionStatus": "succeeded"
+          },
+          "error": null
+        }
+      ],
+      "runs": [
+        {
+          "id": "cmw9kvydv000h7kms2jv39erg",
+          "status": "failed",
+          "error": "(node:41548) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:41548) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:32620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:32620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
+          "tests": [
+            {
+              "status": "passed",
+              "message": null
+            },
+            {
+              "status": "failed",
+              "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}"
+            },
+            {
+              "status": "failed",
+              "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}"
+            }
+          ]
+        },
+        {
+          "id": "cmw9kwc0d001p7kmsjlx3oq0a",
+          "status": "succeeded",
+          "error": null,
+          "tests": [
+            {
+              "status": "passed",
+              "message": null
+            }
+          ]
+        },
+        {
+          "id": "cmw9kwj3b001y7kmsk6pzv15w",
+          "status": "succeeded",
+          "error": null,
+          "tests": [
+            {
+              "status": "passed",
+              "message": null
+            },
+            {
+              "status": "passed",
+              "message": null
+            },
+            {
+              "status": "passed",
+              "message": null
+            }
+          ]
+        }
+      ],
+      "repairs": [
+        {
+          "status": "succeeded",
+          "summary": "Restore required generated actions for observed fixture controls"
+        }
+      ],
+      "approvals": [
+        {
+          "status": "approved",
+          "actionType": "patch_code"
+        }
+      ],
+      "reason": "Observed decision and required source/execution checks passed",
+      "reportingVerified": true,
+      "rollup": {
+        "taskCounts": {
+          "failed": 1,
+          "succeeded": 6
+        },
+        "repairCount": 1,
+        "linkedRunIds": [
+          "cmw9kvydv000h7kms2jv39erg",
+          "cmw9kwc0d001p7kmsjlx3oq0a",
+          "cmw9kwj3b001y7kmsk6pzv15w"
+        ]
+      },
+      "finalExecution": "PASS",
+      "repairDecisions": [
+        {
+          "attemptId": "cmw9kw80i001j7kms7qgbrhhy",
+          "originalDigest": "a1653c4bc1553356cd98244c95e39e6e6d80a8ebb472d3fa3d04875487635d63",
+          "decision": "approve"
+        }
+      ]
+    },
+    {
+      "status": "PASS",
+      "decision": "deny",
+      "jobId": "cmw9kwqn8002b7kmshuo5nuov",
+      "workerStatus": "failed",
+      "requests": 15,
+      "stages": [
+        {
+          "type": "discover",
+          "status": "succeeded",
+          "input": {
+            "baseUrl": "http://127.0.0.1:49679",
+            "maxPages": 1
+          },
+          "output": {
+            "outDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project",
+            "baseUrl": "http://127.0.0.1:49679",
+            "summary": "Discovered 1 routes; generated 0 new tests across 3 spec files",
+            "specFileCount": 3,
+            "uncoveredRoutes": [],
+            "discoveredRoutes": [
+              {
+                "route": "/",
+                "status": 200,
+                "reachable": true
+              }
+            ],
+            "existingTestCount": 6,
+            "generatedTestCount": 0,
+            "applicationModelDiff": {
+              "newPages": [],
+              "changedPages": [],
+              "missingPages": [],
+              "unchangedPages": [
+                "/"
+              ]
+            }
+          },
+          "error": null
+        },
+        {
+          "type": "verify",
+          "status": "succeeded",
+          "input": {
+            "phase": "generated-path-validation",
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project"
+          },
+          "output": {
+            "phase": "generated-path-validation",
+            "roots": [
+              {
+                "root": "C:\\Users\\gabby\\TestMind-main\\TestMind-main",
+                "relativeGeneratedDir": "testmind-acceptance-generated/playwright-ts-final-owner/final-project"
+              },
+              {
+                "root": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\apps\\api",
+                "relativeGeneratedDir": "../../testmind-acceptance-generated/playwright-ts-final-owner/final-project"
+              },
+              {
+                "root": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\apps\\web",
+                "relativeGeneratedDir": "../../testmind-acceptance-generated/playwright-ts-final-owner/final-project"
+              }
+            ],
+            "specCount": 1,
+            "expectedRoot": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project",
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project"
+          },
+          "error": null
+        },
+        {
+          "type": "execute",
+          "status": "failed",
+          "input": {
+            "phase": "initial-generated-suite",
+            "baseUrl": "http://127.0.0.1:49679",
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project"
+          },
+          "output": {
+            "phase": "wait_initial_run",
+            "summary": {
+              "total": 3,
+              "errors": 0,
+              "failed": 2,
+              "passed": 1,
+              "caseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x",
+                "cmw9kw701000m7kms54p12dli",
+                "cmw9kw70e000p7kmspcrrcl9a"
+              ],
+              "skipped": 0,
+              "passedCaseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x"
+              ]
+            },
+            "testRunId": "cmw9kwsd5002l7kmstma9vdyh",
+            "finalStatus": "failed",
+            "qualityGate": {
+              "passed": false,
+              "reasons": [
+                "Execution did not succeed.",
+                "2 test assertion(s) failed."
+              ]
+            },
+            "executionStatus": "failed"
+          },
+          "error": "(node:38392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:38392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:49040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:49040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created) Execution did not succeed. 2 test assertion(s) failed."
+        },
+        {
+          "type": "triage",
+          "status": "succeeded",
+          "input": null,
+          "output": {
+            "phase": "autonomous-triage",
+            "runId": "cmw9kwsd5002l7kmstma9vdyh",
+            "rootCause": {
+              "verdict": "automation-failure",
+              "evidence": [
+                {
+                  "id": "cmw9kx0i0002o7kmswck77mt9",
+                  "kind": "assertion",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw6z4000j7kmspy1l6e0x",
+                  "failureClass": "passed"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw",
+                  "kind": "assertion",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}",
+                  "failureClass": "failed"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98",
+                  "kind": "assertion",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}",
+                  "failureClass": "failed"
+                },
+                {
+                  "id": "cmw9kx0i0002o7kmswck77mt9-attachment-0",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw6z4000j7kmspy1l6e0x",
+                  "artifactId": "cmw9kx1xs002y7kmsd1znl4l4"
+                },
+                {
+                  "id": "cmw9kx0i0002o7kmswck77mt9-attachment-1",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw6z4000j7kmspy1l6e0x",
+                  "artifactId": "cmw9kx1y800307kmsdaellhfi"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-0",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kx1yj00327kmsmmeh77v5"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-1",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kx1yu00347kms7pm00c7u"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-2",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kx1z300367kmsn97y9uc0"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-3",
+                  "kind": "network",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-3-response-0",
+                  "kind": "network",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "status": 200
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-4",
+                  "kind": "runner-log",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "artifactId": "cmw9kx1zd00387kmsjy0y72f8"
+                },
+                {
+                  "id": "cmw9kx0ib002r7kmsffdr53sw-attachment-4-text",
+                  "kind": "runner-log",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "message": "# Page snapshot\n\n```yaml\n- generic [active] [ref=e1]:\n  - heading \"Fixture\" [level=1] [ref=e2]\n  - generic [ref=e3]:\n    - text: Email\n    - textbox \"Email\" [ref=e4]\n    - button \"Continue\" [ref=e5]\n```",
+                  "artifactId": "cmw9kx1zd00387kmsjy0y72f8"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-0",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kx1zo003a7kms1gc4snnx"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-1",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kx205003c7kmsprjt4mmt"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-2",
+                  "kind": "screenshot",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kx20m003e7kmsuk083ob7"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-3",
+                  "kind": "network",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-3-response-0",
+                  "kind": "network",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "status": 200
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-4",
+                  "kind": "runner-log",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "artifactId": "cmw9kx20v003g7kmszsbp78dj"
+                },
+                {
+                  "id": "cmw9kx0im002u7kms12m87w98-attachment-4-text",
+                  "kind": "runner-log",
+                  "runId": "cmw9kwsd5002l7kmstma9vdyh",
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "message": "# Page snapshot\n\n```yaml\n- generic [active] [ref=e1]:\n  - heading \"Fixture\" [level=1] [ref=e2]\n  - generic [ref=e3]:\n    - text: Email\n    - textbox \"Email\" [ref=e4]\n    - button \"Continue\" [ref=e5]\n```",
+                  "artifactId": "cmw9kx20v003g7kmszsbp78dj"
+                }
+              ],
+              "findings": [
+                {
+                  "caseId": "cmw9kw701000m7kms54p12dli",
+                  "verdict": "automation-failure",
+                  "confidence": "supported",
+                  "hypotheses": [],
+                  "evidenceIds": [
+                    "cmw9kx0ib002r7kmsffdr53sw",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-0",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-1",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-2",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-3",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-3-response-0",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-4",
+                    "cmw9kx0ib002r7kmsffdr53sw-attachment-4-text"
+                  ],
+                  "explanation": "Classification is supported by correlated execution evidence.",
+                  "missingEvidence": [
+                    "trace",
+                    "api-response",
+                    "backend-log"
+                  ]
+                },
+                {
+                  "caseId": "cmw9kw70e000p7kmspcrrcl9a",
+                  "verdict": "automation-failure",
+                  "confidence": "supported",
+                  "hypotheses": [],
+                  "evidenceIds": [
+                    "cmw9kx0im002u7kms12m87w98",
+                    "cmw9kx0im002u7kms12m87w98-attachment-0",
+                    "cmw9kx0im002u7kms12m87w98-attachment-1",
+                    "cmw9kx0im002u7kms12m87w98-attachment-2",
+                    "cmw9kx0im002u7kms12m87w98-attachment-3",
+                    "cmw9kx0im002u7kms12m87w98-attachment-3-response-0",
+                    "cmw9kx0im002u7kms12m87w98-attachment-4",
+                    "cmw9kx0im002u7kms12m87w98-attachment-4-text"
+                  ],
+                  "explanation": "Classification is supported by correlated execution evidence.",
+                  "missingEvidence": [
+                    "trace",
+                    "api-response",
+                    "backend-log"
+                  ]
+                }
+              ],
+              "limitation": "Screenshots and trace attachments are linked as evidence; their presence does not prove a root cause.",
+              "evidenceIds": [
+                "cmw9kx0ib002r7kmsffdr53sw",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-0",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-1",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-2",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-3",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-3-response-0",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-4",
+                "cmw9kx0ib002r7kmsffdr53sw-attachment-4-text",
+                "cmw9kx0im002u7kms12m87w98",
+                "cmw9kx0im002u7kms12m87w98-attachment-0",
+                "cmw9kx0im002u7kms12m87w98-attachment-1",
+                "cmw9kx0im002u7kms12m87w98-attachment-2",
+                "cmw9kx0im002u7kms12m87w98-attachment-3",
+                "cmw9kx0im002u7kms12m87w98-attachment-3-response-0",
+                "cmw9kx0im002u7kms12m87w98-attachment-4",
+                "cmw9kx0im002u7kms12m87w98-attachment-4-text"
+              ]
+            },
+            "classifications": [
+              {
+                "type": "self-heal",
+                "title": "Form submits – /",
+                "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}",
+                "testCaseId": "cmw9kw701000m7kms54p12dli",
+                "testResultId": "cmw9kx0ib002r7kmsffdr53sw"
+              },
+              {
+                "type": "self-heal",
+                "title": "Validation blocks empty submission – /",
+                "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}",
+                "testCaseId": "cmw9kw70e000p7kmspcrrcl9a",
+                "testResultId": "cmw9kx0im002u7kms12m87w98"
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "type": "repair",
+          "status": "failed",
+          "input": {
+            "phase": "sequential-autonomous-repair",
+            "testTitle": "Form submits – /",
+            "testResultId": "cmw9kx0ib002r7kmsffdr53sw",
+            "healingAttemptId": "cmw9kx22d003n7kms2thrt79d"
+          },
+          "output": {
+            "finalStatus": "failed",
+            "healingAttemptId": "cmw9kx22d003n7kms2thrt79d"
+          },
+          "error": "Repair was not approved"
+        },
+        {
+          "type": "repair",
+          "status": "failed",
+          "input": {
+            "phase": "sequential-autonomous-repair",
+            "testTitle": "Validation blocks empty submission – /",
+            "testResultId": "cmw9kx0im002u7kms12m87w98",
+            "healingAttemptId": "cmw9kx61s003s7kmsqq6wrqf2"
+          },
+          "output": {
+            "finalStatus": "failed",
+            "healingAttemptId": "cmw9kx61s003s7kmsqq6wrqf2"
+          },
+          "error": "Repair was not approved"
+        },
+        {
+          "type": "verify",
+          "status": "failed",
+          "input": {
+            "phase": "full-suite-verification",
+            "healedCount": 0,
+            "generatedDir": "C:\\Users\\gabby\\TestMind-main\\TestMind-main\\testmind-acceptance-generated\\playwright-ts-final-owner\\final-project",
+            "failedRepairResultIds": [
+              "cmw9kx0ib002r7kmsffdr53sw",
+              "cmw9kx0im002u7kms12m87w98"
+            ]
+          },
+          "output": {
+            "phase": "wait_full_verify",
+            "summary": {
+              "total": 3,
+              "errors": 0,
+              "failed": 2,
+              "passed": 1,
+              "caseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x",
+                "cmw9kw701000m7kms54p12dli",
+                "cmw9kw70e000p7kmspcrrcl9a"
+              ],
+              "skipped": 0,
+              "passedCaseIds": [
+                "cmw9kw6z4000j7kmspy1l6e0x"
+              ]
+            },
+            "testRunId": "cmw9kx9zr003y7kmsso2wh2t3",
+            "finalStatus": "failed",
+            "qualityGate": {
+              "passed": false,
+              "reasons": [
+                "Execution did not succeed.",
+                "2 test assertion(s) failed.",
+                "Required test cmw9kw701000m7kms54p12dli did not pass.",
+                "Required test cmw9kw70e000p7kmspcrrcl9a did not pass."
+              ]
+            },
+            "executionStatus": "failed"
+          },
+          "error": "(node:53620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:53620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:23612) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:23612) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created) Execution did not succeed. 2 test assertion(s) failed. Required test cmw9kw701000m7kms54p12dli did not pass. Required test cmw9kw70e000p7kmspcrrcl9a did not pass."
+        }
+      ],
+      "runs": [
+        {
+          "id": "cmw9kwsd5002l7kmstma9vdyh",
+          "status": "failed",
+          "error": "(node:38392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:38392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:49040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:49040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
+          "tests": [
+            {
+              "status": "passed",
+              "message": null
+            },
+            {
+              "status": "failed",
+              "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}"
+            },
+            {
+              "status": "failed",
+              "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}"
+            }
+          ]
+        },
+        {
+          "id": "cmw9kx9zr003y7kmsso2wh2t3",
+          "status": "failed",
+          "error": "(node:53620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:53620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:23612) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:23612) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
+          "tests": [
+            {
+              "status": "passed",
+              "message": null
+            },
+            {
+              "status": "failed",
+              "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"fill\",\"locator\":\"fields.name-email-email on /\"}"
+            },
+            {
+              "status": "failed",
+              "message": "Error: {\"code\":\"GENERATED_LOCATOR_MISSING\",\"action\":\"click\",\"locator\":\"locators.button-type-submit-input-type-submit on /\"}"
+            }
+          ]
+        }
+      ],
+      "repairs": [
+        {
+          "status": "failed",
+          "summary": "Repair proposed; awaiting approval"
+        },
+        {
+          "status": "failed",
+          "summary": "Repair proposed; awaiting approval"
+        }
+      ],
+      "approvals": [
+        {
+          "status": "denied",
+          "actionType": "patch_code"
+        },
+        {
+          "status": "denied",
+          "actionType": "patch_code"
+        }
+      ],
+      "reason": "Observed decision and required source/execution checks passed",
+      "reportingVerified": true,
+      "rollup": {
+        "taskCounts": {
+          "failed": 4,
+          "succeeded": 3
+        },
+        "linkedRunIds": [
+          "cmw9kwsd5002l7kmstma9vdyh",
+          "cmw9kx9zr003y7kmsso2wh2t3"
+        ]
+      },
+      "finalExecution": "FAIL",
+      "repairDecisions": [
+        {
+          "attemptId": "cmw9kx22d003n7kms2thrt79d",
+          "originalDigest": "a1653c4bc1553356cd98244c95e39e6e6d80a8ebb472d3fa3d04875487635d63",
+          "decision": "deny"
+        },
+        {
+          "attemptId": "cmw9kx61s003s7kmsqq6wrqf2",
+          "originalDigest": "a1653c4bc1553356cd98244c95e39e6e6d80a8ebb472d3fa3d04875487635d63",
+          "decision": "deny"
+        }
+      ]
+    }
+  ]
+}

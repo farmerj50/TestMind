@@ -91,3 +91,5 @@ recorder-helper-runner.js
 
 # Python scratch
 *.py
+!apps/eval-service/**/*.py
+!apps/api/src/runner/python-sandbox/supervisor.py

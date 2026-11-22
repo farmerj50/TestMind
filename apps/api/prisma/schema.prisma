@@ -56,6 +56,16 @@ enum TestRunStatus {
   failed
 }
 
+// Evaluation Engine v1 (Phase 1). Reuses TestRunStatus's exact vocabulary rather than
+// SecurityScanStatus's ("completed" instead of "succeeded") - this is a run that succeeds/fails,
+// not an open-ended scan.
+enum EvaluationRunStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
 enum HealingStatus {
   queued
   running
@@ -190,6 +200,10 @@ model Project {
   integrations                Integration[]
   secrets                     ProjectSecret[]
   securityScans               SecurityScanJob[]
+  evaluationRuns              EvaluationRun[]
+  evaluationDatasets          EvaluationDataset[]
+  auditLogs                   AuditLog[]
+  devAgentRuns                DevAgentRun[]
   curatedSuites               CuratedSuite[]
   operatorJobs                OperatorJob[]
   environments                Environment[]
@@ -811,10 +825,12 @@ model CuratedSuite {
 // ── Operator spine ────────────────────────────────────────────────────────────
 
 enum OperatorJobType {
+  workflow
   qa
   security
   repair
   discovery
+  autonomousDev
 }
 
 enum OperatorJobStatus {
@@ -924,23 +940,29 @@ model OperatorJob {
 }
 
 model OperatorTask {
-  id            String             @id @default(cuid())
-  jobId         String
-  job           OperatorJob        @relation(fields: [jobId], references: [id])
-  parentTaskId  String?
-  parent        OperatorTask?      @relation("TaskChildren", fields: [parentTaskId], references: [id])
-  children      OperatorTask[]     @relation("TaskChildren")
-  type          OperatorTaskType
-  status        OperatorTaskStatus @default(pending)
-  assignedAgent String?
-  priority      Int                @default(0)
-  inputJson     Json?
-  outputJson    Json?
-  error         String?            @db.Text
-  testRunId     String?
-  createdAt     DateTime           @default(now())
-  startedAt     DateTime?
-  finishedAt    DateTime?
+  id             String             @id @default(cuid())
+  jobId          String
+  job            OperatorJob        @relation(fields: [jobId], references: [id])
+  parentTaskId   String?
+  parent         OperatorTask?      @relation("TaskChildren", fields: [parentTaskId], references: [id])
+  children       OperatorTask[]     @relation("TaskChildren")
+  type           OperatorTaskType
+  status         OperatorTaskStatus @default(pending)
+  assignedAgent  String?
+  priority       Int                @default(0)
+  inputJson      Json?
+  outputJson     Json?
+  error          String?            @db.Text
+  testRunId      String?
+  createdAt      DateTime           @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  workflowRunId  String?
+  workflowRun    WorkflowRun?       @relation(fields: [workflowRunId], references: [id], onDelete: Restrict)
+  nodeKey        String?
+  nodeVersion    Int?
+  nodeAttempt    Int                @default(1)
+  stateEncrypted String?            @db.Text
 
   steps                       OperatorStep[]
   artifacts                   OperatorArtifact[]
@@ -948,6 +970,7 @@ model OperatorTask {
   approvals                   OperatorApproval[]
   humanInterventionCandidates HumanInterventionCandidate[]
 
+  @@unique([workflowRunId, nodeKey, nodeAttempt])
   @@index([jobId])
   @@index([parentTaskId])
   @@index([testRunId])
@@ -1061,29 +1084,48 @@ model Workflow {
   approvalRequired Boolean      @default(false)
   notifyOnFailure  Boolean      @default(true)
   configJson       Json         @default("{}")
+  archivedAt       DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  runs WorkflowRun[]
+  runs     WorkflowRun[]
+  versions WorkflowVersion[]
 
   @@index([projectId, createdAt])
   @@index([projectId, workflowType])
   @@index([environmentId])
 }
 
+model WorkflowVersion {
+  id           String        @id @default(cuid())
+  workflowId   String
+  workflow     Workflow      @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+  digest       String
+  snapshotJson Json
+  createdBy    String
+  createdAt    DateTime      @default(now())
+  runs         WorkflowRun[]
+
+  @@unique([workflowId, digest])
+}
+
 model WorkflowRun {
-  id            String    @id @default(cuid())
+  id            String           @id @default(cuid())
   workflowId    String
-  workflow      Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  status        String    @default("queued")
+  workflow      Workflow         @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  status        String           @default("queued")
   operatorJobId String?
+  versionId     String?
+  version       WorkflowVersion? @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  contextJson   Json?
+  nodeTasks     OperatorTask[]
   requestedBy   String?
   approvedBy    String?
   startedAt     DateTime?
   finishedAt    DateTime?
-  error         String?   @db.Text
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  error         String?          @db.Text
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([workflowId, createdAt])
   @@index([operatorJobId])
@@ -1228,11 +1270,120 @@ model ApiTestResult {
   @@index([testCaseId])
 }
 
+// Evaluation Engine v1 (Phase 1). A run against the standalone apps/eval-service Python
+// microservice (deterministic RAG/LLM metrics: Recall@k, Precision@k, a required-fact substring
+// smoke check, abstention checks, p95 latency). Normalized columns are what the dashboard
+// filters/sorts/aggregates on (dataset/app identity, status, gate outcome); everything
+// variable-shape goes to Json?, matching SecurityFinding.evidence/ApiTestResult.assertionResults.
+model EvaluationRun {
+  id                 String              @id @default(cuid())
+  projectId          String
+  project            Project             @relation(fields: [projectId], references: [id])
+  status             EvaluationRunStatus @default(queued)
+  datasetId          String
+  datasetVersion     String
+  applicationId      String
+  applicationVersion String
+  // The eval-service's reported version, filled in on completion - this service's own
+  // deterministic-metrics version, not a judge model (see evaluatorMetadata below).
+  evaluatorVersion   String?
+  // Phase 1 correction: reproducibility fields the schema needs now so Phase 3 (Ragas/DeepEval,
+  // LLM-judged metrics) doesn't need a second migration - library versions, judge model
+  // identifier, prompt version. Null/absent for Phase 1's deterministic-only metrics, since no
+  // judge exists yet. Never assume an LLM-judged evaluation is deterministic once this is used.
+  evaluatorMetadata  Json?
+  // The gates object sent to the eval-service, kept for provenance/audit.
+  gatesConfig        Json?
+  // Full cases[] array from the request - the worker re-sends this verbatim to the eval-service
+  // rather than carrying it through the BullMQ job payload. Size-capped at the route's zod
+  // validation layer (data minimization - do not store unbounded application data here).
+  casesJson          Json
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  // "pass" | "fail" | "skipped_no_data" - mirrors the eval-service response verbatim.
+  overallGateStatus  String?
+  // The top-level `metrics` object from the eval-service response.
+  metricsSummary     Json?
+  // Safe-logging correction: always a truncated/redacted snippet (see redaction.ts's snippet()
+  // convention), never a raw eval-service response body verbatim.
+  error              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  results EvaluationResult[]
+
+  @@index([projectId, createdAt])
+}
+
+// Phase 3: versioned golden datasets. Mirrors Workflow/WorkflowVersion's immutable-snapshot
+// pattern exactly (digest-dedup-on-create) - see lib/workflow-version.ts's saveWorkflowVersion.
+model EvaluationDataset {
+  id        String                     @id @default(cuid())
+  projectId String
+  project   Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime                   @default(now())
+
+  versions EvaluationDatasetVersion[]
+
+  @@index([projectId, createdAt])
+}
+
+model EvaluationDatasetVersion {
+  id        String            @id @default(cuid())
+  datasetId String
+  dataset   EvaluationDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
+  digest    String
+  // The full cases[] array pinned at this version - immutable once created.
+  casesJson Json
+  createdBy String
+  createdAt DateTime          @default(now())
+
+  @@unique([datasetId, digest])
+}
+
+model EvaluationResult {
+  id                 String        @id @default(cuid())
+  runId              String
+  run                EvaluationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  caseId             String
+  recallAtK          Float?
+  precisionAtK       Float?
+  requiredFactRate   Float?
+  abstainedCorrectly Boolean?
+  latencyMs          Int?
+  // Full case_results[i] entry from the eval-service response, for drill-down.
+  raw                Json?
+  createdAt          DateTime      @default(now())
+
+  @@index([runId, createdAt])
+}
+
+// Phase 5: minimal audit trail for evaluation-related actions (dataset version creation,
+// evaluation-run creation, human-review-candidate creation). Not a sweeping audit log for
+// unrelated features - scoped to the three evaluation-related actions that record it.
+model AuditLog {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorId      String?
+  action       String
+  targetType   String
+  targetId     String?
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
 model OperatorSchedule {
   id          String    @id @default(cuid())
   projectId   String
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   cron        String
+  // IANA timezone (e.g. "America/New_York"). Null means server-local/UTC, matching the
+  // pre-existing behavior before Autonomous Dev Mode's overnight scheduling needed this.
+  timezone    String?
   enabled     Boolean   @default(true)
   contextJson Json      @default("{}")
   lastRunAt   DateTime?
@@ -1240,4 +1391,96 @@ model OperatorSchedule {
   updatedAt   DateTime  @updatedAt
 
   @@index([projectId])
+}
+
+// ── Autonomous Development Mode ────────────────────────────────────────────────
+
+enum DevAgentMode {
+  assigned
+  selfImprovement
+  both
+}
+
+enum DevAgentRunStatus {
+  queued
+  running
+  paused
+  awaitingApproval
+  succeeded
+  failed
+  canceled
+}
+
+// One assigned task, self-improvement cycle, or scheduled overnight run. Mirrors
+// WorkflowRun.operatorJobId's exact precedent: OperatorJob stays the shared
+// job/queue backbone, this table holds everything specific to this feature so the
+// shared model isn't bloated with feature-specific columns.
+model DevAgentRun {
+  id               String            @id @default(cuid())
+  projectId        String
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  operatorJobId    String?           @unique
+  mode             DevAgentMode      @default(assigned)
+  // "testmind" for this repo, or an external repo identifier - never implicit; the
+  // caller must explicitly authorize a specific external target per run.
+  targetRepo       String            @default("testmind")
+  instructionText  String?           @db.Text
+  scheduledStartAt DateTime?
+  timezone         String?
+  budgetUsd        Float?
+  spentUsd         Float             @default(0)
+  status           DevAgentRunStatus @default(queued)
+  worktreePath     String?
+  baseBranch       String?
+  workBranch       String?
+  // Caller-configured shell command the iteration loop runs each tick (e.g. "npm test",
+  // "pytest"). Deliberately generic for Stage B/C - bespoke per-runner integration
+  // (Playwright/API/pytest/security/eval/workflow) is explicitly deferred.
+  testCommand      String?
+  maxIterations    Int               @default(5)
+  requestedBy      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  error            String?           @db.Text
+  // Set once a terminal 'succeeded' run's changes are pushed via the existing
+  // github-writeback.ts confidence-gated flow - never set by any auto-merge path.
+  prUrl            String?
+
+  messages   DevAgentMessage[]
+  iterations DevAgentIteration[]
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+// Persistent conversational instruction history - the gap CopilotContext's
+// in-memory-only chat state has today.
+model DevAgentMessage {
+  id            String      @id @default(cuid())
+  devAgentRunId String
+  devAgentRun   DevAgentRun @relation(fields: [devAgentRunId], references: [id], onDelete: Cascade)
+  role          String // "user" | "assistant" | "system"
+  content       String      @db.Text
+  createdAt     DateTime    @default(now())
+
+  @@index([devAgentRunId, createdAt])
+}
+
+// One bounded plan/code/test/analyze pass. Mirrors TestHealingAttempt's existing
+// per-attempt row shape.
+model DevAgentIteration {
+  id            String      @id @default(cuid())
+  devAgentRunId String
+  devAgentRun   DevAgentRun @relation(fields: [devAgentRunId], references: [id], onDelete: Cascade)
+  iterationNumber Int
+  phase         String // "plan" | "code" | "test" | "analyze"
+  summary       String?     @db.Text
+  filesChanged  Json?
+  testResult    Json?
+  costUsd       Float       @default(0)
+  createdAt     DateTime    @default(now())
+
+  @@index([devAgentRunId, iterationNumber])
 }

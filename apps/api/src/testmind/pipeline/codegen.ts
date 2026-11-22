@@ -114,7 +114,7 @@ function stripCodeFences(content: string): string {
 
 /** ✅ Named export used by synthesize.ts and service.ts */
 /** ✅ Named export used by synthesize.ts and service.ts */
-export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapterId = "playwright-ts") {
+export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapterId = "playwright-ts", options?: { locatorStore?: unknown; baseUrl?: string }) {
   console.log("[tm-pipeline-codegen] using adapter ->", adapterId, "at", outDir);
 
   const normOut = outDir.replace(/\\/g, "/");
@@ -186,9 +186,9 @@ export async function writeSpecsFromPlan(outDir: string, plan: TestPlan, adapter
   for (const [page, tcs] of grouped) {
     const base = page === "/"
       ? "home"
-      : page.replace(/\//g, "_").replace(/^_/, "");
+      : page.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_/, "");
     const filePath = path.join(outDir, `${base}.spec.ts`);
-    const content = emitSpecFile(page, tcs as any);
+    const content = emitSpecFile(page, tcs as any, options);
     const cleaned = stripCodeFences(content);
     await fs.writeFile(filePath, cleaned, "utf8");
     if (!logged) { console.log("[tm-pipeline-codegen] wrote:", filePath); logged = true; }

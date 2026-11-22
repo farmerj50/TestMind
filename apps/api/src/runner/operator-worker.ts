@@ -15,6 +15,7 @@ import { generatePlan } from '../testmind/pipeline/generate-plan.js';
 import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
+import { assessTestEvidence, allowsAutomaticRecovery, AUTONOMY_LEVELS, type AutonomyLevel } from '@testmind/core/workflow';
 import {
   deriveDecisionsForFailureClassifications,
   recordOperatorDecisions,
@@ -79,7 +80,7 @@ export const operatorWorker = new Worker(
     });
 
     if (!opJob) throw new Error(`OperatorJob ${operatorJobId} not found`);
-    if (opJob.status === 'canceled') return;
+    if (opJob.status === 'canceled' || opJob.status === 'succeeded') return;
 
     /** Release worker thread — re-queues the job with updated checkpoint after `ms`. */
     const reDelay: ReDelayFn = async (ms, phase) => {
@@ -89,6 +90,11 @@ export const operatorWorker = new Worker(
     };
 
     try {
+      const parentRunId = (opJob.contextJson as any)?.workflowParentId;
+      if (parentRunId) {
+        const { authorizedWorkflowContext } = await import('../lib/workflow-execution-policy.js');
+        await authorizedWorkflowContext(parentRunId, opJob.projectId);
+      }
       if (resumePhase) {
         // Resuming from checkpoint — dispatch to the right handler
         await handleResume(opJob, resumePhase, reDelay);
@@ -100,11 +106,13 @@ export const operatorWorker = new Worker(
         });
 
         const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
-        if (opJob.type === 'qa' && ctx.autonomous === true) await runAutonomousQaJob(opJob, reDelay);
+        if (opJob.type === 'workflow') await advanceGraphJob(opJob, reDelay);
+        else if (opJob.type === 'qa' && ctx.autonomous === true) await runAutonomousQaJob(opJob, reDelay);
         else if (opJob.type === 'qa')        await runQaJob(opJob, reDelay);
         else if (opJob.type === 'repair')    await runRepairJob(opJob, reDelay);
         else if (opJob.type === 'discovery') await runDiscoveryJob(opJob);
         else if (opJob.type === 'security')  await runSecurityJob(opJob, reDelay);
+        else if (opJob.type === 'autonomousDev') { const { advanceDevAgentJob } = await import('./dev-agent-worker.js'); await advanceDevAgentJob(opJob, reDelay); }
         else throw new Error(`OperatorJob type '${opJob.type}' not yet implemented`);
       }
 
@@ -121,8 +129,8 @@ export const operatorWorker = new Worker(
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function finalizeJob(jobId: string, status: 'succeeded' | 'failed', error?: string) {
-  await prisma.operatorJob.update({
-    where: { id: jobId },
+  await prisma.operatorJob.updateMany({
+    where: { id: jobId, status: { not: 'canceled' } },
     data: { status, finishedAt: new Date(), ...(error ? { error } : {}) },
   });
   // Rollup: count tasks by status and write summary into contextJson._rollup
@@ -224,7 +232,9 @@ async function recordArtifact(opts: {
 // ── Resume dispatcher ─────────────────────────────────────────────────────────
 
 async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDelayFn) {
-  if (phase.kind === 'autonomous_qa') {
+  if (phase.kind === 'workflow_graph') {
+    await advanceGraphJob(opJob, reDelay);
+  } else if (phase.kind === 'autonomous_qa') {
     await runAutonomousQaJob(opJob, reDelay, phase.state);
   } else if (phase.kind === 'wait_run') {
     await checkOrDelayRun(phase.runId, phase.taskId, opJob.id, phase.deadline, reDelay);
@@ -234,7 +244,20 @@ async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDela
     await checkOrDelayApproval(opJob, phase, reDelay);
   } else if (phase.kind === 'wait_scan') {
     await checkOrDelayScan(phase.scanId, phase.taskId, opJob.id, phase.deadline, reDelay);
+  } else if (phase.kind === 'dev_agent_iterate') {
+    const { advanceDevAgentJob } = await import('./dev-agent-worker.js');
+    await advanceDevAgentJob(opJob, reDelay);
   }
+}
+
+async function advanceGraphJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
+  const { runWorkflowGraph } = await import('./workflow-runner.js');
+  const result = await runWorkflowGraph(opJob).catch(async (error) => {
+    await prisma.workflowRun.updateMany({ where: { operatorJobId: opJob.id, status: { in: ['queued', 'running'] } }, data: { status: 'failed', finishedAt: new Date(), error: 'Workflow could not resume its saved execution state. Review the operator error.' } });
+    throw error;
+  });
+  if (result.status === 'pending') await reDelay(500, { kind: 'workflow_graph' });
+  if (result.status === 'failed') throw new Error(result.error ?? 'Workflow evidence gate failed');
 }
 
 // ── QA job ────────────────────────────────────────────────────────────────────
@@ -249,6 +272,8 @@ type AutonomousQaState = {
   taskId?: string;
   deadline: number;
   remainingTestResultIds?: string[];
+  repairRunId?: string;
+  refreshPendingRepairs?: boolean;
   healedCount?: number;
   failedRepairResultIds?: string[];
   currentTestResultId?: string;
@@ -261,7 +286,7 @@ type AutonomousQaState = {
 type AutonomousRunResult = {
   status: 'succeeded' | 'failed';
   error: string | null;
-  summary: { passed: number; failed: number; skipped: number; total: number };
+  summary: { passed: number; failed: number; errors: number; skipped: number; total: number; passedCaseIds: string[]; caseIds: string[] };
 };
 
 function isPathWithinOrEqual(parent: string, child: string) {
@@ -296,12 +321,17 @@ async function collectSpecFiles(root: string, limit = 250): Promise<string[]> {
 async function getRunSummary(runId: string) {
   const results = await prisma.testResult.findMany({
     where: { runId },
-    select: { status: true },
+    select: { status: true, testCaseId: true },
   });
   const passed = results.filter((r) => r.status === 'passed').length;
   const failed = results.filter((r) => r.status === 'failed').length;
   const skipped = results.filter((r) => r.status === 'skipped').length;
-  return { passed, failed, skipped, total: results.length };
+  // Unknown/errored result states are execution failures, never passing evidence.
+  const errors = results.length - passed - failed - skipped;
+  return { passed, failed, errors, skipped, total: results.length,
+    passedCaseIds: results.filter(r => r.status === 'passed').map(r => r.testCaseId),
+    caseIds: results.map(r => r.testCaseId),
+  };
 }
 
 async function createHumanInterventionCandidate(opts: {
@@ -493,6 +523,7 @@ async function createAutonomousRun(
 
   await prisma.operatorTask.update({ where: { id: task.id }, data: { testRunId: run.id } });
   await enqueueRun(run.id, {
+    ...((opJob.contextJson as any)?.workflowParentId ? { workflowRunId: (opJob.contextJson as any).workflowParentId } : {}),
     projectId: opJob.projectId,
     adapterId: opts.adapterId,
     baseUrl: opts.baseUrl,
@@ -521,15 +552,27 @@ async function waitAutonomousRun(
   });
   if (!run) throw new Error(`TestRun ${runId} not found`);
 
-  if (run.status === 'succeeded' || run.status === 'failed') {
+  if (['succeeded', 'failed', 'canceled'].includes(run.status)) {
     const summary = await getRunSummary(runId);
+    const requiredCaseIds = state.stage === 'wait_full_verify'
+      ? (await getRunSummary(state.initialRunId)).caseIds
+      : state.stage === 'wait_targeted_verify' && state.currentTestResultId
+        ? [(await prisma.testResult.findUnique({ where: { id: state.currentTestResultId }, select: { testCaseId: true } }))?.testCaseId].filter(Boolean) as string[]
+        : [];
+    const gate = assessTestEvidence({ status: run.status, counts: summary, requiredCaseIds, passedCaseIds: summary.passedCaseIds });
+    if (state.stage === 'wait_targeted_verify' && requiredCaseIds.length === 0) {
+      gate.passed = false;
+      gate.reasons.push('Targeted verification has no identifiable required test.');
+    }
+    const status = gate.passed ? 'succeeded' : 'failed';
+    const error = gate.passed ? null : [run.error, ...gate.reasons].filter(Boolean).join(' ');
     await prisma.operatorTask.update({
       where: { id: taskId },
       data: {
-        status: run.status === 'succeeded' ? 'succeeded' : 'failed',
+        status,
         finishedAt: new Date(),
-        error: run.error ?? null,
-        outputJson: { phase: state.stage, testRunId: runId, finalStatus: run.status, summary },
+        error,
+        outputJson: { phase: state.stage, testRunId: runId, finalStatus: status, executionStatus: run.status, summary, qualityGate: gate },
       },
     });
     await recordArtifact({
@@ -538,9 +581,9 @@ async function waitAutonomousRun(
       testRunId: runId,
       type: 'report',
       path: `runs/${runId}/playwright-report.json`,
-      meta: { phase: state.stage, finalStatus: run.status },
+      meta: { phase: state.stage, finalStatus: status, executionStatus: run.status, qualityGate: gate },
     });
-    return { status: run.status, error: run.error ?? null, summary };
+    return { status, error, summary };
   }
 
   if (Date.now() > state.deadline) {
@@ -585,6 +628,9 @@ async function continueAutonomousAfterFailedRun(
   runId: string
 ) {
   const classifications = await classifyRunFailures(runId);
+  const { collectWorkflowRunEvidence } = await import('./workflow-evidence-collector.js');
+  const { analyzeWorkflowEvidence } = await import('../lib/workflow-evidence.js');
+  const rootCause = analyzeWorkflowEvidence(await collectWorkflowRunEvidence(opJob.projectId, { runId, source: 'ui' }, opJob.id, state.taskId!));
   const triageTask = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
@@ -592,7 +638,7 @@ async function continueAutonomousAfterFailedRun(
       status: 'succeeded',
       startedAt: new Date(),
       finishedAt: new Date(),
-      outputJson: { runId, classifications, phase: 'autonomous-triage' },
+      outputJson: { runId, classifications, rootCause, phase: 'autonomous-triage' } as any,
     },
   });
 
@@ -604,16 +650,21 @@ async function continueAutonomousAfterFailedRun(
   });
 
   const selfHealableIds = classifications
-    .filter((c) => c.type === 'self-heal')
+    .filter((c) => c.type === 'self-heal' && rootCause.findings.some(f => f.caseId === c.testCaseId && f.verdict === 'automation-failure'))
     .map((c) => c.testResultId);
 
   if (selfHealableIds.length === 0) {
     throw new Error('Autonomous QA found failures that require human intervention');
   }
 
+  const level = ((opJob.contextJson as any)?.autonomyLevel ?? 'autonomous-recovery') as AutonomyLevel;
+  if (!allowsAutomaticRecovery(level)) throw new Error(`Automatic repair is disabled at autonomy level ${level}; testing evidence remains failed`);
+
   await startNextAutonomousRepair(opJob, reDelay, {
     ...state,
     remainingTestResultIds: selfHealableIds,
+    repairRunId: runId,
+    refreshPendingRepairs: false,
     healedCount: state.healedCount ?? 0,
     failedRepairResultIds: state.failedRepairResultIds ?? [],
   });
@@ -624,13 +675,15 @@ async function startNextAutonomousRepair(
   reDelay: ReDelayFn,
   state: AutonomousQaState
 ): Promise<void> {
+  const level = ((opJob.contextJson as any)?.autonomyLevel ?? 'autonomous-recovery') as AutonomyLevel;
+  if (!allowsAutomaticRecovery(level)) throw new Error(`Automatic repair is disabled at autonomy level ${level}`);
   const remaining = [...(state.remainingTestResultIds ?? [])];
   while (remaining.length > 0) {
     const testResultId = remaining.shift() as string;
     const result = await prisma.testResult.findFirst({
       where: {
         id: testResultId,
-        runId: state.initialRunId,
+        runId: state.repairRunId ?? state.initialRunId,
         status: 'failed',
         testCase: { status: { not: 'archived' } },
       },
@@ -655,7 +708,7 @@ async function startNextAutonomousRepair(
     const attemptsSoFar = await prisma.testHealingAttempt.count({ where: { testResultId } });
     const attempt = await prisma.testHealingAttempt.create({
       data: {
-        run: { connect: { id: state.initialRunId } },
+        run: { connect: { id: state.repairRunId ?? state.initialRunId } },
         testResult: { connect: { id: testResultId } },
         testCase: { connect: { id: result.testCase.id } },
         attempt: attemptsSoFar + 1,
@@ -664,8 +717,9 @@ async function startNextAutonomousRepair(
       select: { id: true },
     });
 
+    await prisma.operatorTask.update({ where: { id: repairTask.id }, data: { inputJson: { phase: 'sequential-autonomous-repair', testResultId, healingAttemptId: attempt.id, testTitle: result.testCase.title } } });
     await enqueueSelfHeal({
-      runId: state.initialRunId,
+      runId: state.repairRunId ?? state.initialRunId,
       testResultId,
       testCaseId: result.testCase.id,
       attemptId: attempt.id,
@@ -848,9 +902,12 @@ async function waitAutonomousTargetedVerify(opJob: OpJobCtx, reDelay: ReDelayFn,
   }
 
   if (result.status === 'succeeded') {
-    await startNextAutonomousRepair(opJob, reDelay, {
+    // A patch can fix other failures in the same file. Never submit their old
+    // diagnostics again: verify the suite before deciding what still needs repair.
+    await startAutonomousFullSuiteVerification(opJob, reDelay, {
       ...state,
       healedCount: (state.healedCount ?? 0) + 1,
+      refreshPendingRepairs: Boolean(state.remainingTestResultIds?.length),
     });
     return;
   }
@@ -900,10 +957,29 @@ async function startAutonomousFullSuiteVerification(opJob: OpJobCtx, reDelay: Re
 
 async function waitAutonomousFullSuiteVerify(opJob: OpJobCtx, reDelay: ReDelayFn, state: AutonomousQaState) {
   const result = await waitAutonomousRun(opJob, state, reDelay);
-  if (result.status === 'succeeded') return;
+  if (result.status === 'succeeded') {
+    if (state.failedRepairResultIds?.length) throw new Error('Autonomous QA required repair or targeted verification failed; a full-suite pass cannot override it');
+    return;
+  }
 
   const runId = state.runId ?? state.initialRunId;
   const classifications = await classifyRunFailures(runId);
+  if (state.refreshPendingRepairs && !state.failedRepairResultIds?.length) {
+    const pending = await prisma.testResult.findMany({
+      where: { id: { in: state.remainingTestResultIds ?? [] }, runId: state.repairRunId ?? state.initialRunId },
+      select: { testCaseId: true },
+    });
+    const initial = await getRunSummary(state.initialRunId);
+    // Bounded continuation: only previously pending cases with fresh failures.
+    // Missing/skipped tests, new failures or failed repairs remain hard failures.
+    if (result.summary.errors === 0 && result.summary.skipped === 0 &&
+        initial.caseIds.every(id => result.summary.caseIds.includes(id)) &&
+        classifications.length > 0 &&
+        classifications.every(c => pending.some(p => p.testCaseId === c.testCaseId))) {
+      await continueAutonomousAfterFailedRun(opJob, reDelay, state, runId);
+      return;
+    }
+  }
   await createInterventionsForClassifications(opJob, runId, state.taskId ?? null, classifications);
   await recordOperatorDecisions({
     jobId: opJob.id,
@@ -917,6 +993,8 @@ async function runAutonomousQaJob(opJob: OpJobCtx, reDelay: ReDelayFn, rawState?
   if (!validatedEnv.TM_AUTONOMOUS_QA_ENABLED) {
     throw new Error('Autonomous QA is not enabled');
   }
+  const level = (opJob.contextJson as any)?.autonomyLevel;
+  if (level !== undefined && !AUTONOMY_LEVELS.includes(level)) throw new Error('Unknown autonomy level');
 
   const state = rawState as AutonomousQaState | undefined;
   if (state?.stage === 'wait_initial_run') {
@@ -1109,6 +1187,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
+    ...(ctx.workflowParentId ? { workflowRunId: ctx.workflowParentId } : {}),
     baseUrl: inferredBaseUrl,
     mode: inferredMode as 'regular' | 'ai',
     file: resolvedFile,
@@ -1154,7 +1233,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const blocked      = classifications.filter((c) => c.type === 'blocked');
 
   // Route self-healable failures into Journey 1 via the existing repair job
-  if (selfHealable.length > 0) {
+  if (selfHealable.length > 0 && (!ctx.workflowParentId || allowsAutomaticRecovery(ctx.autonomyLevel))) {
     console.log(
       `[operator-worker] qa: routing ${selfHealable.length} self-healable failure(s) to repair for run ${run.id}`
     );
@@ -1210,6 +1289,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
       await enqueueRun(retestRun.id, {
         projectId: opJob.projectId,
+        ...(ctx.workflowParentId ? { workflowRunId: ctx.workflowParentId } : {}),
         baseUrl: inferredBaseUrl,
         mode: inferredMode as 'regular' | 'ai',
         file: resolvedFile,
@@ -1373,6 +1453,8 @@ async function classifyRunFailures(runId: string): Promise<FailureClassification
       msg.includes('strict mode violation');
 
     const likelyInfra =
+      msg.includes('no tests found') ||
+      msg.includes('no test files found') ||
       msg.includes('timeout') ||
       msg.includes('net::') ||
       msg.includes('econnrefused') ||
@@ -1546,8 +1628,9 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn): Promise<{ heal
   );
 
   await Promise.all(
-    failingResults.map((r, i) =>
-      enqueueSelfHeal({
+    failingResults.map(async (r, i) => {
+      await prisma.operatorTask.update({ where: { id: repairTasks[i].id }, data: { inputJson: { testResultId: r.id, healingAttemptId: healAttempts[i].id } } });
+      return enqueueSelfHeal({
         runId: targetRunId!,
         testResultId: r.id,
         testCaseId: r.testCase!.id,
@@ -1560,7 +1643,8 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn): Promise<{ heal
         console.log(
           `[operator-worker] repair: enqueued self-heal for "${r.testCase?.title}" (attempt ${healAttempts[i].id}, task ${repairTasks[i].id})`
         );
-      })
+      });
+    }
     )
   );
 
@@ -1678,7 +1762,15 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
   });
 
   // ── Step 1: Playwright crawl ───────────────────────────────────────────────
-  const { routes, forms, scans } = await discoverSite(baseUrl, [], { cookieString, maxPages });
+  let graphOptions = {};
+  if (ctx.workflowParentId) {
+    const { authorizedWorkflowContext } = await import('../lib/workflow-execution-policy.js');
+    const { validateWorkflowTarget } = await import('../lib/workflow-http.js');
+    const scope = await authorizedWorkflowContext(ctx.workflowParentId, opJob.projectId);
+    await validateWorkflowTarget(baseUrl, scope.environment);
+    graphOptions = { signal: AbortSignal.timeout(AUTONOMOUS_RUN_TIMEOUT_MS), validateRequest: async (url: string) => { await validateWorkflowTarget(url, scope.environment ?? { baseUrl }); } };
+  }
+  const { routes, forms, scans } = await discoverSite(baseUrl, [], { cookieString, maxPages, ...graphOptions });
 
   // ── Project Memory: read prior application-model facts, diff against this cycle's forms.
   // Forms without a routeHint can't be attributed to a page and are skipped. Log/diff only -
@@ -1759,7 +1851,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   // ── Step 4: Write spec files to disk (with the seeded store active) ───────
   const ownerId = project?.ownerId ?? 'unknown';
-  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId);
+  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId, ...(ctx.workflowParentId ? [String(ctx.generatedScope).replace(/[^a-zA-Z0-9_-]/g, '_')] : []));
   fsSync.mkdirSync(outDir, { recursive: true });
 
   const prevSharedStepsEnv = process.env.TM_PROJECT_SHARED_STEPS;

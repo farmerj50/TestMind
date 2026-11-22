@@ -1,0 +1,1 @@
+export default { use: { trace: "on", storageState: "auth.json", screenshot: "only-on-failure" }, projects: [{ name: "existing", use: { trace: { mode: "retain-on-failure", screenshots: true, sources: true, attachments: true } } }] };
