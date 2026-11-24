@@ -44,7 +44,7 @@ export function localTestmindRepoPath(): string | null {
   return existsSync(path.join(candidate, ".git")) ? candidate : null;
 }
 
-async function resolveBaseRepoPath(runId: string, targetRepo: string): Promise<string> {
+async function resolveBaseRepoPath(runId: string, targetRepo: string, opts: { projectId?: string; baseBranch?: string | null } = {}): Promise<string> {
   if (targetRepo === "testmind") {
     const local = localTestmindRepoPath();
     if (!local) throw new Error(NO_LOCAL_TESTMIND_REPO_MESSAGE);
@@ -52,16 +52,26 @@ async function resolveBaseRepoPath(runId: string, targetRepo: string): Promise<s
   }
   const baseClonePath = path.join(BASE_CLONES_ROOT, runId);
   await fs.mkdir(path.dirname(baseClonePath), { recursive: true });
-  await cloneRepo(targetRepo, baseClonePath);
+  // The repository authorized by the project's GitHub integration is cloned with that integration's
+  // token (private repositories work); anything else keeps the existing unauthenticated clone.
+  const { authorizeRunRepository, redactGitError } = await import("../lib/qe-run-access.js");
+  const auth = opts.projectId ? await authorizeRunRepository(opts.projectId, targetRepo, opts.baseBranch ?? undefined).catch(() => null) : null;
+  const access = auth && auth.ok ? auth.access : null;
+  try {
+    if (access) await cloneRepo(access.url, baseClonePath, access.token, opts.baseBranch ? access.branch : undefined);
+    else await cloneRepo(targetRepo, baseClonePath);
+  } catch (err: any) {
+    throw new Error(`Could not fetch ${targetRepo}: ${redactGitError(String(err?.stderr || err?.message || err), access?.token)}`);
+  }
   return baseClonePath;
 }
 
 export type DevAgentWorktreeRef = { path: string; branch: string; baseRepoPath: string };
 
-export async function createDevAgentWorktree(run: { id: string; targetRepo: string }): Promise<DevAgentWorktreeRef> {
+export async function createDevAgentWorktree(run: { id: string; targetRepo: string; projectId?: string; baseBranch?: string | null }): Promise<DevAgentWorktreeRef> {
   const worktreePath = worktreePathFor(run.id);
   const branch = branchNameFor(run.id);
-  const baseRepoPath = await resolveBaseRepoPath(run.id, run.targetRepo);
+  const baseRepoPath = await resolveBaseRepoPath(run.id, run.targetRepo, { projectId: run.projectId, baseBranch: run.baseBranch });
 
   await fs.mkdir(WORKTREES_ROOT, { recursive: true });
   // If a prior attempt for this exact run left a worktree registered, clear it first -
@@ -94,7 +104,8 @@ export async function removeDevAgentWorktree(run: { id: string; targetRepo: stri
     throw new Error(`Refusing to remove worktree outside the owned worktrees root: ${resolvedTarget}`);
   }
 
-  const baseRepoPath = await resolveBaseRepoPath(run.id, run.targetRepo).catch(() => null);
+  // Cleanup never fetches anything: use the local checkout or this run's existing base copy.
+  const baseRepoPath = run.targetRepo === "testmind" ? localTestmindRepoPath() : (existsSync(path.join(BASE_CLONES_ROOT, run.id)) ? path.join(BASE_CLONES_ROOT, run.id) : null);
   if (baseRepoPath) {
     await execa("git", ["worktree", "remove", "--force", expectedPath], { cwd: baseRepoPath }).catch(() => {});
     // Removing the worktree does not delete its branch - without this, a failed run's

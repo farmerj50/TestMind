@@ -16,6 +16,9 @@ import { requiresExternalRepoConfirmation } from "./devAgent.js";
 import { cancelQeRun, getStages, pauseQeRun, qeContextOf, resumeQeRun, QE_INPUT_KINDS } from "../runner/qe-orchestrator.js";
 import { getProjectKnowledge } from "../lib/app-knowledge-store.js";
 import { credentialRefExists, type CredentialRef } from "../lib/qe-credentials.js";
+import { storeRunCredentials, authorizeRunRepository, parseGitHubRepo, RUN_CREDENTIAL_KEY_PREFIX } from "../lib/qe-run-access.js";
+import { appCodeFixEnabled } from "../lib/qe-codefix.js";
+import { getOctokitForProject } from "../runner/github-writeback.js";
 import { getCodeFixProposal } from "../lib/qe-codefix-store.js";
 import { createPrProposal, publishPrProposal, refreshPrProposal, cancelPrProposal, getPrProposalView, loadPrProposal, PrPublicationError, type PrSource } from "../lib/pr-publication-store.js";
 
@@ -34,6 +37,10 @@ const CreateQeRunBody = z.object({
   // B6: authorize code-fix PROPOSALS for suspected product defects (never applied or merged automatically).
   codeFix: z.object({ targetRepo: z.string().trim().min(1).max(500), testCommand: z.string().trim().min(1).max(500).optional(), budgetUsd: z.number().positive().max(20).optional(), maxIterations: z.number().int().min(1).max(10).optional(), confirmExternalRepo: z.boolean().optional() }).strict().optional(),
   credentials: z.object({ emailKey: z.string().min(1).max(200), passwordKey: z.string().min(1).max(200), loginPath: z.string().startsWith("/").max(300).optional() }).strict().optional(),
+  // Credentials supplied for THIS run only: stored encrypted under temporary keys, deleted when the run ends.
+  runCredentials: z.object({ email: z.string().min(1).max(320), password: z.string().min(1).max(500), loginPath: z.string().startsWith("/").max(300).optional() }).strict().optional(),
+  // Optional repository access for this run, through the project's authorized GitHub integration.
+  repository: z.object({ url: z.string().trim().min(1).max(500), branch: z.string().trim().max(200).optional() }).strict().optional(),
 });
 
 function requireUser(req: any, reply: any): string | null {
@@ -173,6 +180,16 @@ export default async function operatorQeRoutes(app: FastifyInstance) {
     if (body.credentials && !(await credentialRefExists(body.projectId, body.credentials as CredentialRef))) {
       return reply.code(400).send({ error: "credentials must reference existing project secrets (by key)" });
     }
+    if (body.credentials && body.runCredentials) return reply.code(400).send({ error: "Use either saved credentials or credentials for this run, not both" });
+    let repository: { url: string; branch: string } | undefined;
+    if (body.repository) {
+      const auth = await authorizeRunRepository(body.projectId, body.repository.url, body.repository.branch);
+      if (!auth.ok) return reply.code(400).send({ error: (auth as { reason: string }).reason });
+      repository = { url: auth.access.url, branch: auth.access.branch }; // never the token
+      if (body.codeFix && parseGitHubRepo(body.codeFix.targetRepo)?.repo.toLowerCase() !== auth.access.repo.toLowerCase()) {
+        return reply.code(400).send({ error: "Code-fix proposals must target the repository authorized for this run" });
+      }
+    }
 
     let baseUrl: string | undefined;
     let targetRepo: string | undefined;
@@ -197,7 +214,11 @@ export default async function operatorQeRoutes(app: FastifyInstance) {
     }
 
     const label = body.inputKind === "user_story" ? body.input.split("\n")[0].slice(0, 120) : body.input.slice(0, 200);
-    const job = await prisma.operatorJob.create({
+    const runCreds = body.runCredentials ? await storeRunCredentials(body.projectId, body.runCredentials as { email: string; password: string; loginPath?: string }) : null;
+    const credentialRef = runCreds?.ref ?? body.credentials;
+    let job;
+    try {
+    job = await prisma.operatorJob.create({
       data: {
         projectId: body.projectId,
         type: "qa",
@@ -215,14 +236,38 @@ export default async function operatorQeRoutes(app: FastifyInstance) {
             ...(targetRepo ? { targetRepo } : {}),
             planReview: body.planReview === true,
             ...(body.maxPages ? { maxPages: body.maxPages } : {}),
-            ...(body.credentials ? { credentialRef: body.credentials } : {}),
+            ...(credentialRef ? { credentialRef } : {}),
+            ...(runCreds ? { runCredentialKeys: runCreds.keys } : {}),
+            ...(repository ? { repository } : {}),
             ...(body.codeFix ? { codeFix: { targetRepo: body.codeFix.targetRepo, ...(body.codeFix.testCommand ? { testCommand: body.codeFix.testCommand } : {}), ...(body.codeFix.budgetUsd ? { budgetUsd: body.codeFix.budgetUsd } : {}), ...(body.codeFix.maxIterations ? { maxIterations: body.codeFix.maxIterations } : {}) } } : {}),
           },
         } as Prisma.InputJsonValue,
       },
     });
+    } catch (err) {
+      // Never leave temporary credentials behind for a run that was not created.
+      if (runCreds) await prisma.projectSecret.deleteMany({ where: { projectId: body.projectId, key: { in: runCreds.keys } } }).catch(() => {});
+      throw err;
+    }
     await enqueueOperatorJob(job.id);
     return reply.code(201).send({ run: { id: job.id, status: job.status } });
+  });
+
+  // What the unified run form can offer for this project (no secret values are ever returned).
+  app.get("/operator/qe/capabilities", async (req, reply) => {
+    const userId = requireUser(req, reply);
+    if (!userId) return;
+    const { projectId } = (req.query ?? {}) as { projectId?: string };
+    const project = projectId ? await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } }) : null;
+    if (!project || project.ownerId !== userId) return reply.code(404).send({ error: "Project not found" });
+    const gh = await getOctokitForProject(projectId!).catch(() => null);
+    const secrets = await prisma.projectSecret.findMany({ where: { projectId: projectId!, NOT: { key: { startsWith: RUN_CREDENTIAL_KEY_PREFIX } } }, select: { key: true, name: true }, orderBy: { key: "asc" } });
+    return reply.send({
+      autonomousQa: validatedEnv.TM_AUTONOMOUS_QA_ENABLED,
+      appCodeFix: appCodeFixEnabled(),
+      github: gh ? { repository: `${gh.owner}/${gh.repo}`, defaultBranch: gh.defaultBranch } : null,
+      savedCredentialKeys: secrets.map((s) => ({ key: s.key, name: s.name })),
+    });
   });
 
   app.get("/operator/qe/runs", async (req, reply) => {
