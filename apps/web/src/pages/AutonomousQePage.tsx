@@ -9,6 +9,7 @@ import { configureSpecEditor } from "../lib/monaco-spec-config";
 // pending approvals, and pause / resume / cancel.
 
 type Project = { id: string; name: string };
+type Capabilities = { autonomousQa: boolean; appCodeFix: boolean; github: { repository: string; defaultBranch: string } | null; savedCredentialKeys: Array<{ key: string; name: string }> };
 type InputKind = "app_url" | "page" | "user_story" | "repository";
 type Outcome = "pending" | "running" | "succeeded" | "partial" | "failed" | "unverified" | "blocked" | "skipped" | "canceled" | "awaitingApproval";
 
@@ -64,13 +65,23 @@ export default function AutonomousQePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Start form
-  const [inputKind, setInputKind] = useState<InputKind>("app_url");
-  const [input, setInput] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
+  // Unified run form: application URL (+ optional objective, credentials and repository).
+  const [appUrl, setAppUrl] = useState("");
+  const [objective, setObjective] = useState("");
+  const [singlePage, setSinglePage] = useState(false);
   const [maxPages, setMaxPages] = useState("10");
   const [planReview, setPlanReview] = useState(false);
-  const [confirmExternalRepo, setConfirmExternalRepo] = useState(false);
+  const [credMode, setCredMode] = useState<"none" | "saved" | "run">("none");
+  const [savedEmailKey, setSavedEmailKey] = useState("");
+  const [savedPasswordKey, setSavedPasswordKey] = useState("");
+  const [runEmail, setRunEmail] = useState("");
+  const [runPassword, setRunPassword] = useState("");
+  const [loginPath, setLoginPath] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoBranch, setRepoBranch] = useState("");
+  const [allowCodeFix, setAllowCodeFix] = useState(false);
+  const [testCommand, setTestCommand] = useState("");
+  const [caps, setCaps] = useState<Capabilities | null>(null);
 
   useEffect(() => {
     apiFetch<{ projects: Project[] }>("/projects")
@@ -96,16 +107,33 @@ export default function AutonomousQePage() {
     return () => clearInterval(t);
   }, [loadRuns, loadDetail, live]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    apiFetch<Capabilities>(`/operator/qe/capabilities?projectId=${encodeURIComponent(projectId)}`).then(setCaps).catch(() => setCaps(null));
+  }, [apiFetch, projectId]);
+
+  // Routes the request to the existing pipelines: objective -> user-story run, otherwise URL/page run;
+  // credentials by reference (or stored for this run only); repository through the GitHub integration.
   async function start() {
     setError(null);
     setBusy(true);
     try {
-      const body: Record<string, unknown> = { projectId, inputKind, input: input.trim(), planReview };
-      if (inputKind === "user_story") body.baseUrl = baseUrl.trim();
-      if (inputKind === "app_url" || inputKind === "user_story") body.maxPages = Number(maxPages) || undefined;
-      if (inputKind === "repository") body.confirmExternalRepo = confirmExternalRepo;
+      const url = appUrl.trim();
+      const goal = objective.trim();
+      const inputKind: InputKind = goal ? "user_story" : singlePage ? "page" : "app_url";
+      const body: Record<string, unknown> = { projectId, inputKind, input: goal || url, planReview };
+      if (goal) body.baseUrl = url;
+      if (inputKind !== "page") body.maxPages = Number(maxPages) || undefined;
+      const lp = loginPath.trim() || undefined;
+      if (credMode === "saved") body.credentials = { emailKey: savedEmailKey, passwordKey: savedPasswordKey, ...(lp ? { loginPath: lp } : {}) };
+      if (credMode === "run") body.runCredentials = { email: runEmail, password: runPassword, ...(lp ? { loginPath: lp } : {}) };
+      if (repoUrl.trim()) {
+        body.repository = { url: repoUrl.trim(), ...(repoBranch.trim() ? { branch: repoBranch.trim() } : {}) };
+        if (allowCodeFix) body.codeFix = { targetRepo: repoUrl.trim(), confirmExternalRepo: true, ...(testCommand.trim() ? { testCommand: testCommand.trim() } : {}) };
+      }
       const res = await apiFetch<{ run: { id: string } }>("/operator/qe/runs", { method: "POST", body: JSON.stringify(body) });
-      setInput("");
+      setObjective("");
+      setRunPassword("");
       loadRuns();
       navigate(`/operator/qe/${res.run.id}`);
     } catch (e) {
@@ -137,8 +165,14 @@ export default function AutonomousQePage() {
     }
   }
 
-  const repoNeedsConfirm = inputKind === "repository" && input.trim() !== "" && input.trim() !== "testmind";
-  const canStart = !!projectId && !!input.trim() && (inputKind !== "user_story" || !!baseUrl.trim()) && (!repoNeedsConfirm || confirmExternalRepo) && !busy;
+  const credsReady = credMode === "none" || (credMode === "saved" ? !!savedEmailKey && !!savedPasswordKey : !!runEmail.trim() && !!runPassword);
+  const canStart = !!projectId && /^https?:\/\//i.test(appUrl.trim()) && credsReady && !busy;
+  // What this run will be able to do (shown before starting).
+  const modes = [
+    { key: "url", label: "URL-only", on: true, detail: "Discover, generate, execute, investigate; results saved to Suites. No Git needed." },
+    { key: "auth", label: "Authenticated", on: credMode !== "none", detail: "Isolated signed-in browser sessions; credentials never enter tests, prompts, logs or artifacts." },
+    { key: "repo", label: "Repository-enabled", on: !!repoUrl.trim(), detail: "Source inspection from a temporary checkout (deleted after use); draft PRs only after your approval." },
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -161,36 +195,77 @@ export default function AutonomousQePage() {
         <div className="space-y-6 xl:col-span-1">
           {/* Start a run */}
           <section className="rounded-lg border bg-white p-4 space-y-3">
-            <h2 className="text-base font-semibold text-slate-800">Start a run</h2>
-            <div className="grid grid-cols-2 gap-1 rounded-md bg-slate-100 p-1 text-xs">
-              {(Object.keys(INPUT_LABELS) as InputKind[]).map((k) => (
-                <button key={k} onClick={() => setInputKind(k)} className={`rounded px-2 py-1.5 ${inputKind === k ? "bg-white font-semibold shadow-sm" : "text-slate-600"}`}>{INPUT_LABELS[k]}</button>
+            <h2 className="text-base font-semibold text-slate-800">Start an autonomous agent run</h2>
+            <div className="flex flex-wrap gap-1.5">
+              {modes.map((m) => (
+                <span key={m.key} title={m.detail} className={`rounded-full px-2 py-0.5 text-xs font-medium ${m.on ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-400"}`}>{m.on ? "✓ " : ""}{m.label}</span>
               ))}
             </div>
-            {inputKind === "user_story" ? (
-              <>
-                <textarea className="w-full rounded-md border px-2 py-1.5 text-sm" rows={6} value={input} onChange={(e) => setInput(e.target.value)}
-                  placeholder={"As a new user\nI want to create an account\nSo that I can save my journal\n\nAcceptance criteria:\n- ..."} />
-                <input className="w-full rounded-md border px-2 py-1.5 text-sm" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="Application URL, e.g. https://www.bes-app.com" />
-              </>
-            ) : (
-              <input className="w-full rounded-md border px-2 py-1.5 text-sm" value={input} onChange={(e) => setInput(e.target.value)}
-                placeholder={inputKind === "repository" ? "testmind, or a git repository URL" : inputKind === "page" ? "https://www.bes-app.com/register" : "https://www.bes-app.com"} />
-            )}
-            {(inputKind === "app_url" || inputKind === "user_story") && (
-              <label className="flex items-center justify-between gap-2 text-sm text-slate-700">
-                Max pages to discover
-                <input className="w-20 rounded-md border px-2 py-1 text-sm" type="number" min={1} max={50} value={maxPages} onChange={(e) => setMaxPages(e.target.value)} />
-              </label>
-            )}
-            {inputKind === "repository" && (
-              <p className="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800">Repository discovery arrives in B2 - this run will record the repository and stop at Discovery as <b>blocked</b>.</p>
-            )}
-            {repoNeedsConfirm && (
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" checked={confirmExternalRepo} onChange={(e) => setConfirmExternalRepo(e.target.checked)} /> I confirm targeting an external repository
-              </label>
-            )}
+
+            <label className="block text-sm font-medium text-slate-700">Application URL
+              <input className="mt-1 w-full rounded-md border px-2 py-1.5 text-sm font-normal" value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder="https://www.example.com" />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">Instruction / objective <span className="font-normal text-slate-400">(optional)</span>
+              <textarea className="mt-1 w-full rounded-md border px-2 py-1.5 text-sm font-normal" rows={3} value={objective} onChange={(e) => setObjective(e.target.value)}
+                placeholder={"Leave empty to test the whole application.\nOr describe a goal / user story with acceptance criteria."} />
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-700">
+              {!objective.trim() && <label className="flex items-center gap-2"><input type="checkbox" checked={singlePage} onChange={(e) => setSinglePage(e.target.checked)} /> Only this page</label>}
+              {!singlePage && <label className="flex items-center gap-2">Max pages <input className="w-16 rounded-md border px-2 py-1 text-sm" type="number" min={1} max={50} value={maxPages} onChange={(e) => setMaxPages(e.target.value)} /></label>}
+            </div>
+
+            <fieldset className="space-y-2 rounded-md border p-2">
+              <legend className="px-1 text-xs font-semibold uppercase text-slate-500">Credentials (optional)</legend>
+              <div className="grid grid-cols-3 gap-1 rounded-md bg-slate-100 p-1 text-xs">
+                {([["none", "None"], ["saved", "Saved secret"], ["run", "This run only"]] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setCredMode(k)} className={`rounded px-2 py-1 ${credMode === k ? "bg-white font-semibold shadow-sm" : "text-slate-600"}`}>{l}</button>
+                ))}
+              </div>
+              {credMode === "saved" && (
+                (caps?.savedCredentialKeys.length ?? 0) === 0 ? <p className="text-xs text-slate-500">No project secrets yet - add them under the project's secrets, or use "This run only".</p> : (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {([["Email / username secret", savedEmailKey, setSavedEmailKey], ["Password secret", savedPasswordKey, setSavedPasswordKey]] as const).map(([l, v, set]) => (
+                      <select key={l} className="rounded-md border px-2 py-1" value={v} onChange={(e) => set(e.target.value)}>
+                        <option value="">{l}</option>
+                        {caps!.savedCredentialKeys.map((s) => <option key={s.key} value={s.key}>{s.key}</option>)}
+                      </select>
+                    ))}
+                  </div>
+                )
+              )}
+              {credMode === "run" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="rounded-md border px-2 py-1 text-xs" autoComplete="off" value={runEmail} onChange={(e) => setRunEmail(e.target.value)} placeholder="Email / username" />
+                  <input className="rounded-md border px-2 py-1 text-xs" type="password" autoComplete="new-password" value={runPassword} onChange={(e) => setRunPassword(e.target.value)} placeholder="Password" />
+                  <p className="col-span-2 text-[11px] text-slate-500">Stored encrypted for this run only and deleted when it ends.</p>
+                </div>
+              )}
+              {credMode !== "none" && <input className="w-full rounded-md border px-2 py-1 text-xs" value={loginPath} onChange={(e) => setLoginPath(e.target.value)} placeholder="Login path (optional, e.g. /login)" />}
+            </fieldset>
+
+            <fieldset className="space-y-2 rounded-md border p-2">
+              <legend className="px-1 text-xs font-semibold uppercase text-slate-500">GitHub repository (optional)</legend>
+              {caps?.github ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input className="col-span-2 rounded-md border px-2 py-1 text-xs" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder={caps.github.repository} />
+                    <input className="rounded-md border px-2 py-1 text-xs" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} placeholder={caps.github.defaultBranch} />
+                  </div>
+                  <p className="text-[11px] text-slate-500">Only {caps.github.repository} (this project's GitHub integration). Fetched as a temporary checkout for this run and deleted afterwards.</p>
+                  {repoUrl.trim() && (
+                    <>
+                      <label className={`flex items-center gap-2 text-xs ${caps.appCodeFix ? "text-slate-700" : "text-slate-400"}`}>
+                        <input type="checkbox" disabled={!caps.appCodeFix} checked={allowCodeFix && caps.appCodeFix} onChange={(e) => setAllowCodeFix(e.target.checked)} />
+                        Allow application-code fix proposals {caps.appCodeFix ? "(draft PRs only after your approval)" : "(disabled on this server)"}
+                      </label>
+                      {allowCodeFix && caps.appCodeFix && <input className="w-full rounded-md border px-2 py-1 text-xs" value={testCommand} onChange={(e) => setTestCommand(e.target.value)} placeholder="Regression test command (e.g. npm test)" />}
+                    </>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">Connect the project's GitHub integration to let the agent inspect source and prepare draft PRs.</p>
+              )}
+            </fieldset>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={planReview} onChange={(e) => setPlanReview(e.target.checked)} /> Pause for plan review before generating
             </label>

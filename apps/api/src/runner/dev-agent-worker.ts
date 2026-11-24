@@ -493,7 +493,7 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
       throw err;
     }
 
-    const worktree = await createDevAgentWorktree({ id: run.id, targetRepo: run.targetRepo });
+    const worktree = await createDevAgentWorktree({ id: run.id, targetRepo: run.targetRepo, projectId: run.projectId, baseBranch: run.baseBranch });
 
     // Reproducible, lockfile-based install - never a node_modules copy/junction/symlink
     // from the main repo. Must happen before anything tries to run code/tests in this

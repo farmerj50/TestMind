@@ -24,6 +24,8 @@ export type QeContext = {
   planReview?: boolean;
   maxPages?: number;
   targetRepo?: string;
+  /** Optional repository access for this run (authorized GitHub integration; never a token). */
+  repository?: { url: string; branch?: string };
 };
 
 export type QeRunStatus = "succeeded" | "partial" | "unverified" | "failed" | "canceled" | "blocked";
@@ -213,6 +215,8 @@ export async function finalizeQeRun(jobId: string, opts: { error?: string } = {}
     where: { id: jobId, status: { not: "canceled" } },
     data: { status: overall.status === "blocked" ? "blocked" : overall.status, finishedAt: new Date(), error: overall.status === "succeeded" ? null : overall.reason },
   });
+  // Credentials supplied for this run only are deleted as soon as the run ends.
+  await import("../lib/qe-run-access.js").then((m) => m.releaseRunCredentials(jobId)).catch(() => {});
   return overall;
 }
 
@@ -324,6 +328,7 @@ export async function cancelQeRun(jobId: string, deps: {
     });
   }
   await prisma.operatorApproval.updateMany({ where: { jobId, status: "pending" }, data: { status: "expired", resolvedAt: new Date() } });
+  await import("../lib/qe-run-access.js").then((m) => m.releaseRunCredentials(jobId)).catch(() => {});
   await prisma.operatorTask.updateMany({ where: { jobId, type: { not: "stage" }, status: { in: ["pending", "running"] } }, data: { status: "skipped", finishedAt: new Date(), error: "Canceled" } });
 
   const stages = await getStages(jobId);

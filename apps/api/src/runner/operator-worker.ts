@@ -1238,6 +1238,39 @@ async function runAutonomousQeJob(opJob: OpJobCtx, reDelay: ReDelayFn, rawState?
   await finalizeQeRun(opJob.id);
 }
 
+/**
+ * Inspects a run's repository (source routes + existing tests) as discovery evidence. "testmind" is
+ * used only where a real local checkout exists; any other repository must be the one the project's
+ * GitHub integration authorizes and is fetched as a shallow, run-scoped checkout deleted afterwards.
+ */
+async function qeInspectRunRepository(opJob: OpJobCtx, repo: { url: string; branch?: string }): Promise<string> {
+  const jobId = opJob.id;
+  let declared: Awaited<ReturnType<typeof inspectRepository>>;
+  let label = repo.url;
+  if (repo.url === 'testmind') {
+    const { localTestmindRepoPath } = await import('./dev-agent-worktree.js');
+    const root = localTestmindRepoPath();
+    if (!root) throw new QeStageError('discovery', 'blocked', 'The "testmind" repository is not available on this server. Give the run a GitHub repository authorized by this project\'s GitHub integration, or test the application URL only.');
+    declared = await inspectRepository(root, repo.url);
+  } else {
+    const { authorizeRunRepository, withRunCheckout } = await import('../lib/qe-run-access.js');
+    const auth = await authorizeRunRepository(opJob.projectId, repo.url, repo.branch);
+    if (!auth.ok) throw new QeStageError('discovery', 'blocked', `Repository access not authorized: ${(auth as { reason: string }).reason}`);
+    label = `${auth.access.owner}/${auth.access.repo}@${auth.access.branch}`;
+    try {
+      declared = await withRunCheckout(jobId, auth.access, (root) => inspectRepository(root, label));
+    } catch (err: any) {
+      throw new QeStageError('discovery', 'failed', String(err?.message ?? err).slice(0, 600));
+    }
+  }
+  await recordDeclaredRoutes(opJob.projectId, declared);
+  await recordQeArtifact({
+    jobId, stage: 'discovery', type: 'report', path: `qe/${jobId}/repository.json`,
+    meta: { kind: 'repository', repo: label, inspectedAt: declared.inspectedAt, truncated: declared.truncated, uiRoutes: declared.uiRoutes.slice(0, 200), apiRoutes: declared.apiRoutes.slice(0, 300), uiRouteCount: declared.uiRoutes.length, apiRouteCount: declared.apiRoutes.length, testFileCount: declared.testFiles.length, testFiles: declared.testFiles.slice(0, 200) },
+  });
+  return `repository ${label}: ${declared.uiRoutes.length} UI route(s) and ${declared.apiRoutes.length} API route(s) declared in source, ${declared.testFiles.length} existing test file(s)${declared.truncated ? ' (inspection truncated at file limit)' : ''}`;
+}
+
 async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
   const jobId = opJob.id;
   await startStage(jobId, 'input');
@@ -1250,15 +1283,7 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
     const repo = qe.targetRepo ?? qe.input;
     await finishStage(jobId, 'input', 'succeeded', `Repository input accepted: ${repo}${qe.baseUrl ? ` (application URL ${qe.baseUrl})` : ''}`, { inputKind: qe.inputKind, targetRepo: repo, ...(qe.baseUrl ? { baseUrl: qe.baseUrl } : {}) });
     await startStage(jobId, 'discovery');
-    const root = resolveLocalRepository(repo);
-    if (!root) throw new QeStageError('discovery', 'blocked', `Repository "${repo}" is not available locally; inspecting external repositories requires a clone, which is not enabled for discovery. Use "testmind" or test the deployed application URL.`);
-    const declared = await inspectRepository(root, repo);
-    await recordDeclaredRoutes(opJob.projectId, declared);
-    await recordQeArtifact({
-      jobId, stage: 'discovery', type: 'report', path: `qe/${jobId}/repository.json`,
-      meta: { kind: 'repository', repo, inspectedAt: declared.inspectedAt, truncated: declared.truncated, uiRoutes: declared.uiRoutes.slice(0, 200), apiRoutes: declared.apiRoutes.slice(0, 300), uiRouteCount: declared.uiRoutes.length, apiRouteCount: declared.apiRoutes.length, testFileCount: declared.testFiles.length, testFiles: declared.testFiles.slice(0, 200) },
-    });
-    repositoryNote = `repository ${repo}: ${declared.uiRoutes.length} UI route(s) and ${declared.apiRoutes.length} API route(s) declared in source, ${declared.testFiles.length} existing test file(s)${declared.truncated ? ' (inspection truncated at file limit)' : ''}`;
+    repositoryNote = await qeInspectRunRepository(opJob, { url: repo });
     if (!qe.baseUrl) {
       await finishStage(jobId, 'discovery', 'succeeded', `${repositoryNote}. Declared routes are recorded as source facts, not runtime observations.`);
       await startStage(jobId, 'plan');
@@ -1277,6 +1302,8 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
   if (qe.inputKind !== 'repository') await finishStage(jobId, 'input', 'succeeded', `${qe.inputKind} input accepted: ${baseUrl}${userStory ? ' (user story recorded)' : ''}`, { inputKind: qe.inputKind, baseUrl, maxPages, ...(userStory ? { userStory } : {}) });
 
   if (qe.inputKind !== 'repository') await startStage(jobId, 'discovery');
+  // Repository-enabled URL runs: inspect the authorized repository's source as extra evidence.
+  if (qe.inputKind !== 'repository' && qe.repository) repositoryNote = await qeInspectRunRepository(opJob, qe.repository);
   // Incremental, bounded discovery: revisit known pages that are missing, uncovered, or stale
   // first (never more than half the page budget), then let the crawler explore the rest.
   const before = await loadKnowledgeInputs(opJob.projectId);

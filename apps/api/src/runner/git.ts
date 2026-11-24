@@ -30,7 +30,7 @@ async function copyLocalRepo(src: string, dest: string) {
   });
 }
 
-export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
+export async function cloneRepo(repoUrl: string, dest: string, token?: string, branch?: string) {
   const destResolved = path.resolve(dest);
   if (isLocalRootTarget(destResolved)) {
     console.log(`[runner] TM_LOCAL_REPO_ROOT=${destResolved} detected; skipping clone`);
@@ -53,6 +53,8 @@ export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
   }
 
   const url = checked.normalized;
+  // Optional single-branch shallow checkout (callers validate the branch name).
+  const branchArgs = branch ? ["--branch", branch, "--single-branch"] : [];
   // Optional: authenticate to private GitHub repos without embedding token in URL.
   if (token && /^https:\/\/github\.com\//i.test(url)) {
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
@@ -63,6 +65,7 @@ export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
         `http.https://github.com/.extraheader=Authorization: Basic ${basic}`,
         "clone",
         "--depth=1",
+        ...branchArgs,
         url,
         destResolved,
       ],
@@ -70,5 +73,5 @@ export async function cloneRepo(repoUrl: string, dest: string, token?: string) {
     );
     return;
   }
-  await execa("git", ["clone", "--depth=1", url, destResolved], { stdio: "pipe" });
+  await execa("git", ["clone", "--depth=1", ...branchArgs, url, destResolved], { stdio: "pipe" });
 }
