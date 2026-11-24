@@ -92,6 +92,8 @@ export type RouteDiscoveryAdvisor = (input: {
 }) => Promise<RouteDiscoveryHint>;
 
 type DiscoveryOptions = {
+  signal?: AbortSignal;
+  validateRequest?: (url: string) => Promise<void>;
   maxPages?: number;
   cookieString?: string;
   routeAdvisor?: RouteDiscoveryAdvisor;
@@ -825,7 +827,20 @@ export async function scanPageWithAuth(
   }
 }
 
-type DiscoveryResult = { routes: string[]; forms: FormMeta[]; apis: any[]; scans: RouteScan[] };
+/** B2: an XHR/fetch call the page itself made while the crawler was on `route` - captured from real
+ * browser traffic (method, URL without query, status), never request/response bodies or headers. */
+export type ObservedApiCall = { method: string; origin: string; path: string; status: number; resourceType: string; route: string };
+export type ThirdPartyHosts = Record<string, number>;
+/** B2: a requested route the app sent elsewhere (e.g. an SPA bouncing a signed-out visitor to /). */
+export type ObservedRedirect = { url: string; finalUrl: string; status: number };
+type DiscoveryResult = { routes: string[]; forms: FormMeta[]; apis: ObservedApiCall[]; thirdPartyHosts?: ThirdPartyHosts; redirects?: ObservedRedirect[]; attempted?: string[]; scans: RouteScan[] };
+const MAX_OBSERVED_API_CALLS = 300;
+
+/** First-party = same host or a subdomain of the app's registrable domain (last two labels). */
+export function isFirstPartyHost(host: string, appHost: string): boolean {
+  const site = (h: string) => h.toLowerCase().split('.').slice(-2).join('.');
+  return host.toLowerCase() === appHost.toLowerCase() || site(host) === site(appHost);
+}
 type AuthFlowMeta = {
   loginOutcome: LoginOutcome;
   authFailureReason?: AuthFailureReason;
@@ -835,7 +850,7 @@ type AuthFlowMeta = {
 
 export type AuthDiscoveryResult = DiscoveryResult & AuthFlowMeta;
 
-function summarizeScans(scans: RouteScan[]): DiscoveryResult {
+function summarizeScans(scans: RouteScan[], apis: ObservedApiCall[] = [], thirdPartyHosts: ThirdPartyHosts = {}, redirects: ObservedRedirect[] = [], attempted: string[] = []): DiscoveryResult {
   const routes = Array.from(
     new Set(scans.map((s) => safePathFromUrl(effectiveScanUrl(s)))),
   );
@@ -866,7 +881,7 @@ function summarizeScans(scans: RouteScan[]): DiscoveryResult {
     }));
   });
 
-  return { routes, forms, apis: [], scans };
+  return { routes, forms, apis, thirdPartyHosts, redirects, attempted, scans };
 }
 
 async function crawlSiteInContext(
@@ -885,6 +900,32 @@ async function crawlSiteInContext(
   const seen = new Set<string>();
   const queue: string[] = [];
   let routeAdvisorCalls = 0;
+
+  // B2: capture the app's own API traffic while crawling (bounded; first-party only).
+  const appHost = new URL(start).hostname;
+  const apiCalls: ObservedApiCall[] = [];
+  const thirdPartyHosts: ThirdPartyHosts = {};
+  const redirects: ObservedRedirect[] = [];
+  const attempted: string[] = [start];
+  let currentRoute = safePathFromUrl(start);
+  const onResponse = (response: any) => {
+    try {
+      const req = response.request();
+      const resourceType = req.resourceType();
+      if (resourceType !== 'xhr' && resourceType !== 'fetch') return;
+      const u = new URL(req.url());
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+      if (!isFirstPartyHost(u.hostname, appHost)) {
+        thirdPartyHosts[u.hostname] = (thirdPartyHosts[u.hostname] ?? 0) + 1;
+        return;
+      }
+      if (apiCalls.length >= MAX_OBSERVED_API_CALLS) return;
+      apiCalls.push({ method: req.method(), origin: u.origin, path: u.pathname, status: response.status(), resourceType, route: currentRoute });
+    } catch {
+      // never let traffic capture affect the crawl
+    }
+  };
+  page.on('response', onResponse);
 
   try {
     const first = firstScan ?? await scanUrlOnPage(page, start);
@@ -929,9 +970,9 @@ async function crawlSiteInContext(
     };
 
     enqueueRoutes([
+      ...seedRoutes,
       ...first.links,
       ...((first.controls ?? []).map((control) => control.href).filter(Boolean) as string[]),
-      ...seedRoutes,
       start,
     ]);
 
@@ -948,11 +989,14 @@ async function crawlSiteInContext(
       const next = queue.shift()!;
       if (seen.has(next)) continue;
       seen.add(next);
+      attempted.push(next);
+      currentRoute = safePathFromUrl(next);
 
       try {
         const scan = await scanUrlOnPage(page, next);
         const effectiveUrl = normalizeCrawlUrl(effectiveScanUrl(scan), baseUrl);
         if (effectiveUrl && effectiveUrl !== next && seen.has(effectiveUrl)) {
+          redirects.push({ url: next, finalUrl: effectiveScanUrl(scan), status: scan.status });
           continue;
         }
         scans.push(scan);
@@ -976,8 +1020,9 @@ async function crawlSiteInContext(
       }
     }
 
-    return summarizeScans(scans);
+    return summarizeScans(scans, apiCalls, thirdPartyHosts, redirects, attempted);
   } finally {
+    page.off('response', onResponse);
     if (ownPage) await page.close();
   }
 }
@@ -1101,11 +1146,20 @@ export async function discoverSite(
   const browser = await chromium.launch({
     args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
   });
+  const abort = () => { void browser.close(); };
+  options.signal?.addEventListener('abort', abort, { once: true });
   try {
+    options.signal?.throwIfAborted();
     const context = await browser.newContext({
+      ...(options.validateRequest ? { serviceWorkers: 'block' as const } : {}),
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
       extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+
+    if (options.validateRequest) await context.route('**/*', async route => {
+      try { await options.validateRequest!(route.request().url()); await route.continue(); }
+      catch { await route.abort('blockedbyclient'); }
     });
 
     if (options.cookieString?.trim()) {
@@ -1115,6 +1169,7 @@ export async function discoverSite(
 
     return await crawlSiteInContext(baseUrl, context, seedRoutes, options);
   } finally {
+    options.signal?.removeEventListener('abort', abort);
     await browser.close();
   }
 }

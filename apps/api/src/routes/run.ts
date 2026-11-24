@@ -1,9 +1,11 @@
+import { publicArtifactReferences } from "../lib/artifact-references.js";
 // apps/api/src/routes/run.ts
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import { publicArtifactJson, projectArtifactSecrets } from "../lib/artifact-service.js";
 import net from "net";
 import { z } from "zod";
 import { DEFAULT_FRAMEWORK_ID, FRAMEWORK_IDS } from "@testmind/core/framework";
@@ -395,7 +397,7 @@ const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/
 
 const toAbsoluteUrl = (base: string, relOrAbs: string) => {
   if (!relOrAbs) return "";
-  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  if (/^https?:\/\//i.test(relOrAbs)) return ""; // external artifact stores are not authorized/sanitized
   const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
   return base ? new URL(rel, `${base}/`).toString() : rel;
 };
@@ -543,6 +545,7 @@ const withRunContract = <T extends { id: string; status: string; error?: string 
   run: T
 ) => ({
   ...run,
+  artifactsJson: publicArtifactReferences(run.artifactsJson),
   lifecycleStatus: toLifecycleStatus(run.status),
   artifactsState: toArtifactsState(run.artifactsJson),
   errors: toStructuredErrors(run),
@@ -3352,96 +3355,8 @@ setup("auth storage", async ({ page, baseURL }) => {
     });
   });
 
-  // GET /runner/test-runs/:id/logs?type=stdout|stderr
-  app.get("/test-runs/:id/logs", async (req, reply) => {
-    const auth = await requireRunOwner(req, reply, (req.params as { id: string }).id);
-    if (!auth) return;
-    const { id } = req.params as { id: string };
-    const { type } = (req.query ?? {}) as { type?: "stdout" | "stderr" };
-    const run = await prisma.testRun.findUnique({ where: { id } });
-    if (!run) return reply.code(404).send({ error: "Run not found" });
 
-    const t = type === "stderr" ? "stderr" : "stdout";
-    const candidateDirs = [
-      RUNNER_LOGS_ROOT,
-      path.join(process.cwd(), "runner-logs"),
-      path.join(process.cwd(), "apps", "api", "runner-logs"),
-    ];
-    for (const base of candidateDirs) {
-      const logPath = path.join(base, id, `${t}.txt`);
-      try {
-        const data = await fs.readFile(logPath, "utf8");
-        reply.header("Content-Type", "text/plain; charset=utf-8");
-        return reply.send(data);
-      } catch {
-        // try next location
-      }
-    }
-    reply.header("Content-Type", "text/plain; charset=utf-8");
-    return reply.send("");
-  });
-
-  // Serve runner artifacts (e.g., allure-report) directly from runner-logs
-  app.get("/runner-logs/*", async (req, reply) => {
-    const splat = (req.params as any)["*"] as string | undefined;
-    const parts = (splat || "").split("/").filter(Boolean);
-    const id = parts.shift();
-    if (!id) return reply.code(404).send("Not found");
-    const auth = await requireRunOwner(req, reply, id);
-    if (!auth) return;
-    const rest = parts.join("/");
-    const roots = [
-      RUNNER_LOGS_ROOT,
-      path.join(process.cwd(), "runner-logs"),
-      path.join(process.cwd(), "apps", "api", "runner-logs"),
-    ];
-
-    for (const root of roots) {
-      const base = path.resolve(root, id);
-      const target = path.resolve(base, rest);
-
-      // Prevent path traversal
-      if (!target.startsWith(base)) continue;
-
-      let finalPath = target;
-      try {
-        const st = await fs.stat(finalPath);
-        if (st.isDirectory()) {
-          finalPath = path.join(finalPath, "index.html");
-        }
-      } catch {
-        continue;
-      }
-
-      try {
-        const data = await fs.readFile(finalPath);
-        const ext = path.extname(finalPath).toLowerCase();
-        const type =
-          ext === ".html"
-            ? "text/html"
-            : ext === ".js"
-            ? "application/javascript"
-            : ext === ".css"
-            ? "text/css"
-            : ext === ".json"
-            ? "application/json"
-            : ext === ".svg"
-            ? "image/svg+xml"
-            : ext === ".png"
-            ? "image/png"
-            : ext === ".jpg" || ext === ".jpeg"
-            ? "image/jpeg"
-            : "application/octet-stream";
-        const charset = type.startsWith("image/") ? "" : "; charset=utf-8";
-        reply.header("Content-Type", `${type}${charset}`);
-        return reply.send(data);
-      } catch {
-        // try next root
-      }
-    }
-
-    return reply.code(404).send("Not found");
-  });
+  // Artifact aliases are registered centrally in routes/artifacts.ts.
 
   // GET /runner/test-runs/:id/results
   // shared results handler so both paths work
@@ -3575,30 +3490,10 @@ setup("auth storage", async ({ page, baseURL }) => {
       };
     });
 
-    return reply.send({ results });
+    return reply.send(publicArtifactJson({ results }, await projectArtifactSecrets(auth.projectId)));
   };
   app.get("/runner/test-runs/:id/results", resultsHandler);
   app.get("/test-runs/:id/results", resultsHandler);
-  app.get("/test-runs/:id/report.json", async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const auth = await requireRunOwner(req, reply, id);
-    if (!auth) return;
-    const candidates = [
-      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
-      path.join(process.cwd(), "runner-logs", id, "report.json"),
-      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
-    ];
-    for (const file of candidates) {
-      try {
-        const json = await fs.readFile(file, "utf8");
-        reply.header("Content-Type", "application/json; charset=utf-8");
-        return reply.send(json);
-      } catch {
-        // try next candidate
-      }
-    }
-    return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
-  });
 
   app.get("/test-runs/:id/analysis", async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -3616,7 +3511,7 @@ setup("auth storage", async ({ page, baseURL }) => {
         const raw = await fs.readFile(p, "utf8");
         const analysis = JSON.parse(raw);
         reply.header("Content-Type", "application/json; charset=utf-8");
-        return reply.send({ analysis });
+        return reply.send(publicArtifactJson({ analysis }, await projectArtifactSecrets(auth.projectId)));
       } catch {
         // try next
       }
@@ -3681,71 +3576,9 @@ setup("auth storage", async ({ page, baseURL }) => {
   // });
 
 // --- compat alias used by the current UI ---
-app.get("/tm/runs/:id/tests", async (req, reply) => {
-  const { id } = req.params as { id: string };
-    const auth = await requireRunOwner(req, reply, id);
-    if (!auth) return;
-    const candidates = [
-      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
-      path.join(process.cwd(), "runner-logs", id, "report.json"),
-      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
-  ];
-  for (const file of candidates) {
-    try {
-      const json = await fs.readFile(file, "utf8");
-      reply.header("Content-Type", "application/json; charset=utf-8");
-      return reply.send(json);
-    } catch {
-      // try next
-    }
-  }
-  return reply.code(404).send({ ok: false, error: "report.json not found for this run" });
-});
 
-// Optional: simple human view to quickly eyeball failures
-app.get("/test-runs/:id/view", async (req, reply) => {
-  const { id } = req.params as { id: string };
-    const auth = await requireRunOwner(req, reply, id);
-    if (!auth) return;
-    const candidates = [
-      path.join(RUNNER_LOGS_ROOT, id, "report.json"),
-      path.join(process.cwd(), "runner-logs", id, "report.json"),
-      path.join(process.cwd(), "apps", "api", "runner-logs", id, "report.json"),
-  ];
-  let raw: string | null = null;
-  for (const file of candidates) {
-    try {
-      raw = await fs.readFile(file, "utf8");
-      break;
-    } catch {
-      // try next
-    }
-  }
-  if (!raw) {
-    return reply.code(404).send("No report.json for this run");
-  }
-  try {
-    const data = JSON.parse(raw);
-    const rows = (data.suites ?? []).flatMap((s: any) =>
-      (s.specs ?? []).flatMap((sp: any) =>
-        (sp.tests ?? []).map((t: any) => ({
-          file: s.file, title: sp.title, status: t.results?.[0]?.status, duration: t.results?.[0]?.duration
-        }))
-      )
-    );
-    const html = `<!doctype html><meta charset="utf-8"><title>Run ${id}</title>
-<style>body{font:14px system-ui} table{border-collapse:collapse} td,th{padding:6px 10px;border:1px solid #ddd}</style>
-<h1>Run ${id}</h1>
-<table><thead><tr><th>Status</th><th>Duration</th><th>Title</th><th>File</th></tr></thead>
-<tbody>
-${rows.map((r:any)=>`<tr><td>${r.status}</td><td>${r.duration ?? ""}</td><td>${r.title}</td><td>${r.file}</td></tr>`).join("")}
-</tbody></table>`;
-    reply.header("Content-Type", "text/html; charset=utf-8");
-    return reply.send(html);
-  } catch {
-    return reply.code(404).send("No report.json for this run");
-  }
-});
+// Legacy report-view download policy is registered by artifactRoutes.
+
 
 
 }

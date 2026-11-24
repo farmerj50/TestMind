@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, FolderKanban as FolderTree, Bot, Link2, Clapperboard, PencilRuler, BarChart3, ListTree, Wand2, Shield, FolderOpen, BookOpen, Crosshair, Cpu, Server, SearchCode, GitBranch, Building2, FlaskConical, Puzzle, ScanSearch } from "lucide-react";
+import { LayoutDashboard, FolderKanban as FolderTree, Bot, Link2, Clapperboard, PencilRuler, BarChart3, ListTree, Wand2, Shield, FolderOpen, BookOpen, Crosshair, Cpu, Server, SearchCode, GitBranch, Building2, FlaskConical, Puzzle, ScanSearch, ClipboardCheck, Sparkles } from "lucide-react";
 
 function Item({
   to,
@@ -56,6 +56,7 @@ export default function SideNav() {
         <Item to="/qa-agent" icon={Wand2} label="QA agent" />
         <Item to="/operator" icon={Cpu} label="Operator" />
         <Item to="/workflows" icon={GitBranch} label="Workflows" />
+        <Item to="/dev-agent" icon={Sparkles} label="Autonomous Dev" />
         <Item to="/documents" icon={BookOpen} label="Documents" />
 
         <Section label="Explore" />
@@ -63,6 +64,7 @@ export default function SideNav() {
         <Item to="/agent/sessions" icon={ListTree} label="Agent sessions" />
         <Item to="/security-scan" icon={Shield} label="Security scan" />
         <Item to="/api-testing" icon={FlaskConical} label="API testing" />
+        <Item to="/evaluations" icon={ClipboardCheck} label="Evaluations" />
         <Item to="/research-agent" icon={SearchCode} label="Research agent" />
 
         <Section label="Settings" />

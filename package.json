@@ -1,6 +1,16 @@
 {
   "private": true,
   "scripts": {
+    "test:workflow-trace-security": "node --test tests/workflows/trace-security.test.mjs",
+    "test:workflow-trace-live": "node tests/workflows/trace-live.mjs",
+    "test:workflow-acceptance": "node tests/workflows/integration.mjs --acceptance",
+    "test:workflow-editor": "node tests/workflows/editor-smoke.mjs",
+    "test:workflow-integration": "node tests/workflows/integration.mjs",
+    "test:api": "node scripts/run-api-tests.mjs",
+    "test:workflows": "node scripts/run-workflow-tests.mjs all",
+    "test:workflows:unit": "node scripts/run-workflow-tests.mjs unit",
+    "test:workflows:sandbox": "node scripts/run-workflow-tests.mjs sandbox",
+    "test:workflow-baseline": "node --test tests/workflows/autonomous-baseline.test.mjs",
     "dev": "pnpm --filter testmind-web dev",
     "build": "tsc -b && vite build",
     "build:with-browsers": "playwright install --with-deps && tsc -b && vite build",

@@ -1,4 +1,5 @@
 // apps/api/src/testmind/routes.ts
+import { parseSuiteCases, hasSuiteCases } from "./suite-cases.js";
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
@@ -12,6 +13,7 @@ import { getFrameworkDefinition } from "@testmind/core/framework-registry";
 
 // IMPORTANT: ESM-friendly import with .js extension, and both are named exports
 import { generateAndWrite, runAdapter } from './service.js';
+import { adapterDir, adapterProjectDir, listGeneratedSpecFiles } from './generated-files.js';
 import {
   CURATED_ROOT,
   readCuratedManifest,
@@ -21,6 +23,8 @@ import {
   getCuratedProject,
 } from "./curated-store.js";
 import { GENERATED_ROOT } from "../lib/storageRoots.js";
+import { readExportSource, sourceBundleFiles, assertSourceExportConfidential } from '../lib/source-export.js';
+import { artifactSecurityResponse, artifactIdSafe, projectArtifactSecrets } from '../lib/artifact-service.js';
 
 type GenerateCommon = {
   repoPath?: string;
@@ -313,34 +317,6 @@ function suiteSyncFileGlobs(adapterId: string) {
   return ["**/*.spec.{ts,js,mjs,cjs}"];
 }
 
-function parseSuiteCases(relPath: string, source: string) {
-  const normalizedPath = relPath.replace(/\\/g, "/").toLowerCase();
-  if (normalizedPath.endsWith(".feature")) {
-    const out: Array<{ title: string; line: number }> = [];
-    const lines = source.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const match = line.match(/^\s*Scenario(?: Outline)?:\s*(.+?)\s*$/i);
-      if (match?.[1]) {
-        out.push({ title: match[1].trim(), line: i + 1 });
-      }
-    }
-    return out;
-  }
-
-  const caseRe = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['""`]([^'""`]+)['""`]\s*,/g;
-  const out: Array<{ title: string; line: number }> = [];
-  const lines = source.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    let match: RegExpExecArray | null;
-    caseRe.lastIndex = 0;
-    while ((match = caseRe.exec(line))) {
-      out.push({ title: match[1], line: i + 1 });
-    }
-  }
-  return out;
-}
 function curatedRootCandidates(curatedSuite: CuratedSuiteWithOwner) {
   const candidates: string[] = [];
   const manifestEntry = getCuratedProject(curatedSuite.id);
@@ -398,7 +374,8 @@ function coercePlaywrightTestSource(
   testName: string,
   isTs: boolean
 ): { content: string; changed: boolean } {
-  const hasTest = /\btest\s*\(/.test(source);
+  // Never rewrite a file that already declares tests (including fixture-extended ones like `qe(...)`).
+  const hasTest = /\btest\s*\(/.test(source) || hasSuiteCases("spec.ts", source);
   if (hasTest) return { content: source, changed: false };
   if (!/chromium\.launch/.test(source)) return { content: source, changed: false };
 
@@ -518,10 +495,6 @@ function renderGenerateForm(defaultBaseUrl = ''): string {
 
 export default async function testmindRoutes(app: FastifyInstance): Promise<void> {
   app.log.info({ GENERATED_ROOT }, '[TM] using generated output root');
-  const adapterDir = (adapterId: string, userId: string) =>
-    path.join(GENERATED_ROOT, `${adapterId}-${userId}`);
-  const adapterProjectDir = (adapterId: string, userId: string, projectId?: string) =>
-    projectId ? path.join(adapterDir(adapterId, userId), projectId) : adapterDir(adapterId, userId);
   const webGeneratedRoot = path.join(REPO_ROOT, "apps", "web", "testmind-generated");
 
   async function mirrorGeneratedToWeb(
@@ -800,17 +773,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       }
       if (!fs.existsSync(root)) return reply.send({ files: [] });
 
-      const list: { path: string; size: number }[] = [];
-      const walk = (dir: string, rel = '') => {
-        for (const name of fs.readdirSync(dir)) {
-          const abs = path.join(dir, name);
-          const r = path.join(rel, name);
-          const st = fs.statSync(abs);
-          if (st.isDirectory()) walk(abs, r);
-          else list.push({ path: r.replace(/\\/g, '/'), size: st.size });
-        }
-      };
-      walk(root);
+      const list = listGeneratedSpecFiles(adapterId, userId, projectId);
       app.log.info({ count: list.length }, '[TM] generated files listed');
       return reply.send({ root, files: list });
     } catch (err) {
@@ -828,20 +791,23 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
 
       const { adapterId = DEFAULT_FRAMEWORK_ID, projectId, file } = (req.query as any) || {};
       if (!file) return reply.code(400).send({ ok: false, error: 'file required' });
+      if (!artifactIdSafe(adapterId) || (projectId && !artifactIdSafe(projectId))) return artifactSecurityResponse(reply);
+      if (projectId && !await prisma.project.findFirst({ where: { id: projectId, ownerId: userId }, select: { id: true } })) return reply.code(404).send({ error: 'Project not found' });
 
       let base = adapterProjectDir(adapterId, userId, projectId);
-      if (projectId && !fs.existsSync(base)) {
-        const fallback = adapterDir(adapterId, userId);
-        if (fs.existsSync(fallback)) base = fallback;
-      }
+
       const abs = path.join(base, file);
 
       if (!abs.startsWith(base)) return reply.code(400).send({ ok: false, error: 'bad path' });
       if (!fs.existsSync(abs)) return reply.code(404).send({ ok: false, error: 'not found' });
 
       reply.type('text/plain');
-      return reply.send(fs.readFileSync(abs, 'utf8'));
+      const bytes = await readExportSource(base, abs);
+      if (!projectId) return artifactSecurityResponse(reply);
+      assertSourceExportConfidential(bytes, await projectArtifactSecrets(projectId));
+      return reply.send(bytes.toString('utf8'));
     } catch (err) {
+      if ((err as any)?.code === 'ARTIFACT_SECURITY_BLOCKED') return artifactSecurityResponse(reply);
       return sendError(app, reply as any, err, 500);
     }
   });
@@ -854,11 +820,17 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       const { userId } = getAuth(req);
       if (!userId) return reply.code(401).send({ error: "Unauthorized" });
       const { adapterId = DEFAULT_FRAMEWORK_ID, projectId } = (req.query as any) || {};
+      if (!artifactIdSafe(adapterId) || (projectId && !artifactIdSafe(projectId))) return artifactSecurityResponse(reply);
+      if (projectId && !await prisma.project.findFirst({ where: { id: projectId, ownerId: userId }, select: { id: true } })) return reply.code(404).send({ error: 'Project not found' });
       const root = resolveGeneratedSource(adapterId, userId, projectId);
       if (!root || !fs.existsSync(root)) {
         return reply.code(404).send({ error: "Generated bundle not found" });
       }
 
+      const files = await sourceBundleFiles(root); // validate before opening the response stream
+      if (!projectId) return artifactSecurityResponse(reply);
+      const secrets = await projectArtifactSecrets(projectId);
+      for (const file of files) assertSourceExportConfidential(file.data, secrets);
       const safeProject = projectId ? `-${projectId}` : "";
       const filename = `generated-${adapterId}${safeProject}.zip`;
       reply.header("Content-Type", "application/zip");
@@ -869,10 +841,11 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         app.log.error(err, "[TM] download archive failed");
         reply.raw.destroy(err as Error);
       });
-      archive.directory(root, false);
+      for (const file of files) archive.append(file.data, { name: file.name });
       archive.pipe(reply.raw);
       await archive.finalize();
     } catch (err) {
+      if ((err as any)?.code === 'ARTIFACT_SECURITY_BLOCKED') return artifactSecurityResponse(reply);
       return sendError(app, reply as any, err, 500);
     }
   });
@@ -1339,6 +1312,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       if (!projectId || !relPath) {
         return reply.code(400).send({ error: "Missing projectId or path" });
       }
+      if (!artifactIdSafe(projectId)) return artifactSecurityResponse(reply);
       const suite = await prisma.curatedSuite.findUnique({
         where: { id: projectId },
         select: { rootRel: true, name: true, projectId: true, project: { select: { ownerId: true } } },
@@ -1364,45 +1338,16 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         if (!projectId.endsWith(userId)) {
           return reply.code(403).send({ error: "Forbidden" });
         }
-        const curatedRoots = projectCuratedRoots(projectId);
-        for (const root of curatedRoots) {
-          const abs = path.resolve(root, relPath);
-          if (!fs.existsSync(abs)) continue;
-          ensureWithin(root, abs);
-          const content = await fs.promises.readFile(abs, "utf8");
-          const ext = path.extname(abs).toLowerCase();
-          // Read-only coercion: return the corrected content for display, but GET must
-          // never write to disk — persisting a coercion result belongs to an explicit
-          // save (PUT), not a read.
-          const coerced = coercePlaywrightTestSource(
-            content,
-            path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
-            ext === ".ts" || ext === ".tsx"
-          );
-          return { content: coerced.changed ? coerced.content : content };
-        }
-        const roots = resolveGeneratedRoots(projectId);
-        for (const root of roots) {
-          const abs = path.resolve(root, relPath);
-          if (!fs.existsSync(abs)) continue;
-          ensureWithin(root, abs);
-          const content = await fs.promises.readFile(abs, "utf8");
-          const ext = path.extname(abs).toLowerCase();
-          const coerced = coercePlaywrightTestSource(
-            content,
-            path.basename(relPath).replace(/\.spec\.[a-z]+$/i, ""),
-            ext === ".ts" || ext === ".tsx"
-          );
-          return { content: coerced.changed ? coerced.content : content };
-        }
-        return reply.code(404).send({ error: "Spec not found in generated suite" });
+        return artifactSecurityResponse(reply); // Legacy folder ID has no project secret scope.
       }
       const found = findCuratedFile(curatedSuite, relPath);
       if (!found) {
         return reply.code(404).send({ error: "Spec not found in curated suite" });
       }
       ensureWithin(found.root, found.abs);
-      const content = await fs.promises.readFile(found.abs, "utf8");
+      const bytes = await readExportSource(found.root, found.abs);
+      assertSourceExportConfidential(bytes, await projectArtifactSecrets(curatedSuite.projectId));
+      const content = bytes.toString("utf8");
       const ext = path.extname(found.abs).toLowerCase();
       const coerced = coercePlaywrightTestSource(
         content,
@@ -1411,6 +1356,7 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
       );
       return { content: coerced.changed ? coerced.content : content };
     } catch (err) {
+      if (err?.code === "ARTIFACT_SECURITY_BLOCKED") return artifactSecurityResponse(reply);
       return sendError(app, reply, err);
     }
   });

@@ -9,7 +9,7 @@ export type ParsedCase = {
   steps?: string[];
   stdout?: string[];
   stderr?: string[];
-  attachments?: { name: string; path?: string; contentType?: string }[];
+  attachments?: { name: string; path?: string; contentType?: string; body?: string }[];
 };
 
 const normalizePath = (value?: string | null) =>
@@ -196,6 +196,7 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
             name: a?.name,
             path: a?.path,
             contentType: a?.contentType,
+            body: typeof a?.body === 'string' && a.body.length < 1_000_000 ? a.body : undefined,
           })),
         });
       }
@@ -227,6 +228,7 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
               name: a?.name,
               path: a?.path,
               contentType: a?.contentType,
+              body: typeof a?.body === 'string' && a.body.length < 1_000_000 ? a.body : undefined,
             })),
           });
         }
@@ -258,4 +260,3 @@ export async function parseResults(resultsPath: string, rawReport?: any): Promis
 
   return [];
 }
-

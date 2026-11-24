@@ -68,6 +68,44 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
 
+      - name: Set up Python for eval-service
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install eval-service dependencies
+        run: |
+          cd apps/eval-service
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+
+      - name: Run eval-service tests
+        run: |
+          cd apps/eval-service
+          .venv/bin/python -m pytest -q
+
+      # API regression tests (apps/api/src/**/*.test.ts) against the CI Postgres/Redis services.
+      # Bounded concurrency: suites share one database, so they run one file at a time. The runner
+      # seeds a fixture project into the empty CI database and fails on any failed/skipped test.
+      - name: Run API regression tests
+        env:
+          TM_API_TEST_SEED: "1"
+          TM_API_TEST_CONCURRENCY: "1"
+        run: node scripts/run-api-tests.mjs
+
+      # Unit/integration workflow tests: no Docker sandbox required. The runner fails on
+      # empty suites and on any skipped/todo test, so coverage cannot silently drop.
+      - name: Run workflow unit/integration tests
+        run: pnpm test:workflows:unit
+
+      # Live sandbox suites need the pytest sandbox image. Build it from the repo's own
+      # Dockerfile here (never assume a pre-existing local image), then run sequentially.
+      - name: Build pytest sandbox image
+        run: docker build --tag testmind/pytest-r2-task2:local apps/api/src/runner/python-sandbox
+
+      - name: Run workflow sandbox tests
+        run: pnpm test:workflows:sandbox
+
       - name: Start API server
         run: |
           pnpm --filter api start > api.log 2>&1 &
@@ -120,7 +158,11 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: apps/api/Dockerfile
+          # Phase 5 fix: this previously pointed at apps/api/Dockerfile, which doesn't exist -
+          # the real Dockerfile has always been at the repo root. Pre-existing bug, not
+          # introduced here; a config correctness fix only - this job still only runs on push
+          # to main / PR, exactly as before.
+          file: Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_TAG }}

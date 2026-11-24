@@ -5,6 +5,7 @@ import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
+import { createRestrictedTraceConfig } from '../lib/trace-capture.js';
 
 const multiFrameworkEnabled = (() => {
   const v = (process.env.TM_MULTI_FRAMEWORK || "").toLowerCase();
@@ -93,11 +94,13 @@ export type RunExecRequest = {
   extraGlobs?: string[];        // optional file globs/paths
   extraEnv?: Record<string, string>;
   grep?: string;                // optional test grep
+  grepInvert?: string;          // optional: exclude matching tests (e.g. unapproved destructive tests)
   configPath?: string;
   sourceRoot?: string;
   headed?: boolean;
   runTimeout?: number;
   abortSignal?: AbortSignal;
+  trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
 };
 
 export type RunExecResult = {
@@ -410,6 +413,10 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       const safeGrep = sanitizeForSpawnArg(req.grep);
       if (safeGrep) args.push("--grep", safeGrep);
     }
+    if (req.grepInvert) {
+      const safeInvert = sanitizeForSpawnArg(req.grepInvert);
+      if (safeInvert) args.push("--grep-invert", safeInvert);
+    }
 
     if (mappedGlobs.length) {
       const baseDir = aiTestDir ?? req.workdir ?? repoRoot;
@@ -447,7 +454,8 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
         absConfigPath = alt;
       }
     }
-    const configArg = normalizePath(absConfigPath);
+    const traceConfig = await createRestrictedTraceConfig(absConfigPath, path.join(path.dirname(req.jsonOutPath), 'test-results'), req.trace);
+    const configArg = normalizePath(traceConfig.path);
     args.push("--config", configArg);
 
     const timeoutMs = req.runTimeout ?? runTimeout;
@@ -499,15 +507,41 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       `[runner][pwbin] repoRoot=${repoRoot} pwBin=${localPlaywrightBin} exists=${fsSync.existsSync(localPlaywrightBin)}`
     );
 
-    const runPlaywright = () =>
-      execa(playwrightCmd, finalArgs, {
+    const runPlaywright = async () => {
+      req.abortSignal?.throwIfAborted();
+      const windows = process.platform === "win32";
+      const subprocess = execa(playwrightCmd, finalArgs, {
         cwd: spawnCwd,
         env,
         reject: false,
         timeout: timeoutMs,
-        cancelSignal: req.abortSignal,
+        // Killing a Windows .cmd launcher alone leaves Playwright/browser
+        // descendants alive, holding its pipes open until the test times out.
+        cancelSignal: windows ? undefined : req.abortSignal,
+        windowsHide: true,
         stdio: "pipe",
       });
+      let termination: ReturnType<typeof execa> | undefined;
+      const cancelTree = () => {
+        if (termination || !subprocess.pid) return;
+        // Keep the launcher alive until taskkill has enumerated its descendants.
+        termination = execa(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"),
+          ["/PID", String(subprocess.pid), "/T", "/F"],
+          { windowsHide: true, reject: false, timeout: 10000, stdio: "pipe" });
+      };
+      if (windows) {
+        req.abortSignal?.addEventListener("abort", cancelTree, { once: true });
+        if (req.abortSignal?.aborted) cancelTree();
+      }
+      try {
+        const result = await subprocess;
+        if (termination && (await termination).exitCode !== 0) throw new Error("Browser process-tree shutdown failed");
+        return result;
+      } finally {
+        req.abortSignal?.removeEventListener("abort", cancelTree);
+        if (termination) await termination;
+      }
+    };
 
     try {
       console.log("[dep-check] @playwright/test =", require.resolve("@playwright/test"));
@@ -522,12 +556,14 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       ? startLivePreview(found.cwd, req.extraEnv?.TM_RUN_LOG_DIR as string, outputDir)
       : null;
 
-    let proc = await runPlaywright();
-    if (stopLivePreview) stopLivePreview();
-    if (!req.extraEnv?.TM_SKIP_PLAYWRIGHT_INSTALL && missingBrowserError(proc.stderr)) {
-      await installBrowsers();
+    let proc;
+    try {
       proc = await runPlaywright();
-    }
+      if (!req.extraEnv?.TM_SKIP_PLAYWRIGHT_INSTALL && missingBrowserError(proc.stderr)) {
+        await installBrowsers();
+        proc = await runPlaywright();
+      }
+    } finally { stopLivePreview?.(); await traceConfig.remove(); }
 
     try {
       const reportPath = req.jsonOutPath;

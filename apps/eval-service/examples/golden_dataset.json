@@ -1,0 +1,45 @@
+{
+  "dataset_id": "support-kb-v3",
+  "dataset_version": "2026-11-01",
+  "application_id": "testmind-rag-bot",
+  "application_version": "1.4.2",
+  "gates": {
+    "recall_at_k": { "k": 5, "min": 0.8 },
+    "precision_at_k": { "k": 5, "min": 0.5 },
+    "required_fact_rate": { "min": 0.9 },
+    "abstention_accuracy": { "min": 0.95 },
+    "p95_latency_ms": { "max": 2000 }
+  },
+  "cases": [
+    {
+      "case_id": "q-001",
+      "retrieved_doc_ids": ["doc-12", "doc-7", "doc-3"],
+      "relevant_doc_ids": ["doc-12"],
+      "required_facts": ["founded in 1998", "headquartered in Austin"],
+      "answer_text": "The company was founded in 1998 and is headquartered in Austin, Texas.",
+      "should_abstain": false,
+      "abstained": false,
+      "latency_ms": 842
+    },
+    {
+      "case_id": "q-002",
+      "retrieved_doc_ids": ["doc-44", "doc-9"],
+      "relevant_doc_ids": ["doc-44", "doc-9"],
+      "required_facts": [],
+      "answer_text": "We do not have information about that topic in the knowledge base.",
+      "should_abstain": true,
+      "abstained": true,
+      "latency_ms": 610
+    },
+    {
+      "case_id": "q-003",
+      "retrieved_doc_ids": ["doc-1"],
+      "relevant_doc_ids": ["doc-2"],
+      "required_facts": [],
+      "answer_text": "Our refund policy allows returns within 30 days of purchase.",
+      "should_abstain": false,
+      "abstained": false,
+      "latency_ms": 1230
+    }
+  ]
+}

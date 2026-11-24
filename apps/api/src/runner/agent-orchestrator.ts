@@ -5,14 +5,12 @@ import { enqueueRun } from "./queue.js";
 import { validatedEnv } from "../config/env.js";
 import {
   getOctokitForProject,
-  pushSpecFilesToBranch,
-  ensurePullRequest,
-  postPrComment,
   setCommitStatus,
   buildRepairPrBody,
   type GitHubCoords,
 } from "./github-writeback.js";
 import { recordAgentRunMetrics, type AgentRunMetrics } from "./agent-telemetry.js";
+import { finalizeRepairVerification, REPAIR_FAILED } from "../lib/repair-verification.js";
 
 const RUN_POLL_MS = 3_000;
 const RUN_TIMEOUT_MS = 15 * 60 * 1000;
@@ -144,13 +142,10 @@ export class AgentOrchestrator {
     const retestSummary = await this.getRunSummary(retestRun.id);
     const retestTimeMs = Date.now() - retestStart;
 
-    // Persist executionAfter
-    await this.deps.prisma.testHealingAttempt.updateMany({
-      where: { id: { in: attempts.map((a) => a.id) } },
-      data: { executionAfter: retestSummary as any },
-    });
+    // Persist executionAfter; a repair succeeds only if this retest passed (else repair_failed).
+    const retestOutcome = await finalizeRepairVerification(this.deps.prisma as any, attempts.map((a) => a.id), retestSummary);
 
-    if (retestSummary.failed > 0) {
+    if (retestOutcome === REPAIR_FAILED) {
       return { retestPassed: 0, orchestratorResult: { status: "failed" } };
     }
 
@@ -170,33 +165,15 @@ export class AgentOrchestrator {
     const branchName = `testmind/heal-${job.id.slice(0, 8)}`;
     const prBody = buildRepairPrBody({ attempts, retestSummary });
 
-    const { commitSha } = await pushSpecFilesToBranch({
-      ...gh,
-      branch: branchName,
-      baseBranch: gh.defaultBranch,
-      files,
-      commitMessage: `fix(tests): self-heal repair — ${attempts.length} spec(s) [job ${job.id.slice(0, 8)}]\n\nCo-authored-by: TestMind <bot@testmind.ai>`,
-    });
-
-    let prNumber: number | undefined;
-    let prUrl: string | undefined;
-
-    const title = `TestMind: repaired ${attempts.length} test(s)`;
-
-    if (minConf >= 95) {
-      const pr = await ensurePullRequest({ ...gh, branch: branchName, baseBranch: gh.defaultBranch, title, body: prBody, draft: false });
-      prNumber = pr.prNumber;
-      prUrl = pr.prUrl;
-      await postPrComment({ ...gh, prNumber, body: `✅ Retest passed after repair (commit \`${commitSha.slice(0, 7)}\`). [View PR](${prUrl})` });
-    } else if (minConf >= 80) {
-      const pr = await ensurePullRequest({
-        ...gh, branch: branchName, baseBranch: gh.defaultBranch, draft: true,
-        title: `[DRAFT] ${title}`,
-        body: `⚠️ Confidence: ${minConf}% — QA review recommended before merging.\n\n${prBody}`,
-      });
-      prNumber = pr.prNumber;
-      prUrl = pr.prUrl;
-      await postPrComment({ ...gh, prNumber, body: `⚠️ Draft PR opened (confidence ${minConf}%). Manual review required before merge.` });
+    // B7: never publish autonomously - prepare a PR proposal that requires explicit approval
+    // bound to the exact repository, branch and diff.
+    void branchName; void prBody;
+    const prNumber: number | undefined = undefined;
+    const prUrl: string | undefined = undefined;
+    if (minConf >= 80) {
+      const { createPrProposal } = await import("../lib/pr-publication-store.js");
+      const proposal = await createPrProposal({ projectId: job.projectId, jobId: job.id, kind: "test_repair", source: { type: "legacy_writeback", attemptIds: attempts.map((a) => a.id) }, actor: "system" });
+      console.log(`[agent-orchestrator] repaired tests ready for review - PR proposal ${proposal.id} is ${proposal.status}; publishing requires explicit approval`);
     } else {
       // Below threshold — mark for review, do not open PR
       await this.deps.prisma.testHealingAttempt.updateMany({
@@ -225,7 +202,7 @@ export class AgentOrchestrator {
 
     return {
       retestPassed: retestSummary.passed,
-      orchestratorResult: { status: "succeeded", prUrl, prNumber, commitSha },
+      orchestratorResult: { status: "succeeded", prUrl, prNumber, commitSha: undefined as string | undefined },
     };
   }
 

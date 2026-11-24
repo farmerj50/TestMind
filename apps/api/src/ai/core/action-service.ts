@@ -2,6 +2,8 @@ import type { SelfHealPayload } from "../../runner/queue.js";
 import { buildAiExecutionContext } from "./context.js";
 import { readSelfHealPolicy, type SelfHealPolicy } from "./policy.js";
 import { executeRepairAttempt } from "./repair-executor.js";
+import { validateAssertionIntent } from './repair-policy.js';
+import { authorizeWorkflowRepair } from '../../lib/workflow-execution-policy.js';
 import type {
   AiActionMode,
   AiActionSnapshot,
@@ -127,6 +129,7 @@ export async function executeAutonomousRepairAction(input: {
   job: SelfHealPayload;
   policy?: SelfHealPolicy;
 }) {
+  await authorizeWorkflowRepair(input.job.runId, input.job.projectId);
   const { context, policy } = await prepareAiAction({
     job: input.job,
     mode: "autonomous",
@@ -139,5 +142,8 @@ export async function executeAutonomousRepairAction(input: {
     config: policy.repair,
     liveProbe: policy.liveProbe,
   });
+  await authorizeWorkflowRepair(input.job.runId, input.job.projectId);
+  const intentError = validateAssertionIntent(context.specContent ?? '', repairResult.patchedSpec);
+  if (intentError) throw new Error(intentError);
   return { context, policy, repairResult };
 }

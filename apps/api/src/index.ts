@@ -28,6 +28,14 @@ import securityRoutes from "./routes/security.js";
 import testBuilderRoutes from "./routes/testBuilder.js";
 import { prisma } from "./prisma.js";
 import { validatedEnv } from "./config/env.js";
+import { validateProductionConfig } from "./config/validateProductionConfig.js";
+
+// env.ts already fails fast at import time for the always-required vars (DATABASE_URL,
+// REDIS_URL, SECRET_KEY, CLERK keys, CORS_ORIGINS/WEB_URL) and SECRET_KEY's byte length.
+// This adds the one check that doesn't exist there: TM_EVAL_SERVICE_URL/API_KEY must be
+// configured as a pair, not half-set, which would otherwise only surface lazily the first
+// time an evaluation run is attempted. Fails closed (throws) rather than booting half-configured.
+validateProductionConfig(process.env);
 import recorderRoutes from "./routes/recorder.js";
 import { GENERATED_ROOT, CURATED_ROOT, REPORT_ROOT, ensureStorageDirs } from "./lib/storageRoots.js";
 import { validateAndNormalizeProjectUrl } from "./lib/git-url.js";
@@ -54,7 +62,7 @@ import { getLimitsForPlan } from "./config/plans.js";
 import type { PlanTier } from "./config/plans.js";
 import { PAID_PLANS, STRIPE_PRICE_IDS, type PaidPlan } from "./config/stripe.js";
 import { requireStripe } from "./lib/stripe.js";
-import { requireRunOwner } from "./lib/run-access.js";
+import { artifactRoutes, registerDebugArtifactRead } from "./routes/artifacts.js";
 import testmindRoutes from './testmind/routes.js';
 import copilotRoutes from './routes/copilot.js';
 import jenkinsRoutes from './routes/jenkins.js';
@@ -66,6 +74,9 @@ import workflowsRoutes from './routes/workflows.js';
 import researchAgentRoutes from './routes/researchAgent.js';
 import researchAuthTestRoutes from './routes/researchAuthTest.js';
 import apiTestingRoutes from './routes/apiTesting.js';
+import evaluationRoutes from './routes/evaluations.js';
+import devAgentRoutes from './routes/devAgent.js';
+import operatorQeRoutes from './routes/operatorQe.js';
 import schedulesRoutes from './routes/schedules.js';
 import urlInspectorRoutes from './routes/url-inspector.js';
 import type { FastifyCorsOptions } from "@fastify/cors";
@@ -295,6 +306,9 @@ await registerWithLog("workflowsRoutes", () => app.register(workflowsRoutes, { p
 await registerWithLog("researchAgentRoutes", () => app.register(researchAgentRoutes, { prefix: "/" }));
 await registerWithLog("researchAuthTestRoutes", () => app.register(researchAuthTestRoutes, { prefix: "/" }));
 await registerWithLog("apiTestingRoutes", () => app.register(apiTestingRoutes, { prefix: "/" }));
+await registerWithLog("evaluationRoutes", () => app.register(evaluationRoutes, { prefix: "/" }));
+await registerWithLog("devAgentRoutes", () => app.register(devAgentRoutes, { prefix: "/" }));
+await registerWithLog("operatorQeRoutes", () => app.register(operatorQeRoutes, { prefix: "/" }));
 await registerWithLog("schedulesRoutes", () => app.register(schedulesRoutes, { prefix: "/" }));
 await registerWithLog("urlInspectorRoutes", () => app.register(urlInspectorRoutes, { prefix: "/" }));
 console.log("[BOOT] TM_DISABLE_RECORDER =", process.env.TM_DISABLE_RECORDER);
@@ -364,168 +378,11 @@ app.get("/debug/volume/ls", async (req, reply) => {
   return reply.send({ volumeRoot: resolved.base, abs: resolved.abs, entries });
 });
 
-app.get("/debug/volume/read", async (req, reply) => {
-  if (!assertDebugAuth(req, reply)) return;
-  const rawPath = (req.query as any)?.path as string | undefined;
-  const resolved = resolveDebugPath(rawPath);
-  if (!resolved.ok) {
-    return reply.code(400).send({ error: "Bad path" });
-  }
-  if (!fs.existsSync(resolved.abs)) {
-    return reply.code(404).send({ error: "Not found" });
-  }
-  const stat = fs.statSync(resolved.abs);
-  if (!stat.isFile()) {
-    return reply.code(400).send({ error: "Not a file" });
-  }
-  const maxRaw = Number((req.query as any)?.max ?? 20000);
-  const max = Number.isFinite(maxRaw) ? Math.min(Math.max(maxRaw, 0), 200000) : 20000;
-  const data = fs.readFileSync(resolved.abs);
-  return reply.send({
-    volumeRoot: resolved.base,
-    abs: resolved.abs,
-    bytes: data.length,
-    preview: data.toString("utf8", 0, max),
-  });
+registerDebugArtifactRead(app, {
+  authorize: assertDebugAuth, resolvePath: resolveDebugPath,
+  evidenceRoots: [REPORT_ROOT, path.join(REPO_ROOT, 'runner-logs'), path.join(REPO_ROOT, 'apps/api/runner-logs'), path.join(REPO_ROOT, 'playwright-report')],
 });
-const PLAYWRIGHT_REPORT_ROOT = path.join(REPO_ROOT, "playwright-report");
-if (fs.existsSync(PLAYWRIGHT_REPORT_ROOT)) {
-  await registerWithLog("playwrightStatic", () =>
-    app.register(fastifyStatic, {
-      root: PLAYWRIGHT_REPORT_ROOT,
-      prefix: "/_static/playwright-report/",
-      decorateReply: false,
-    })
-  );
-}
-const RUNNER_LOGS_ROOT = path.join(REPORT_ROOT, "runner-logs");
-const API_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "apps", "api", "runner-logs");
-const LEGACY_RUNNER_LOGS_ROOT = path.join(REPO_ROOT, "runner-logs");
-const AVAILABLE_RUNNER_ROOTS = [RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT];
-// Same ownership check the properly-protected /runner/runner-logs/* route uses (run.ts),
-// applied here too — these paths serve the identical files with no auth otherwise.
-await registerWithLog("runnerLogsStatic", () =>
-  app.register(async (instance) => {
-    // preHandler, not onRequest: Clerk's own auth-populating hook (clerkPlugin, registered
-    // globally near the top of this file) runs at the preHandler stage by default, so
-    // req.auth isn't populated yet if this ran at onRequest - getAuth() would always throw.
-    instance.addHook("preHandler", async (req, reply) => {
-      const prefix = "/_static/runner-logs/";
-      const url = req.url.split("?")[0] || req.url;
-      const id = url.startsWith(prefix) ? url.slice(prefix.length).split("/").filter(Boolean)[0] : undefined;
-      if (!id) return reply.code(404).send("Not found");
-      const owner = await requireRunOwner(req, reply, decodeURIComponent(id));
-      if (!owner) return; // requireRunOwner already sent 401/404
-    });
-    await instance.register(fastifyStatic, {
-      root: RUNNER_LOGS_ROOT,
-      prefix: "/_static/runner-logs/",
-      decorateReply: false,
-    });
-  })
-);
-
-// Serve runner artifacts (e.g., allure) directly from either runner-logs root
-app.get("/runner-logs/*", async (req, reply) => {
-  const splat = (req.params as any)["*"] as string | undefined;
-  const parts = (splat || "").split("/").filter(Boolean);
-  const id = parts.shift();
-  if (!id) return reply.code(404).send("Not found");
-  const owner = await requireRunOwner(req, reply, id);
-  if (!owner) return; // requireRunOwner already sent 401/404
-  const rest = parts.join("/");
-  const roots = [RUNNER_LOGS_ROOT, LEGACY_RUNNER_LOGS_ROOT, API_RUNNER_LOGS_ROOT];
-
-  for (const root of roots) {
-    const base = path.resolve(root, id);
-    const target = path.resolve(base, rest);
-    if (!target.startsWith(base)) continue; // traversal guard
-
-    let finalPath = target;
-    try {
-      const st = fs.statSync(finalPath);
-      if (st.isDirectory()) {
-        finalPath = path.join(finalPath, "index.html");
-      }
-    } catch {
-      continue;
-    }
-
-    try {
-      const data = fs.readFileSync(finalPath);
-      const ext = path.extname(finalPath).toLowerCase();
-      const type =
-        ext === ".html"
-          ? "text/html"
-          : ext === ".js"
-          ? "application/javascript"
-          : ext === ".css"
-          ? "text/css"
-          : ext === ".json"
-          ? "application/json"
-          : ext === ".svg"
-          ? "image/svg+xml"
-          : ext === ".png"
-          ? "image/png"
-          : ext === ".jpg" || ext === ".jpeg"
-          ? "image/jpeg"
-          : "application/octet-stream";
-      const charset = type.startsWith("image/") ? "" : "; charset=utf-8";
-      reply.header("Content-Type", `${type}${charset}`);
-      return reply.send(data);
-    } catch {
-      // try next root
-    }
-  }
-
-  return reply.code(404).send("Not found");
-});
-
-if (AVAILABLE_RUNNER_ROOTS.length > 0) {
-  app.get("/assets/*", async (req, reply) => {
-    const splat = (req.params as any)["*"] as string | undefined;
-    const rest = splat || "";
-    // The Referer is only used to locate WHICH run's assets are being requested (this path
-    // carries no id segment of its own) — it is never trusted as the authorization decision.
-    // requireRunOwner below re-verifies real ownership via the caller's own session
-    // regardless of what the client-supplied Referer claims.
-    const referer = (req.headers.referer || "").toString();
-    const match = referer.match(/\/runner-logs\/([^/]+)\//);
-    if (!match) {
-      return reply.code(404).send("Not found");
-    }
-    const id = match[1];
-    const owner = await requireRunOwner(req, reply, id);
-    if (!owner) return; // requireRunOwner already sent 401/404
-    for (const root of AVAILABLE_RUNNER_ROOTS) {
-      const base = path.resolve(root, id);
-      const target = path.resolve(base, "allure-report", rest);
-      if (!target.startsWith(base)) continue;
-      try {
-        const data = fs.readFileSync(target);
-        const ext = path.extname(target).toLowerCase();
-        const type =
-          ext === ".html"
-            ? "text/html"
-            : ext === ".js"
-            ? "application/javascript"
-            : ext === ".css"
-            ? "text/css"
-            : ext === ".json"
-            ? "application/json"
-            : ext === ".svg"
-            ? "image/svg+xml"
-            : "application/octet-stream";
-        reply.header("Content-Type", `${type}; charset=utf-8`);
-        return reply.send(data);
-      } catch (err) {
-        continue;
-      }
-    }
-
-    return reply.code(404).send("Not found");
-  });
-}
+await registerWithLog("artifactRoutes", () => app.register(artifactRoutes, { roots: [path.join(REPORT_ROOT, "runner-logs"), path.join(REPO_ROOT, "runner-logs"), path.join(REPO_ROOT, "apps", "api", "runner-logs")] }));
 
 // Serve built web assets (SPA) when available
 const WEB_DIST = path.join(REPO_ROOT, "apps", "web", "dist");
@@ -2192,6 +2049,12 @@ app.ready(() => {
   }
 });
 
+// Fastify forbids addHook() once the server is listening, and workers start after
+// listen() - so the shutdown hook is registered here, at module scope, and only
+// invokes the recovery loop's stop function if/when it was actually started.
+let stopWorkflowRecovery: (() => void) | null = null;
+app.addHook('onClose', async () => { stopWorkflowRecovery?.(); });
+
 // Start background workers when running the API (disable with START_WORKERS=false)
 const startWorkersOnce = () => {
   if (globalState.__tmWorkersStarted) {
@@ -2219,6 +2082,11 @@ const startWorkersOnce = () => {
   start(import("./runner/allure-worker.js"), "allure-generate");
   start(import("./runner/operator-worker.js"), "operator-jobs");
   start(import("./runner/api-test-worker.js"), "api-tests");
+  start(import("./runner/evaluation-worker.js"), "evaluation-runs");
+  import('./runner/workflow-recovery.js').then(({ startWorkflowRecovery }) => {
+    stopWorkflowRecovery = startWorkflowRecovery();
+    app.log.info('[workflow] recovery started');
+  }).catch(err => app.log.error({ err }, '[workflow] recovery startup failed'));
 
   // Register repeatable BullMQ jobs for all enabled OperatorSchedules
   import("./runner/scheduler.js").then(({ startScheduler }) =>

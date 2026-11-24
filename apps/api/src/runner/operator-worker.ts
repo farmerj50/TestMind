@@ -15,6 +15,7 @@ import { generatePlan } from '../testmind/pipeline/generate-plan.js';
 import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
+import { assessTestEvidence, allowsAutomaticRecovery, AUTONOMY_LEVELS, type AutonomyLevel } from '@testmind/core/workflow';
 import {
   deriveDecisionsForFailureClassifications,
   recordOperatorDecisions,
@@ -29,15 +30,41 @@ import {
 import { applyApplicationModelMerge } from '../lib/application-model-store.js';
 import {
   getOctokitForProject,
-  pushSpecFilesToBranch,
-  ensurePullRequest,
-  postPrComment,
   setCommitStatus,
   buildRepairPrBody,
 } from './github-writeback.js';
 import { validatedEnv } from '../config/env.js';
 import { requiresAutonomousScanApproval } from '../lib/security-approval-policy.js';
 import { normalizeOpenSourceToolIds } from '../security/open-source-tools.js';
+import { REPORT_ROOT } from '../lib/storageRoots.js';
+import { validateUrl } from '../lib/safe-fetch.js';
+import { computeCrawlKnowledgeUpdate, refreshStoryEvidence, incrementalSeedRoutes, routeClaimsFromTitles, type KnowledgeDiff } from '../lib/app-knowledge.js';
+import { getProjectKnowledge, loadKnowledgeInputs, loadPlanInputs, recordUserStory, inspectRepository, resolveLocalRepository, recordDeclaredRoutes, recordFailureInvestigations, recordRepairOutcome } from '../lib/app-knowledge-store.js';
+import { finalizeRepairVerification, describeVerification, REPAIR_FAILED } from '../lib/repair-verification.js';
+import { buildQePlan, gateSuiteTests, grepInvertFor, testTitlesInSpec, type QePlan } from '../lib/qe-plan.js';
+import { generateQeSuite } from '../testmind/pipeline/qe-codegen.js';
+import { isCredentialRef } from '../lib/qe-credentials.js';
+import { classifyFailure, decideRepair, repairPreservesObjective, type FailureInvestigation } from '../lib/failure-intel.js';
+import { investigateFailure } from '../lib/investigator.js';
+import { eligibleForCodeFix, isCodeFixConfig, appCodeFixEnabled, APP_CODE_FIX_DISABLED_REASON } from '../lib/qe-codefix.js';
+import { createCodeFixProposal } from '../lib/qe-codefix-store.js';
+import { operatorQueue } from './queue.js';
+import {
+  QeStageError,
+  qeContextOf,
+  ensureStages,
+  startStage,
+  finishStage,
+  stageOutcome,
+  currentStageKey,
+  saveCheckpoint,
+  finalizeQeRun,
+  recordQeArtifact,
+  recoverQeRuns,
+  requireStageApproval,
+  type QeContext,
+  type QeStageKey,
+} from './qe-orchestrator.js';
 
 export { createStepRunner };
 
@@ -79,7 +106,9 @@ export const operatorWorker = new Worker(
     });
 
     if (!opJob) throw new Error(`OperatorJob ${operatorJobId} not found`);
-    if (opJob.status === 'canceled') return;
+    if (opJob.status === 'canceled' || opJob.status === 'succeeded') return;
+    const isQe = !!qeContextOf(opJob.contextJson);
+    if (isQe && ['failed', 'partial', 'unverified', 'blocked'].includes(opJob.status)) return; // QE terminal states
 
     /** Release worker thread — re-queues the job with updated checkpoint after `ms`. */
     const reDelay: ReDelayFn = async (ms, phase) => {
@@ -88,7 +117,34 @@ export const operatorWorker = new Worker(
       throw new DelayedError();
     };
 
+    // Paused QE run: hold at the current checkpoint without doing any work.
+    if (isQe && opJob.status === 'paused') {
+      await reDelay(QE_PAUSE_POLL_MS, resumePhase ?? { kind: 'autonomous_qa', state: {} });
+    }
+
+    if (isQe) {
+      try {
+        if (resumePhase?.kind === 'autonomous_qa') {
+          await runAutonomousQeJob(opJob, reDelay, resumePhase.state);
+        } else {
+          await prisma.operatorJob.updateMany({ where: { id: operatorJobId, status: 'queued' }, data: { status: 'running', startedAt: new Date() } });
+          await runAutonomousQeJob(opJob, reDelay);
+        }
+      } catch (err: any) {
+        if (err instanceof DelayedError) throw err;
+        // Never rethrow: a QE run's outcome is recorded truthfully, not retried blindly.
+        await finalizeQeRun(operatorJobId, { error: err?.message ?? String(err) }).catch(() => {});
+      }
+      await writeJobRollup(operatorJobId).catch(() => {});
+      return;
+    }
+
     try {
+      const parentRunId = (opJob.contextJson as any)?.workflowParentId;
+      if (parentRunId) {
+        const { authorizedWorkflowContext } = await import('../lib/workflow-execution-policy.js');
+        await authorizedWorkflowContext(parentRunId, opJob.projectId);
+      }
       if (resumePhase) {
         // Resuming from checkpoint — dispatch to the right handler
         await handleResume(opJob, resumePhase, reDelay);
@@ -100,12 +156,28 @@ export const operatorWorker = new Worker(
         });
 
         const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
-        if (opJob.type === 'qa' && ctx.autonomous === true) await runAutonomousQaJob(opJob, reDelay);
+        if (opJob.type === 'workflow') await advanceGraphJob(opJob, reDelay);
+        else if (opJob.type === 'qa' && ctx.autonomous === true) await runAutonomousQaJob(opJob, reDelay);
         else if (opJob.type === 'qa')        await runQaJob(opJob, reDelay);
         else if (opJob.type === 'repair')    await runRepairJob(opJob, reDelay);
         else if (opJob.type === 'discovery') await runDiscoveryJob(opJob);
         else if (opJob.type === 'security')  await runSecurityJob(opJob, reDelay);
+        else if (opJob.type === 'autonomousDev') { const { advanceDevAgentJob } = await import('./dev-agent-worker.js'); await advanceDevAgentJob(opJob, reDelay); }
         else throw new Error(`OperatorJob type '${opJob.type}' not yet implemented`);
+      }
+
+      // A Dev Agent run that ended 'unverified' (nothing executed, objective not met, or
+      // blocked) must never surface as a 'succeeded' operator job.
+      if (opJob.type === 'autonomousDev') {
+        const devRun = await prisma.devAgentRun.findFirst({ where: { operatorJobId }, select: { status: true, error: true } });
+        if (devRun?.status === 'unverified') {
+          await prisma.operatorJob.updateMany({
+            where: { id: operatorJobId, status: { not: 'canceled' } },
+            data: { status: 'unverified', finishedAt: new Date(), error: devRun.error ?? 'Dev Agent run ended unverified - no executed, objective-aligned verification' },
+          });
+          await writeJobRollup(operatorJobId);
+          return;
+        }
       }
 
       await finalizeJob(operatorJobId, 'succeeded');
@@ -121,8 +193,8 @@ export const operatorWorker = new Worker(
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function finalizeJob(jobId: string, status: 'succeeded' | 'failed', error?: string) {
-  await prisma.operatorJob.update({
-    where: { id: jobId },
+  await prisma.operatorJob.updateMany({
+    where: { id: jobId, status: { not: 'canceled' } },
     data: { status, finishedAt: new Date(), ...(error ? { error } : {}) },
   });
   // Rollup: count tasks by status and write summary into contextJson._rollup
@@ -224,8 +296,11 @@ async function recordArtifact(opts: {
 // ── Resume dispatcher ─────────────────────────────────────────────────────────
 
 async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDelayFn) {
-  if (phase.kind === 'autonomous_qa') {
-    await runAutonomousQaJob(opJob, reDelay, phase.state);
+  if (phase.kind === 'workflow_graph') {
+    await advanceGraphJob(opJob, reDelay);
+  } else if (phase.kind === 'autonomous_qa') {
+    if (qeContextOf(opJob.contextJson)) await runAutonomousQeJob(opJob, reDelay, phase.state);
+    else await runAutonomousQaJob(opJob, reDelay, phase.state);
   } else if (phase.kind === 'wait_run') {
     await checkOrDelayRun(phase.runId, phase.taskId, opJob.id, phase.deadline, reDelay);
   } else if (phase.kind === 'wait_repairs') {
@@ -234,7 +309,20 @@ async function handleResume(opJob: OpJobCtx, phase: ResumePhase, reDelay: ReDela
     await checkOrDelayApproval(opJob, phase, reDelay);
   } else if (phase.kind === 'wait_scan') {
     await checkOrDelayScan(phase.scanId, phase.taskId, opJob.id, phase.deadline, reDelay);
+  } else if (phase.kind === 'dev_agent_iterate') {
+    const { advanceDevAgentJob } = await import('./dev-agent-worker.js');
+    await advanceDevAgentJob(opJob, reDelay);
   }
+}
+
+async function advanceGraphJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
+  const { runWorkflowGraph } = await import('./workflow-runner.js');
+  const result = await runWorkflowGraph(opJob).catch(async (error) => {
+    await prisma.workflowRun.updateMany({ where: { operatorJobId: opJob.id, status: { in: ['queued', 'running'] } }, data: { status: 'failed', finishedAt: new Date(), error: 'Workflow could not resume its saved execution state. Review the operator error.' } });
+    throw error;
+  });
+  if (result.status === 'pending') await reDelay(500, { kind: 'workflow_graph' });
+  if (result.status === 'failed') throw new Error(result.error ?? 'Workflow evidence gate failed');
 }
 
 // ── QA job ────────────────────────────────────────────────────────────────────
@@ -249,6 +337,8 @@ type AutonomousQaState = {
   taskId?: string;
   deadline: number;
   remainingTestResultIds?: string[];
+  repairRunId?: string;
+  refreshPendingRepairs?: boolean;
   healedCount?: number;
   failedRepairResultIds?: string[];
   currentTestResultId?: string;
@@ -256,12 +346,18 @@ type AutonomousQaState = {
   repairTaskId?: string;
   targetSpec?: string | null;
   testTitle?: string | null;
+  /** B3: Playwright --grep-invert for tests whose side effects were not approved. */
+  grepInvert?: string;
+  /** B3: titles excluded from execution (side effects not approved). */
+  excludedTests?: string[];
+  /** B5: test results failure intelligence cleared for automatic selector repair. */
+  repairAllowList?: string[];
 };
 
 type AutonomousRunResult = {
   status: 'succeeded' | 'failed';
   error: string | null;
-  summary: { passed: number; failed: number; skipped: number; total: number };
+  summary: { passed: number; failed: number; errors: number; skipped: number; total: number; passedCaseIds: string[]; caseIds: string[] };
 };
 
 function isPathWithinOrEqual(parent: string, child: string) {
@@ -296,12 +392,17 @@ async function collectSpecFiles(root: string, limit = 250): Promise<string[]> {
 async function getRunSummary(runId: string) {
   const results = await prisma.testResult.findMany({
     where: { runId },
-    select: { status: true },
+    select: { status: true, testCaseId: true },
   });
   const passed = results.filter((r) => r.status === 'passed').length;
   const failed = results.filter((r) => r.status === 'failed').length;
   const skipped = results.filter((r) => r.status === 'skipped').length;
-  return { passed, failed, skipped, total: results.length };
+  // Unknown/errored result states are execution failures, never passing evidence.
+  const errors = results.length - passed - failed - skipped;
+  return { passed, failed, errors, skipped, total: results.length,
+    passedCaseIds: results.filter(r => r.status === 'passed').map(r => r.testCaseId),
+    caseIds: results.map(r => r.testCaseId),
+  };
 }
 
 async function createHumanInterventionCandidate(opts: {
@@ -456,6 +557,7 @@ async function createAutonomousRun(
     adapterId?: string;
     file: string;
     grep?: string | null;
+    grepInvert?: string;
     rerunOfId?: string;
   }
 ) {
@@ -493,12 +595,15 @@ async function createAutonomousRun(
 
   await prisma.operatorTask.update({ where: { id: task.id }, data: { testRunId: run.id } });
   await enqueueRun(run.id, {
+    ...((opJob.contextJson as any)?.workflowParentId ? { workflowRunId: (opJob.contextJson as any).workflowParentId } : {}),
     projectId: opJob.projectId,
     adapterId: opts.adapterId,
     baseUrl: opts.baseUrl,
     mode: 'ai',
     file: opts.file,
     grep: opts.grep ?? undefined,
+    ...(isCredentialRef(ctx.qe?.credentialRef) ? { credentialRef: ctx.qe.credentialRef } : {}),
+    ...(opts.grepInvert ? { grepInvert: opts.grepInvert } : {}),
     timeoutMs: 12 * 60 * 1000,
     livePreview: true,
   });
@@ -521,15 +626,27 @@ async function waitAutonomousRun(
   });
   if (!run) throw new Error(`TestRun ${runId} not found`);
 
-  if (run.status === 'succeeded' || run.status === 'failed') {
+  if (['succeeded', 'failed', 'canceled'].includes(run.status)) {
     const summary = await getRunSummary(runId);
+    const requiredCaseIds = state.stage === 'wait_full_verify'
+      ? (await getRunSummary(state.initialRunId)).caseIds
+      : state.stage === 'wait_targeted_verify' && state.currentTestResultId
+        ? [(await prisma.testResult.findUnique({ where: { id: state.currentTestResultId }, select: { testCaseId: true } }))?.testCaseId].filter(Boolean) as string[]
+        : [];
+    const gate = assessTestEvidence({ status: run.status, counts: summary, requiredCaseIds, passedCaseIds: summary.passedCaseIds });
+    if (state.stage === 'wait_targeted_verify' && requiredCaseIds.length === 0) {
+      gate.passed = false;
+      gate.reasons.push('Targeted verification has no identifiable required test.');
+    }
+    const status = gate.passed ? 'succeeded' : 'failed';
+    const error = gate.passed ? null : [run.error, ...gate.reasons].filter(Boolean).join(' ');
     await prisma.operatorTask.update({
       where: { id: taskId },
       data: {
-        status: run.status === 'succeeded' ? 'succeeded' : 'failed',
+        status,
         finishedAt: new Date(),
-        error: run.error ?? null,
-        outputJson: { phase: state.stage, testRunId: runId, finalStatus: run.status, summary },
+        error,
+        outputJson: { phase: state.stage, testRunId: runId, finalStatus: status, executionStatus: run.status, summary, qualityGate: gate },
       },
     });
     await recordArtifact({
@@ -538,9 +655,9 @@ async function waitAutonomousRun(
       testRunId: runId,
       type: 'report',
       path: `runs/${runId}/playwright-report.json`,
-      meta: { phase: state.stage, finalStatus: run.status },
+      meta: { phase: state.stage, finalStatus: status, executionStatus: run.status, qualityGate: gate },
     });
-    return { status: run.status, error: run.error ?? null, summary };
+    return { status, error, summary };
   }
 
   if (Date.now() > state.deadline) {
@@ -585,6 +702,9 @@ async function continueAutonomousAfterFailedRun(
   runId: string
 ) {
   const classifications = await classifyRunFailures(runId);
+  const { collectWorkflowRunEvidence } = await import('./workflow-evidence-collector.js');
+  const { analyzeWorkflowEvidence } = await import('../lib/workflow-evidence.js');
+  const rootCause = analyzeWorkflowEvidence(await collectWorkflowRunEvidence(opJob.projectId, { runId, source: 'ui' }, opJob.id, state.taskId!));
   const triageTask = await prisma.operatorTask.create({
     data: {
       jobId: opJob.id,
@@ -592,7 +712,7 @@ async function continueAutonomousAfterFailedRun(
       status: 'succeeded',
       startedAt: new Date(),
       finishedAt: new Date(),
-      outputJson: { runId, classifications, phase: 'autonomous-triage' },
+      outputJson: { runId, classifications, rootCause, phase: 'autonomous-triage' } as any,
     },
   });
 
@@ -603,17 +723,24 @@ async function continueAutonomousAfterFailedRun(
     decisions: deriveDecisionsForFailureClassifications(classifications),
   });
 
-  const selfHealableIds = classifications
-    .filter((c) => c.type === 'self-heal')
-    .map((c) => c.testResultId);
+  const selfHealableIds = state.repairAllowList
+    ? state.repairAllowList // B5 (QE): only failures investigated as safe selector repairs
+    : classifications
+      .filter((c) => c.type === 'self-heal' && rootCause.findings.some(f => f.caseId === c.testCaseId && f.verdict === 'automation-failure'))
+      .map((c) => c.testResultId);
 
   if (selfHealableIds.length === 0) {
-    throw new Error('Autonomous QA found failures that require human intervention');
+    throw new QeStageError('repair', 'blocked', 'Autonomous QA found failures that require human intervention');
   }
+
+  const level = ((opJob.contextJson as any)?.autonomyLevel ?? 'autonomous-recovery') as AutonomyLevel;
+  if (!allowsAutomaticRecovery(level)) throw new QeStageError('repair', 'blocked', `Automatic repair is disabled at autonomy level ${level}; testing evidence remains failed`);
 
   await startNextAutonomousRepair(opJob, reDelay, {
     ...state,
     remainingTestResultIds: selfHealableIds,
+    repairRunId: runId,
+    refreshPendingRepairs: false,
     healedCount: state.healedCount ?? 0,
     failedRepairResultIds: state.failedRepairResultIds ?? [],
   });
@@ -624,13 +751,15 @@ async function startNextAutonomousRepair(
   reDelay: ReDelayFn,
   state: AutonomousQaState
 ): Promise<void> {
+  const level = ((opJob.contextJson as any)?.autonomyLevel ?? 'autonomous-recovery') as AutonomyLevel;
+  if (!allowsAutomaticRecovery(level)) throw new QeStageError('repair', 'blocked', `Automatic repair is disabled at autonomy level ${level}`);
   const remaining = [...(state.remainingTestResultIds ?? [])];
   while (remaining.length > 0) {
     const testResultId = remaining.shift() as string;
     const result = await prisma.testResult.findFirst({
       where: {
         id: testResultId,
-        runId: state.initialRunId,
+        runId: state.repairRunId ?? state.initialRunId,
         status: 'failed',
         testCase: { status: { not: 'archived' } },
       },
@@ -655,7 +784,7 @@ async function startNextAutonomousRepair(
     const attemptsSoFar = await prisma.testHealingAttempt.count({ where: { testResultId } });
     const attempt = await prisma.testHealingAttempt.create({
       data: {
-        run: { connect: { id: state.initialRunId } },
+        run: { connect: { id: state.repairRunId ?? state.initialRunId } },
         testResult: { connect: { id: testResultId } },
         testCase: { connect: { id: result.testCase.id } },
         attempt: attemptsSoFar + 1,
@@ -664,8 +793,9 @@ async function startNextAutonomousRepair(
       select: { id: true },
     });
 
+    await prisma.operatorTask.update({ where: { id: repairTask.id }, data: { inputJson: { phase: 'sequential-autonomous-repair', testResultId, healingAttemptId: attempt.id, testTitle: result.testCase.title } } });
     await enqueueSelfHeal({
-      runId: state.initialRunId,
+      runId: state.repairRunId ?? state.initialRunId,
       testResultId,
       testCaseId: result.testCase.id,
       attemptId: attempt.id,
@@ -708,6 +838,7 @@ async function waitAutonomousRepair(opJob: OpJobCtx, reDelay: ReDelayFn, state: 
       error: true,
       targetSpec: true,
       testResultId: true,
+      testCaseId: true,
       testCase: { select: { title: true } },
     },
   });
@@ -755,6 +886,7 @@ async function waitAutonomousRepair(opJob: OpJobCtx, reDelay: ReDelayFn, state: 
       reason: 'Autonomous self-heal could not repair the failure',
       context: { finalStatus: attempt.status, error: attempt.error ?? null },
     });
+    if (qeContextOf(opJob.contextJson)) await recordRepairOutcome(opJob.projectId, attempt.testCaseId, 'repair_failed', attempt.error ?? `self-heal ended ${attempt.status}`).catch(() => {});
     await startNextAutonomousRepair(opJob, reDelay, {
       ...state,
       failedRepairResultIds: [...(state.failedRepairResultIds ?? []), state.currentTestResultId],
@@ -780,11 +912,29 @@ async function waitAutonomousRepair(opJob: OpJobCtx, reDelay: ReDelayFn, state: 
       reason: 'Repaired spec path validation failed',
       context: { targetSpec: attempt.targetSpec, error: message },
     });
+    if (qeContextOf(opJob.contextJson)) await recordRepairOutcome(opJob.projectId, attempt.testCaseId, 'repair_failed', `Repaired file rejected: ${message}`).catch(() => {});
     await startNextAutonomousRepair(opJob, reDelay, {
       ...state,
       failedRepairResultIds: [...(state.failedRepairResultIds ?? []), state.currentTestResultId],
     });
     return;
+  }
+
+  // B5 (QE): a repair may change HOW a test finds things, never WHAT it asserts.
+  if (qeContextOf(opJob.contextJson)) {
+    const specs = await prisma.testHealingAttempt.findUnique({ where: { id: attempt.id }, select: { originalSpec: true, repairedSpec: true } });
+    const guard = specs?.originalSpec && specs?.repairedSpec
+      ? repairPreservesObjective(specs.originalSpec, specs.repairedSpec)
+      : { ok: false, reasons: ['original/repaired spec not recorded - objective preservation cannot be verified'] };
+    if (!guard.ok) {
+      if (specs?.originalSpec) await fs.writeFile(repairedSpec, specs.originalSpec, 'utf8'); // restore the original test
+      const why = `Repair rejected - objective not preserved: ${guard.reasons.join('; ')}`;
+      await prisma.operatorTask.update({ where: { id: state.repairTaskId }, data: { status: 'failed', finishedAt: new Date(), error: why, outputJson: { healingAttemptId: attempt.id, finalStatus: 'rejected', reasons: guard.reasons } } });
+      await createHumanInterventionCandidate({ opJob, taskId: state.repairTaskId, runId: state.initialRunId, testResultId: state.currentTestResultId, healingAttemptId: attempt.id, reason: why });
+      await recordRepairOutcome(opJob.projectId, attempt.testCaseId, 'repair_rejected', why).catch(() => {});
+      await startNextAutonomousRepair(opJob, reDelay, { ...state, failedRepairResultIds: [...(state.failedRepairResultIds ?? []), state.currentTestResultId] });
+      return;
+    }
   }
 
   await prisma.operatorTask.update({
@@ -840,17 +990,39 @@ async function waitAutonomousRepair(opJob: OpJobCtx, reDelay: ReDelayFn, state: 
 
 async function waitAutonomousTargetedVerify(opJob: OpJobCtx, reDelay: ReDelayFn, state: AutonomousQaState) {
   const result = await waitAutonomousRun(opJob, state, reDelay);
-  if (state.attemptId) {
-    await prisma.testHealingAttempt.update({
-      where: { id: state.attemptId },
-      data: { executionAfter: result.summary as any },
-    });
+  // A repair succeeds only if its verification rerun passed; otherwise it is repair_failed
+  // in the attempt, the repair task, its patch artifact and the Application Brain.
+  const verified = (await finalizeRepairVerification(prisma, state.attemptId ? [state.attemptId] : [], result.summary as any, {
+    runSucceeded: result.status === 'succeeded',
+    detail: result.status === 'succeeded' ? undefined : `targeted verification rerun did not pass (${describeVerification(result.summary as any)})`,
+  })) === 'succeeded';
+  if (!verified && state.attemptId) {
+    const reason = `${REPAIR_FAILED}: ${describeVerification(result.summary as any)}`;
+    if (state.repairTaskId) {
+      const task = await prisma.operatorTask.findUnique({ where: { id: state.repairTaskId }, select: { outputJson: true } });
+      await prisma.operatorTask.update({
+        where: { id: state.repairTaskId },
+        data: { status: 'failed', error: reason, outputJson: { ...((task?.outputJson as any) ?? {}), finalStatus: REPAIR_FAILED } },
+      }).catch(() => {});
+    }
+    const patches = await prisma.operatorArtifact.findMany({ where: { jobId: opJob.id, type: 'patch', metaJson: { path: ['healingAttemptId'], equals: state.attemptId } } });
+    for (const p of patches) {
+      await prisma.operatorArtifact.update({ where: { id: p.id }, data: { metaJson: { ...((p.metaJson as any) ?? {}), outcome: REPAIR_FAILED, verification: describeVerification(result.summary as any) } } }).catch(() => {});
+    }
   }
 
-  if (result.status === 'succeeded') {
-    await startNextAutonomousRepair(opJob, reDelay, {
+  if (qeContextOf(opJob.contextJson) && state.attemptId) {
+    const a = await prisma.testHealingAttempt.findUnique({ where: { id: state.attemptId }, select: { testCaseId: true } });
+    if (a) await recordRepairOutcome(opJob.projectId, a.testCaseId, verified ? 'repaired_verified' : 'repair_failed',
+      verified ? 'Selector repaired; the targeted re-run passed with the original assertions intact' : `Targeted re-run still failed: ${result.error ?? describeVerification(result.summary as any)}`).catch(() => {});
+  }
+  if (verified) {
+    // A patch can fix other failures in the same file. Never submit their old
+    // diagnostics again: verify the suite before deciding what still needs repair.
+    await startAutonomousFullSuiteVerification(opJob, reDelay, {
       ...state,
       healedCount: (state.healedCount ?? 0) + 1,
+      refreshPendingRepairs: Boolean(state.remainingTestResultIds?.length),
     });
     return;
   }
@@ -884,6 +1056,7 @@ async function startAutonomousFullSuiteVerification(opJob: OpJobCtx, reDelay: Re
     adapterId: state.adapterId,
     file: state.generatedDir,
     rerunOfId: state.initialRunId,
+    grepInvert: state.grepInvert,
   });
 
   await reDelay(RUN_POLL_MS, {
@@ -900,23 +1073,44 @@ async function startAutonomousFullSuiteVerification(opJob: OpJobCtx, reDelay: Re
 
 async function waitAutonomousFullSuiteVerify(opJob: OpJobCtx, reDelay: ReDelayFn, state: AutonomousQaState) {
   const result = await waitAutonomousRun(opJob, state, reDelay);
-  if (result.status === 'succeeded') return;
+  if (result.status === 'succeeded') {
+    if (state.failedRepairResultIds?.length) throw new QeStageError('repair', 'partial', 'Autonomous QA required repair or targeted verification failed; a full-suite pass cannot override it');
+    return;
+  }
 
   const runId = state.runId ?? state.initialRunId;
   const classifications = await classifyRunFailures(runId);
+  if (state.refreshPendingRepairs && !state.failedRepairResultIds?.length) {
+    const pending = await prisma.testResult.findMany({
+      where: { id: { in: state.remainingTestResultIds ?? [] }, runId: state.repairRunId ?? state.initialRunId },
+      select: { testCaseId: true },
+    });
+    const initial = await getRunSummary(state.initialRunId);
+    // Bounded continuation: only previously pending cases with fresh failures.
+    // Missing/skipped tests, new failures or failed repairs remain hard failures.
+    if (result.summary.errors === 0 && result.summary.skipped === 0 &&
+        initial.caseIds.every(id => result.summary.caseIds.includes(id)) &&
+        classifications.length > 0 &&
+        classifications.every(c => pending.some(p => p.testCaseId === c.testCaseId))) {
+      await continueAutonomousAfterFailedRun(opJob, reDelay, state, runId);
+      return;
+    }
+  }
   await createInterventionsForClassifications(opJob, runId, state.taskId ?? null, classifications);
   await recordOperatorDecisions({
     jobId: opJob.id,
     taskId: state.taskId ?? null,
     decisions: deriveDecisionsForFailureClassifications(classifications),
   });
-  throw new Error('Autonomous QA full-suite verification failed');
+  throw new QeStageError('repair', 'partial', 'Autonomous QA full-suite verification failed');
 }
 
 async function runAutonomousQaJob(opJob: OpJobCtx, reDelay: ReDelayFn, rawState?: Record<string, any>) {
   if (!validatedEnv.TM_AUTONOMOUS_QA_ENABLED) {
     throw new Error('Autonomous QA is not enabled');
   }
+  const level = (opJob.contextJson as any)?.autonomyLevel;
+  if (level !== undefined && !AUTONOMY_LEVELS.includes(level)) throw new Error('Unknown autonomy level');
 
   const state = rawState as AutonomousQaState | undefined;
   if (state?.stage === 'wait_initial_run') {
@@ -979,6 +1173,512 @@ async function runAutonomousQaJob(opJob: OpJobCtx, reDelay: ReDelayFn, rawState?
       failedRepairResultIds: [],
     } satisfies AutonomousQaState,
   });
+}
+
+// ── Autonomous QE (B1) ────────────────────────────────────────────────────────
+// Drives the SAME pipeline functions runAutonomousQaJob uses (discovery/plan/codegen,
+// createAutonomousRun, waitAutonomousRun, triage + sequential self-heal, verification),
+// adding durable stages, DB checkpoints, plan-review hold, and truthful outcomes. Legacy
+// autonomous QA jobs (no context.qe) never enter this path.
+
+const QE_PAUSE_POLL_MS = 5_000;
+const qePlanFile = (jobId: string) => path.join(REPORT_ROOT, 'qe', jobId, 'plan.json');
+
+function qeMaxPages(qe: QeContext) {
+  if (qe.inputKind === 'page') return 1;
+  const fallback = qe.inputKind === 'user_story' ? 10 : 25;
+  const n = Number(qe.maxPages ?? fallback);
+  return Math.max(1, Math.min(Number.isFinite(n) ? Math.floor(n) : fallback, 50));
+}
+
+/** Every QE re-delay persists its checkpoint to the DB before releasing the worker. */
+function qeReDelayFor(opJob: OpJobCtx, reDelay: ReDelayFn): ReDelayFn {
+  return async (ms, phase) => {
+    await saveCheckpoint(opJob.id, await currentStageKey(opJob.id), phase);
+    return reDelay(ms, phase);
+  };
+}
+
+async function setQeHold(jobId: string, hold: string | null) {
+  const job = await prisma.operatorJob.findUnique({ where: { id: jobId }, select: { contextJson: true } });
+  const ctx = { ...((job?.contextJson ?? {}) as Record<string, any>) };
+  if (hold) ctx._qeHold = hold; else delete ctx._qeHold;
+  await prisma.operatorJob.update({ where: { id: jobId }, data: { contextJson: ctx } });
+}
+
+function qeExecutionOutcome(result: AutonomousRunResult): { outcome: 'succeeded' | 'partial' | 'unverified'; reason: string } {
+  const s = result.summary;
+  if (s.total === 0) return { outcome: 'unverified', reason: `No tests were executed${result.error ? `: ${result.error}` : ''}` };
+  if (result.status === 'succeeded') return { outcome: 'succeeded', reason: `${s.passed}/${s.total} tests passed` };
+  return { outcome: 'partial', reason: `${s.passed}/${s.total} passed, ${s.failed} failed, ${s.errors} errored, ${s.skipped} skipped` };
+}
+
+async function runAutonomousQeJob(opJob: OpJobCtx, reDelay: ReDelayFn, rawState?: Record<string, any>) {
+  const qe = qeContextOf(opJob.contextJson);
+  if (!qe) throw new Error('Not an Autonomous QE run');
+  const qReDelay = qeReDelayFor(opJob, reDelay);
+  await ensureStages(opJob.id);
+  try {
+    const state = rawState as any;
+    if (state?.qeStep === 'generate') await qeGenerateAndExecute(opJob, qReDelay);
+    else if (state?.qeStep === 'execute_gate') await qeExecute(opJob, qReDelay, state.generatedDir);
+    else if (state?.stage) await qeContinuePipeline(opJob, state as AutonomousQaState, qReDelay);
+    else await qeStart(opJob, qe, qReDelay);
+  } catch (err: any) {
+    if (err instanceof DelayedError) throw err;
+    if (err instanceof QeStageError) {
+      await finishStage(opJob.id, err.stage, err.outcome, err.message);
+    } else {
+      const cur = await currentStageKey(opJob.id);
+      if (cur) await finishStage(opJob.id, cur, 'failed', err?.message ?? String(err));
+      else throw err;
+    }
+  }
+  await qeReview(opJob);
+  await finalizeQeRun(opJob.id);
+}
+
+async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
+  const jobId = opJob.id;
+  await startStage(jobId, 'input');
+  if (!validatedEnv.TM_AUTONOMOUS_QA_ENABLED) throw new QeStageError('input', 'failed', 'Autonomous QA is not enabled (TM_AUTONOMOUS_QA_ENABLED)');
+  const level = (opJob.contextJson as any)?.autonomyLevel;
+  if (level !== undefined && !AUTONOMY_LEVELS.includes(level)) throw new QeStageError('input', 'failed', 'Unknown autonomy level');
+
+  let repositoryNote = '';
+  if (qe.inputKind === 'repository') {
+    const repo = qe.targetRepo ?? qe.input;
+    await finishStage(jobId, 'input', 'succeeded', `Repository input accepted: ${repo}${qe.baseUrl ? ` (application URL ${qe.baseUrl})` : ''}`, { inputKind: qe.inputKind, targetRepo: repo, ...(qe.baseUrl ? { baseUrl: qe.baseUrl } : {}) });
+    await startStage(jobId, 'discovery');
+    const root = resolveLocalRepository(repo);
+    if (!root) throw new QeStageError('discovery', 'blocked', `Repository "${repo}" is not available locally; inspecting external repositories requires a clone, which is not enabled for discovery. Use "testmind" or test the deployed application URL.`);
+    const declared = await inspectRepository(root, repo);
+    await recordDeclaredRoutes(opJob.projectId, declared);
+    await recordQeArtifact({
+      jobId, stage: 'discovery', type: 'report', path: `qe/${jobId}/repository.json`,
+      meta: { kind: 'repository', repo, inspectedAt: declared.inspectedAt, truncated: declared.truncated, uiRoutes: declared.uiRoutes.slice(0, 200), apiRoutes: declared.apiRoutes.slice(0, 300), uiRouteCount: declared.uiRoutes.length, apiRouteCount: declared.apiRoutes.length, testFileCount: declared.testFiles.length, testFiles: declared.testFiles.slice(0, 200) },
+    });
+    repositoryNote = `repository ${repo}: ${declared.uiRoutes.length} UI route(s) and ${declared.apiRoutes.length} API route(s) declared in source, ${declared.testFiles.length} existing test file(s)${declared.truncated ? ' (inspection truncated at file limit)' : ''}`;
+    if (!qe.baseUrl) {
+      await finishStage(jobId, 'discovery', 'succeeded', `${repositoryNote}. Declared routes are recorded as source facts, not runtime observations.`);
+      await startStage(jobId, 'plan');
+      throw new QeStageError('plan', 'blocked', 'No application URL to execute against - declared routes were recorded, but tests are only planned from observed behavior. Start the run with a base URL to discover and test the running application.');
+    }
+  }
+
+  const baseUrl = qe.baseUrl ?? '';
+  try {
+    await validateUrl(baseUrl);
+  } catch (err: any) {
+    throw new QeStageError(qe.inputKind === 'repository' ? 'discovery' : 'input', 'failed', `Target URL rejected: ${err?.message ?? String(err)}`);
+  }
+  const maxPages = qeMaxPages(qe);
+  const userStory = qe.inputKind === 'user_story' ? qe.input : undefined;
+  if (qe.inputKind !== 'repository') await finishStage(jobId, 'input', 'succeeded', `${qe.inputKind} input accepted: ${baseUrl}${userStory ? ' (user story recorded)' : ''}`, { inputKind: qe.inputKind, baseUrl, maxPages, ...(userStory ? { userStory } : {}) });
+
+  if (qe.inputKind !== 'repository') await startStage(jobId, 'discovery');
+  // Incremental, bounded discovery: revisit known pages that are missing, uncovered, or stale
+  // first (never more than half the page budget), then let the crawler explore the rest.
+  const before = await loadKnowledgeInputs(opJob.projectId);
+  const scoped = qe.inputKind === 'page';
+  // Routes existing tests target but the Brain has never observed are evidence the route exists;
+  // revisiting them lets the crawl ground them in a real observation (bounded with the rest).
+  const seedBudget = Math.floor(maxPages / 2);
+  const failingClaims = routeClaimsFromTitles((before.testTitles ?? []).map((t) => t.title));
+  const testedButUnobserved = [...new Set([...failingClaims, ...before.qaFailures.map((f) => f.routeHint), ...before.coverage.map((c) => c.routeHint), ...(before.testRouteClaims ?? [])])]
+    .filter((r) => r.startsWith('/') && !before.store.pages[r]);
+  const seedRoutes = scoped ? [] : [...new Set([
+    ...incrementalSeedRoutes(before.store, new Set(before.coverage.map((c) => c.routeHint)), new Date().toISOString(), seedBudget),
+    ...testedButUnobserved,
+  ])].slice(0, seedBudget).map((r) => new URL(r, baseUrl).toString());
+  const discoveryJob = { ...opJob, contextJson: { ...((opJob.contextJson ?? {}) as Record<string, any>), baseUrl, maxPages } };
+  const planState = await discoverAndPlan(discoveryJob, { ...(userStory ? { requirement: { id: 'user-story', title: userStory.slice(0, 500), priority: 'P1' } } : {}), seedRoutes, scoped });
+  const reachable = planState.checkedRoutes.filter((r) => r.reachable).length;
+  const story = userStory ? await recordUserStory(opJob.projectId, userStory, jobId) : null;
+  const knowledge = await getProjectKnowledge(opJob.projectId, { limit: 40 });
+  const kd = planState.knowledgeDiff;
+  const observedThisRun = new Set(kd?.pagesObserved ?? []);
+  await recordQeArtifact({
+    jobId, stage: 'discovery', type: 'report', path: `qe/${jobId}/discovery.json`,
+    meta: { baseUrl, maxPages, seedRoutes: seedRoutes.length, routes: planState.checkedRoutes.slice(0, 200), uncoveredRoutes: planState.uncovered.slice(0, 200), existingTestCount: planState.existingTestCount },
+  });
+  await recordQeArtifact({
+    jobId, stage: 'discovery', type: 'report', path: `qe/${jobId}/knowledge.json`,
+    meta: {
+      kind: 'knowledge',
+      observedAt: planState.observedAt ?? null,
+      // Observed this run (source: crawl, timestamped) - facts.
+      observed: {
+        pages: Object.values(knowledge.pages).filter((p) => observedThisRun.has(p.routeHint)).slice(0, 100).map((p) => ({
+          route: p.routeHint, access: p.access ?? null, title: p.observed?.title ?? null,
+          headings: p.observed?.headings.slice(0, 8) ?? [], actions: p.observed?.actions.slice(0, 12) ?? [], fields: p.observed?.fields.slice(0, 12) ?? [], forms: p.forms.length,
+        })),
+        apis: (kd?.apisObserved ?? []).slice(0, 100).map((key) => ({ key, ...knowledge.apis[key] })),
+        thirdPartyHosts: kd?.thirdPartyHosts ?? [],
+      },
+      changes: { newPages: kd?.newPages ?? [], accessChanges: kd?.accessChanges ?? [], newApis: kd?.newApis ?? [], missingApis: kd?.missingApis ?? [] },
+      inaccessible: { authRequired: kd?.authRequired ?? [], unreachable: kd?.unreachable ?? [] },
+      // Expected behavior (source: user_story) - mapped to observed evidence only, never verified here.
+      ...(story ? { story: { key: story.key, title: story.title, role: story.role ?? null, goal: story.goal ?? null, benefit: story.benefit ?? null, criteria: story.criteria } } : {}),
+      coverage: knowledge.summary,
+      testInventory: knowledge.testInventory,
+      recommendations: knowledge.recommendations,
+    } as any,
+  });
+  if (reachable === 0) throw new QeStageError('discovery', 'unverified', `No reachable pages discovered at ${baseUrl} (${planState.checkedRoutes.length} checked)`);
+  const sm = knowledge.summary;
+  const discoveryParts = [
+    `${planState.checkedRoutes.length} page(s) crawled (${reachable} reachable${kd?.authRequired.length ? `, ${kd.authRequired.length} require auth` : ''}${kd?.newPages.length ? `, ${kd.newPages.length} new to the Brain` : ''})`,
+    `${kd?.apisObserved.length ?? 0} API endpoint(s) observed${kd?.newApis.length ? ` (${kd.newApis.length} new)` : ''}`,
+    `${sm.pages.uncovered.length} testable page(s) and ${sm.apis.uncovered.length} API(s) without tests`,
+    ...(story ? [`story: ${story.criteria.filter((c) => c.status === 'elements_observed').length}/${story.criteria.length} criteria have observed elements`] : []),
+    ...(repositoryNote ? [repositoryNote] : []),
+  ];
+  await finishStage(jobId, 'discovery', 'succeeded', discoveryParts.join('; '));
+
+  await startStage(jobId, 'plan');
+  await fs.mkdir(path.dirname(qePlanFile(jobId)), { recursive: true });
+  await fs.writeFile(qePlanFile(jobId), JSON.stringify(planState));
+  const cases = planState.planCases;
+  const pages = new Set(cases.map((c: any) => c.group?.page ?? '/'));
+  // Never repeat existing tests: mark which planned cases already exist (the same key the
+  // generator upserts by) and their last result, so only genuinely new coverage counts as new.
+  const caseKey = (c: any) => `discovery/${opJob.projectId}/${c.group?.page ?? '/'}#${(c.title ?? c.name ?? 'Unnamed test') as string}`.slice(0, 255);
+  const existing = cases.length
+    ? await prisma.testCase.findMany({ where: { projectId: opJob.projectId, key: { in: cases.map(caseKey) } }, select: { key: true, status: true, lastResultStatus: true } })
+    : [];
+  const existingByKey = new Map(existing.map((e) => [e.key, e]));
+  const annotated = cases.slice(0, 200).map((c: any) => {
+    const e = existingByKey.get(caseKey(c));
+    return { title: c.title ?? c.name ?? 'Unnamed test', page: c.group?.page ?? '/', existing: !!e, lastResult: e?.lastResultStatus ?? null, archived: e?.status === 'archived' };
+  });
+  const newCount = cases.filter((c: any) => !existingByKey.has(caseKey(c))).length;
+  const nextTests = knowledge.recommendations.filter((r) => r.actionable).slice(0, 15);
+  const blockedItems = knowledge.recommendations.filter((r) => !r.actionable).slice(0, 15);
+  // B3: the risk-prioritized, evidence-mapped plan. Persisted (DB artifact + file) so
+  // generation, execution and repair can reference each test's original objective.
+  const planInputs = await loadPlanInputs(opJob.projectId);
+  const qePlan = buildQePlan({
+    jobId, projectId: opJob.projectId, baseUrl, now: new Date().toISOString(), ...planInputs,
+    generatorCases: cases.map((c: any) => ({ title: (c.title ?? c.name ?? 'Unnamed test') as string, page: (c.group?.page ?? '/') as string })),
+  });
+  await fs.writeFile(qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json'), JSON.stringify(qePlan));
+  await recordQeArtifact({
+    jobId, stage: 'plan', type: 'plan', path: `qe/${jobId}/plan.json`,
+    meta: {
+      caseCount: cases.length, pageCount: pages.size, newCaseCount: newCount, existingCaseCount: cases.length - newCount,
+      cases: annotated, nextTests, blocked: blockedItems,
+      ...(userStory ? { userStory } : {}),
+      qePlan,
+    } as any,
+  });
+  if (cases.length === 0) throw new QeStageError('plan', 'unverified', 'The planner produced no test cases from the discovered pages');
+  const ps = qePlan.summary;
+  const planReason = `${ps.total} scenario(s): ${ps.byStatus.ready} ready (${ps.tiers.P1} P1), ${ps.byStatus.blocked_auth} blocked by authentication, ${ps.byStatus.blocked_unverifiable} unverifiable; ${ps.coverage.missing} missing vs ${ps.coverage.existing} existing coverage; ${ps.risk.destructive + ps.risk.sensitive} with side effects (${ps.needsApproval} executable now need approval)`;
+
+  if (qe.planReview) {
+    await finishStage(jobId, 'plan', 'succeeded', `${planReason}. Held for plan review before generation.`);
+    await setQeHold(jobId, 'plan_review');
+    await prisma.operatorJob.update({ where: { id: jobId }, data: { status: 'paused' } });
+    await qReDelay(QE_PAUSE_POLL_MS, { kind: 'autonomous_qa', state: { qeStep: 'generate' } });
+  }
+  await finishStage(jobId, 'plan', 'succeeded', planReason);
+  await qeGenerateAndExecute(opJob, qReDelay, planState);
+}
+
+async function qeGenerateAndExecute(opJob: OpJobCtx, qReDelay: ReDelayFn, given?: DiscoveryPlanState) {
+  const jobId = opJob.id;
+  await setQeHold(jobId, null);
+  const planState: DiscoveryPlanState = given ?? JSON.parse(await fs.readFile(qePlanFile(jobId), 'utf8'));
+
+  await startStage(jobId, 'generate');
+  const generationStartedAt = Date.now() - 1000;
+  const out = await generateFromPlan(opJob, planState);
+  const generatedDir = out.outDir;
+  const qeGen = await qeGenerateScenarioSuite(opJob, generatedDir);
+  const specs = await collectSpecFiles(generatedDir);
+  if (specs.length === 0) throw new QeStageError('generate', 'unverified', 'No spec files were generated');
+  await validateAutonomousGeneratedDir(opJob, generatedDir);
+  let writtenThisRun = 0;
+  for (const file of specs) {
+    const st = await fs.stat(file).catch(() => null);
+    const fresh = !!st && st.mtimeMs >= generationStartedAt;
+    if (fresh) writtenThisRun++;
+    await recordQeArtifact({
+      jobId, stage: 'generate', type: 'spec',
+      path: path.relative(GENERATED_ROOT, file).replace(/\\/g, '/'),
+      meta: { file: path.relative(generatedDir, file).replace(/\\/g, '/'), bytes: st?.size ?? null, writtenThisRun: fresh },
+    });
+  }
+  const qeNote = qeGen ? `; ${qeGen.tests.length} scenario test(s) generated in ${qeGen.specFiles} QE spec file(s), ${qeGen.notGenerated.length} scenario(s) not generated (blocked or no honest assertion)` : '';
+  await finishStage(jobId, 'generate', 'succeeded', `${writtenThisRun} spec file(s) written this run, ${out.generatedTestCount} new test case(s); suite under test: ${specs.length} spec file(s)${qeNote}`, { generatedDir, specFileCount: specs.length, writtenThisRun, newTestCases: out.generatedTestCount, ...(qeGen ? { qeTests: qeGen.tests.length, qeNotGenerated: qeGen.notGenerated.length } : {}) });
+
+  await startStage(jobId, 'execute');
+  await qeExecute(opJob, qReDelay, generatedDir);
+}
+
+/**
+ * Executes the suite under test. Any test with side effects (sensitive or destructive) needs
+ * explicit approval first; if it is denied or expires, those tests are excluded (never run)
+ * and the stage can at best be 'partial'. Re-entrant: resumes here while approval is pending.
+ */
+async function qeExecute(opJob: OpJobCtx, qReDelay: ReDelayFn, generatedDir: string) {
+  const jobId = opJob.id;
+  const qePlan: QePlan | null = await fs.readFile(qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json'), 'utf8').then(JSON.parse).catch(() => null);
+  let excluded: string[] = [];
+  if (qePlan) {
+    const suiteTitles: string[] = [];
+    for (const file of await collectSpecFiles(generatedDir)) suiteTitles.push(...testTitlesInSpec(await fs.readFile(file, 'utf8').catch(() => '')));
+    const project = await prisma.project.findUnique({ where: { id: opJob.projectId }, select: { applicationModel: true } });
+    const gated = gateSuiteTests(qePlan, [...new Set(suiteTitles)], normalizeApplicationModel(project?.applicationModel));
+    if (gated.length) {
+      const destructive = gated.some((g) => g.level === 'destructive');
+      try {
+        const gate = await requireStageApproval({
+          jobId, stage: 'execute', gateKey: 'execute-side-effects',
+          actionType: destructive ? 'destructive_test' : 'sensitive_action',
+          description: `Run ${gated.length} test(s) with real side effects against ${qePlan.baseUrl}: ${gated.map((g) => `"${g.title}" (${g.reasons.join('; ')})`).join(', ')}`.slice(0, 2000),
+          requestedBy: (opJob as any).requestedBy ?? 'system',
+          context: { tests: gated },
+        });
+        if (gate.state === 'pending') {
+          await qReDelay(APPROVAL_POLL_MS, { kind: 'autonomous_qa', state: { qeStep: 'execute_gate', generatedDir } });
+        }
+      } catch (err) {
+        if (!(err instanceof QeStageError)) throw err;
+        excluded = gated.map((g) => g.title); // denied/expired: fail closed - these tests do not run
+        await startStage(jobId, 'execute');
+      }
+    }
+  }
+  const grepInvert = grepInvertFor(excluded);
+  const { baseUrl, adapterId } = await resolveAutonomousContext(opJob);
+  const initial = await createAutonomousRun(opJob, {
+    taskType: 'execute',
+    inputJson: { phase: 'initial-generated-suite', generatedDir, baseUrl, ...(excluded.length ? { excludedTests: excluded } : {}) },
+    generatedDir, baseUrl, adapterId, file: generatedDir, grepInvert,
+  });
+  await qReDelay(RUN_POLL_MS, {
+    kind: 'autonomous_qa',
+    state: {
+      stage: 'wait_initial_run', generatedDir, baseUrl, adapterId,
+      initialRunId: initial.run.id, runId: initial.run.id, taskId: initial.task.id,
+      deadline: Date.now() + AUTONOMOUS_RUN_TIMEOUT_MS,
+      remainingTestResultIds: [], healedCount: 0, failedRepairResultIds: [],
+      ...(excluded.length ? { grepInvert, excludedTests: excluded } : {}),
+    } satisfies AutonomousQaState,
+  });
+}
+
+/**
+ * B4: turns the persisted B3 plan into executable QE specs inside the existing generated suite,
+ * then records which scenarios became which tests (and which were not generated, and why).
+ */
+async function qeGenerateScenarioSuite(opJob: OpJobCtx, generatedDir: string) {
+  const jobId = opJob.id;
+  const planPath = qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json');
+  const qePlan: QePlan | null = await fs.readFile(planPath, 'utf8').then(JSON.parse).catch(() => null);
+  if (!qePlan) return null;
+  const qe = qeContextOf(opJob.contextJson);
+  const project = await prisma.project.findUnique({ where: { id: opJob.projectId }, select: { applicationModel: true } });
+  const store = normalizeApplicationModel(project?.applicationModel);
+  const hasCredentials = isCredentialRef(qe && (qe as any).credentialRef);
+  const result = generateQeSuite(qePlan, store, { hasCredentials });
+
+  // Replace (not merge) the QE folder so removed scenarios don't linger as stale tests.
+  const qeDir = path.join(generatedDir, 'qe');
+  if (!isPathWithinOrEqual(generatedDir, qeDir)) throw new Error('QE output must stay inside the generated suite');
+  await fs.rm(qeDir, { recursive: true, force: true });
+  for (const file of result.files) {
+    const abs = path.join(generatedDir, file.path);
+    if (!isPathWithinOrEqual(qeDir, abs)) throw new Error(`Refusing to write outside the QE suite: ${file.path}`);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, file.content, 'utf8');
+  }
+
+  // The plan now points each generated scenario at its executable test (objectives preserved).
+  const byScenario = new Map(result.tests.map((t) => [t.scenarioId, t]));
+  qePlan.scenarios = qePlan.scenarios.map((s) => {
+    const t = byScenario.get(s.id);
+    if (!t) return s;
+    return { ...s, status: s.status === 'blocked_auth' ? 'ready' : s.status, execution: { mode: 'generated_now', testTitle: t.testTitle } };
+  });
+  await fs.writeFile(planPath, JSON.stringify(qePlan));
+  await recordQeArtifact({
+    jobId, stage: 'generate', type: 'report', path: `qe/${jobId}/qe-generation.json`,
+    meta: { kind: 'qe-generation', hasCredentials, tests: result.tests, notGenerated: result.notGenerated, files: result.files.map((f) => f.path) },
+  });
+  return { tests: result.tests, notGenerated: result.notGenerated, specFiles: result.files.filter((f) => f.path.endsWith('.spec.ts')).length };
+}
+
+/** Individual outcomes per generated scenario test ([qe:<id>] in the title), plus scenarios that did not run. */
+async function qeScenarioOutcomes(jobId: string, runId: string, excludedTests: string[]) {
+  const gen = await prisma.operatorArtifact.findFirst({ where: { jobId, type: 'report', metaJson: { path: ['kind'], equals: 'qe-generation' } }, orderBy: { createdAt: 'desc' }, select: { metaJson: true } });
+  const meta = gen?.metaJson as any;
+  if (!meta) return {};
+  const results = await prisma.testResult.findMany({ where: { runId }, select: { status: true, message: true, testCase: { select: { title: true } } } });
+  const outcomeFor = (testTitle: string) => {
+    const id = /\[qe:([0-9a-f]+)\]/.exec(testTitle)?.[1];
+    const r = results.find((x) => id && x.testCase.title.includes(`[qe:${id}]`));
+    if (excludedTests.includes(testTitle)) return { status: 'not_run', message: 'side effects not approved' };
+    if (!r) return { status: 'not_run', message: 'no result recorded for this test' };
+    return { status: r.status, message: r.message ? r.message.slice(0, 500) : null };
+  };
+  return {
+    scenarioOutcomes: (meta.tests ?? []).map((t: any) => ({ scenarioId: t.scenarioId, title: t.title, testTitle: t.testTitle, criteria: t.criteria, ...outcomeFor(t.testTitle) })),
+    blockedScenarios: (meta.notGenerated ?? []).map((n: any) => ({ ...n, status: 'blocked' })),
+  };
+}
+
+/**
+ * B5: explains every failed test of a run (reusing the evidence collector/analyzer and the
+ * investigator), records the investigations in the Brain, escalates suspected product defects,
+ * and returns the failures that are safe to repair automatically.
+ */
+async function qeInvestigateFailures(opJob: OpJobCtx, runId: string, state: AutonomousQaState) {
+  const jobId = opJob.id;
+  const failed = await prisma.testResult.findMany({ where: { runId, status: { in: ['failed', 'error'] } }, select: { id: true, testCaseId: true, message: true, testCase: { select: { title: true } } }, take: 200 });
+  const { collectWorkflowRunEvidence } = await import('./workflow-evidence-collector.js');
+  const { analyzeWorkflowEvidence } = await import('../lib/workflow-evidence.js');
+  const evidence = await collectWorkflowRunEvidence(opJob.projectId, { runId, source: 'ui' }, jobId, state.taskId!).catch(() => []);
+  const analysis = analyzeWorkflowEvidence(evidence);
+  const plan: QePlan | null = await fs.readFile(qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json'), 'utf8').then(JSON.parse).catch(() => null);
+  const project = await prisma.project.findUnique({ where: { id: opJob.projectId }, select: { applicationModel: true } });
+  const store = normalizeApplicationModel(project?.applicationModel);
+  const level = ((opJob.contextJson as any)?.autonomyLevel ?? 'autonomous-recovery') as AutonomyLevel;
+
+  const investigations: FailureInvestigation[] = [];
+  const decisions: Array<{ testResultId: string; action: string; reason: string }> = [];
+  for (const r of failed) {
+    const title = r.testCase.title;
+    const scenario = plan?.scenarios.find((s) => s.execution.testTitle === title || title.includes(`[qe:${s.id}]`) || title.endsWith(s.execution.testTitle ?? '\u0000')) ?? null;
+    const route = scenario?.route ?? routeClaimsFromTitles([title])[0] ?? null;
+    const caseEvidence = evidence.filter((e) => e.caseId === r.testCaseId);
+    const finding = analysis.findings.find((f) => f.caseId === r.testCaseId) ?? null;
+    const inv = classifyFailure({
+      testResultId: r.id, testCaseId: r.testCaseId, testTitle: title, message: r.message,
+      investigator: investigateFailure({ message: r.message }),
+      analyzer: finding ? { verdict: String(finding.verdict), hypotheses: finding.hypotheses, missingEvidence: finding.missingEvidence } : null,
+      network: {
+        serverErrors: [...new Set(caseEvidence.filter((e) => e.kind === 'network' && (e.status ?? 0) >= 500).map((e) => e.status!))],
+        requestFailed: caseEvidence.filter((e) => e.kind === 'network' && e.message).map((e) => e.message!).slice(0, 10),
+      },
+      attachments: caseEvidence.filter((e) => e.kind === 'trace' || e.kind === 'screenshot').map((e) => ({ kind: e.kind, detail: `${e.kind} captured`, ...(e.artifactId ? { artifactId: e.artifactId } : {}) })),
+      scenario: scenario ? { id: scenario.id, kind: scenario.kind, objective: scenario.objective, criteria: scenario.criteria } : null,
+      route, page: route ? store.pages[route] ?? null : null,
+    });
+    const decision = decideRepair(inv, { autonomyAllowsRepair: allowsAutomaticRecovery(level), sideEffectsApproved: !(state.excludedTests ?? []).includes(title) });
+    investigations.push(inv);
+    decisions.push({ testResultId: r.id, action: decision.action, reason: decision.reason });
+    if (decision.action === 'escalate') {
+      await createHumanInterventionCandidate({ opJob, taskId: state.taskId ?? null, runId, testResultId: r.id, reason: `${inv.category === 'product_defect' ? 'Suspected product defect' : 'Test needs human attention'}: ${inv.explanation}`.slice(0, 1000), context: { category: inv.category, cause: inv.cause, confidence: inv.confidence } });
+    }
+  }
+  await recordFailureInvestigations(opJob.projectId, investigations, runId).catch((err) => console.warn('[qe] failed to record investigations in Brain', err));
+  for (const [i, d] of decisions.entries()) if (d.action !== 'auto_repair') await recordRepairOutcome(opJob.projectId, investigations[i].testCaseId, d.action === 'escalate' ? 'escalated' : 'held', d.reason).catch(() => {});
+
+  // B6: evidence-backed suspected product defects may get a code-fix PROPOSAL from the Dev Agent
+  // (isolated worktree, approval-gated, never applied/merged) - only when this run authorized it.
+  const codeFix = (qeContextOf(opJob.contextJson) as any)?.codeFix;
+  const proposals: Array<{ devAgentRunId: string; testTitle: string }> = [];
+  // Release gate: autonomous application-code fixes are off unless explicitly enabled.
+  const codeFixDisabled = isCodeFixConfig(codeFix) && !appCodeFixEnabled();
+  if (codeFixDisabled) console.warn(`[qe] ${APP_CODE_FIX_DISABLED_REASON} - no code-fix proposal for job ${jobId}`);
+  if (isCodeFixConfig(codeFix) && !codeFixDisabled) {
+    for (const inv of investigations) {
+      const eligibility = eligibleForCodeFix(inv);
+      if (!eligibility.eligible || proposals.length >= 2) continue;
+      const scenario = plan?.scenarios.find((s) => s.id === inv.scenarioId) ?? null;
+      const p = await createCodeFixProposal({ qeJob: { id: jobId, projectId: opJob.projectId, requestedBy: opJob.requestedBy ?? null }, investigation: inv, criteria: scenario?.criteria ?? [], config: codeFix });
+      await recordQeArtifact({
+        jobId, stage: 'repair', type: 'pr_proposal', path: `qe/${jobId}/proposal-${p.devAgentRunId}.json`,
+        meta: { devAgentRunId: p.devAgentRunId, operatorJobId: p.operatorJobId, testCaseId: inv.testCaseId, testTitle: inv.testTitle, scenarioId: inv.scenarioId, objective: inv.objective, criteria: scenario?.criteria ?? [], explanation: inv.explanation, eligibility: eligibility.reason, targetRepo: codeFix.targetRepo, testCommand: codeFix.testCommand ?? null },
+      });
+      proposals.push({ devAgentRunId: p.devAgentRunId, testTitle: inv.testTitle });
+    }
+  }
+
+  const count = (c: string) => investigations.filter((i) => i.category === c).length;
+  const allowList = decisions.filter((d) => d.action === 'auto_repair').map((d) => d.testResultId);
+  const summary = `${investigations.length} failure(s) investigated: ${count('product_defect')} suspected product defect(s) escalated${proposals.length ? ` (${proposals.length} code-fix proposal(s) started for review)` : codeFixDisabled && count('product_defect') ? ' (automatic code fixes are disabled)' : ''}, ${count('test_defect')} test defect(s) (${allowList.length} safely auto-repairable), ${count('environment')} environment, ${count('blocked_inconclusive')} inconclusive`;
+  await recordQeArtifact({
+    jobId, stage: 'repair', type: 'report', path: `qe/${jobId}/failure-intel-${runId}.json`, testRunId: runId,
+    meta: { kind: 'failure-intel', runId, summary, investigations, decisions, analyzerLimitation: analysis.limitation },
+  });
+  return { allowList, summary, productDefects: count('product_defect') };
+}
+
+async function qeContinuePipeline(opJob: OpJobCtx, state: AutonomousQaState, qReDelay: ReDelayFn) {
+  const jobId = opJob.id;
+  if (state.stage === 'wait_initial_run') {
+    const result = await waitAutonomousRun(opJob, state, qReDelay);
+    const exec = qeExecutionOutcome(result);
+    if (state.excludedTests?.length && exec.outcome === 'succeeded') {
+      exec.outcome = 'partial';
+      exec.reason = `${exec.reason}; ${state.excludedTests.length} test(s) NOT executed - side effects not approved: ${state.excludedTests.join(', ')}`;
+    } else if (state.excludedTests?.length) {
+      exec.reason = `${exec.reason}; ${state.excludedTests.length} test(s) not executed (side effects not approved)`;
+    }
+    await recordQeArtifact({
+      jobId, stage: 'execute', type: 'execution_result', testRunId: state.initialRunId,
+      path: `runs/${state.initialRunId}/playwright-report.json`,
+      meta: { phase: 'initial', status: result.status, summary: result.summary, error: result.error, ...(await qeScenarioOutcomes(jobId, state.initialRunId, state.excludedTests ?? [])) },
+    });
+    await finishStage(jobId, 'execute', exec.outcome, exec.reason, { runId: state.initialRunId, summary: result.summary });
+    if (exec.outcome === 'unverified') return;
+    if (result.status === 'succeeded') {
+      await recordAutonomousFullSuitePass(opJob, state, result);
+      await finishStage(jobId, 'repair', 'skipped', 'No failures to repair');
+      return;
+    }
+    await startStage(jobId, 'repair');
+    const intel = await qeInvestigateFailures(opJob, state.initialRunId, state);
+    if (!intel.allowList.length) throw new QeStageError('repair', 'blocked', intel.summary);
+    await continueAutonomousAfterFailedRun(opJob, qReDelay, { ...state, repairAllowList: intel.allowList }, state.initialRunId);
+    return;
+  }
+  if (state.stage === 'wait_repair') return waitAutonomousRepair(opJob, qReDelay, state);
+  if (state.stage === 'wait_targeted_verify') return waitAutonomousTargetedVerify(opJob, qReDelay, state);
+  if (state.stage === 'wait_full_verify') {
+    await waitAutonomousFullSuiteVerify(opJob, qReDelay, state);
+    const runId = state.runId ?? state.initialRunId;
+    await recordQeArtifact({
+      jobId, stage: 'repair', type: 'execution_result', testRunId: runId,
+      path: `runs/${runId}/playwright-report.json`,
+      meta: { phase: 'full-suite-verification', summary: await getRunSummary(runId), ...(await qeScenarioOutcomes(jobId, runId, state.excludedTests ?? [])) },
+    });
+    await finishStage(jobId, 'repair', 'succeeded', `${state.healedCount ?? 0} test(s) repaired; full suite re-verified passing`);
+  }
+}
+
+async function qeReview(opJob: OpJobCtx) {
+  const jobId = opJob.id;
+  const exec = await stageOutcome(jobId, 'execute');
+  if (!exec || ['pending', 'skipped', 'canceled', 'running'].includes(exec)) return;
+
+  const repairs = await prisma.operatorTask.findMany({ where: { jobId, type: 'repair' }, orderBy: { createdAt: 'asc' } });
+  const recorded = await prisma.operatorArtifact.count({ where: { jobId, type: 'repair_attempt' } });
+  if (!recorded) {
+    for (const r of repairs) {
+      await recordQeArtifact({
+        jobId, stage: 'repair', type: 'repair_attempt', path: `jobs/${jobId}/repair/${r.id}`,
+        meta: { taskId: r.id, status: r.status, error: r.error, input: r.inputJson, output: r.outputJson },
+      });
+    }
+  }
+
+  if (!(await startStage(jobId, 'review'))) return;
+  const stages = await prisma.operatorTask.findMany({ where: { jobId, type: 'stage' }, orderBy: { stageOrder: 'asc' }, select: { stageKey: true, outcome: true, outcomeReason: true } });
+  const runTasks = await prisma.operatorTask.findMany({ where: { jobId, testRunId: { not: null } }, orderBy: { createdAt: 'asc' }, select: { type: true, testRunId: true, status: true, inputJson: true } });
+  await recordQeArtifact({
+    jobId, stage: 'review', type: 'report', path: `qe/${jobId}/review.json`,
+    meta: {
+      stages: stages.map((s) => ({ stage: s.stageKey, outcome: s.outcome, reason: s.outcomeReason })),
+      testRuns: runTasks.map((t) => ({ taskType: t.type, testRunId: t.testRunId, status: t.status, phase: (t.inputJson as any)?.phase ?? null })),
+      repairAttempts: repairs.length,
+    },
+  });
+  await finishStage(jobId, 'review', 'succeeded', 'Results compiled for review. PR proposals can be prepared here; publishing always requires explicit approval.');
 }
 
 async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
@@ -1109,6 +1809,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
   await enqueueRun(run.id, {
     projectId: opJob.projectId,
+    ...(ctx.workflowParentId ? { workflowRunId: ctx.workflowParentId } : {}),
     baseUrl: inferredBaseUrl,
     mode: inferredMode as 'regular' | 'ai',
     file: resolvedFile,
@@ -1154,7 +1855,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
   const blocked      = classifications.filter((c) => c.type === 'blocked');
 
   // Route self-healable failures into Journey 1 via the existing repair job
-  if (selfHealable.length > 0) {
+  if (selfHealable.length > 0 && (!ctx.workflowParentId || allowsAutomaticRecovery(ctx.autonomyLevel))) {
     console.log(
       `[operator-worker] qa: routing ${selfHealable.length} self-healable failure(s) to repair for run ${run.id}`
     );
@@ -1210,6 +1911,7 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
 
       await enqueueRun(retestRun.id, {
         projectId: opJob.projectId,
+        ...(ctx.workflowParentId ? { workflowRunId: ctx.workflowParentId } : {}),
         baseUrl: inferredBaseUrl,
         mode: inferredMode as 'regular' | 'ai',
         file: resolvedFile,
@@ -1252,13 +1954,11 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
                 total: retestResults.length,
               };
 
-              // Persist executionAfter
-              await prisma.testHealingAttempt.updateMany({
-                where: { id: { in: attempts.map((a) => a.id) } },
-                data: { executionAfter: retestSummary as any },
-              });
+              // Persist executionAfter; a repair succeeds only if this retest passed.
+              const retestOutcome = await finalizeRepairVerification(prisma, attempts.map((a) => a.id), retestSummary);
+              if (retestOutcome === REPAIR_FAILED) console.warn(`[operator-worker] repair_failed: ${describeVerification(retestSummary)} - no PR proposal for job ${opJob.id}`);
 
-              const files = await Promise.all(
+              const files = retestOutcome === REPAIR_FAILED ? [] : await Promise.all(
                 attempts
                   .filter((a) => a.targetSpec)
                   .map(async (a) => ({
@@ -1273,29 +1973,13 @@ async function runQaJob(opJob: OpJobCtx, reDelay: ReDelayFn) {
                 const prTitle = `TestMind: repaired ${attempts.length} test(s)`;
                 const prBody = buildRepairPrBody({ attempts, retestSummary });
 
-                const { commitSha } = await pushSpecFilesToBranch({
-                  ...gh, branch: branchName, baseBranch: gh.defaultBranch, files,
-                  commitMessage: `fix(tests): self-heal repair — ${attempts.length} spec(s) [job ${opJob.id.slice(0, 8)}]`,
-                });
-
-                if (minConf >= 95) {
-                  const { prNumber, prUrl } = await ensurePullRequest({
-                    ...gh, branch: branchName, baseBranch: gh.defaultBranch,
-                    title: prTitle, body: prBody, draft: false,
-                  });
-                  await postPrComment({ ...gh, prNumber,
-                    body: `✅ Retest passed after repair (commit \`${commitSha.slice(0, 7)}\`). [View PR](${prUrl})`,
-                  });
-                } else if (minConf >= 80) {
-                  const { prNumber, prUrl } = await ensurePullRequest({
-                    ...gh, branch: branchName, baseBranch: gh.defaultBranch,
-                    draft: true,
-                    title: `[DRAFT] ${prTitle}`,
-                    body: `⚠️ Confidence: ${minConf}% — QA review recommended.\n\n${prBody}`,
-                  });
-                  await postPrComment({ ...gh, prNumber,
-                    body: `⚠️ Draft PR opened (confidence ${minConf}%). Manual review required before merge.`,
-                  });
+                // B7: autonomous writeback never publishes on its own. Repairs become a PR proposal
+                // that waits for explicit approval bound to the exact repo/branch/diff.
+                void branchName; void prTitle; void prBody;
+                if (minConf >= 80) {
+                  const { createPrProposal } = await import('../lib/pr-publication-store.js');
+                  const proposal = await createPrProposal({ projectId: opJob.projectId, jobId: opJob.id, kind: 'test_repair', source: { type: 'legacy_writeback', attemptIds: attempts.map((a) => a.id) }, actor: opJob.requestedBy ?? 'system' });
+                  console.log(`[operator-worker] repaired tests ready for review - PR proposal ${proposal.id} is ${proposal.status}; publishing requires explicit approval`);
                 } else {
                   await prisma.testHealingAttempt.updateMany({
                     where: { id: { in: attempts.map((a) => a.id) } },
@@ -1373,6 +2057,8 @@ async function classifyRunFailures(runId: string): Promise<FailureClassification
       msg.includes('strict mode violation');
 
     const likelyInfra =
+      msg.includes('no tests found') ||
+      msg.includes('no test files found') ||
       msg.includes('timeout') ||
       msg.includes('net::') ||
       msg.includes('econnrefused') ||
@@ -1546,8 +2232,9 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn): Promise<{ heal
   );
 
   await Promise.all(
-    failingResults.map((r, i) =>
-      enqueueSelfHeal({
+    failingResults.map(async (r, i) => {
+      await prisma.operatorTask.update({ where: { id: repairTasks[i].id }, data: { inputJson: { testResultId: r.id, healingAttemptId: healAttempts[i].id } } });
+      return enqueueSelfHeal({
         runId: targetRunId!,
         testResultId: r.id,
         testCaseId: r.testCase!.id,
@@ -1560,7 +2247,8 @@ async function runRepairJob(opJob: OpJobCtx, reDelay: ReDelayFn): Promise<{ heal
         console.log(
           `[operator-worker] repair: enqueued self-heal for "${r.testCase?.title}" (attempt ${healAttempts[i].id}, task ${repairTasks[i].id})`
         );
-      })
+      });
+    }
     )
   );
 
@@ -1649,7 +2337,37 @@ async function checkOrDelayRepairs(
 
 // ── Discovery job ─────────────────────────────────────────────────────────────
 
+// Unchanged behavior for every existing caller: discover+plan then generate, back to back.
+// Split only so an Autonomous QE run can checkpoint (and optionally hold for plan review)
+// between planning and spec generation.
 async function runDiscoveryJob(opJob: OpJobCtx) {
+  return generateFromPlan(opJob, await discoverAndPlan(opJob));
+}
+
+// Serializable hand-off between the two halves (persisted as the QE plan artifact).
+type DiscoveryPlanState = {
+  baseUrl: string;
+  ownerId: string;
+  discoverTaskId: string;
+  checkedRoutes: Array<{ route: string; status: number; reachable: boolean }>;
+  uncovered: string[];
+  existingTestCount: number;
+  plan: any;
+  planCases: any[];
+  mergedSharedSteps: Record<string, any>;
+  applicationModelDiff: unknown;
+  /** B2: what this crawl added to / changed in the Application Brain. */
+  knowledgeDiff?: KnowledgeDiff;
+  observedAt?: string;
+};
+
+async function discoverAndPlan(opJob: OpJobCtx, opts: {
+  requirement?: { id: string; title: string; priority?: string };
+  /** B2: known routes to revisit first (incremental discovery). */
+  seedRoutes?: string[];
+  /** B2: a deliberately partial crawl (e.g. one page) - pages it never tried to visit are not counted as missing. */
+  scoped?: boolean;
+} = {}): Promise<DiscoveryPlanState> {
   const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
   const maxPages = Number(ctx.maxPages ?? 50);
 
@@ -1678,7 +2396,15 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
   });
 
   // ── Step 1: Playwright crawl ───────────────────────────────────────────────
-  const { routes, forms, scans } = await discoverSite(baseUrl, [], { cookieString, maxPages });
+  let graphOptions = {};
+  if (ctx.workflowParentId) {
+    const { authorizedWorkflowContext } = await import('../lib/workflow-execution-policy.js');
+    const { validateWorkflowTarget } = await import('../lib/workflow-http.js');
+    const scope = await authorizedWorkflowContext(ctx.workflowParentId, opJob.projectId);
+    await validateWorkflowTarget(baseUrl, scope.environment);
+    graphOptions = { signal: AbortSignal.timeout(AUTONOMOUS_RUN_TIMEOUT_MS), validateRequest: async (url: string) => { await validateWorkflowTarget(url, scope.environment ?? { baseUrl }); } };
+  }
+  const { routes, forms, scans, apis: observedApiCalls, thirdPartyHosts, redirects, attempted } = await discoverSite(baseUrl, opts.seedRoutes ?? [], { cookieString, maxPages, ...graphOptions });
 
   // ── Project Memory: read prior application-model facts, diff against this cycle's forms.
   // Forms without a routeHint can't be attributed to a page and are skipped. Log/diff only -
@@ -1690,11 +2416,26 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     const route = normalizeRouteHint(f.routeHint);
     (formsByRoute[route] ??= []).push({ selector: f.selector, action: f.action, fields: f.fields });
   }
-  const applicationModelUpdate = computeApplicationModelUpdate(
-    normalizeApplicationModel(project?.applicationModel),
-    formsByRoute,
-    new Date().toISOString()
-  );
+  const observedAt = new Date().toISOString();
+  const priorModel = normalizeApplicationModel(project?.applicationModel);
+  const applicationModelUpdate = computeApplicationModelUpdate(priorModel, formsByRoute, observedAt);
+  // B2: every crawled page (not only pages with forms) gets access state + observed elements,
+  // captured API traffic is merged with provenance, and recorded stories are re-mapped against
+  // the fresh evidence. A scoped crawl doesn't count unvisited pages as missing.
+  const knowledge = computeCrawlKnowledgeUpdate(applicationModelUpdate.next, {
+    scans, apiCalls: observedApiCalls ?? [], thirdPartyHosts, redirects, observedAt, runId: opJob.id,
+  });
+  // A bounded crawl only learns that a page is missing if it actually requested it. Known pages
+  // this crawl never tried keep their prior miss count (scoped runs never count misses at all).
+  const requested = new Set((attempted ?? []).map((u) => { try { return normalizeRouteHint(new URL(u).pathname || '/'); } catch { return u; } }));
+  const observedNow = new Set(knowledge.diff.pagesObserved);
+  for (const route of applicationModelUpdate.diff.missingPages) {
+    if (observedNow.has(route)) continue; // seen this crawl: misses already reset to 0
+    if (!opts.scoped && requested.has(route)) continue; // requested but not seen: a real miss
+    const prior = priorModel.pages[route];
+    if (prior && knowledge.next.pages[route]) knowledge.next.pages[route] = { ...knowledge.next.pages[route], consecutiveMisses: prior.consecutiveMisses };
+  }
+  const nextApplicationModel = refreshStoryEvidence(knowledge.next, observedAt);
   console.log(
     `[operator-worker] discovery application-model diff for project ${opJob.projectId}:`,
     `new=${applicationModelUpdate.diff.newPages.length}`,
@@ -1727,7 +2468,7 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
     {
       env: { baseUrl },
       component: { id: opJob.projectId, type: 'UI' },
-      requirement: { id: 'discovery', title: 'Auto-generated from discovery', priority: 'P2' },
+      requirement: (opts.requirement ?? { id: 'discovery', title: 'Auto-generated from discovery', priority: 'P2' }) as any,
       risks: { likelihood: 0.3, impact: 0.5 },
       discovered: { routes, forms, scans },
     },
@@ -1754,12 +2495,35 @@ async function runDiscoveryJob(opJob: OpJobCtx) {
 
   await prisma.project.update({
     where: { id: opJob.projectId },
-    data: { sharedSteps: mergedSharedSteps as any, applicationModel: applicationModelUpdate.next as any },
+    data: { sharedSteps: mergedSharedSteps as any, applicationModel: nextApplicationModel as any },
   });
 
+  return {
+    baseUrl,
+    ownerId: project?.ownerId ?? 'unknown',
+    discoverTaskId: discoverTask.id,
+    checkedRoutes,
+    uncovered,
+    existingTestCount: existingTests.length,
+    plan,
+    planCases,
+    mergedSharedSteps,
+    applicationModelDiff: applicationModelUpdate.diff,
+    knowledgeDiff: knowledge.diff,
+    observedAt,
+  };
+}
+
+async function generateFromPlan(opJob: OpJobCtx, s: DiscoveryPlanState) {
+  const ctx = (opJob.contextJson ?? {}) as Record<string, any>;
+  const { baseUrl, plan, planCases, mergedSharedSteps, checkedRoutes, uncovered } = s;
+  const discoverTask = { id: s.discoverTaskId };
+  const existingTests = { length: s.existingTestCount };
+  const applicationModelUpdate = { diff: s.applicationModelDiff as any };
+
   // ── Step 4: Write spec files to disk (with the seeded store active) ───────
-  const ownerId = project?.ownerId ?? 'unknown';
-  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId);
+  const ownerId = s.ownerId;
+  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId, ...(ctx.workflowParentId ? [String(ctx.generatedScope).replace(/[^a-zA-Z0-9_-]/g, '_')] : []));
   fsSync.mkdirSync(outDir, { recursive: true });
 
   const prevSharedStepsEnv = process.env.TM_PROJECT_SHARED_STEPS;
@@ -2053,7 +2817,10 @@ async function checkOrDelayScan(
  */
 export async function requestApproval(opts: {
   jobId: string;
-  taskId: string;
+  // Optional: unset for a job-level gate with no OperatorTask of its own (e.g. a one-time
+  // "authorize this run" check). OperatorApproval.taskId is itself an optional FK - passing
+  // a non-task id here (such as the jobId) violates OperatorApproval_taskId_fkey.
+  taskId?: string;
   requestedBy: string;
   actionType: 'run_terminal' | 'git_push' | 'patch_code' | 'security_active_test';
   description: string;
@@ -2106,3 +2873,37 @@ operatorWorker.on('failed', (job, err) => {
 operatorWorker.on('completed', (job) => {
   console.log(`[operator-worker] job ${job?.id} completed`);
 });
+
+// ── Autonomous QE recovery (B1) ───────────────────────────────────────────────
+// A QE run whose BullMQ job was lost or failed (e.g. "stalled more than allowable limit"
+// across a worker restart) is re-enqueued from its DB checkpoint, so completed stages are
+// never repeated. Runs with a live waiting/delayed/active job are untouched.
+async function recoverQeRunsOnce() {
+  try {
+    const ids = await recoverQeRuns({
+      getJobState: async (id) => {
+        const j = await operatorQueue.getJob(id);
+        return j ? await j.getState() : null;
+      },
+      removeJob: async (id) => {
+        const j = await operatorQueue.getJob(id);
+        await j?.remove();
+      },
+      enqueue: async (id, phase) => {
+        await operatorQueue.add(
+          'execute',
+          { operatorJobId: id, ...(phase ? { resumePhase: phase as ResumePhase } : {}) } satisfies OperatorJobPayload,
+          { jobId: id, removeOnComplete: true, removeOnFail: false, attempts: 1 }
+        );
+      },
+    });
+    if (ids.length) console.log(`[operator-worker] recovered ${ids.length} Autonomous QE run(s) from DB checkpoint: ${ids.join(', ')}`);
+  } catch (err) {
+    console.warn('[operator-worker] Autonomous QE recovery sweep failed', err);
+  }
+}
+if (process.env.TM_QE_RECOVERY !== '0') {
+  setTimeout(recoverQeRunsOnce, 5_000).unref();
+  setInterval(recoverQeRunsOnce, 60_000).unref();
+}
+export { recoverQeRunsOnce };

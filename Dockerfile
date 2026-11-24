@@ -117,4 +117,15 @@ COPY tm-ai.playwright.config.mjs ./tm-ai.playwright.config.mjs
 # never sees this display directly either way - both headed and headless modes stream frames to
 # the browser via CDP screencast - so xvfb-run wraps the whole process in a virtual framebuffer
 # instead of a real display, satisfying the launch requirement without changing any UX.
-CMD ["sh", "-c", "pnpm --filter api exec prisma db push --accept-data-loss && xvfb-run -a --server-args='-screen 0 1280x800x24' node apps/api/dist/index.js"]
+#
+# Deployment-safety fix: this previously ran `prisma db push --accept-data-loss`, which
+# bypasses migration history and can silently drop/alter columns on every single boot.
+# `migrate deploy` only applies pending, already-reviewed migrations and no-ops when none
+# are pending, making it safe to run on every container start. REQUIRES the production
+# database to already have a populated `_prisma_migrations` table matching its real current
+# schema before this image is deployed - a database that has only ever been synced via
+# `db push` has no such table, and `migrate deploy` will fail (or attempt to recreate
+# already-existing objects) until it is baselined with `prisma migrate resolve --applied
+# <migration>` for every migration already reflected in the live schema. Do not deploy this
+# image until that baseline has been confirmed against the real production database.
+CMD ["sh", "-c", "pnpm --filter api exec prisma migrate deploy && xvfb-run -a --server-args='-screen 0 1280x800x24' node apps/api/dist/index.js"]

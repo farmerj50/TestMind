@@ -39,6 +39,13 @@ const EnvSchema = z.object({
   TM_AUTONOMOUS_QA_ENABLED: z.string().optional(),
   START_RECORDER_HELPER: z.string().optional(),
   TESTMIND_APP_URL: z.string().optional().default(""),
+
+  // Evaluation Engine v1 (Phase 1) — one shared, deployment-wide credential for the standalone
+  // apps/eval-service process, not a per-project ProjectSecret (this isn't user-supplied like
+  // an OpenAI key). Optional at this layer so local dev without the eval-service running doesn't
+  // fail boot; evaluation-service.ts throws a clear error lazily at call time if either is unset.
+  TM_EVAL_SERVICE_URL: z.string().optional(),
+  TM_EVAL_SERVICE_API_KEY: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

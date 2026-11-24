@@ -64,6 +64,36 @@ export type ApplicationModelPage = {
    * the existing pages-merge signature/call site is untouched by this addition.
    */
   linksTo?: string[];
+  /** B2: how the page responded to the crawler (public / auth-gated / unreachable). Observed fact with provenance. */
+  access?: PageAccess;
+  /** B2: what the crawler actually saw on the page (bounded). Observed fact with provenance. */
+  observed?: PageObservation;
+};
+
+/** Where a fact came from. Only 'crawl', 'api_spec', 'repository' and 'test_run' are observations; nothing here is inferred. */
+export type KnowledgeSource = "crawl" | "api_spec" | "repository" | "user_story" | "test_run";
+
+export type PageAccess = {
+  /** redirected = the app sent this route elsewhere for a signed-out visitor; why is NOT assumed. */
+  state: "public" | "auth_required" | "login_page" | "unreachable" | "redirected";
+  httpStatus: number;
+  /** Set when the requested route redirected elsewhere (e.g. to a login page). */
+  finalRoute?: string;
+  evidence: string;
+  source: "crawl";
+  observedAt: string;
+  /** Operator job (QE run) that made the observation, when known. */
+  runId?: string;
+};
+
+export type PageObservation = {
+  title?: string;
+  headings: string[];
+  actions: string[];
+  fields: string[];
+  source: "crawl";
+  observedAt: string;
+  runId?: string;
 };
 
 export type ApplicationModelDiff = {
@@ -79,6 +109,11 @@ export type ApplicationModelDiff = {
 export type ApplicationModelApi = {
   method: string;
   path: string;
+  /** B2: 'crawl' = captured from real browser traffic during discovery; absent/'api_spec' = imported spec. */
+  source?: "api_spec" | "crawl";
+  origin?: string;
+  statuses?: number[];
+  observedOnRoutes?: string[];
   /** sha1 of `${method} ${path}` - a v1-minimal identity; see computeApiUpdate. */
   signature: string;
   firstSeenAt: string;
@@ -143,6 +178,72 @@ export type ApplicationModelStore = {
   resources: Record<string, ApplicationModelResource>;
   workflows: Record<string, ApplicationModelWorkflow>;
   testLinks: Record<string, ApplicationModelTestLink>;
+  /** B2: user stories (expected behavior). Present only once a story has been recorded. */
+  stories?: Record<string, ApplicationModelStory>;
+  /** B2: routes declared in source code (repository inspection) - declared, never runtime-observed. */
+  declared?: DeclaredRoutes;
+  /** B5: latest failure investigation per test (with bounded history and repair outcome). */
+  investigations?: Record<string, InvestigationRecord>;
+  /** B5: suspected product defects awaiting human review - never auto-fixed. */
+  defects?: Record<string, DefectRecord>;
+};
+
+export type InvestigationSummary = { category: string; cause: string; confidence: string; runId: string; at: string };
+export type InvestigationRecord = {
+  testCaseId: string;
+  testTitle: string;
+  scenarioId: string | null;
+  route: string | null;
+  latest: InvestigationSummary & { explanation: string; repair?: { status: "repaired_verified" | "repair_failed" | "repair_rejected" | "escalated" | "held"; detail: string; at: string } };
+  history: InvestigationSummary[];
+};
+export type DefectRecord = {
+  testCaseId: string;
+  testTitle: string;
+  scenarioId: string | null;
+  route: string | null;
+  explanation: string;
+  evidence: string[];
+  status: "needs_review";
+  firstSeenAt: string;
+  lastSeenAt: string;
+  occurrences: number;
+  runIds: string[];
+  /** B6: code-fix proposals attempted for this defect (Dev Agent runs, never auto-applied). */
+  proposals?: Array<{ devAgentRunId: string; qeJobId: string; createdAt: string }>;
+};
+
+export type StoryCriterionEvidence = { routeHint: string; matched: string[]; source: "crawl"; observedAt: string };
+export type StoryCriterion = {
+  id: string;
+  text: string;
+  /** 'elements_observed' means referenced UI elements were SEEN - the behavior itself is still unverified until a test passes. */
+  status: "elements_observed" | "no_evidence";
+  evidence: StoryCriterionEvidence[];
+};
+export type ApplicationModelStory = {
+  key: string;
+  title: string;
+  text: string;
+  role?: string;
+  goal?: string;
+  benefit?: string;
+  criteria: StoryCriterion[];
+  source: "user_story";
+  createdAt: string;
+  updatedAt: string;
+  /** QE run that recorded/last mapped the story. */
+  runId?: string;
+};
+
+export type DeclaredRoutes = {
+  repo: string;
+  inspectedAt: string;
+  source: "repository";
+  uiRoutes: Array<{ path: string; file: string }>;
+  apiRoutes: Array<{ method: string; path: string; file: string }>;
+  testFiles: string[];
+  truncated: boolean;
 };
 
 const EMPTY_STORE: ApplicationModelStore = {
@@ -175,6 +276,10 @@ export function normalizeApplicationModel(raw: unknown): ApplicationModelStore {
     resources: asRecord(candidate.resources) as Record<string, ApplicationModelResource>,
     workflows: asRecord(candidate.workflows) as Record<string, ApplicationModelWorkflow>,
     testLinks: asRecord(candidate.testLinks) as Record<string, ApplicationModelTestLink>,
+    ...(candidate.stories && typeof candidate.stories === "object" ? { stories: candidate.stories as Record<string, ApplicationModelStory> } : {}),
+    ...(candidate.declared && typeof candidate.declared === "object" ? { declared: candidate.declared as DeclaredRoutes } : {}),
+    ...(candidate.investigations && typeof candidate.investigations === "object" ? { investigations: candidate.investigations as Record<string, InvestigationRecord> } : {}),
+    ...(candidate.defects && typeof candidate.defects === "object" ? { defects: candidate.defects as Record<string, DefectRecord> } : {}),
   };
 }
 
@@ -294,6 +399,8 @@ export function computeApplicationModelUpdate(
       lastChangedAt: changed ? discoveredAt : prior.lastChangedAt,
       consecutiveMisses: 0,
       linksTo: prior.linksTo,
+      ...(prior.access ? { access: prior.access } : {}),
+      ...(prior.observed ? { observed: prior.observed } : {}),
     };
     if (changed) diff.changedPages.push(routeHint);
     else diff.unchangedPages.push(routeHint);
