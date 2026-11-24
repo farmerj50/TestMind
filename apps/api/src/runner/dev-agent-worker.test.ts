@@ -687,3 +687,43 @@ test("ordinary Dev Agent runs get no baseline (behavior unchanged)", async (t) =
   assert.equal(testRuns, 1);
   assert.equal(await prisma.devAgentIteration.count({ where: { devAgentRunId: ctx.run.id, phase: "baseline" } }), 0);
 });
+
+test("no Playwright in the repo: a minimal setup is provisioned, disclosed, and the generated spec really executes", async (t) => {
+  const ctx = await setupRun({ status: "queued", baseUrl: "http://127.0.0.1:9" });
+  t.after(ctx.cleanup);
+  let calls = 0;
+  let provisionedWith: any = null;
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    requestApproval: async () => "approved",
+    resolveDiscovery: async () => ({ context: null, unavailableReason: "crawl-error" }),
+    codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "src/a.ts", content: "x" }], costUsd: 0.001 }),
+    detectTestCommand: () => (++calls === 1
+      ? { command: null, provisionPlaywright: { specs: ["e2e/a.spec.ts"] }, reason: "no Playwright test setup." }
+      : { command: "npx --no-install playwright test e2e/a.spec.ts", framework: "playwright", packageManager: "npm", reason: "Playwright via npm" }),
+    provisionPlaywright: async (_wt, opts) => { provisionedWith = opts; return { ok: true, dependency: "@playwright/test@1.58.2", files: ["package.json", "package-lock.json", "playwright.config.ts"], output: "ok" }; },
+    runTestCommand: async () => ({ passed: true, output: "1 passed" }),
+  });
+  assert.deepEqual(provisionedWith, { baseUrl: "http://127.0.0.1:9", specs: ["e2e/a.spec.ts"] });
+  const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(run?.status, "succeeded");
+  const [it] = await prisma.devAgentIteration.findMany({ where: { devAgentRunId: ctx.run.id } });
+  assert.deepEqual((it.testResult as any).provisioned, { dependency: "@playwright/test@1.58.2", files: ["package.json", "package-lock.json", "playwright.config.ts"] });
+  assert.match((it.testResult as any).output, /Added minimal Playwright test setup/);
+});
+
+test("a failed Playwright provisioning ends 'unverified' with the reason and never executes", async (t) => {
+  const ctx = await setupRun({ status: "queued" });
+  t.after(ctx.cleanup);
+  let ran = false;
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    requestApproval: async () => "approved",
+    codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "src/a.ts", content: "x" }], costUsd: 0.001 }),
+    detectTestCommand: () => ({ command: null, provisionPlaywright: { specs: ["e2e/a.spec.ts"] }, reason: "no Playwright test setup." }),
+    provisionPlaywright: async () => ({ ok: false, error: "npm install exited 1: registry unreachable" }),
+    runTestCommand: async () => { ran = true; return { passed: true, output: "" }; },
+  });
+  assert.equal(ran, false);
+  const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(run?.status, "unverified");
+  assert.match(run?.error ?? "", /Provisioning a Playwright setup failed: npm install exited 1/);
+});

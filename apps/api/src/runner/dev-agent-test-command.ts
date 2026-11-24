@@ -10,7 +10,7 @@ import { TEST_FILE_PATTERN } from "./dev-agent-objective.js";
 export type TestFramework = "playwright" | "vitest" | "jest" | "script";
 export type DetectedTestCommand =
   | { command: string; framework: TestFramework; packageManager: PackageManager | null; reason: string }
-  | { command: null; reason: string };
+  | { command: null; reason: string; provisionPlaywright?: { specs: string[] } };
 
 // npm's placeholder "test" script always fails; it is not a test configuration.
 const NPM_PLACEHOLDER_TEST = /no test specified/i;
@@ -24,7 +24,10 @@ function readText(file: string): string | null {
   try { return fs.readFileSync(file, "utf8"); } catch { return null; }
 }
 
-export function detectTestCommand(worktreePath: string, changedFiles: string[]): DetectedTestCommand {
+const PLAYWRIGHT_IMPORT = /(from\s+|require\(\s*|import\(\s*)["']@?playwright\/test["']/;
+
+/** Playwright output (traces, screenshots) goes to `outputDir`, outside the worktree, so it never enters the change. */
+export function detectTestCommand(worktreePath: string, changedFiles: string[], opts: { outputDir?: string } = {}): DetectedTestCommand {
   const raw = readText(path.join(worktreePath, "package.json"));
   if (raw === null) return { command: null, reason: "No package.json in the repository, so no test framework or test command could be detected." };
   let pkg: any;
@@ -38,13 +41,14 @@ export function detectTestCommand(worktreePath: string, changedFiles: string[]):
   // Only the test files this run created/modified that still exist - run them, not the whole suite.
   const specs = [...new Set(changedFiles.map((f) => f.replace(/\\/g, "/")))]
     .filter((f) => TEST_FILE_PATTERN.test(f) && fs.existsSync(path.join(worktreePath, f)));
-  const playwrightSpecs = specs.filter((f) => /@playwright\/test/.test(readText(path.join(worktreePath, f)) ?? ""));
+  const playwrightSpecs = specs.filter((f) => PLAYWRIGHT_IMPORT.test(readText(path.join(worktreePath, f)) ?? ""));
 
   if (playwrightSpecs.length) {
-    if (!deps["@playwright/test"]) {
-      return { command: null, reason: `Generated Playwright tests (${playwrightSpecs.join(", ")}) but the repository does not declare @playwright/test, so they cannot be executed.` };
+    if (!deps["@playwright/test"] && !deps.playwright) {
+      return { command: null, provisionPlaywright: { specs: playwrightSpecs }, reason: `Generated Playwright tests (${playwrightSpecs.join(", ")}) but the repository has no Playwright test setup.` };
     }
-    return { command: `${exec} playwright test ${playwrightSpecs.map(quote).join(" ")}`, framework: "playwright", packageManager: pm, reason: `Playwright (@playwright/test) via ${pmLabel}, running the generated specs` };
+    const out = opts.outputDir ? ` --output ${quote(opts.outputDir.replace(/\\/g, "/"))}` : "";
+    return { command: `${exec} playwright test ${playwrightSpecs.map(quote).join(" ")}${out}`, framework: "playwright", packageManager: pm, reason: `Playwright (@playwright/test) via ${pmLabel}, running the generated specs` };
   }
   if (specs.length && deps.vitest) {
     return { command: `${exec} vitest run ${specs.map(quote).join(" ")}`, framework: "vitest", packageManager: pm, reason: `Vitest via ${pmLabel}, running the changed tests` };
@@ -57,4 +61,21 @@ export function detectTestCommand(worktreePath: string, changedFiles: string[]):
     return { command: RUN_TEST[pm ?? "npm"], framework: "script", packageManager: pm, reason: `package.json "test" script via ${pmLabel}` };
   }
   return { command: null, reason: "No executable test configuration was found (no supported test framework for the changed files and no package.json \"test\" script)." };
+}
+
+/** One instruction for the code phase: which test framework generated tests must use. */
+export function describeTestSetup(worktreePath: string): string {
+  const raw = readText(path.join(worktreePath, "package.json"));
+  let deps: Record<string, string> = {};
+  try { const pkg = raw ? JSON.parse(raw) : {}; deps = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) }; } catch { /* treated as no framework */ }
+  if (deps["@playwright/test"] || deps.playwright) {
+    return 'This repository already uses Playwright. Write end-to-end tests as Playwright specs (*.spec.ts) in its existing test folder, importing from "@playwright/test".';
+  }
+  const other = deps.vitest ? "Vitest" : deps.jest ? "Jest" : null;
+  return [
+    other ? `This repository uses ${other} for unit tests but has no end-to-end test framework.` : "This repository has no test framework.",
+    'Write end-to-end tests as Playwright specs: files under e2e/ named *.spec.ts, importing { test, expect } from "@playwright/test".',
+    'Use relative paths with page.goto (for example page.goto("/")) - the base URL is configured for you.',
+    "Do not add package.json, lockfile or Playwright config changes - TestMind provisions a minimal Playwright setup and discloses it in the proposal.",
+  ].join(" ");
 }

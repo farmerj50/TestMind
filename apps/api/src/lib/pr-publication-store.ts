@@ -84,11 +84,19 @@ export async function loadPrProposal(id: string): Promise<StoredProposal | null>
 
 type Resolved = { files: PrFile[]; baseBranch: string | null; headBranch: string; commitSha: string | null; objectives: string[]; evidence: string[]; risks: string[]; verificationInput: Parameters<typeof publishability>[1]; subject: string; repoHint?: string };
 
+/** The minimal Playwright setup a Dev Agent run added to execute its generated tests, if any. */
+export async function provisionedTestSetup(devAgentRunId: string): Promise<{ dependency: string; files: string[] } | null> {
+  const its = await prisma.devAgentIteration.findMany({ where: { devAgentRunId }, select: { testResult: true } });
+  const p = its.map((it) => (it.testResult as any)?.provisioned).find((x) => x && typeof x.dependency === "string" && Array.isArray(x.files));
+  return p ? { dependency: p.dependency, files: p.files.filter((f: unknown): f is string => typeof f === "string") } : null;
+}
+
 async function resolveSource(kind: PrKind, source: PrSource): Promise<Resolved> {
   if (source.type === "dev_agent") {
     const run = await prisma.devAgentRun.findUnique({ where: { id: source.devAgentRunId } });
     if (!run) throw new Error("Dev Agent run not found");
     const view = await getCodeFixProposal(run.id);
+    const setup = await provisionedTestSetup(run.id);
     const files: PrFile[] = [];
     let commitSha: string | null = null;
     if (run.worktreePath) {
@@ -109,6 +117,7 @@ async function resolveSource(kind: PrKind, source: PrSource): Promise<Resolved> 
         view?.baseline ? `Before the change: regression test ${view.baseline.passed ? "passed" : "failed"}` : "No baseline run",
         view?.after ? `After the change: regression test ${view.after.passed ? "passed" : "failed"}` : "Not executed after the change",
         ...(qeMeta?.explanation ? [`Diagnosis: ${qeMeta.explanation}`] : []),
+        ...(setup ? [`Test setup added so the generated tests can run: ${setup.dependency} (devDependency); files: ${setup.files.join(", ")}`] : []),
       ],
       risks: view?.risks ?? [],
       // fixStatus drives application-fix proposals; the run's real outcome drives test-only ones.
