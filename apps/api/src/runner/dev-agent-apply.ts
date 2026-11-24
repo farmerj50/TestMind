@@ -87,10 +87,14 @@ export async function applyFileOps(worktreePath: string, ops: FileOp[]): Promise
 // `git add -A && git commit` on the run's own worktree/branch. No-op (not an error) if
 // there is genuinely nothing to commit, since a "code" response could in principle be a
 // pure delete of already-deleted files or re-assert identical content.
+// Dev Agent commits always carry this fixed identity, passed per command: production containers
+// have no git user configured ("Author identity unknown"), and no global git config is changed.
+export const DEV_AGENT_GIT_IDENTITY = ["-c", "user.name=TestMind Dev Agent", "-c", "user.email=dev-agent@testmind.invalid"] as const;
+
 export async function commitChanges(worktreePath: string, message: string): Promise<{ committed: boolean }> {
   await execa("git", ["add", "-A"], { cwd: worktreePath });
   const status = await execa("git", ["status", "--porcelain"], { cwd: worktreePath });
   if (!status.stdout.trim()) return { committed: false };
-  await execa("git", ["commit", "-m", message], { cwd: worktreePath });
+  await execa("git", [...DEV_AGENT_GIT_IDENTITY, "commit", "-m", message], { cwd: worktreePath });
   return { committed: true };
 }

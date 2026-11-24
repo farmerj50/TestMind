@@ -194,3 +194,28 @@ test("a path-traversal attempt in the LLM response fails the run closed before a
   // The traversal target must never have been created anywhere relative to the worktree's parent.
   await assert.rejects(fs.stat(path.resolve(worktreeAtTimeOfAttempt, "..", "..", "etc", "passwd")));
 });
+
+test("commitChanges works where git has no user identity (production containers) and authors as the Dev Agent", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tm-dev-agent-noident-"));
+  const emptyConfig = path.join(dir, "..", `${path.basename(dir)}-gitconfig`);
+  await fs.writeFile(emptyConfig, "");
+  const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM, author: process.env.GIT_AUTHOR_NAME, email: process.env.GIT_AUTHOR_EMAIL, cname: process.env.GIT_COMMITTER_NAME, cemail: process.env.GIT_COMMITTER_EMAIL };
+  // Simulate the container: no global/system git config and no identity in the environment.
+  process.env.GIT_CONFIG_GLOBAL = emptyConfig;
+  process.env.GIT_CONFIG_NOSYSTEM = "1";
+  for (const k of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]) delete process.env[k];
+  t.after(async () => {
+    const restore = (k: string, v: string | undefined) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
+    restore("GIT_CONFIG_GLOBAL", saved.global); restore("GIT_CONFIG_NOSYSTEM", saved.nosystem);
+    restore("GIT_AUTHOR_NAME", saved.author); restore("GIT_AUTHOR_EMAIL", saved.email); restore("GIT_COMMITTER_NAME", saved.cname); restore("GIT_COMMITTER_EMAIL", saved.cemail);
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(emptyConfig, { force: true });
+  });
+  await execa("git", ["init", "-q"], { cwd: dir });
+  await assert.rejects(execa("git", ["commit", "--allow-empty", "-m", "no identity"], { cwd: dir }), /Author identity unknown|Please tell me who you are/, "reproduces the production failure without the fix");
+  await fs.writeFile(path.join(dir, "signup.spec.ts"), "export {};\n");
+  const { committed } = await commitChanges(dir, "dev-agent: iteration 1 - create signup.spec.ts");
+  assert.equal(committed, true);
+  const author = (await execa("git", ["log", "-1", "--format=%an <%ae>"], { cwd: dir })).stdout;
+  assert.equal(author, "TestMind Dev Agent <dev-agent@testmind.invalid>");
+});
