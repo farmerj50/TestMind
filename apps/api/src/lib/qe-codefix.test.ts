@@ -160,3 +160,9 @@ test("scope guard rejects unrelated large deletions, test/fixture edits and out-
   assert.ok(codeFixScopeViolations([{ path: "src/__fixtures__/user.json", additions: 1, deletions: 0 }], ["src/__fixtures__/user.json"]).some((v) => /fixtures/.test(v)));
   assert.ok(codeFixScopeViolations([{ path: "src/pages/Landing.tsx", additions: 1, deletions: 1 }], null).some((v) => /no authorized scope/.test(v)), "no scope -> relevance cannot be established");
 });
+
+test("isTestFilePath separates test-only changes from application code (Windows paths too)", async () => {
+  const { isTestFilePath } = await import("./qe-codefix.js");
+  for (const p of ["tests/signup.spec.ts", "e2e\login.spec.ts", "src/a.test.js", "__tests__/x.ts"]) assert.equal(isTestFilePath(p), true, p);
+  for (const p of ["src/app.ts", "landing.mjs", "src/testing-utils.ts"]) assert.equal(isTestFilePath(p), false, p);
+});

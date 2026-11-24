@@ -58,6 +58,8 @@ export type ChangedFile = { path: string; additions: number; deletions: number }
 
 const SENSITIVE_PATH = /(^|\/)(auth|login|session|security|crypto|secret|password|permission|rbac|payment|billing|checkout|migrations?|prisma\/schema|\.env|config\/(env|prod)|middleware|webhook)/i;
 const TEST_PATH = /(^|\/)(tests?|__tests__|e2e|testmind-generated)\/|\.(spec|test)\.[cm]?[jt]sx?$/i;
+/** True for test files (specs, test folders) - used to tell test-only Dev Agent changes from application-code changes. */
+export const isTestFilePath = (p: string) => TEST_PATH.test(p.replace(/\\/g, "/"));
 
 export function assessProposalRisk(files: ChangedFile[]): { sensitive: boolean; reasons: string[]; testFilesChanged: string[] } {
   const reasons: string[] = [];

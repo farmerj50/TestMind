@@ -13,6 +13,8 @@ import { createPrProposal, publishPrProposal, PrPublicationError } from "../lib/
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { localTestmindRepoPath, NO_LOCAL_TESTMIND_REPO_MESSAGE } from "../runner/dev-agent-worktree.js";
 import { parseGitHubRepo } from "../lib/qe-run-access.js";
+import { getCodeFixProposal } from "../lib/qe-codefix-store.js";
+import { isTestFilePath } from "../lib/qe-codefix.js";
 
 function requireUser(req: any, reply: any): string | null {
   const { userId } = getAuth(req);
@@ -368,8 +370,14 @@ export async function devAgentRoutes(app: FastifyInstance) {
     if (!["succeeded", "unverified"].includes(run.status)) return reply.code(409).send({ error: `Run must be finished to publish a PR (status: ${run.status})` });
     if (!run.operatorJobId) return reply.code(409).send({ error: "Run has no operator job to attach an approval to" });
     const { userId } = getAuth(req);
+    // Test-only changes (e.g. generated Playwright specs) are proposed as tests, labelled from the
+    // run's real outcome; anything touching application code stays an application fix (feature-
+    // flagged and verified-only). Code-fix runs are always application fixes.
+    const changed = (await getCodeFixProposal(run.id).catch(() => null))?.files ?? [];
+    const opCtx = (await prisma.operatorJob.findUnique({ where: { id: run.operatorJobId }, select: { contextJson: true } }))?.contextJson as any;
+    const kind = !opCtx?.qeCodeFix && changed.length > 0 && changed.every((f) => isTestFilePath(f.path)) ? "test_suite" : "app_fix";
     try {
-      const proposal = await createPrProposal({ projectId: run.projectId, jobId: run.operatorJobId, kind: "app_fix", source: { type: "dev_agent", devAgentRunId: run.id }, actor: userId ?? run.requestedBy });
+      const proposal = await createPrProposal({ projectId: run.projectId, jobId: run.operatorJobId, kind, source: { type: "dev_agent", devAgentRunId: run.id }, actor: userId ?? run.requestedBy });
       if (proposal.status === "blocked") return reply.code(409).send({ error: proposal.blockedReason, proposalId: proposal.id });
       const published = await publishPrProposal(proposal.id, userId ?? run.requestedBy);
       return reply.send({ prUrl: published.prUrl, proposalId: published.id });

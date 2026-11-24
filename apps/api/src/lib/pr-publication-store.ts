@@ -32,23 +32,38 @@ type StoredProposal = {
 };
 
 export type GitHubDeps = {
-  coords: (projectId: string) => Promise<{ owner: string; repo: string; defaultBranch: string } | null>;
+  /** `repoHint`: the repository a Dev Agent run actually changed (authorized like the run itself). */
+  coords: (projectId: string, repoHint?: string) => Promise<{ owner: string; repo: string; defaultBranch: string } | null>;
   publish: (p: { projectId: string; owner: string; repo: string; baseBranch: string; headBranch: string; files: Array<{ path: string; content: string }>; title: string; body: string; commitMessage: string }) => Promise<{ prUrl: string; prNumber: number }>;
 };
 
-/** Real GitHub, via the existing integration and writeback helpers. Always a draft PR; never merged. */
+/**
+ * Real GitHub, via the existing writeback helpers. Repository access is authorized exactly like a
+ * run: the project's GitHub integration, or the project owner's connected GitHub account (verified
+ * with GitHub). Re-authorized at publish time. Always a draft PR on a new branch; never merged.
+ */
 export const realGitHub: GitHubDeps = {
-  coords: async (projectId) => {
+  coords: async (projectId, repoHint) => {
+    if (repoHint && repoHint !== "testmind") {
+      const { authorizeRunRepository } = await import("./qe-run-access.js");
+      const auth = await authorizeRunRepository(projectId, repoHint).catch(() => null);
+      return auth && auth.ok ? { owner: auth.access.owner, repo: auth.access.repo, defaultBranch: auth.access.branch } : null;
+    }
     const { getOctokitForProject } = await import("../runner/github-writeback.js");
     const c = await getOctokitForProject(projectId);
     return c ? { owner: c.owner, repo: c.repo, defaultBranch: c.defaultBranch } : null;
   },
   publish: async (p) => {
-    const { getOctokitForProject, pushSpecFilesToBranch, ensurePullRequest } = await import("../runner/github-writeback.js");
-    const c = await getOctokitForProject(p.projectId);
-    if (!c || c.owner !== p.owner || c.repo !== p.repo) throw new Error("GitHub integration no longer matches the approved repository");
-    await pushSpecFilesToBranch({ octokit: c.octokit, owner: p.owner, repo: p.repo, branch: p.headBranch, baseBranch: p.baseBranch, files: p.files, commitMessage: p.commitMessage });
-    return ensurePullRequest({ octokit: c.octokit, owner: p.owner, repo: p.repo, branch: p.headBranch, baseBranch: p.baseBranch, title: p.title, body: p.body, draft: true });
+    const { pushSpecFilesToBranch, ensurePullRequest } = await import("../runner/github-writeback.js");
+    const { authorizeRunRepository } = await import("./qe-run-access.js");
+    const auth = await authorizeRunRepository(p.projectId, `${p.owner}/${p.repo}`);
+    if (!auth.ok || !auth.access.token || auth.access.owner.toLowerCase() !== p.owner.toLowerCase() || auth.access.repo.toLowerCase() !== p.repo.toLowerCase()) {
+      throw new Error(`GitHub access to the approved repository is no longer authorized${auth.ok ? "" : `: ${(auth as { reason: string }).reason}`}`);
+    }
+    const { Octokit } = await import("@octokit/rest");
+    const octokit = new Octokit({ auth: auth.access.token });
+    await pushSpecFilesToBranch({ octokit, owner: p.owner, repo: p.repo, branch: p.headBranch, baseBranch: p.baseBranch, files: p.files, commitMessage: p.commitMessage });
+    return ensurePullRequest({ octokit, owner: p.owner, repo: p.repo, branch: p.headBranch, baseBranch: p.baseBranch, title: p.title, body: p.body, draft: true });
   },
 };
 
@@ -67,7 +82,7 @@ export async function loadPrProposal(id: string): Promise<StoredProposal | null>
 
 // ── Source resolution (re-run on every view/publish so drift is detected) ───
 
-type Resolved = { files: PrFile[]; baseBranch: string | null; headBranch: string; commitSha: string | null; objectives: string[]; evidence: string[]; risks: string[]; verificationInput: Parameters<typeof publishability>[1]; subject: string };
+type Resolved = { files: PrFile[]; baseBranch: string | null; headBranch: string; commitSha: string | null; objectives: string[]; evidence: string[]; risks: string[]; verificationInput: Parameters<typeof publishability>[1]; subject: string; repoHint?: string };
 
 async function resolveSource(kind: PrKind, source: PrSource): Promise<Resolved> {
   if (source.type === "dev_agent") {
@@ -96,8 +111,15 @@ async function resolveSource(kind: PrKind, source: PrSource): Promise<Resolved> 
         ...(qeMeta?.explanation ? [`Diagnosis: ${qeMeta.explanation}`] : []),
       ],
       risks: view?.risks ?? [],
-      verificationInput: { fixStatus: view?.status },
+      // fixStatus drives application-fix proposals; the run's real outcome drives test-only ones.
+      verificationInput: {
+        fixStatus: view?.status,
+        testsPassed: run.status === "succeeded" ? 1 : 0,
+        testsFailed: run.status === "failed" ? 1 : 0,
+        testsNotRun: run.status === "succeeded" || run.status === "failed" ? 0 : 1,
+      },
       subject: (qeMeta?.testTitle ?? run.instructionText ?? run.id).split("\n")[0].slice(0, 120),
+      repoHint: run.targetRepo,
     };
   }
 
@@ -156,7 +178,7 @@ async function verifiedRepairAttemptIds(qeJobId: string): Promise<string[]> {
 
 async function compute(projectId: string, kind: PrKind, source: PrSource, gh: GitHubDeps, fingerprintHint?: string) {
   const r = await resolveSource(kind, source);
-  const coords = await gh.coords(projectId);
+  const coords = await gh.coords(projectId, r.repoHint);
   const binding = bindingFor({ repo: coords ? `${coords.owner}/${coords.repo}` : null, baseBranch: r.baseBranch ?? coords?.defaultBranch ?? "main", headBranch: r.headBranch, commitSha: r.commitSha, files: r.files });
   const fingerprint = fingerprintOf(kind, binding);
   const pub = publishability(kind, r.verificationInput);

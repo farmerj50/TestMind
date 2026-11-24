@@ -244,6 +244,55 @@ test("no test command configured ends the run 'unverified', never 'succeeded', w
   assert.equal((iterations[0].testResult as any)?.passed, false, "the iteration's own recorded result must not claim a pass that never happened");
 });
 
+test("no user test command: the auto-detected command is executed, recorded, and a pass ends 'succeeded'", async (t) => {
+  const ctx = await setupRun({ status: "queued" });
+  t.after(ctx.cleanup);
+
+  let executedCommand: string | null = null;
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    requestApproval: async () => "approved",
+    codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "src/a.ts", content: "x" }], costUsd: 0.001 }),
+    detectTestCommand: (_wt, files) => ({ command: `pnpm exec playwright test ${files.join(" ")}`, framework: "playwright", packageManager: "pnpm", reason: "Playwright via pnpm" }),
+    runTestCommand: async (_wt, command) => { executedCommand = command; return { passed: true, output: "1 passed" }; },
+  });
+
+  assert.equal(executedCommand, "pnpm exec playwright test src/a.ts");
+  const updated = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(updated?.status, "succeeded");
+  const [it] = await prisma.devAgentIteration.findMany({ where: { devAgentRunId: ctx.run.id } });
+  assert.equal((it.testResult as any).autoDetected, true);
+  assert.equal((it.testResult as any).command, "pnpm exec playwright test src/a.ts");
+});
+
+test("no user test command: a failing auto-detected run is not success and iterates; no detectable config ends 'unverified' with the reason", async (t) => {
+  const failing = await setupRun({ status: "queued" });
+  t.after(failing.cleanup);
+  await assert.rejects(
+    advanceDevAgentJob(failing.opJobCtx, fakeReDelay, {
+      requestApproval: async () => "approved",
+      codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "tests/a.spec.ts", content: "x" }], costUsd: 0.001 }),
+      detectTestCommand: () => ({ command: "npm test", framework: "script", packageManager: "npm", reason: "test script" }),
+      runTestCommand: async () => ({ passed: false, output: "1 failed" }),
+    }),
+    StopTick,
+  );
+  assert.notEqual((await prisma.devAgentRun.findUnique({ where: { id: failing.run.id } }))?.status, "succeeded");
+
+  const none = await setupRun({ status: "queued" });
+  t.after(none.cleanup);
+  let ran = false;
+  await advanceDevAgentJob(none.opJobCtx, fakeReDelay, {
+    requestApproval: async () => "approved",
+    codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "tests/a.spec.ts", content: "x" }], costUsd: 0.001 }),
+    detectTestCommand: () => ({ command: null, reason: "No package.json in the repository." }),
+    runTestCommand: async () => { ran = true; return { passed: true, output: "" }; },
+  });
+  assert.equal(ran, false);
+  const run = await prisma.devAgentRun.findUnique({ where: { id: none.run.id } });
+  assert.equal(run?.status, "unverified");
+  assert.match(run?.error ?? "", /No package\.json/);
+});
+
 test("resuming a run stuck at 'awaitingApproval' (e.g. after a worker crash/restart) re-requests approval instead of silently completing with nothing done", async (t) => {
   const ctx = await setupRun({ status: "awaitingApproval" });
   await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { testCommand: "true" } });
