@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execa } from "execa";
@@ -29,13 +30,25 @@ function branchNameFor(runId: string): string {
 // "testmind" resolves to this monorepo's own local checkout (no clone needed - we already
 // have it on disk). Any other value is treated as a repo URL/identifier and is cloned
 // fresh into a disposable, run-scoped base-clone directory.
+export const NO_LOCAL_TESTMIND_REPO_MESSAGE =
+  "The 'testmind' repository is not available on this server (no local Git checkout). Autonomous Dev modifies code in a Git repository - " +
+  "to generate or run tests for a website, use Autonomous QE (/operator/qe) instead. To modify a repository, enter its URL.";
+
+/** Path of the local TestMind checkout ("testmind" target), or null when there is no real Git checkout (e.g. production containers). */
+export function localTestmindRepoPath(): string | null {
+  // Same TM_LOCAL_REPO_ROOT override convention already used by git.ts/workdir.ts -
+  // lets tests point this at a disposable local repo instead of the real monorepo.
+  const candidate = process.env.TM_LOCAL_REPO_ROOT?.trim()
+    ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
+    : path.resolve(process.cwd(), "..", "..");
+  return existsSync(path.join(candidate, ".git")) ? candidate : null;
+}
+
 async function resolveBaseRepoPath(runId: string, targetRepo: string): Promise<string> {
   if (targetRepo === "testmind") {
-    // Same TM_LOCAL_REPO_ROOT override convention already used by git.ts/workdir.ts -
-    // lets tests point this at a disposable local repo instead of the real monorepo.
-    return process.env.TM_LOCAL_REPO_ROOT?.trim()
-      ? path.resolve(process.env.TM_LOCAL_REPO_ROOT)
-      : path.resolve(process.cwd(), "..", "..");
+    const local = localTestmindRepoPath();
+    if (!local) throw new Error(NO_LOCAL_TESTMIND_REPO_MESSAGE);
+    return local;
   }
   const baseClonePath = path.join(BASE_CLONES_ROOT, runId);
   await fs.mkdir(path.dirname(baseClonePath), { recursive: true });
