@@ -4,6 +4,7 @@
 // page backed by real persisted DevAgentMessage rows. Polling is modeled on
 // AgentSessionDetailPage.tsx's existing 4s-interval approach.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import DevAgentRunInspector, { type InspectorIteration } from "../components/devAgent/DevAgentRunInspector";
 import { useApi } from "../lib/api";
 
 type Project = { id: string; name: string };
@@ -21,23 +22,20 @@ type DevAgentRun = {
   spentUsd: number;
   maxIterations: number;
   testCommand: string | null;
+  baseUrl: string | null;
+  environmentId: string | null;
   scheduledStartAt: string | null;
   timezone: string | null;
   prUrl: string | null;
+  error?: string | null;
   createdAt: string;
 };
+
+type Environment = { id: string; name: string; baseUrl: string };
 
 type DevAgentMessage = { id: string; role: string; content: string; createdAt: string };
 
-type DevAgentIterationSummary = {
-  iterationNumber: number;
-  phase: string;
-  summary: string | null;
-  filesChanged: unknown;
-  testResult: { passed?: boolean; output?: string } | null;
-  costUsd: number;
-  createdAt: string;
-};
+type DevAgentIterationSummary = InspectorIteration;
 
 type DevAgentSummary = {
   status: string;
@@ -91,6 +89,9 @@ export default function DevAgentPage() {
   const [budgetUsd, setBudgetUsd] = useState("");
   const [maxIterations, setMaxIterations] = useState("5");
   const [testCommand, setTestCommand] = useState("");
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [environmentId, setEnvironmentId] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [scheduledStartAt, setScheduledStartAt] = useState("");
   const [timezone, setTimezone] = useState(detectedTimezone);
 
@@ -101,6 +102,17 @@ export default function DevAgentPage() {
       .then((d) => { setProjects(d.projects); if (d.projects[0]) setProjectId(d.projects[0].id); })
       .catch((e) => setError(String(e)));
   }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
+    apiFetch<{ environments: Environment[] }>(`/environments?projectId=${projectId}`)
+      .then((res) => {
+        setEnvironments(res.environments ?? []);
+        setEnvironmentId("");
+        setBaseUrl("");
+      })
+      .catch(() => {});
+  }, [projectId]);
 
   function loadRuns(silent = false) {
     if (!projectId) return;
@@ -136,6 +148,8 @@ export default function DevAgentPage() {
         budgetUsd: budgetUsd ? Number(budgetUsd) : undefined,
         maxIterations: maxIterations ? Number(maxIterations) : undefined,
         testCommand: testCommand || undefined,
+        baseUrl: baseUrl.trim() || undefined,
+        environmentId: environmentId || undefined,
         timezone: timezone || undefined,
       };
       if (scheduledStartAt) body.scheduledStartAt = new Date(scheduledStartAt).toISOString();
@@ -224,6 +238,27 @@ export default function DevAgentPage() {
           </div>
           <input className="w-full border rounded-md px-2 py-1 text-sm" placeholder="Test command (e.g. npm test)" value={testCommand} onChange={(e) => setTestCommand(e.target.value)} />
           <div className="grid grid-cols-2 gap-2 text-sm">
+            <select
+              className="border rounded-md px-2 py-1"
+              value={environmentId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setEnvironmentId(id);
+                const env = environments.find((x) => x.id === id);
+                if (env) setBaseUrl(env.baseUrl);
+              }}
+            >
+              <option value="">No environment</option>
+              {environments.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            <input
+              className="border rounded-md px-2 py-1"
+              placeholder="Base URL (optional, for site-aware runs)"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
             <input type="datetime-local" className="border rounded-md px-2 py-1" value={scheduledStartAt} onChange={(e) => setScheduledStartAt(e.target.value)} />
             <input className="border rounded-md px-2 py-1" placeholder="Timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           </div>
@@ -263,7 +298,17 @@ export default function DevAgentPage() {
         {run && (
           <div className="border rounded-md p-3 space-y-2">
             <div className="flex justify-between items-center">
-              <div className="text-sm font-semibold">Status: {run.status}</div>
+              <div className="text-sm font-semibold">
+                Status: {run.status}
+                {run.status === "unverified" && (
+                  <span className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-800">
+                    {run.error ? "Not verified" : "No test command was run — results are unverified"}
+                  </span>
+                )}
+                {run.status === "unverified" && run.error && (
+                  <div className="mt-1 text-xs font-normal text-amber-800">{run.error}</div>
+                )}
+              </div>
               <div className="flex gap-1">
                 {run.status === "running" && <button className="text-xs border rounded px-2 py-1" onClick={() => control("pause")}>Pause</button>}
                 {run.status === "paused" && <button className="text-xs border rounded px-2 py-1" onClick={() => control("resume")}>Resume</button>}
@@ -284,21 +329,20 @@ export default function DevAgentPage() {
                 ) : run.status === "succeeded" ? (
                   <button className="text-xs border rounded px-2 py-1" onClick={publishPr}>Publish PR for review</button>
                 ) : null}
-                <div className="space-y-1 max-h-60 overflow-y-auto">
-                  {summary.iterations.map((it) => (
-                    <div key={it.iterationNumber} className="text-xs border rounded p-2">
-                      <div className="font-semibold">#{it.iterationNumber} — {it.phase} (${it.costUsd.toFixed(3)})</div>
-                      {it.summary && <div className="opacity-80">{it.summary}</div>}
-                      {it.testResult?.output && <div className="opacity-70 truncate">{it.testResult.output}</div>}
-                    </div>
-                  ))}
-                </div>
+                <div className="text-xs opacity-70">Generated tests, revisions and execution output are in the inspector below.</div>
               </>
             )}
           </div>
         )}
         {error && <div className="text-xs text-red-600">{error}</div>}
       </div>
+
+      {run && summary && (
+        <div className="lg:col-span-3 border rounded-md p-3">
+          <div className="mb-2 text-sm font-semibold">Generated tests &amp; execution</div>
+          <DevAgentRunInspector iterations={summary.iterations} runStatus={run.status} runError={run.error} />
+        </div>
+      )}
     </div>
   );
 }

@@ -44,6 +44,28 @@ try {
       ('legacy-pending','legacy-workflow','awaiting_approval','fixture-owner',NULL,CURRENT_TIMESTAMP),
       ('legacy-approved','legacy-workflow','succeeded','fixture-owner','fixture-owner',CURRENT_TIMESTAMP);`);
   sql(fs.readFileSync(path.join(root, 'apps/api/prisma/migrations/20261109120000_workflow_graph_foundation/migration.sql'), 'utf8'));
+  // Apply every later migration in order (as `prisma migrate deploy` does), so the current worker
+  // runs against the schema it ships with and later migrations are proven additive on this baseline.
+  const migrationsDir = path.join(root, 'apps/api/prisma/migrations');
+  // History-repair migrations (release commits c3dafc27 / fe39a2e1) only create objects that the
+  // baseline schema already declared without a migration - exactly like databases built by
+  // `db push`. On such databases they are recorded with `prisma migrate resolve --applied`, not
+  // re-executed, so the fixture does the same after proving their objects already exist.
+  const historyRepairs = new Map([
+    ['20261122071817_add_operator_schedule_table', `SELECT to_regclass('"OperatorSchedule"') IS NOT NULL`],
+    ['20261122080000_add_research_program', `SELECT to_regclass('"ResearchProgram"') IS NOT NULL`],
+    ['20261122080100_add_healing_status_needs_review', `SELECT 'needs_review' = ANY(enum_range(NULL::"HealingStatus")::text[])`],
+    ['20261122080200_add_testcase_and_healing_attempt_fields', `SELECT count(*) = 2 FROM information_schema.columns WHERE (table_name, column_name) IN (('TestCase', 'curatedSuiteId'), ('TestHealingAttempt', 'executionAfter'))`],
+    ['20261122080300_add_agent_fingerprint_and_session_metrics', `SELECT count(*) = 2 FROM information_schema.columns WHERE (table_name, column_name) IN (('AgentPage', 'fingerprint'), ('AgentSession', 'metrics'))`],
+  ]);
+  for (const name of fs.readdirSync(migrationsDir).filter(n => /^\d{14}_/.test(n) && n > '20261109120000_workflow_graph_foundation').sort()) {
+    if (historyRepairs.has(name)) {
+      const present = docker(['exec', pgName, 'psql', '-U', 'postgres', '-d', 'workflow_r1', '-tAc', historyRepairs.get(name)]).trim();
+      assert.equal(present, 't', `${name}: baseline is expected to already contain its objects`);
+      continue;
+    }
+    sql(fs.readFileSync(path.join(migrationsDir, name, 'migration.sql'), 'utf8'));
+  }
   const { PrismaClient } = require('@prisma/client');
   prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   assert.equal((await prisma.workflowRun.findUnique({ where: { id: 'legacy-run' } })).status, 'succeeded');

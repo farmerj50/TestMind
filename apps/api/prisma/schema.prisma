@@ -842,6 +842,10 @@ enum OperatorJobStatus {
   succeeded
   failed
   canceled
+  // Autonomous QE (B1): truthful terminal/hold states - never collapsed into succeeded/failed.
+  paused
+  partial
+  unverified
 }
 
 enum OperatorTaskType {
@@ -851,6 +855,22 @@ enum OperatorTaskType {
   repair
   retest
   verify
+  // Autonomous QE (B1): a pipeline stage (input/discovery/plan/generate/execute/repair/review).
+  stage
+}
+
+// Autonomous QE (B1): explicit, truthful per-stage outcome.
+enum QeStageOutcome {
+  pending
+  running
+  succeeded
+  partial
+  failed
+  unverified
+  blocked
+  skipped
+  canceled
+  awaitingApproval
 }
 
 enum OperatorTaskStatus {
@@ -888,6 +908,11 @@ enum OperatorArtifactType {
   patch
   report
   dom
+  plan
+  spec
+  execution_result
+  repair_attempt
+  pr_proposal
 }
 
 enum OperatorDecisionType {
@@ -911,6 +936,9 @@ enum OperatorApprovalAction {
   run_terminal
   security_active_test
   git_push
+  destructive_test
+  sensitive_action
+  pr_publish
 }
 
 model OperatorJob {
@@ -965,6 +993,12 @@ model OperatorTask {
   nodeVersion    Int?
   nodeAttempt    Int                @default(1)
   stateEncrypted String?            @db.Text
+  // Autonomous QE (B1) stage fields - only set on type=stage rows.
+  stageKey       String?
+  stageOrder     Int?
+  outcome        QeStageOutcome?
+  outcomeReason  String?            @db.Text
+  checkpointJson Json?
 
   steps                       OperatorStep[]
   artifacts                   OperatorArtifact[]
@@ -976,6 +1010,7 @@ model OperatorTask {
   @@index([jobId])
   @@index([parentTaskId])
   @@index([testRunId])
+  @@index([jobId, stageKey])
 }
 
 model OperatorStep {
@@ -1068,6 +1103,7 @@ model Environment {
   testRuns         TestRun[]
   workflows        Workflow[]
   apiCollections   ApiCollection[]
+  devAgentRuns     DevAgentRun[]
 
   @@unique([projectId, name])
 }
@@ -1409,6 +1445,9 @@ enum DevAgentRunStatus {
   paused
   awaitingApproval
   succeeded
+  // Terminal, distinct from `succeeded`: the run completed an iteration but no testCommand
+  // was configured, so nothing was actually executed/verified. Never report this as success.
+  unverified
   failed
   canceled
 }
@@ -1439,6 +1478,15 @@ model DevAgentRun {
   // "pytest"). Deliberately generic for Stage B/C - bespoke per-runner integration
   // (Playwright/API/pytest/security/eval/workflow) is explicitly deferred.
   testCommand      String?
+  // Explicit base URL this run is authorized to discover/test against (must match an
+  // already-known URL for the project - see routes/devAgent.ts's authorization check).
+  // Never treated as arbitrary/attacker-suppliable.
+  baseUrl          String?
+  environmentId    String?
+  environment      Environment?      @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  // Trimmed, bounded discovery summary (routes/forms/buttons), captured once at worktree
+  // creation and reused by every iteration's prompt - never re-crawled per iteration.
+  discoveryContextJson Json?
   maxIterations    Int               @default(5)
   requestedBy      String
   createdAt        DateTime          @default(now())

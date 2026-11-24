@@ -84,8 +84,27 @@ jobs:
           cd apps/eval-service
           .venv/bin/python -m pytest -q
 
-      - name: Run workflow engine tests
-        run: node --test tests/workflows/*.test.mjs
+      # API regression tests (apps/api/src/**/*.test.ts) against the CI Postgres/Redis services.
+      # Bounded concurrency: suites share one database, so they run one file at a time. The runner
+      # seeds a fixture project into the empty CI database and fails on any failed/skipped test.
+      - name: Run API regression tests
+        env:
+          TM_API_TEST_SEED: "1"
+          TM_API_TEST_CONCURRENCY: "1"
+        run: node scripts/run-api-tests.mjs
+
+      # Unit/integration workflow tests: no Docker sandbox required. The runner fails on
+      # empty suites and on any skipped/todo test, so coverage cannot silently drop.
+      - name: Run workflow unit/integration tests
+        run: pnpm test:workflows:unit
+
+      # Live sandbox suites need the pytest sandbox image. Build it from the repo's own
+      # Dockerfile here (never assume a pre-existing local image), then run sequentially.
+      - name: Build pytest sandbox image
+        run: docker build --tag testmind/pytest-r2-task2:local apps/api/src/runner/python-sandbox
+
+      - name: Run workflow sandbox tests
+        run: pnpm test:workflows:sandbox
 
       - name: Start API server
         run: |

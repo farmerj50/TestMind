@@ -925,3 +925,42 @@ Every item was grounded against the real codebase before a line of implementatio
 - Any `apps/web` UI surface for any of the six items — every item is backend-only, read-only where possible, with real tests as the only verification performed.
 
 Implementation history and the detailed ticket breakdowns for all six items live in the session planning record, not duplicated here — this document is the standing strategic reference.
+# Unified Workflow Builder — approved Release 1 milestones
+
+The workflow builder extends existing API/UI, Operator, reporting, approvals, and
+autonomous execution. Releases 2–4 (Python/pytest, LLM/RAG/Chroma, new CI/schedule
+integration, reusable subflows, and advanced replanning) are not authorized for
+implementation in this phase. Existing scheduled autonomous QA remains supported.
+
+| Milestone | Deliverable | Exit evidence |
+| --- | --- | --- |
+| R1.0 | Baseline tests of the actual autonomous worker with isolated infrastructure adapters | Discovery, checkpoint resume, repair, targeted/full verification, cancellation, and approvals characterized before execution changes |
+| R1.1 | Shared versioned graph/node contracts, JSON Schema validation, autonomy policies, evidence-gate contracts | Invalid graphs/references/cycles rejected; all autonomy levels retain authorization and limits; required evidence cannot silently pass |
+| R1.2 | Evidence-based autonomous QA gates | Zero tests, assertion failures, execution errors, unexpected skips, and failed verification cannot report success |
+| R1.3 | Additive persistence and durable graph execution using existing workers | Version/run provenance, dispatch recovery, idempotency, cancellation, approval preservation, safe node retry/resume |
+| R1.4 | API/UI adapters, evidence correlation, bounded risk planner integration | Native results preserved; root-cause conclusions cite trace/screenshot/network/API/assertion/backend-log evidence; uncertain diagnoses remain unknown |
+| R1.5 | React Flow editor, node debugger, execution history and unified reports | Add/connect/configure/save/reopen, inspect individual nodes, safe retry/resume, and legacy workflow regression scenarios |
+
+Autonomy levels: Assisted, Autonomous Testing, Autonomous Recovery, Continuous QA.
+They never grant permissions or bypass environment/security approvals. Continuous
+QA in Release 1 describes policy and compatibility with existing autonomous runs;
+new production scheduling and complex replanning remain later-release work.
+
+Coverage intelligence roadmap: compare discovered routes, API endpoints, declared
+UI journeys, and AI evaluation requirements against evidenced existing coverage;
+surface gaps and propose tests without manufacturing coverage claims. Release 1
+connects the existing route-based risk ranking to bounded selection/generation.
+API/journey/AI coverage expansion follows as those evidence sources are available.
+
+Baseline verification uses `pnpm test:workflow-baseline`; it executes the real
+worker module against in-memory dependencies and never starts Redis, accesses a
+database, loads application secrets, or launches browsers. It is a regression
+harness, not a deployed end-to-end certification. Initial characterization found
+four known quality-gate failures. R1.2 converts them to passing regression tests,
+adds checks for unknown result states and omitted verification cases, and records
+quality-gate evidence separately from the underlying child run status.
+
+Release 1 local implementation and milestone verification are recorded in
+[WORKFLOW_RELEASE1.md](WORKFLOW_RELEASE1.md), including exact changed files,
+reproducible checks, migration validation, and remaining limitations. No production
+deployment or production configuration change has been performed.

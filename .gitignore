@@ -73,6 +73,8 @@ allure-report/
 **/allure-report/
 
 # Journey test output
+tests/workflows/editor-smoke.png
+tests/workflows/.scratch/
 journey-report/
 .auth/
 
@@ -91,5 +93,6 @@ recorder-helper-runner.js
 
 # Python scratch
 *.py
-!apps/eval-service/**/*.py
 !apps/api/src/runner/python-sandbox/supervisor.py
+!apps/eval-service/**/*.py
+testmind-acceptance-generated/

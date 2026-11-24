@@ -44,7 +44,8 @@ test('artifact access checks project ownership before reading a local file', asy
 });
 test('inspection explicitly excludes private encrypted execution state', async () => {
   let query;
-  const h = await routeHarness({ workflowRun: { findFirst: async () => ({ id: 'run', operatorJobId: 'job' }) }, operatorTask: { findMany: async value => { query = value; return []; } } });
+  // ownedRun() includes the workflow relation; the route reads run.workflow.projectId for redaction scope.
+  const h = await routeHarness({ workflowRun: { findFirst: async () => ({ id: 'run', operatorJobId: 'job', workflow: { id: 'workflow', projectId: 'project' }, version: null }) }, operatorTask: { findMany: async value => { query = value; return []; } } });
   assert.equal((await h.call('GET', '/workflows/runs/:id', { params: { id: 'run' } })).status, 200);
   assert.equal(query.select.stateEncrypted, undefined); assert.equal(query.select.inputJson, true); assert.equal(query.select.outputJson, true);
 });

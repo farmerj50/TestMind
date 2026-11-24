@@ -12,6 +12,7 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
     baseUrl: z.string().url().optional(),
     parallel: z.boolean().optional(),
     autonomous: z.boolean().optional(),
+    autonomyLevel: z.enum(['assisted', 'autonomous-testing', 'autonomous-recovery', 'continuous-qa']).optional(),
     enableGitHubWriteback: z.boolean().optional(),
   });
 
@@ -85,6 +86,7 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
           baseUrl: baseUrl ?? null,
           parallel: parsed.data.parallel ?? false,
           autonomous,
+          ...(parsed.data.autonomyLevel ? { autonomyLevel: parsed.data.autonomyLevel } : {}),
           enableGitHubWriteback: autonomous ? enableGitHubWriteback : true,
           disableAutoSelfHeal: autonomous,
           source: "qa-agent",

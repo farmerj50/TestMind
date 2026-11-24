@@ -7,6 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
+import WorkflowEditor from '../components/workflows/WorkflowEditor';
+import WorkflowRunInspector from '../components/workflows/WorkflowRunInspector';
+import { workflowTemplate } from '../components/workflows/graph-model';
+import { validateGraph, type WorkflowGraph } from '@testmind/core/workflow';
 
 type Project = {
   id: string;
@@ -29,7 +33,7 @@ type Suite = {
   projectId?: string;
 };
 
-type WorkflowType = "qa-execute" | "repair" | "discovery" | "security";
+type WorkflowType = "qa-execute" | "repair" | "discovery" | "security" | 'graph';
 type TriggerType = "manual" | "jenkins" | "github" | "webhook";
 
 type WorkflowRun = {
@@ -50,6 +54,7 @@ type WorkflowRun = {
 };
 
 type Workflow = {
+  configJson?: Record<string, any>;
   id: string;
   projectId: string;
   name: string;
@@ -66,6 +71,7 @@ type Workflow = {
 };
 
 const WORKFLOW_CHOICES: Array<{ value: WorkflowType; label: string }> = [
+  { value: 'graph', label: 'Visual workflow' },
   { value: "qa-execute", label: "QA execute" },
   { value: "repair", label: "Repair" },
   { value: "discovery", label: "Discovery" },
@@ -82,7 +88,7 @@ const TRIGGER_CHOICES: Array<{ value: TriggerType; label: string }> = [
 const initialForm = {
   name: "",
   description: "",
-  workflowType: "qa-execute" as WorkflowType,
+  workflowType: "graph" as WorkflowType,
   triggerType: "manual" as TriggerType,
   environmentId: "",
   suiteId: "",
@@ -125,6 +131,10 @@ export default function WorkflowsPage() {
   const [suites, setSuites] = useState<Suite[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [form, setForm] = useState(initialForm);
+  const [editing, setEditing] = useState<Workflow | null>(null);
+  const [graph, setGraph] = useState<WorkflowGraph>(() => workflowTemplate());
+  const [inspecting, setInspecting] = useState<string>();
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -190,6 +200,9 @@ export default function WorkflowsPage() {
   useEffect(() => {
     if (!projectId) return;
     setError(null);
+    setEditing(null);
+    setGraph(workflowTemplate());
+    setInspecting(undefined);
     setForm((prev) => ({ ...prev, environmentId: "", suiteId: "" }));
     Promise.all([loadEnvironments(projectId), loadWorkflows(projectId)]).catch((err: any) =>
       setError(err?.message ?? "Failed to load project workflow data")
@@ -222,20 +235,23 @@ export default function WorkflowsPage() {
       setError("Workflow name is required.");
       return;
     }
+    if (form.workflowType === 'graph' && (!validateGraph(graph).valid || document.querySelector('.wf-builder textarea:invalid'))) { setError('Resolve graph validation and JSON errors before saving.'); return; }
 
     setSaving(true);
     setError(null);
     try {
-      const configPayload: Record<string, unknown> = {};
+      const configPayload: Record<string, unknown> = { ...editing?.configJson };
+      delete configPayload.graph;
       if (form.workflowType === "discovery") {
         if (form.baseUrl.trim()) configPayload.baseUrl = form.baseUrl.trim();
         if (form.cookieHeader.trim()) configPayload.headers = { Cookie: form.cookieHeader.trim() };
       }
 
-      await apiFetch("/workflows", {
-        method: "POST",
+      const saved = await apiFetch<{ workflow: Workflow }>(editing ? `/workflows/${editing.id}` : '/workflows', {
+        method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify({
-          projectId,
+          ...(!editing ? { projectId } : {}),
+          ...(form.workflowType === 'graph' ? { graph } : {}),
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           workflowType: form.workflowType,
@@ -247,13 +263,26 @@ export default function WorkflowsPage() {
           config: Object.keys(configPayload).length ? configPayload : undefined,
         }),
       });
-      setForm(initialForm);
+      setEditing(saved.workflow);
       await loadWorkflows(projectId);
     } catch (err: any) {
       setError(err?.message ?? "Failed to create workflow");
     } finally {
       setSaving(false);
     }
+  }
+
+  function editWorkflow(workflow: Workflow) {
+    setInspecting(undefined);
+    setEditing(workflow); setGraph(workflow.configJson?.graph ?? workflowTemplate()); setNodeStatuses({});
+    setForm({ ...initialForm, name: workflow.name, description: workflow.description ?? '', workflowType: workflow.workflowType, triggerType: workflow.triggerType, environmentId: workflow.environmentId ?? '', suiteId: workflow.suiteId ?? '', approvalRequired: workflow.approvalRequired, notifyOnFailure: workflow.notifyOnFailure, baseUrl: workflow.configJson?.baseUrl ?? '', cookieHeader: workflow.configJson?.headers?.Cookie ?? '' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  async function debugNode(debugNodeId: string) {
+    if (!editing || JSON.stringify(editing.configJson?.graph) !== JSON.stringify(graph)) { setError('Save the workflow before executing a node.'); return; }
+    setError(null);
+    try { const response = await apiFetch<{ run: WorkflowRun }>(`/workflows/${editing.id}/run`, { method: 'POST', body: JSON.stringify({ debugNodeId, ...(inspecting ? { sourceRunId: inspecting } : {}) }) }); setInspecting(response.run.id); await loadWorkflows(projectId); }
+    catch (error: any) { setError(error.message); }
   }
 
   async function runWorkflow(workflowId: string) {
@@ -302,7 +331,7 @@ export default function WorkflowsPage() {
           <p className="text-xs uppercase tracking-wide text-slate-500">Execution</p>
           <h1 className="text-2xl font-semibold text-slate-900">Workflows</h1>
           <p className="text-sm text-slate-600">
-            Save repeatable QA, repair, discovery, and security runs for each project environment.
+            Build API, UI, and autonomous QA workflows. Connect nodes, verify results, and inspect execution evidence.
           </p>
         </div>
         <div className="w-full md:w-72">
@@ -327,7 +356,7 @@ export default function WorkflowsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-slate-800">
             <GitBranch className="h-4 w-4 text-slate-500" />
-            New workflow
+            {editing ? `Edit workflow: ${editing.name}` : 'New workflow'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -478,11 +507,15 @@ export default function WorkflowsPage() {
             </div>
             <Button onClick={createWorkflow} disabled={saving || !projectId} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Create workflow
+              {editing ? 'Save workflow version' : 'Create workflow'}
             </Button>
+            {editing && <Button variant="outline" onClick={() => { setEditing(null); setForm(initialForm); setGraph(workflowTemplate()); setNodeStatuses({}); }}>New workflow</Button>}
           </div>
         </CardContent>
       </Card>
+
+      {form.workflowType === 'graph' && <WorkflowEditor key={`${projectId}-${editing?.id ?? 'new'}`} graph={graph} onChange={setGraph} statuses={nodeStatuses} onDebug={debugNode} />}
+      {inspecting && <WorkflowRunInspector runId={inspecting} onClose={() => setInspecting(undefined)} onState={setNodeStatuses} />}
 
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-slate-900">
@@ -507,7 +540,7 @@ export default function WorkflowsPage() {
             const latestRun = workflow.runs[0];
             const needsApproval = workflow.runs.find((run) => run.status === "awaiting_approval");
             return (
-              <Card key={workflow.id}>
+              <Card key={workflow.id} data-workflow-id={workflow.id}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -515,6 +548,7 @@ export default function WorkflowsPage() {
                       {workflow.description && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{workflow.description}</p>}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => editWorkflow(workflow)}>Edit</Button>
                       <Button
                         size="sm"
                         onClick={() => runWorkflow(workflow.id)}
@@ -529,7 +563,7 @@ export default function WorkflowsPage() {
                         variant="ghost"
                         onClick={() => deleteWorkflow(workflow.id)}
                         disabled={deletingId === workflow.id}
-                        title="Delete workflow"
+                        title="Archive workflow (preserve history)"
                       >
                         {deletingId === workflow.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </Button>
@@ -594,6 +628,7 @@ export default function WorkflowsPage() {
                               <span className="truncate text-xs text-slate-500">{formatDate(run.createdAt)}</span>
                             </div>
                             <div className="flex shrink-0 items-center gap-2 text-xs">
+                              <button className="text-blue-600 hover:underline" onClick={() => { editWorkflow(workflow); setInspecting(run.id); }}>Inspect nodes</button>
                               {run.operatorJobId && (
                                 <a href="/operator" className="inline-flex items-center gap-1 text-blue-600 hover:underline">
                                   Operator <ExternalLink className="h-3 w-3" />
@@ -614,6 +649,7 @@ export default function WorkflowsPage() {
                     )}
                   </div>
 
+                  {workflow.runs.length > 0 && <button className="text-xs text-blue-600" onClick={async () => { try { const history = await apiFetch<{ runs: WorkflowRun[] }>(`/workflows/${workflow.id}/runs?before=${encodeURIComponent(workflow.runs[workflow.runs.length - 1].id)}`); setWorkflows(current => current.map(item => item.id === workflow.id ? { ...item, runs: [...item.runs, ...history.runs.filter(run => !item.runs.some(existing => existing.id === run.id))] } : item)); } catch (error: any) { setError(error.message); } }}>Load older runs</button>}
                   {latestRun?.error && <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{latestRun.error}</p>}
                 </CardContent>
               </Card>

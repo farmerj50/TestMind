@@ -158,10 +158,25 @@ test('generated file, bundle, legacy export and curated content HTTP routes cann
   }
   const prisma = { projectSecret: { findMany: async ({ where }) => { assert.equal(where.projectId, 'project'); return []; } }, project: { findFirst: async ({ where }) => where.id === 'project' && where.ownerId === 'owner' ? { id: 'project' } : null }, curatedSuite: { findUnique: async () => ({ rootRel: 'owned-suite', name: 'Owned suite', projectId: 'project', project: { ownerId: 'owner' } }) } };
   const { service } = artifactModules(prisma, root, {});
+  // Mirrors generated-files.ts's own real logic, bound to this test's temp `generated` root
+  // instead of the real GENERATED_ROOT - loadTs's VM loader requires every import mocked
+  // explicitly, so this isn't optional even though the real module is trivial.
+  const adapterDir = (adapterId, userId) => path.join(generated, `${adapterId}-${userId}`);
+  const adapterProjectDir = (adapterId, userId, projectId) => projectId ? path.join(adapterDir(adapterId, userId), projectId) : adapterDir(adapterId, userId);
+  const listGeneratedSpecFiles = (adapterId, userId, projectId) => {
+    let dir = adapterProjectDir(adapterId, userId, projectId);
+    if (projectId && !fsSync.existsSync(dir)) { const fallback = adapterDir(adapterId, userId); if (fsSync.existsSync(fallback)) dir = fallback; }
+    if (!fsSync.existsSync(dir)) return [];
+    const list = [];
+    const walk = (d, rel = '') => { for (const name of fsSync.readdirSync(d)) { const abs = path.join(d, name); const r = path.join(rel, name); const st = fsSync.statSync(abs); if (st.isDirectory()) walk(abs, r); else list.push({ path: r.replace(/\\/g, '/'), size: st.size }); } };
+    walk(dir);
+    return list;
+  };
   const routes = loadTs('apps/api/src/testmind/routes.ts', {
     fs: fsSync, globby: {}, archiver: require('archiver'), '@clerk/fastify': { getAuth: req => ({ userId: req.headers['x-user-id'] }) }, '../prisma.js': { prisma },
     '@testmind/core/framework': { DEFAULT_FRAMEWORK_ID: 'playwright-ts', FRAMEWORK_IDS: ['playwright-ts'] }, '@testmind/core/framework-registry': {}, './service.js': {},
     './curated-store.js': { CURATED_ROOT: curated, getCuratedProject: () => null, slugify: () => 'owned-suite', ensureWithin: (base, file) => { assert.ok(service.within(base, file)); } },
+    './generated-files.js': { adapterDir, adapterProjectDir, listGeneratedSpecFiles },
     '../lib/storageRoots.js': { GENERATED_ROOT: generated }, '../lib/source-export.js': sourceExport, '../lib/artifact-service.js': service,
   });
   const app = require('fastify')(); await app.register(routes.default, { prefix: '/tm' });

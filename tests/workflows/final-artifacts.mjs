@@ -26,7 +26,18 @@ export async function artifactConfidentiality(root, scratch, onlyMedia = false) 
   const app = require('fastify')(); await app.register(routes.artifactRoutes, { roots: [path.join(scratch, 'runner-logs')] });
   const sourceRoot = path.join(scratch, 'generated'), projectRoot = path.join(sourceRoot, 'playwright-ts-owner', 'artifact-project'); await fs.mkdir(projectRoot, { recursive: true });
   const sourceExport = await tsImport(pathToFileURL(path.join(root, 'apps/api/src/lib/source-export.ts')).href, import.meta.url);
-  const sourceRoutes = loadTs('apps/api/src/testmind/routes.ts', { fs: fsSync, globby: {}, archiver: require('archiver'), '@clerk/fastify': { getAuth: req => ({ userId: req.headers['x-user-id'] }) }, '../prisma.js': { prisma }, '@testmind/core/framework': { DEFAULT_FRAMEWORK_ID: 'playwright-ts', FRAMEWORK_IDS: ['playwright-ts'] }, '@testmind/core/framework-registry': {}, './service.js': {}, './curated-store.js': { CURATED_ROOT: path.join(scratch, 'curated') }, '../lib/storageRoots.js': { GENERATED_ROOT: sourceRoot }, '../lib/source-export.js': sourceExport, '../lib/artifact-service.js': service });
+  const genAdapterDir = (adapterId, userId) => path.join(sourceRoot, `${adapterId}-${userId}`);
+  const genAdapterProjectDir = (adapterId, userId, projectId) => projectId ? path.join(genAdapterDir(adapterId, userId), projectId) : genAdapterDir(adapterId, userId);
+  const genListSpecFiles = (adapterId, userId, projectId) => {
+    let dir = genAdapterProjectDir(adapterId, userId, projectId);
+    if (projectId && !fsSync.existsSync(dir)) { const fallback = genAdapterDir(adapterId, userId); if (fsSync.existsSync(fallback)) dir = fallback; }
+    if (!fsSync.existsSync(dir)) return [];
+    const list = [];
+    const walk = (d, rel = '') => { for (const name of fsSync.readdirSync(d)) { const abs = path.join(d, name); const r = path.join(rel, name); const st = fsSync.statSync(abs); if (st.isDirectory()) walk(abs, r); else list.push({ path: r.replace(/\\/g, '/'), size: st.size }); } };
+    walk(dir);
+    return list;
+  };
+  const sourceRoutes = loadTs('apps/api/src/testmind/routes.ts', { fs: fsSync, globby: {}, archiver: require('archiver'), '@clerk/fastify': { getAuth: req => ({ userId: req.headers['x-user-id'] }) }, '../prisma.js': { prisma }, '@testmind/core/framework': { DEFAULT_FRAMEWORK_ID: 'playwright-ts', FRAMEWORK_IDS: ['playwright-ts'] }, '@testmind/core/framework-registry': {}, './service.js': {}, './curated-store.js': { CURATED_ROOT: path.join(scratch, 'curated') }, './generated-files.js': { adapterDir: genAdapterDir, adapterProjectDir: genAdapterProjectDir, listGeneratedSpecFiles: genListSpecFiles }, '../lib/storageRoots.js': { GENERATED_ROOT: sourceRoot }, '../lib/source-export.js': sourceExport, '../lib/artifact-service.js': service });
   await app.register(sourceRoutes.default, { prefix: '/tm' });
   const get = (url, user = 'owner') => app.inject({ url, headers: { 'x-user-id': user, referer: 'http://localhost/runner-logs/artifact-run/allure-report/' } });
   let authorization = true;

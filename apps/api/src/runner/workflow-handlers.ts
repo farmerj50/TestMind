@@ -20,6 +20,12 @@ export async function confinedPath(root: string, candidate: string) {
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Artifact path is outside its permitted root');
   return realCandidate;
 }
+// ApiTestRun records a finished execution as 'completed' (its own status vocabulary, unchanged);
+// the evidence contract shared by every runner uses 'succeeded'. Per-test failures are still
+// judged by the quality gate from the result counts, so this only translates 'the run finished'.
+export function apiRunEvidenceStatus(status: string): string {
+  return status === 'completed' ? 'succeeded' : status;
+}
 function normalizeEvidence(status: string, rows: any[], requiredCaseIds: string[] = []) {
   const counts = { total: rows.length, passed: 0, failed: 0, errors: 0, skipped: 0 };
   for (const row of rows) if (row.status === 'passed') counts.passed++; else if (row.status === 'failed') counts.failed++; else if (row.status === 'skipped') counts.skipped++; else counts.errors++;
@@ -87,7 +93,7 @@ export async function executeWorkflowHandler(context: any): Promise<any> {
       const child = await prisma.apiTestRun.findUniqueOrThrow({ where: { id: childId }, include: { results: true } });
       if (child.status === 'queued') await enqueueApiTestRun({ runId: childId, collectionId: collection.id, projectId, workflowRunId: run.id, testCaseIds: requiredCaseIds });
       if (['queued', 'running'].includes(child.status)) return { pending: true };
-      return testResult(childId, normalizeEvidence(child.status, child.results, requiredCaseIds), 'api');
+      return testResult(childId, normalizeEvidence(apiRunEvidenceStatus(child.status), child.results, requiredCaseIds), 'api');
     }
     case 'eval.run': {
       let cases = inputs.cases;

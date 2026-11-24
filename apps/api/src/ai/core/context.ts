@@ -60,6 +60,11 @@ export function buildSpecCandidates(
   if (path.isAbsolute(rawPath)) {
     candidates.add(rawPath);
   }
+  // The canonical generated root wins over legacy copies (e.g. a stale apps/web/testmind-generated
+  // tree): repairing a stale duplicate edits a file the runner never executes.
+  if (normalizedSpecPath) {
+    candidates.add(path.join(path.resolve(GENERATED_ROOT), normalizedSpecPath.replace(/^testmind-generated[\\/]/, "")));
+  }
   if (normalizedSpecPath && !normalizedSpecPath.startsWith("apps/")) {
     candidates.add(path.join(repoRoot, "apps", "web", normalizedSpecPath));
     candidates.add(path.join(repoRoot, "apps", "api", normalizedSpecPath));

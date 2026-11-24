@@ -91,7 +91,7 @@ export async function browserAcceptance({ root, scratch, app, prisma, env, pass,
     await waitFor(async () => await card.getByRole('button', { name: 'Inspect nodes', exact: true }).count() === 2, 'Second run did not appear in browser history');
     await card.getByRole('button', { name: 'Inspect nodes', exact: true }).first().click();
     await inspector.getByText('Execution details · failed', { exact: true }).waitFor({ timeout: 30000 });
-    await inspector.getByRole('button').filter({ hasText: 'Assertions' }).click();
+    await inspector.getByRole('button').filter({ hasText: /^Assert/ }).click(); // node title of the template's assert step
     assert.ok((await inspector.innerText()).includes('"failureKind": "assertion"'));
     await page.screenshot({ path: path.join(scratch, 'acceptance-browser-failed-run.png'), fullPage: true });
     assert.deepEqual(errors, []);

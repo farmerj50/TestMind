@@ -84,6 +84,8 @@ test('repair is followed by targeted verification and then a full-suite verifica
   h.finishRun();
   await h.tick();
   assert.equal(h.state.stage, 'wait_full_verify');
+  assert.equal(h.tables.testHealingAttempt[0].status, 'succeeded', 'success only after the verification rerun passed');
+  assert.deepEqual(h.tables.testHealingAttempt[0].executionAfter && h.tables.testHealingAttempt[0].executionAfter.failed, 0);
   assert.equal(h.calls.runs.length, 3);
   assert.equal(h.calls.runs[2].file, h.generatedDir);
   h.finishRun();
@@ -194,6 +196,14 @@ test('quality gate: failed targeted verification must not be hidden by a later f
   await h.tick();
   h.finishRun('failed', [{ status: 'failed', message: 'locator still missing' }]);
   await h.tick();
+  // The patch applied but the verification rerun failed: repair_failed, never success.
+  const attempt = h.tables.testHealingAttempt[0];
+  assert.equal(attempt.status, 'failed');
+  assert.match(attempt.error, /^repair_failed: /);
+  const repairTask = h.tables.operatorTask.find(t => t.type === 'repair');
+  assert.equal(repairTask.status, 'failed');
+  assert.match(repairTask.error, /^repair_failed: /);
+  assert.equal(repairTask.outputJson.finalStatus, 'repair_failed');
   h.finishRun();
   try { await h.tick(); } catch { /* expected once evidence gates are enforced */ }
   assert.notEqual(h.status, 'succeeded');

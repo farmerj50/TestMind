@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { enqueueOperatorJob } from '../runner/queue.js';
+import { publicArtifactReferences } from '../lib/artifact-references.js';
 
 const CreateJobBody = z.object({
   projectId: z.string().min(1),
@@ -103,6 +104,9 @@ async function hydrateOperatorTasks<T extends {
   return jobs.map((job) => ({
     ...job,
     tasks: job.tasks.map((task) => {
+      // Durable graph state is private worker data; only redacted inspection
+      // fields belong in the existing Operator API response.
+      delete task.stateEncrypted;
       const input = (task.inputJson ?? null) as Record<string, unknown> | null;
       const inputTestResultId =
         typeof input?.testResultId === "string" && input.testResultId.trim()
@@ -217,7 +221,7 @@ export default async function operatorRoutes(app: FastifyInstance) {
     // Extract rollup from contextJson._rollup (written by finalizeJob)
     const rollup = (job.contextJson as any)?._rollup ?? null;
     const [hydratedJob] = await hydrateOperatorTasks([job]);
-    return reply.send({ job: hydratedJob, rollup });
+    return reply.send({ job: { ...hydratedJob, artifacts: job.artifacts.map(({ path: _privatePath, ...artifact }) => ({ ...artifact, metaJson: publicArtifactReferences(artifact.metaJson), downloadUrl: `/workflows/artifacts/${artifact.id}` })) }, rollup });
   });
 
   // GET /operator/approvals?status=pending — UI polls this
@@ -250,10 +254,12 @@ export default async function operatorRoutes(app: FastifyInstance) {
     if (existing.job.requestedBy !== userId) return reply.code(403).send({ error: 'Forbidden' });
     if (existing.status !== 'pending') return reply.code(409).send({ error: `Approval already ${existing.status}` });
 
-    const approval = await prisma.operatorApproval.update({
-      where: { id },
+    const claimed = await prisma.operatorApproval.updateMany({
+      where: { id, status: 'pending', OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
       data: { status: 'approved', resolvedBy: userId, resolvedAt: new Date() },
     });
+    if (!claimed.count) return reply.code(409).send({ error: 'Approval is no longer pending or has expired' });
+    const approval = await prisma.operatorApproval.findUnique({ where: { id } });
     return reply.send({ approval });
   });
 
@@ -271,10 +277,12 @@ export default async function operatorRoutes(app: FastifyInstance) {
     if (existing.job.requestedBy !== userId) return reply.code(403).send({ error: 'Forbidden' });
     if (existing.status !== 'pending') return reply.code(409).send({ error: `Approval already ${existing.status}` });
 
-    const approval = await prisma.operatorApproval.update({
-      where: { id },
+    const claimed = await prisma.operatorApproval.updateMany({
+      where: { id, status: 'pending', OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
       data: { status: 'denied', resolvedBy: userId, resolvedAt: new Date() },
     });
+    if (!claimed.count) return reply.code(409).send({ error: 'Approval is no longer pending or has expired' });
+    const approval = await prisma.operatorApproval.findUnique({ where: { id } });
     return reply.send({ approval });
   });
 }

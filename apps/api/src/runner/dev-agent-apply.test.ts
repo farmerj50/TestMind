@@ -116,6 +116,7 @@ async function setupRun() {
 
 test("a stubbed LLM file-ops response is really applied and committed in the run's own worktree, and recorded on the iteration", async (t) => {
   const ctx = await setupRun();
+  await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { testCommand: "true" } });
   t.after(ctx.cleanup);
 
   await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
@@ -148,13 +149,16 @@ test("a malformed LLM response fails the run closed: iteration recorded as faile
   const ctx = await setupRun();
   t.after(ctx.cleanup);
 
-  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
-    requestApproval: async () => "approved",
-    codePhase: async () => {
-      parseFileOps("not valid json at all"); // throws InvalidFileOpsError
-      throw new Error("unreachable");
-    },
-  });
+  await assert.rejects(
+    advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+      requestApproval: async () => "approved",
+      codePhase: async () => {
+        parseFileOps("not valid json at all"); // throws InvalidFileOpsError
+        throw new Error("unreachable");
+      },
+    }),
+    /Code phase failed/
+  );
 
   const updated = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
   assert.equal(updated?.status, "failed");
@@ -171,15 +175,18 @@ test("a path-traversal attempt in the LLM response fails the run closed before a
   t.after(ctx.cleanup);
 
   let worktreeAtTimeOfAttempt = "";
-  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
-    requestApproval: async () => "approved",
-    codePhase: async ({ worktreePath }) => {
-      worktreeAtTimeOfAttempt = worktreePath;
-      const ops = parseFileOps(JSON.stringify([{ path: "../../etc/passwd", action: "create", content: "pwned" }]));
-      await applyFileOps(worktreePath, ops); // throws InvalidFileOpsError before any write
-      return { summary: "unreachable", filesChanged: [], costUsd: 0 };
-    },
-  });
+  await assert.rejects(
+    advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+      requestApproval: async () => "approved",
+      codePhase: async ({ worktreePath }) => {
+        worktreeAtTimeOfAttempt = worktreePath;
+        const ops = parseFileOps(JSON.stringify([{ path: "../../etc/passwd", action: "create", content: "pwned" }]));
+        await applyFileOps(worktreePath, ops); // throws InvalidFileOpsError before any write
+        return { summary: "unreachable", filesChanged: [], costUsd: 0 };
+      },
+    }),
+    /escapes the worktree root/
+  );
 
   const updated = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
   assert.equal(updated?.status, "failed");

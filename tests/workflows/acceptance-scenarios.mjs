@@ -44,7 +44,7 @@ export async function acceptanceScenarios(ctx) {
   const apiQueue = new bullmq.Queue('api-tests', { connection: redis });
   const enqueueApiTestRun = payload => apiQueue.add('api-test-run', payload, { jobId: payload.runId, removeOnComplete: false, attempts: 1 });
   const apiService = loadTs('apps/api/src/runner/api-test-service.ts', { undici: require('undici'), '../prisma.js': { prisma }, '@testmind/core/workflow': core, '../lib/workflow-http.js': network, '../lib/workflow-execution-policy.js': policy });
-  const apiWorker = loadTs('apps/api/src/runner/api-test-worker.ts', { bullmq, './redis.js': { createQueueRedisConnection: () => redis }, '../prisma.js': { prisma }, './api-test-service.js': apiService }).apiTestWorker;
+  const apiWorker = loadTs('apps/api/src/runner/api-test-worker.ts', { bullmq, './redis.js': { createQueueRedisConnection: () => redis, createRedisConnection: () => redis }, '../prisma.js': { prisma }, './api-test-service.js': apiService }).apiTestWorker;
   const handlers = loadTs('apps/api/src/runner/workflow-handlers.ts', {
     'node:fs/promises': fs, '@testmind/core/workflow': core, '../prisma.js': { prisma }, './queue.js': { enqueueApiTestRun, enqueueOperatorJob },
     '../lib/workflow-http.js': network, '../security/openapi-parser.js': loadTs('apps/api/src/security/openapi-parser.ts'), '../testmind/discover.js': {},
@@ -95,7 +95,7 @@ export async function acceptanceScenarios(ctx) {
     assert.equal((await terminal(slowRun.id)).status, 'canceled');
     pass('Canceling live HTTP work terminates the node with canceled evidence');
 
-    const timeoutGraph = requestGraph(`${baseUrl}/slow`); timeoutGraph.nodes[1].config.timeoutMs = 100;
+    const timeoutGraph = requestGraph(`${baseUrl}/slow`); timeoutGraph.nodes[1].config.timeoutMs = 1000; // the API Request node's minimum; /slow answers after 20s
     const timeoutWorkflow = await create('Live timeout audit', timeoutGraph, { environmentId: env.id });
     const timeoutRun = await start(timeoutWorkflow.id); assert.equal((await terminal(timeoutRun.id)).status, 'failed');
     assert.equal((await prisma.operatorTask.findFirst({ where: { workflowRunId: timeoutRun.id, nodeKey: 'request' } })).outputJson.failureKind, 'timeout');

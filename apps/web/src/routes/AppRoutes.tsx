@@ -31,6 +31,7 @@ import MarketingLayout from "../components/layout/MarketingLayout";
 import ProjectSuite from "../pages/ProjectSuite";
 import QaAgentPage from "../pages/QaAgentPage";
 import OperatorPage from "../pages/OperatorPage";
+import AutonomousQePage from "../pages/AutonomousQePage";
 import SecurityScanPage from "../pages/SecurityScanPage";
 import LiveSecurityTestPage from "../pages/LiveSecurityTestPage";
 import ResearchAgentPage from "../pages/ResearchAgentPage";
@@ -192,6 +193,22 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <OperatorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/operator/qe"
+          element={
+            <ProtectedRoute>
+              <AutonomousQePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/operator/qe/:id"
+          element={
+            <ProtectedRoute>
+              <AutonomousQePage />
             </ProtectedRoute>
           }
         />

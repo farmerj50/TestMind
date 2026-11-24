@@ -17,6 +17,10 @@ export type RunPayload = {
   envName?: string;
   trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
   grep?: string;
+  /** Exclude tests whose title matches (Playwright --grep-invert). */
+  grepInvert?: string;
+  /** B4: approved test credentials BY REFERENCE (ProjectSecret keys only - never values). */
+  credentialRef?: { emailKey: string; passwordKey: string; loginPath?: string };
   file?: string;
   suiteId?: string;
   baseUrl?: string;

@@ -4,6 +4,33 @@ import { classifyFailureContext, validatePatchedSpec } from "./repair-policy.js"
 
 const DEFAULT_LIMITS = { maxChangedLines: 220, maxBytesDelta: 28000 };
 
+for (const [name, body] of [
+  ['removed assertion', "await page.waitForTimeout(1);"],
+  ['weakened matcher', "await expect(page.locator('#submit')).toBeHidden();"],
+  ['unawaited assertion', "expect(page.locator('#submit')).toBeVisible();"],
+  ['unreachable assertion', "if (false) { await expect(page.locator('#submit')).toBeVisible(); }"],
+  ['early return', "return; await expect(page.locator('#submit')).toBeVisible();"],
+  ['swallowed failure', "try { await expect(page.locator('#submit')).toBeVisible(); } catch {}"],
+]) test(`repair preserves test intent: rejects ${name}`, () => {
+  const before = "test('checkout', async ({page}) => { await expect(page.locator('#submit')).toBeVisible(); });";
+  const after = `test('checkout', async ({page}) => { ${body} });`;
+  assert.match(validatePatchedSpec(before, after, 'playwright-ts', DEFAULT_LIMITS) ?? '', /assertion/i);
+});
+
+test('repair rejects changing an expected response value', () => {
+  assert.match(validatePatchedSpec('await expect(response.status()).toBe(200);', 'await expect(response.status()).toBe(500);', 'playwright-ts', DEFAULT_LIMITS) ?? '', /assertion/i);
+});
+
+test('repair cannot replace the measured response with a passing constant', () => {
+  assert.match(validatePatchedSpec('await expect(response.status()).toBe(200);', 'await expect(200).toBe(200);', 'playwright-ts', DEFAULT_LIMITS) ?? '', /assertion/i);
+});
+
+test('repair cannot weaken an expected value through a local variable', () => {
+  const before = 'const expected = 200; await expect(response.status()).toBe(expected);';
+  const after = 'const expected = 500; await expect(response.status()).toBe(expected);';
+  assert.match(validatePatchedSpec(before, after, 'playwright-ts', DEFAULT_LIMITS) ?? '', /assertion/i);
+});
+
 test("validatePatchedSpec rejects a patch that leaves the exact failing locator unchanged", () => {
   // Regression test for a real, captured self-heal failure: the LLM reported "succeeded"
   // and changed a test.step's cosmetic display title away from the stale text, but left the

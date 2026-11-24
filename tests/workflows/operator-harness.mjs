@@ -120,6 +120,7 @@ export function createOperatorHarness({ enabled = true, type = 'qa', context = {
     '../testmind/pipeline/generate-plan.js': { generatePlan: () => ({ cases: [] }) },
     '../testmind/pipeline/codegen.js': { writeSpecsFromPlan: async () => { calls.generated++; return { total: 1 }; } },
     '../lib/git-url.js': loadTs('apps/api/src/lib/git-url.ts'),
+    '../lib/repair-verification.js': loadTs('apps/api/src/lib/repair-verification.ts'),
     '@testmind/core/framework': { DEFAULT_FRAMEWORK_ID: 'playwright-ts' },
     '@testmind/core/workflow': workflowContracts,
     '../lib/workflow-evidence.js': loadTs('apps/api/src/lib/workflow-evidence.ts'),
@@ -135,7 +136,41 @@ export function createOperatorHarness({ enabled = true, type = 'qa', context = {
     '../config/env.js': { validatedEnv: { TM_AUTONOMOUS_QA_ENABLED: enabled } },
     '../lib/security-approval-policy.js': securityPolicy,
     '../security/open-source-tools.js': { normalizeOpenSourceToolIds: value => value ?? [] },
+    // Autonomous QE (B1) dependencies. These harness jobs carry no context.qe, so the real
+    // qeContextOf keeps them on the legacy autonomous path; every QE side effect must stay unused.
+    '../lib/safe-fetch.js': { validateUrl: async () => { throw new Error('Unexpected QE URL validation'); } },
+    // B2 knowledge: identity merge on the legacy path (the harness crawl has no scans/APIs).
+    '../lib/app-knowledge.js': {
+      computeCrawlKnowledgeUpdate: store => ({ next: store, diff: { pagesObserved: [], newPages: [], accessChanges: [], authRequired: [], unreachable: [], redirected: [], apisObserved: [], newApis: [], missingApis: [], thirdPartyHosts: [] } }),
+      refreshStoryEvidence: store => store,
+      incrementalSeedRoutes: () => [],
+      routeClaimsFromTitles: () => [],
+    },
+    // B6: code-fix proposals are opt-in per QE run; legacy jobs never start one.
+    '../lib/qe-codefix.js': { isCodeFixConfig: () => false, eligibleForCodeFix: () => ({ eligible: false, reason: 'legacy' }), appCodeFixEnabled: () => false, APP_CODE_FIX_DISABLED_REASON: 'disabled' },
+    '../lib/qe-codefix-store.js': { createCodeFixProposal: async () => { throw new Error('Unexpected code-fix proposal on a legacy autonomous job'); } },
+    // B5: failure intelligence and its objective guard only run for QE runs.
+    '../lib/failure-intel.js': Object.fromEntries(['classifyFailure', 'decideRepair', 'repairPreservesObjective']
+      .map(name => [name, () => { throw new Error(`Unexpected QE failure-intel call ${name} on a legacy autonomous job`); }])),
+    '../lib/investigator.js': { investigateFailure: () => { throw new Error('Unexpected QE investigation on a legacy autonomous job'); } },
+    // B4: legacy autonomous jobs carry no credential reference and never generate QE suites.
+    '../lib/qe-credentials.js': { isCredentialRef: () => false },
+    '../testmind/pipeline/qe-codegen.js': { generateQeSuite: () => { throw new Error('Unexpected QE codegen on a legacy autonomous job'); } },
+    // B3 planner: only reached by QE runs; legacy autonomous jobs must never call it.
+    '../lib/qe-plan.js': Object.fromEntries(['buildQePlan', 'gateSuiteTests', 'grepInvertFor', 'testTitlesInSpec']
+      .map(name => [name, () => { throw new Error(`Unexpected QE planner call ${name} on a legacy autonomous job`); }])),
+    '../lib/app-knowledge-store.js': Object.fromEntries(['getProjectKnowledge', 'loadKnowledgeInputs', 'loadPlanInputs', 'recordUserStory', 'inspectRepository', 'resolveLocalRepository', 'recordDeclaredRoutes', 'recordFailureInvestigations', 'recordRepairOutcome']
+      .map(name => [name, async () => { throw new Error(`Unexpected QE knowledge call ${name} on a legacy autonomous job`); }])),
+    './qe-orchestrator.js': {
+      qeContextOf: ctx => (ctx?.autonomous === true && ctx?.qe && typeof ctx.qe === 'object' && typeof ctx.qe.input === 'string' ? ctx.qe : null),
+      QeStageError: class QeStageError extends Error { constructor(stage, outcome, message) { super(message); this.stage = stage; this.outcome = outcome; } },
+      recoverQeRuns: async () => [],
+      ...Object.fromEntries(['ensureStages', 'startStage', 'finishStage', 'stageOutcome', 'currentStageKey', 'saveCheckpoint', 'finalizeQeRun', 'recordQeArtifact']
+        .map(name => [name, async () => { throw new Error(`Unexpected QE call ${name} on a legacy autonomous job`); }])),
+    },
   };
+  dependencies['../lib/storageRoots.js'].REPORT_ROOT = path.join(root, 'virtual-reports');
+  dependencies['./queue.js'].operatorQueue = { getJob: async () => null, add: async () => {} };
   const job = {
     data: { operatorJobId: 'job-1' },
     async updateData(data) { this.data = plain(data); },

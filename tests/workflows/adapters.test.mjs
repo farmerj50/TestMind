@@ -51,7 +51,7 @@ test('actual UI worker exits duplicate delivery before preparing files or launch
   const policy = loadTs('apps/api/src/lib/workflow-execution-policy.ts', { '../prisma.js': {}, './workflow-version.js': {}, '@testmind/core/workflow': core });
   loadTs('apps/api/src/runner/worker.ts', {
     bullmq: { Worker }, 'fs/promises': {}, fs: {}, execa: {}, '../prisma.js': { prisma: { testRun: model } }, './redis.js': { redis: {} },
-    './workdir.js': {}, './git.js': {}, './node-test-exec.js': { runTests: () => launched++ }, './result-parsers.js': {}, './persist-run-results.js': {}, './self-heal.js': {}, './finalize-latest-test-state.js': {},
+    './workdir.js': {}, './git.js': {}, './node-test-exec.js': { runTests: () => launched++ }, '../lib/qe-credentials.js': {}, '../lib/repair-verification.js': {}, '../testmind/pipeline/qe-codegen.js': { QE_AUTH_ENV: { email: 'TM_QE_AUTH_EMAIL', password: 'TM_QE_AUTH_PASSWORD', loginPath: 'TM_QE_LOGIN_PATH' } }, './result-parsers.js': {}, './persist-run-results.js': {}, './self-heal.js': {}, './finalize-latest-test-state.js': {},
     '../ai/core/policy.js': { readSelfHealPolicy: () => ({}) }, '../lib/locator-promotion.js': {}, './ai-analysis.js': {}, '../lib/storageRoots.js': {}, '../lib/workflow-execution-policy.js': policy, '../lib/workflow-http.js': {}, '../lib/crypto.js': {}, '../testmind/service.js': {}, '@testmind/core/framework': {}, '../lib/git-url.js': {},
   });
   await callback({ data: { runId: 'completed', payload: { projectId: 'project', workflowRunId: 'parent' } } });
@@ -97,4 +97,10 @@ for (const [name, rows] of [['zero tests', []], ['failed assertion', [{ id: 'r1'
   const adapter = handlers({ apiCollection: { findFirst: async () => ({ id: 'collection', baseUrl: 'https://example.test', testCases: [{ id: 't1' }] }) }, apiTestRun: { upsert: async () => {}, findUniqueOrThrow: async () => ({ status: 'completed', results: rows }) } });
   const result = await adapter.executeWorkflowHandler({ node: { type: 'api.suite' }, inputs: { collectionId: 'collection' }, task: { id: 'node-task', state: {} }, checkpoint: async () => {}, run: { id: 'workflow-run', workflow: { projectId: 'owned' } } });
   assert.equal(result.outcome, 'failed'); assert.equal(result.branch, 'failure');
+});
+for (const [status, rows, outcome] of [['completed', [{ id: 'r1', testCaseId: 't1', status: 'passed' }], 'passed'], ['failed', [{ id: 'r1', testCaseId: 't1', status: 'passed' }], 'failed']]) test(`API run '${status}' with every expected test passing is judged '${outcome}' by the quality gate`, async () => {
+  const adapter = handlers({ apiCollection: { findFirst: async () => ({ id: 'collection', baseUrl: 'https://example.test', testCases: [{ id: 't1' }] }) }, apiTestRun: { upsert: async () => {}, findUniqueOrThrow: async () => ({ status, results: rows }) } });
+  const result = await adapter.executeWorkflowHandler({ node: { type: 'api.suite' }, inputs: { collectionId: 'collection' }, task: { id: 'node-task', state: {} }, checkpoint: async () => {}, run: { id: 'workflow-run', workflow: { projectId: 'owned' } } });
+  assert.equal(result.outcome, outcome); assert.equal(result.branch, outcome === 'passed' ? 'success' : 'failure');
+  assert.equal(result.evidence.status, status === 'completed' ? 'succeeded' : 'failed');
 });

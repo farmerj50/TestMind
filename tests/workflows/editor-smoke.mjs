@@ -39,7 +39,7 @@ try {
   await page.getByRole('status').filter({ hasText: 'Graph valid' }).waitFor({ timeout: 15000 }).catch(error => { console.error('Pending fixture resources:', [...pending]); throw error; });
   assert.equal(await page.locator('.react-flow__node').count(), 5);
   await page.getByLabel('Search nodes').fill('risk');
-  await page.getByRole('button', { name: 'Select tests by risk autonomous' }).click();
+  await page.getByRole('button', { name: /^Select Risk\s*QA$/ }).click(); // palette entry: node title + category
   assert.equal(await page.locator('.react-flow__node').count(), 6);
   await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
   assert.equal(await page.locator('.react-flow__node').count(), 7);
@@ -60,7 +60,7 @@ try {
   await page.getByRole('status').filter({ hasText: 'Graph valid' }).waitFor();
   assert.equal(await page.locator('.react-flow__node').count(), 6);
   await page.getByLabel('Workflow template').selectOption('api');
-  await page.locator('.react-flow__node').filter({ hasText: 'HTTP request' }).click();
+  await page.locator('.react-flow__node').filter({ hasText: 'API Request' }).click();
   await page.getByLabel('url source').selectOption('constant');
   await page.getByLabel('url value').fill('https://example.test');
   await page.getByLabel('method', { exact: true }).selectOption('POST');

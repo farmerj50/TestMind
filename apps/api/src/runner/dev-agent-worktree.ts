@@ -53,7 +53,11 @@ export async function createDevAgentWorktree(run: { id: string; targetRepo: stri
   await fs.mkdir(WORKTREES_ROOT, { recursive: true });
   // If a prior attempt for this exact run left a worktree registered, clear it first -
   // still scoped to this run's own deterministic path, not an arbitrary caller-supplied one.
+  // The branch must be deleted too, not just the worktree: "git worktree add -b" fails with
+  // "a branch named '...' already exists" otherwise, permanently blocking any resumed/retried
+  // attempt for this exact run id (same gap already fixed in removeDevAgentWorktree).
   await execa("git", ["worktree", "remove", "--force", worktreePath], { cwd: baseRepoPath }).catch(() => {});
+  await execa("git", ["branch", "-D", branch], { cwd: baseRepoPath }).catch(() => {});
   await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {});
 
   await execa("git", ["worktree", "add", worktreePath, "-b", branch], { cwd: baseRepoPath });
@@ -80,6 +84,10 @@ export async function removeDevAgentWorktree(run: { id: string; targetRepo: stri
   const baseRepoPath = await resolveBaseRepoPath(run.id, run.targetRepo).catch(() => null);
   if (baseRepoPath) {
     await execa("git", ["worktree", "remove", "--force", expectedPath], { cwd: baseRepoPath }).catch(() => {});
+    // Removing the worktree does not delete its branch - without this, a failed run's
+    // branch (named after the run id) lingers forever, and any retry that re-creates a
+    // worktree for the same run id fails with "a branch named '...' already exists".
+    await execa("git", ["branch", "-D", branchNameFor(run.id)], { cwd: baseRepoPath }).catch(() => {});
   }
   await fs.rm(expectedPath, { recursive: true, force: true });
 
