@@ -253,7 +253,7 @@ export default function DevAgentPage() {
             <input className="border rounded-md px-2 py-1" placeholder="Budget (USD)" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} />
             <input className="border rounded-md px-2 py-1" placeholder="Max iterations" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} />
           </div>
-          <input className="w-full border rounded-md px-2 py-1 text-sm" placeholder="Test command (e.g. npm test)" value={testCommand} onChange={(e) => setTestCommand(e.target.value)} />
+          <input className="w-full border rounded-md px-2 py-1 text-sm" placeholder="Test command (optional - auto-detected from the repository)" value={testCommand} onChange={(e) => setTestCommand(e.target.value)} />
           <div className="grid grid-cols-2 gap-2 text-sm">
             <select
               className="border rounded-md px-2 py-1"

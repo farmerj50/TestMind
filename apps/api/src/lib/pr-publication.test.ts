@@ -226,3 +226,22 @@ test("a fix outside its authorized scope is rejected and cannot be published", a
   await assert.rejects(publishPrProposal(p.id, "owner-1", f.gh));
   assert.equal(f.calls.length, 0);
 });
+
+test("Dev Agent test-only proposal: repo resolved from the run's own repository (connected account), labelled as generated tests, still approval-gated", async (t) => {
+  const f = await fixture(t);
+  await prisma.devAgentRun.update({ where: { id: f.run.id }, data: { targetRepo: "acme/app" } });
+  const hints: Array<string | undefined> = [];
+  const gh: GitHubDeps = { ...f.gh, coords: async (_p, hint) => { hints.push(hint); return { owner: "acme", repo: "app", defaultBranch: "main" }; } };
+  t.after(async () => {
+    await prisma.auditLog.deleteMany({ where: { targetId: `test_suite-${f.run.id}` } });
+    await prisma.operatorApproval.deleteMany({ where: { jobId: f.job.id } });
+    await fs.rm(path.join(REPORT_ROOT, "pr-proposals", `testsuite-${f.run.id}.json`), { force: true });
+  });
+  const p = await createPrProposal({ projectId: f.project.id, jobId: f.job.id, kind: "test_suite", source: f.source, actor: "owner-1" }, gh);
+  assert.ok(hints.includes("acme/app"), "coords must authorize the repository the run changed, not a project-level integration");
+  assert.equal(p.binding.repo, "acme/app");
+  assert.equal(p.status, "awaiting_approval");
+  assert.match(p.title, /Generated tests/);
+  await assert.rejects(publishPrProposal(p.id, "owner-1", gh), PrPublicationError);
+  assert.equal(f.calls.length, 0, "never published without explicit approval");
+});
