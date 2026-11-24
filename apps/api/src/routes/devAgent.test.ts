@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
-import { requiresExternalRepoConfirmation, isAuthorizedBaseUrl } from "./devAgent.js";
+import { requiresExternalRepoConfirmation, isAuthorizedBaseUrl, devAgentRepoProblem } from "./devAgent.js";
 import { isProjectOwner } from "../lib/project-access.js";
 
 // index.ts can't be booted from a test (same constraint as evaluations-datasets.test.ts) -
@@ -147,4 +147,15 @@ test("environmentId ownership: a DevAgentRun must only reference an Environment 
     await prisma.environment.delete({ where: { id: envOnA.id } }).catch(() => {});
     await prisma.project.deleteMany({ where: { id: { in: [projectA.id, projectB.id] } } });
   }
+});
+
+test("Dev Agent targets must be repositories: a GitHub account URL is rejected before any clone", () => {
+  for (const ok of ["testmind", "farmerj50/justicepath", "https://github.com/farmerj50/justicepath", "https://github.com/farmerj50/justicepath.git", "git@github.com:farmerj50/justicepath.git"]) {
+    assert.equal(devAgentRepoProblem(ok), null, ok);
+  }
+  assert.match(devAgentRepoProblem("https://github.com/farmerj50") ?? "", /is a GitHub account, not a repository\. Choose a repository, e\.g\. farmerj50\/<repository>/);
+  assert.match(devAgentRepoProblem("https://github.com/farmerj50/") ?? "", /GitHub account/);
+  assert.match(devAgentRepoProblem("https://github.com/farmerj50/justicepath/tree/main") ?? "", /not a GitHub repository/);
+  assert.match(devAgentRepoProblem("https://www.justicepathlaw.com") ?? "", /not a Git repository URL/);
+  assert.match(devAgentRepoProblem("justicepath") ?? "", /not a Git repository URL/);
 });

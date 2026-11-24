@@ -12,6 +12,7 @@ import { buildInstructionText } from "../lib/dev-agent-self-improvement.js";
 import { createPrProposal, publishPrProposal, PrPublicationError } from "../lib/pr-publication-store.js";
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { localTestmindRepoPath, NO_LOCAL_TESTMIND_REPO_MESSAGE } from "../runner/dev-agent-worktree.js";
+import { parseGitHubRepo } from "../lib/qe-run-access.js";
 
 function requireUser(req: any, reply: any): string | null {
   const { userId } = getAuth(req);
@@ -89,6 +90,21 @@ export async function isAuthorizedBaseUrl(projectId: string, baseUrl: string): P
   return known.has(target);
 }
 
+/**
+ * Why a Dev Agent target cannot be a repository, or null when it can. Catches values that would
+ * only fail later at clone time, e.g. a GitHub account URL ("https://github.com/farmerj50").
+ */
+export function devAgentRepoProblem(targetRepo: string): string | null {
+  const value = targetRepo.trim();
+  if (value === "testmind") return null;
+  if (parseGitHubRepo(value)) return null;
+  const account = /^(?:https?:\/\/(?:www\.)?github\.com\/)([A-Za-z0-9_.-]+)\/?$/i.exec(value);
+  if (account) return `"${value}" is a GitHub account, not a repository. Choose a repository, e.g. ${account[1]}/<repository>.`;
+  if (/github\.com/i.test(value)) return `"${value}" is not a GitHub repository. Use owner/repository or https://github.com/owner/repository.`;
+  if (isLikelyGitRepoUrl(value)) return null;
+  return `"${value}" is not a Git repository URL. Choose a repository from your connected GitHub account, or use https://github.com/owner/repository.`;
+}
+
 export async function devAgentRoutes(app: FastifyInstance) {
   app.post("/dev-agent/runs", async (req, reply) => {
     const userId = requireUser(req, reply);
@@ -105,6 +121,9 @@ export async function devAgentRoutes(app: FastifyInstance) {
     if (body.targetRepo === "testmind" && !localTestmindRepoPath()) {
       return reply.code(409).send({ error: NO_LOCAL_TESTMIND_REPO_MESSAGE, code: "DEV_AGENT_NO_LOCAL_REPO", autonomousQeUrl: "/operator/qe" });
     }
+
+    const repoProblem = devAgentRepoProblem(body.targetRepo);
+    if (repoProblem) return reply.code(400).send({ error: repoProblem, code: "DEV_AGENT_INVALID_REPO" });
 
     if (requiresExternalRepoConfirmation(body.targetRepo, body.confirmExternalRepo)) {
       return reply.code(400).send({
