@@ -172,7 +172,7 @@ test('generated file, bundle, legacy export and curated content HTTP routes cann
     walk(dir);
     return list;
   };
-  const routes = loadTs('apps/api/src/testmind/routes.ts', {
+  const routes = loadTs('apps/api/src/testmind/routes.ts', { './suite-cases.js': loadTs('apps/api/src/testmind/suite-cases.ts'),
     fs: fsSync, globby: {}, archiver: require('archiver'), '@clerk/fastify': { getAuth: req => ({ userId: req.headers['x-user-id'] }) }, '../prisma.js': { prisma },
     '@testmind/core/framework': { DEFAULT_FRAMEWORK_ID: 'playwright-ts', FRAMEWORK_IDS: ['playwright-ts'] }, '@testmind/core/framework-registry': {}, './service.js': {},
     './curated-store.js': { CURATED_ROOT: curated, getCuratedProject: () => null, slugify: () => 'owned-suite', ensureWithin: (base, file) => { assert.ok(service.within(base, file)); } },

@@ -1,4 +1,5 @@
 // apps/api/src/testmind/routes.ts
+import { parseSuiteCases, hasSuiteCases } from "./suite-cases.js";
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs';
@@ -316,34 +317,6 @@ function suiteSyncFileGlobs(adapterId: string) {
   return ["**/*.spec.{ts,js,mjs,cjs}"];
 }
 
-function parseSuiteCases(relPath: string, source: string) {
-  const normalizedPath = relPath.replace(/\\/g, "/").toLowerCase();
-  if (normalizedPath.endsWith(".feature")) {
-    const out: Array<{ title: string; line: number }> = [];
-    const lines = source.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const match = line.match(/^\s*Scenario(?: Outline)?:\s*(.+?)\s*$/i);
-      if (match?.[1]) {
-        out.push({ title: match[1].trim(), line: i + 1 });
-      }
-    }
-    return out;
-  }
-
-  const caseRe = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(\s*['""`]([^'""`]+)['""`]\s*,/g;
-  const out: Array<{ title: string; line: number }> = [];
-  const lines = source.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    let match: RegExpExecArray | null;
-    caseRe.lastIndex = 0;
-    while ((match = caseRe.exec(line))) {
-      out.push({ title: match[1], line: i + 1 });
-    }
-  }
-  return out;
-}
 function curatedRootCandidates(curatedSuite: CuratedSuiteWithOwner) {
   const candidates: string[] = [];
   const manifestEntry = getCuratedProject(curatedSuite.id);
@@ -401,7 +374,8 @@ function coercePlaywrightTestSource(
   testName: string,
   isTs: boolean
 ): { content: string; changed: boolean } {
-  const hasTest = /\btest\s*\(/.test(source);
+  // Never rewrite a file that already declares tests (including fixture-extended ones like `qe(...)`).
+  const hasTest = /\btest\s*\(/.test(source) || hasSuiteCases("spec.ts", source);
   if (hasTest) return { content: source, changed: false };
   if (!/chromium\.launch/.test(source)) return { content: source, changed: false };
 

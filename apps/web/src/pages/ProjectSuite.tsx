@@ -25,7 +25,16 @@ import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { getFrameworkDefinition, matchFrameworkIdFromValue } from "@testmind/core/framework-registry";
 
 type SpecFile = { path: string };
-type CaseItem = { title: string; line: number; specPath?: string };
+type CaseStep = { line: number; kind: "action" | "assertion" | "objective"; text: string };
+// steps/scenarioId/objective are read from the spec's actual source by /tm/suite/cases.
+type CaseItem = { title: string; line: number; specPath?: string; scenarioId?: string; objective?: string; steps?: CaseStep[] };
+
+const STEP_KIND_LABEL: Record<CaseStep["kind"], string> = { action: "Action", assertion: "Assert", objective: "Expected" };
+const STEP_KIND_TONE: Record<CaseStep["kind"], string> = {
+  action: "bg-slate-100 text-slate-700",
+  assertion: "bg-emerald-100 text-emerald-800",
+  objective: "bg-violet-100 text-violet-800",
+};
 
 type TreeNode = { name: string; path?: string; children?: TreeNode[]; file?: SpecFile; suiteId?: string };
 type ProjectOption = {
@@ -2328,8 +2337,22 @@ export default function ProjectSuite() {
                     </div>
                     <div className="flex-1">
                       <div className="font-medium leading-tight">{c.title}</div>
-                      <div className="text-xs text-slate-500">line {c.line}</div>
+                      <div className="text-xs text-slate-500">
+                        line {c.line}
+                        {c.scenarioId && <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[11px] text-blue-700">scenario {c.scenarioId}</span>}
+                      </div>
                       {c.specPath && <div className="text-[11px] text-slate-500">{c.specPath}</div>}
+                      {!!c.steps?.length && (
+                        <ol className="mt-2 space-y-1">
+                          {c.steps.map((s) => (
+                            <li key={`${s.line}:${s.kind}`} className="flex items-start gap-2 text-xs">
+                              <span className="w-10 shrink-0 text-right font-mono text-slate-400">{s.line}</span>
+                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${STEP_KIND_TONE[s.kind]}`}>{STEP_KIND_LABEL[s.kind]}</span>
+                              <code className="min-w-0 break-all font-mono text-[11px] text-slate-700">{s.text}</code>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
                     </div>
                   </div>
                   );

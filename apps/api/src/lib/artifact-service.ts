@@ -79,6 +79,23 @@ export function publicArtifactJson(value: any, secrets: string[] = []): any {
   };
   return redactWorkflowValue(visit(value), secrets);
 }
+/**
+ * Data files of a run's generated Allure report (allure-report/data, widgets, history, export).
+ * The report UI needs test names, statuses and failure messages, so text is kept - but every
+ * string is still redacted for known project secrets, credential-shaped text and sensitive keys,
+ * and embedded archives/base64 or body/buffer/storageState payloads are still withheld.
+ */
+export function allureReportJson(value: any, secrets: string[]): any {
+  const visit = (item: any, depth = 0): any => {
+    if (depth > 80) blocked();
+    if (typeof item === 'string') return /UEsDB|UEsFB|data:[^,]*;base64,/i.test(item) ? '[artifact content withheld]' : item;
+    if (Array.isArray(item)) return item.map(entry => visit(entry, depth + 1));
+    if (item && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([key, entry]) => [key, /^(body|base64|buffer|storageState)$/i.test(key) ? '[artifact content withheld]' : visit(entry, depth + 1)]));
+    return item;
+  };
+  return redactWorkflowValue(visit(value), secrets);
+}
+const isAllureReportFile = (root: string, file: string) => path.relative(root, file).split(path.sep)[0] === 'allure-report';
 function publicReportProjection(value: any, depth = 0): any {
   if (depth > 80) blocked();
   if (Array.isArray(value)) return value.map(item => publicReportProjection(item, depth + 1));
@@ -89,6 +106,19 @@ function publicReportProjection(value: any, depth = 0): any {
   }
   if (typeof value === 'string') return ['passed', 'failed', 'skipped', 'timedOut', 'interrupted', 'expected', 'unexpected', 'flaky', 'queued', 'running', 'succeeded', 'canceled'].includes(value) ? value : '[artifact content withheld]';
   return value;
+}
+/** Exact redaction of known project secret values (and their bare form after a Bearer/Basic/token prefix). */
+export function redactKnownSecrets(text: string, secrets: string[]): string {
+  const values = new Set<string>();
+  for (const raw of secrets) {
+    if (typeof raw !== 'string' || !raw) continue;
+    values.add(raw);
+    const bare = raw.match(/^(?:bearer|basic|token)\s+(.+)$/i)?.[1];
+    if (bare) values.add(bare);
+  }
+  let out = text;
+  for (const value of [...values].sort((a, b) => b.length - a.length)) if (out.includes(value)) out = out.split(value).join('[redacted]');
+  return out;
 }
 export async function downloadableArtifact(input: { root: string; candidate: string; projectId: string; runId: string; trace?: boolean }) {
   if (!artifactIdSafe(input.runId) || !artifactIdSafe(input.projectId)) blocked();
@@ -105,7 +135,9 @@ export async function downloadableArtifact(input: { root: string; candidate: str
     try {
       const text = new TextDecoder('utf-8', { fatal: true }).decode(data);
       if (/"type"\s*:\s*"(?:context-options|resource-snapshot|frame-snapshot)"/.test(text)) blocked();
-      return { data: Buffer.from(JSON.stringify(publicArtifactJson(publicReportProjection(JSON.parse(text)), secrets))), type: types[ext], sanitized: false };
+      const parsed = JSON.parse(text);
+      if (isAllureReportFile(await fs.realpath(input.root), file)) return { data: Buffer.from(JSON.stringify(allureReportJson(parsed, secrets))), type: types[ext], sanitized: false };
+      return { data: Buffer.from(JSON.stringify(publicArtifactJson(publicReportProjection(parsed), secrets))), type: types[ext], sanitized: false };
     } catch { return blocked(); }
   }
   // Text-based report/log assets: redact known project secrets and reject anything
@@ -114,7 +146,12 @@ export async function downloadableArtifact(input: { root: string; candidate: str
     try {
       const text = new TextDecoder('utf-8', { fatal: true }).decode(data);
       if (/"type"\s*:\s*"(?:context-options|resource-snapshot|frame-snapshot)"/.test(text)) blocked();
-      return { data: Buffer.from(redactWorkflowValue(text, secrets)), type: types[ext], sanitized: false };
+      // Logs get every known secret plus credential-shaped text redacted. Report code assets
+      // (Allure/Playwright app.js, styles, HTML shells) get every known project secret value
+      // redacted, but not the credential-shape heuristic: it rewrites ordinary minified code
+      // such as `{key:"toHtml",value:function(t){...` and breaks the report.
+      const redacted = ext === '.txt' ? redactWorkflowValue(text, secrets) : redactKnownSecrets(text, secrets);
+      return { data: Buffer.from(redacted), type: types[ext], sanitized: false };
     } catch { return blocked(); }
   }
   // Remaining allowlisted types are binary (images/fonts/video) and cannot carry a
