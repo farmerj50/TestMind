@@ -4,14 +4,15 @@
 // - Run credentials are stored encrypted as ProjectSecrets under unique temporary keys, referenced
 //   by key exactly like saved credentials (never placed in context, prompts, tests, logs or
 //   artifacts), and deleted when the run ends (finalize or cancel).
-// - Repositories must be the one the project's GitHub integration authorizes. They are fetched as a
-//   shallow, run-scoped temporary checkout and deleted after use - no persistent clone or cache.
+// - Repositories must be authorized by the project's GitHub integration, or readable by the project
+//   owner's connected GitHub account (verified with GitHub). They are fetched as a shallow,
+//   run-scoped temporary checkout and deleted after use - no persistent clone or cache.
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { prisma } from "../prisma.js";
-import { encryptSecret } from "./crypto.js";
+import { decryptSecret, encryptSecret } from "./crypto.js";
 import type { CredentialRef } from "./qe-credentials.js";
 import { getOctokitForProject } from "../runner/github-writeback.js";
 import { cloneRepo } from "../runner/git.js";
@@ -54,23 +55,63 @@ export function parseGitHubRepo(input: string): { owner: string; repo: string } 
   return m ? { owner: m[1], repo: m[2] } : null;
 }
 
+const validBranch = (b: string) => /^[A-Za-z0-9._\/-]{1,200}$/.test(b) && !b.includes("..");
+
+/** The project owner's connected GitHub account token (Dashboard "Connect GitHub"), or null. Never logged. */
+export async function ownerGitHubToken(projectId: string): Promise<string | null> {
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } });
+  if (!project) return null;
+  const account = await prisma.gitAccount.findUnique({ where: { provider_userId: { provider: "github", userId: project.ownerId } }, select: { token: true } });
+  if (!account?.token) return null;
+  try { return decryptSecret(account.token); } catch { return account.token; } // legacy plaintext tokens
+}
+
+type GitHubRepoInfo = { full_name: string; default_branch?: string; permissions?: { pull?: boolean } };
+type RepoLookup = (owner: string, repo: string, token: string) => Promise<{ status: number; body: GitHubRepoInfo | null }>;
+const githubRepoLookup: RepoLookup = async (owner, repo, token) => {
+  const r = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "TestMindAI" },
+  });
+  return { status: r.status, body: r.ok ? ((await r.json()) as GitHubRepoInfo) : null };
+};
+
 /**
- * The repository must be the one this project's GitHub integration authorizes. Returns the clone
- * URL, branch and integration token (kept in memory only), or a user-facing reason.
+ * Authorizes repository access for one run. The project's GitHub integration is used when it
+ * authorizes the requested repository; otherwise the project OWNER's connected GitHub account is
+ * used, and only after GitHub confirms that account can read the repository. Returns the clone URL,
+ * branch and token (kept in memory only), or a user-facing reason.
  */
-export async function authorizeRunRepository(projectId: string, input: string, branch?: string): Promise<{ ok: true; access: RepoAccess } | { ok: false; reason: string }> {
+export async function authorizeRunRepository(
+  projectId: string,
+  input: string,
+  branch?: string,
+  deps: { lookup?: RepoLookup } = {},
+): Promise<{ ok: true; access: RepoAccess } | { ok: false; reason: string }> {
   const wanted = parseGitHubRepo(input);
   if (!wanted) return { ok: false, reason: "Enter a GitHub repository as owner/repo or https://github.com/owner/repo" };
+  const requested = (branch ?? "").trim();
+  if (requested && !validBranch(requested)) return { ok: false, reason: "Invalid branch name" };
+
   const gh = await getOctokitForProject(projectId).catch(() => null);
-  if (!gh) return { ok: false, reason: "Connect this project's GitHub integration before giving the agent repository access" };
-  if (gh.owner.toLowerCase() !== wanted.owner.toLowerCase() || gh.repo.toLowerCase() !== wanted.repo.toLowerCase()) {
-    return { ok: false, reason: `This project's GitHub integration authorizes ${gh.owner}/${gh.repo}, not ${wanted.owner}/${wanted.repo}` };
+  if (gh && gh.owner.toLowerCase() === wanted.owner.toLowerCase() && gh.repo.toLowerCase() === wanted.repo.toLowerCase()) {
+    let token: string | undefined;
+    try { token = ((await (gh.octokit as any).auth()) as { token?: string })?.token; } catch { /* public repositories still clone */ }
+    return { ok: true, access: { url: `https://github.com/${gh.owner}/${gh.repo}`, owner: gh.owner, repo: gh.repo, branch: requested || gh.defaultBranch || "main", ...(token ? { token } : {}) } };
   }
-  let token: string | undefined;
-  try { token = ((await (gh.octokit as any).auth()) as { token?: string })?.token; } catch { /* public repositories still clone */ }
-  const b = (branch ?? "").trim() || gh.defaultBranch || "main";
-  if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(b) || b.includes("..")) return { ok: false, reason: "Invalid branch name" };
-  return { ok: true, access: { url: `https://github.com/${gh.owner}/${gh.repo}`, owner: gh.owner, repo: gh.repo, branch: b, ...(token ? { token } : {}) } };
+
+  const token = await ownerGitHubToken(projectId);
+  if (!token) {
+    return { ok: false, reason: gh
+      ? `This project's GitHub integration authorizes ${gh.owner}/${gh.repo}, not ${wanted.owner}/${wanted.repo}; connect GitHub on the Dashboard to use your other repositories`
+      : "Connect GitHub (Dashboard -> Connect GitHub) before giving the agent repository access" };
+  }
+  const found = await (deps.lookup ?? githubRepoLookup)(wanted.owner, wanted.repo, token).catch(() => ({ status: 0, body: null }));
+  if (found.status === 401) return { ok: false, reason: "Your GitHub connection has expired - reconnect GitHub on the Dashboard" };
+  if (found.status !== 200 || !found.body || found.body.permissions?.pull === false) {
+    return { ok: false, reason: `Your connected GitHub account cannot access ${wanted.owner}/${wanted.repo}` };
+  }
+  const [owner, repo] = found.body.full_name.split("/");
+  return { ok: true, access: { url: `https://github.com/${owner}/${repo}`, owner, repo, branch: requested || found.body.default_branch || "main", token } };
 }
 
 const CHECKOUT_ROOT = path.join(os.tmpdir(), "tm-run-repos");

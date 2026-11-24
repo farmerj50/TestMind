@@ -9,7 +9,8 @@ import { configureSpecEditor } from "../lib/monaco-spec-config";
 // pending approvals, and pause / resume / cancel.
 
 type Project = { id: string; name: string };
-type Capabilities = { autonomousQa: boolean; appCodeFix: boolean; github: { repository: string; defaultBranch: string } | null; savedCredentialKeys: Array<{ key: string; name: string }> };
+type Capabilities = { autonomousQa: boolean; appCodeFix: boolean; github: { repository: string | null; defaultBranch: string | null; connectedAccount: boolean } | null; savedCredentialKeys: Array<{ key: string; name: string }> };
+type GitHubRepoOption = { name: string; url: string; private: boolean };
 type InputKind = "app_url" | "page" | "user_story" | "repository";
 type Outcome = "pending" | "running" | "succeeded" | "partial" | "failed" | "unverified" | "blocked" | "skipped" | "canceled" | "awaitingApproval";
 
@@ -82,6 +83,8 @@ export default function AutonomousQePage() {
   const [allowCodeFix, setAllowCodeFix] = useState(false);
   const [testCommand, setTestCommand] = useState("");
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [accountRepos, setAccountRepos] = useState<GitHubRepoOption[]>([]);
+  const [repoListError, setRepoListError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<{ projects: Project[] }>("/projects")
@@ -111,6 +114,20 @@ export default function AutonomousQePage() {
     if (!projectId) return;
     apiFetch<Capabilities>(`/operator/qe/capabilities?projectId=${encodeURIComponent(projectId)}`).then(setCaps).catch(() => setCaps(null));
   }, [apiFetch, projectId]);
+
+  // Repositories the connected GitHub account can read (same list as the Dashboard picker).
+  useEffect(() => {
+    setAccountRepos([]);
+    setRepoListError(null);
+    if (!caps?.github?.connectedAccount) return;
+    apiFetch<{ repos: GitHubRepoOption[] }>("/github/repos")
+      .then((d) => setAccountRepos(d.repos ?? []))
+      .catch((e) => setRepoListError(`Could not load your GitHub repositories: ${e instanceof Error ? e.message : String(e)}`));
+  }, [apiFetch, caps?.github?.connectedAccount]);
+  const repoOptions: GitHubRepoOption[] = [
+    ...(caps?.github?.repository && !accountRepos.some((r) => r.name === caps.github!.repository) ? [{ name: caps.github.repository, url: `https://github.com/${caps.github.repository}`, private: false }] : []),
+    ...accountRepos,
+  ];
 
   // Routes the request to the existing pipelines: objective -> user-story run, otherwise URL/page run;
   // credentials by reference (or stored for this run only); repository through the GitHub integration.
@@ -245,13 +262,17 @@ export default function AutonomousQePage() {
 
             <fieldset className="space-y-2 rounded-md border p-2">
               <legend className="px-1 text-xs font-semibold uppercase text-slate-500">GitHub repository (optional)</legend>
-              {caps?.github ? (
+              {caps?.github && (caps.github.repository || caps.github.connectedAccount) ? (
                 <>
                   <div className="grid grid-cols-3 gap-2">
-                    <input className="col-span-2 rounded-md border px-2 py-1 text-xs" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder={caps.github.repository} />
-                    <input className="rounded-md border px-2 py-1 text-xs" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} placeholder={caps.github.defaultBranch} />
+                    <select className="col-span-2 rounded-md border px-2 py-1 text-xs" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)}>
+                      <option value="">No repository (URL-only)</option>
+                      {repoOptions.map((r) => <option key={r.name} value={r.name}>{r.name}{r.private ? " (private)" : ""}{r.name === caps.github!.repository ? " - project integration" : ""}</option>)}
+                    </select>
+                    <input className="rounded-md border px-2 py-1 text-xs" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} placeholder={caps.github.defaultBranch ?? "default branch"} />
                   </div>
-                  <p className="text-[11px] text-slate-500">Only {caps.github.repository} (this project's GitHub integration). Fetched as a temporary checkout for this run and deleted afterwards.</p>
+                  {repoListError && <p className="text-[11px] text-rose-700">{repoListError}</p>}
+                  <p className="text-[11px] text-slate-500">Repositories your connected GitHub account can access{caps.github.repository ? " and this project's integration" : ""}. Fetched as a temporary checkout for this run and deleted afterwards.</p>
                   {repoUrl.trim() && (
                     <>
                       <label className={`flex items-center gap-2 text-xs ${caps.appCodeFix ? "text-slate-700" : "text-slate-400"}`}>
@@ -263,7 +284,7 @@ export default function AutonomousQePage() {
                   )}
                 </>
               ) : (
-                <p className="text-xs text-slate-500">Connect the project's GitHub integration to let the agent inspect source and prepare draft PRs.</p>
+                <p className="text-xs text-slate-500">Connect GitHub on the <a className="underline" href="/dashboard">Dashboard</a> to let the agent inspect a repository's source.</p>
               )}
             </fieldset>
             <label className="flex items-center gap-2 text-sm text-slate-700">

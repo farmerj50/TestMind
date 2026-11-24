@@ -16,7 +16,7 @@ import { requiresExternalRepoConfirmation } from "./devAgent.js";
 import { cancelQeRun, getStages, pauseQeRun, qeContextOf, resumeQeRun, QE_INPUT_KINDS } from "../runner/qe-orchestrator.js";
 import { getProjectKnowledge } from "../lib/app-knowledge-store.js";
 import { credentialRefExists, type CredentialRef } from "../lib/qe-credentials.js";
-import { storeRunCredentials, authorizeRunRepository, parseGitHubRepo, RUN_CREDENTIAL_KEY_PREFIX } from "../lib/qe-run-access.js";
+import { storeRunCredentials, authorizeRunRepository, parseGitHubRepo, ownerGitHubToken, RUN_CREDENTIAL_KEY_PREFIX } from "../lib/qe-run-access.js";
 import { appCodeFixEnabled } from "../lib/qe-codefix.js";
 import { getOctokitForProject } from "../runner/github-writeback.js";
 import { getCodeFixProposal } from "../lib/qe-codefix-store.js";
@@ -265,7 +265,13 @@ export default async function operatorQeRoutes(app: FastifyInstance) {
     return reply.send({
       autonomousQa: validatedEnv.TM_AUTONOMOUS_QA_ENABLED,
       appCodeFix: appCodeFixEnabled(),
-      github: gh ? { repository: `${gh.owner}/${gh.repo}`, defaultBranch: gh.defaultBranch } : null,
+      // `repository`: the project's own integration (if any). `connectedAccount`: the owner's connected
+      // GitHub account can authorize any repository it can read (listed by GET /github/repos).
+      github: {
+        repository: gh ? `${gh.owner}/${gh.repo}` : null,
+        defaultBranch: gh?.defaultBranch ?? null,
+        connectedAccount: !!(await ownerGitHubToken(projectId!).catch(() => null)),
+      },
       savedCredentialKeys: secrets.map((s) => ({ key: s.key, name: s.name })),
     });
   });

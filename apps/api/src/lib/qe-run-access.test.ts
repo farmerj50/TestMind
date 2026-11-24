@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { prisma } from "../prisma.js";
-import { decryptSecret } from "./crypto.js";
+import { decryptSecret, encryptSecret } from "./crypto.js";
 import { resolveCredentialEnv } from "./qe-credentials.js";
 import { authorizeRunRepository, parseGitHubRepo, redactGitError, releaseRunCredentials, RUN_CREDENTIAL_KEY_PREFIX, storeRunCredentials, withRunCheckout } from "./qe-run-access.js";
 
@@ -61,15 +61,56 @@ test("only keys with the run-credential prefix can ever be released", async (t) 
   assert.equal(await prisma.projectSecret.count({ where: { id: saved.id } }), 1, "a saved project secret is never deleted");
 });
 
-test("repository access requires the project's GitHub integration", async (t) => {
-  const project = await prisma.project.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true, repoUrl: true } });
-  const hasIntegration = await prisma.integration.count({ where: { projectId: project!.id, provider: "github", enabled: true } });
-  if (hasIntegration) { t.skip("first project has a GitHub integration"); return; }
-  const bad = await authorizeRunRepository(project!.id, "not a repo");
-  assert.equal(bad.ok, false);
-  const r = await authorizeRunRepository(project!.id, "someone-else/private-repo");
+async function tempOwnerProject(t: any, opts: { connectedToken?: string } = {}) {
+  const userId = `test-gh-owner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await prisma.user.create({ data: { id: userId } });
+  const project = await prisma.project.create({ data: { name: "repo-access test", repoUrl: "example.test", ownerId: userId } });
+  if (opts.connectedToken) await prisma.gitAccount.create({ data: { provider: "github", userId, token: encryptSecret(opts.connectedToken), githubLogin: "tester" } });
+  t.after(async () => {
+    await prisma.gitAccount.deleteMany({ where: { userId } });
+    await prisma.project.delete({ where: { id: project.id } });
+    await prisma.user.delete({ where: { id: userId } });
+  });
+  return project;
+}
+
+test("without an integration or connected GitHub account, repository access is refused clearly", async (t) => {
+  const project = await tempOwnerProject(t);
+  const lookups: string[] = [];
+  const lookup = async (o: string, r: string) => { lookups.push(`${o}/${r}`); return { status: 200, body: { full_name: `${o}/${r}` } }; };
+  assert.equal((await authorizeRunRepository(project.id, "not a repo", undefined, { lookup })).ok, false);
+  const r = await authorizeRunRepository(project.id, "farmerj50/justicepath", undefined, { lookup });
   assert.equal(r.ok, false);
-  assert.match((r as { reason: string }).reason, /GitHub integration|authorizes/);
+  assert.match((r as { reason: string }).reason, /Connect GitHub/);
+  assert.deepEqual(lookups, [], "GitHub is never called without a credential");
+});
+
+test("the project owner's connected GitHub account authorizes repositories GitHub confirms it can read", async (t) => {
+  const token = "gho_connectedAccountTokenForTests0000000";
+  const project = await tempOwnerProject(t, { connectedToken: token });
+  const seen: Array<{ repo: string; token: string }> = [];
+  const lookup = async (o: string, r: string, tok: string) => {
+    seen.push({ repo: `${o}/${r}`, token: tok });
+    if (r.toLowerCase() === "justicepath") return { status: 200, body: { full_name: "farmerj50/justicepath", default_branch: "develop", permissions: { pull: true } } };
+    if (r === "expired") return { status: 401, body: null };
+    return { status: 404, body: null };
+  };
+  const ok = await authorizeRunRepository(project.id, "https://github.com/FarmerJ50/JusticePath.git", undefined, { lookup });
+  assert.equal(ok.ok, true);
+  const access = (ok as { access: any }).access;
+  assert.deepEqual({ url: access.url, owner: access.owner, repo: access.repo, branch: access.branch }, { url: "https://github.com/farmerj50/justicepath", owner: "farmerj50", repo: "justicepath", branch: "develop" }, "canonical name and default branch from GitHub");
+  assert.equal(access.token, token, "the stored token is decrypted in memory only");
+  assert.equal(seen[0].token, token);
+
+  const withBranch = await authorizeRunRepository(project.id, "farmerj50/justicepath", "feature/x", { lookup });
+  assert.equal((withBranch as { access: any }).access.branch, "feature/x");
+  assert.equal((await authorizeRunRepository(project.id, "farmerj50/justicepath", "../etc", { lookup })).ok, false, "unsafe branch refused");
+
+  const denied = await authorizeRunRepository(project.id, "someone-else/private-repo", undefined, { lookup });
+  assert.equal(denied.ok, false);
+  assert.match((denied as { reason: string }).reason, /cannot access someone-else\/private-repo/);
+  const expired = await authorizeRunRepository(project.id, "farmerj50/expired", undefined, { lookup });
+  assert.match((expired as { reason: string }).reason, /reconnect GitHub/);
 });
 
 test("a run checkout is temporary: available to the inspection, then always deleted (also on failure)", async (t) => {
