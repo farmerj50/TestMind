@@ -83,7 +83,7 @@ export default function DevAgentPage() {
 
   // New-run form state
   const [mode, setMode] = useState<DevAgentMode>("assigned");
-  const [targetRepo, setTargetRepo] = useState("testmind");
+  const [targetRepo, setTargetRepo] = useState("");
   const [confirmExternalRepo, setConfirmExternalRepo] = useState(false);
   const [instructionText, setInstructionText] = useState("");
   const [budgetUsd, setBudgetUsd] = useState("");
@@ -217,6 +217,10 @@ export default function DevAgentPage() {
               </label>
             ))}
           </div>
+          <p className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs text-blue-900">
+            Autonomous Dev modifies code in a Git repository. To generate or run tests for a website, use{" "}
+            <a className="font-semibold underline" href="/operator/qe">Autonomous QE</a>.
+          </p>
           <textarea
             className="w-full border rounded-md px-2 py-1.5 text-sm"
             rows={3}
@@ -225,8 +229,8 @@ export default function DevAgentPage() {
             onChange={(e) => setInstructionText(e.target.value)}
           />
           <div className="flex items-center gap-2 text-sm">
-            <input className="border rounded-md px-2 py-1 w-40" placeholder="testmind" value={targetRepo} onChange={(e) => setTargetRepo(e.target.value)} />
-            {targetRepo !== "testmind" && (
+            <input className="border rounded-md px-2 py-1 flex-1" placeholder="Repository to modify (e.g. https://github.com/org/repo)" value={targetRepo} onChange={(e) => setTargetRepo(e.target.value)} />
+            {targetRepo.trim() !== "" && targetRepo !== "testmind" && (
               <label className="flex items-center gap-1 text-xs">
                 <input type="checkbox" checked={confirmExternalRepo} onChange={(e) => setConfirmExternalRepo(e.target.checked)} /> I authorize access to this external repo
               </label>
@@ -262,7 +266,7 @@ export default function DevAgentPage() {
             <input type="datetime-local" className="border rounded-md px-2 py-1" value={scheduledStartAt} onChange={(e) => setScheduledStartAt(e.target.value)} />
             <input className="border rounded-md px-2 py-1" placeholder="Timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           </div>
-          <button className="w-full rounded-md bg-[color:var(--tm-accent)] text-white py-1.5 text-sm" onClick={createRun} disabled={!projectId}>
+          <button className="w-full rounded-md bg-[color:var(--tm-accent)] text-white py-1.5 text-sm" onClick={createRun} disabled={!projectId || !targetRepo.trim()}>
             {scheduledStartAt ? "Schedule run" : "Start run"}
           </button>
         </div>

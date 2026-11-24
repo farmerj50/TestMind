@@ -11,6 +11,7 @@ import { enqueueOperatorJob } from "../runner/queue.js";
 import { buildInstructionText } from "../lib/dev-agent-self-improvement.js";
 import { createPrProposal, publishPrProposal, PrPublicationError } from "../lib/pr-publication-store.js";
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
+import { localTestmindRepoPath, NO_LOCAL_TESTMIND_REPO_MESSAGE } from "../runner/dev-agent-worktree.js";
 
 function requireUser(req: any, reply: any): string | null {
   const { userId } = getAuth(req);
@@ -98,6 +99,12 @@ export async function devAgentRoutes(app: FastifyInstance) {
     const body = parsed.data;
 
     if (!(await isProjectOwner(body.projectId, userId))) return reply.code(403).send({ error: "Forbidden" });
+
+    // Autonomous Dev edits code in a Git repository. "testmind" is only valid where a real local
+    // checkout exists (not in production containers); website test generation belongs in Autonomous QE.
+    if (body.targetRepo === "testmind" && !localTestmindRepoPath()) {
+      return reply.code(409).send({ error: NO_LOCAL_TESTMIND_REPO_MESSAGE, code: "DEV_AGENT_NO_LOCAL_REPO", autonomousQeUrl: "/operator/qe" });
+    }
 
     if (requiresExternalRepoConfirmation(body.targetRepo, body.confirmExternalRepo)) {
       return reply.code(400).send({

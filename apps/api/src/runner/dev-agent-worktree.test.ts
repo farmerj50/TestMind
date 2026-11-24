@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execa } from "execa";
-import { createDevAgentWorktree, removeDevAgentWorktree } from "./dev-agent-worktree.js";
+import { createDevAgentWorktree, removeDevAgentWorktree, localTestmindRepoPath, NO_LOCAL_TESTMIND_REPO_MESSAGE } from "./dev-agent-worktree.js";
 
 async function makeDisposableGitRepo(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tm-dev-agent-test-repo-"));
@@ -66,4 +66,30 @@ test("removeDevAgentWorktree refuses to remove a path that doesn't match the run
   assert.ok(stillThere.isDirectory(), "the unrelated path must be untouched");
 
   await removeDevAgentWorktree({ id: runId, targetRepo: "testmind" });
+});
+
+test("'testmind' without a local Git checkout (production containers) fails fast and points to Autonomous QE", async (t) => {
+  const notARepo = await fs.mkdtemp(path.join(os.tmpdir(), "tm-dev-agent-no-git-"));
+  const prevRoot = process.env.TM_LOCAL_REPO_ROOT;
+  process.env.TM_LOCAL_REPO_ROOT = notARepo;
+  t.after(async () => {
+    process.env.TM_LOCAL_REPO_ROOT = prevRoot;
+    await fs.rm(notARepo, { recursive: true, force: true }).catch(() => {});
+  });
+  assert.equal(localTestmindRepoPath(), null);
+  await assert.rejects(createDevAgentWorktree({ id: `test-run-nogit-${Date.now()}`, targetRepo: "testmind" }), (e: any) => e.message === NO_LOCAL_TESTMIND_REPO_MESSAGE);
+  assert.match(NO_LOCAL_TESTMIND_REPO_MESSAGE, /Autonomous QE \(\/operator\/qe\)/);
+  // Nothing was created for the rejected run.
+  assert.deepEqual((await fs.readdir(notARepo)), []);
+});
+
+test("'testmind' with a real local Git checkout is still available (legitimate repository tasks unchanged)", async (t) => {
+  const repo = await makeDisposableGitRepo();
+  const prevRoot = process.env.TM_LOCAL_REPO_ROOT;
+  process.env.TM_LOCAL_REPO_ROOT = repo;
+  t.after(async () => {
+    process.env.TM_LOCAL_REPO_ROOT = prevRoot;
+    await fs.rm(repo, { recursive: true, force: true }).catch(() => {});
+  });
+  assert.equal(localTestmindRepoPath(), path.resolve(repo));
 });
