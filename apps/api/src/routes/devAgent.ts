@@ -9,7 +9,7 @@ import { prisma } from "../prisma.js";
 import { isProjectOwner } from "../lib/project-access.js";
 import { enqueueOperatorJob } from "../runner/queue.js";
 import { buildInstructionText } from "../lib/dev-agent-self-improvement.js";
-import { createPrProposal, publishPrProposal, PrPublicationError } from "../lib/pr-publication-store.js";
+import { createPrProposal, provisionedTestSetup, publishPrProposal, PrPublicationError } from "../lib/pr-publication-store.js";
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { localTestmindRepoPath, NO_LOCAL_TESTMIND_REPO_MESSAGE } from "../runner/dev-agent-worktree.js";
 import { parseGitHubRepo } from "../lib/qe-run-access.js";
@@ -375,7 +375,9 @@ export async function devAgentRoutes(app: FastifyInstance) {
     // flagged and verified-only). Code-fix runs are always application fixes.
     const changed = (await getCodeFixProposal(run.id).catch(() => null))?.files ?? [];
     const opCtx = (await prisma.operatorJob.findUnique({ where: { id: run.operatorJobId }, select: { contextJson: true } }))?.contextJson as any;
-    const kind = !opCtx?.qeCodeFix && changed.length > 0 && changed.every((f) => isTestFilePath(f.path)) ? "test_suite" : "app_fix";
+    // The minimal Playwright setup the run added (devDependency, lockfile, config) is test tooling.
+    const setupFiles = new Set((await provisionedTestSetup(run.id).catch(() => null))?.files ?? []);
+    const kind = !opCtx?.qeCodeFix && changed.length > 0 && changed.every((f) => isTestFilePath(f.path) || setupFiles.has(f.path)) ? "test_suite" : "app_fix";
     try {
       const proposal = await createPrProposal({ projectId: run.projectId, jobId: run.operatorJobId, kind, source: { type: "dev_agent", devAgentRunId: run.id }, actor: userId ?? run.requestedBy });
       if (proposal.status === "blocked") return reply.code(409).send({ error: proposal.blockedReason, proposalId: proposal.id });

@@ -13,7 +13,9 @@ import { listGeneratedSpecFiles } from "../testmind/generated-files.js";
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { provisionWorktreeDependencies, type DependencyProvisionResult } from "./dev-agent-dependencies.js";
 import { buildSandboxEnv, envInt, parseCommandLine, runSandboxed } from "./dev-agent-sandbox.js";
-import { detectTestCommand, type DetectedTestCommand } from "./dev-agent-test-command.js";
+import os from "node:os";
+import { describeTestSetup, detectTestCommand, type DetectedTestCommand } from "./dev-agent-test-command.js";
+import { provisionPlaywrightSetup, type PlaywrightProvisionResult } from "./dev-agent-playwright-setup.js";
 import { checkObjectiveAlignment, extractAssertionTargets, TEST_FILE_PATTERN, type AssertionTarget, type ObjectiveCheck } from "./dev-agent-objective.js";
 
 const TICK_DELAY_MS = 2000;
@@ -86,7 +88,8 @@ export type DevAgentDeps = {
   runTestCommand?: RunTestCommandFn;
   resolveDiscovery?: ResolveDiscoveryFn;
   provisionDependencies?: ProvisionDependenciesFn;
-  detectTestCommand?: (worktreePath: string, changedFiles: string[]) => DetectedTestCommand;
+  detectTestCommand?: (worktreePath: string, changedFiles: string[], opts?: { outputDir?: string }) => DetectedTestCommand;
+  provisionPlaywright?: (worktreePath: string, opts: { baseUrl: string | null; specs: string[] }) => Promise<PlaywrightProvisionResult>;
 };
 
 // Default "code" phase: a real LLM call via the budget-tracked path, whose response is
@@ -265,11 +268,18 @@ export function buildCodePhasePrompt(opts: {
   discoveryUnavailableReason?: DiscoveryUnavailableReason | null;
   existingTestPaths: string[];
   priorIteration: PriorIterationContext | null;
+  /** Which test framework generated tests must use (from the repository's own setup). */
+  testSetup?: string | null;
 }): string {
   const lines: string[] = [];
   lines.push(`Instruction: ${opts.instructionText ?? "(self-improvement mode: find and fix an issue)"}`);
   lines.push(`Iteration: ${opts.iterationNumber}`);
   lines.push("");
+  if (opts.testSetup) {
+    lines.push("## Test framework");
+    lines.push(opts.testSetup);
+    lines.push("");
+  }
   lines.push("## Site context");
   if (opts.discoveryContext) {
     const d = opts.discoveryContext;
@@ -332,6 +342,12 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
       }
     : null;
 
+  // B6 code-fix proposals: inspect the repository for the defect's likely source and show the
+  // baseline failure, under a prompt that fixes application code and never touches tests.
+  const codeFix = run.operatorJobId
+    ? ((await prisma.operatorJob.findUnique({ where: { id: run.operatorJobId }, select: { contextJson: true } }))?.contextJson as any)?.qeCodeFix
+    : null;
+
   let userPrompt = buildCodePhasePrompt({
     instructionText: run.instructionText,
     iterationNumber,
@@ -339,13 +355,8 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
     discoveryUnavailableReason: discoveryState.unavailableReason,
     existingTestPaths,
     priorIteration,
+    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath),
   });
-
-  // B6 code-fix proposals: inspect the repository for the defect's likely source and show the
-  // baseline failure, under a prompt that fixes application code and never touches tests.
-  const codeFix = run.operatorJobId
-    ? ((await prisma.operatorJob.findUnique({ where: { id: run.operatorJobId }, select: { contextJson: true } }))?.contextJson as any)?.qeCodeFix
-    : null;
   if (codeFix) {
     const { searchTermsForDefect } = await import("../lib/qe-codefix.js");
     const { findLikelySourceFiles } = await import("../lib/qe-codefix-store.js");
@@ -610,11 +621,31 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   // this run created or changed across all iterations.
   let testCommand = current.testCommand;
   let detection: DetectedTestCommand | null = null;
+  let provisioned: { dependency: string; files: string[] } | null = null;
+  const pwOutputDir = path.join(os.tmpdir(), "tm-dev-agent-pw-output", run.id);
   if (!testCommand && !(opJob as any).contextJson?.qeCodeFix) {
     const prior = await prisma.devAgentIteration.findMany({ where: { devAgentRunId: run.id }, select: { filesChanged: true } });
     const touched = [...prior.flatMap((it) => ((Array.isArray(it.filesChanged) ? it.filesChanged : []) as any[]).map((f) => f?.path)), ...codeResult.filesChanged.map((f) => f.path)]
       .filter((p): p is string => typeof p === "string");
-    detection = (deps.detectTestCommand ?? detectTestCommand)(current.worktreePath!, touched);
+    const detect = deps.detectTestCommand ?? detectTestCommand;
+    detection = detect(current.worktreePath!, touched, { outputDir: pwOutputDir });
+    // Generated Playwright specs but no Playwright in the repository: add a minimal, pinned
+    // Playwright setup in this temporary worktree, commit it on the run branch (it becomes part
+    // of the disclosed proposal), then detect again. A failed setup is reported, never hidden.
+    const needs = "provisionPlaywright" in detection ? detection.provisionPlaywright : undefined;
+    if (needs) {
+      const provision = await (deps.provisionPlaywright ?? provisionPlaywrightSetup)(current.worktreePath!, {
+        baseUrl: (await resolveBaseUrlForRun(current)) ?? null,
+        specs: needs.specs,
+      });
+      if (provision.ok) {
+        await commitChanges(current.worktreePath!, `dev-agent: add minimal Playwright test setup (${provision.dependency})`);
+        provisioned = { dependency: provision.dependency, files: provision.files };
+        detection = detect(current.worktreePath!, touched, { outputDir: pwOutputDir });
+      } else {
+        detection = { command: null, reason: `${detection.reason} Provisioning a Playwright setup failed: ${(provision as { ok: false; error: string }).error}` };
+      }
+    }
     testCommand = detection.command;
   }
   const hasTestCommand = !!testCommand;
@@ -622,9 +653,11 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   const ran = hasTestCommand
     ? await runTestCommand(current.worktreePath!, testCommand!, run.id)
     : { passed: false, output: `No test command configured for this run - the generated changes were not executed or verified.${detection ? ` ${detection.reason}` : ""}` };
+  fs.rmSync(pwOutputDir, { recursive: true, force: true }); // run-scoped Playwright artifacts are never kept
+  const setupNote = provisioned ? `Added minimal Playwright test setup (disclosed in the proposal): ${provisioned.dependency} as a devDependency; files: ${provisioned.files.join(", ")}\n` : "";
   const executed = detection?.command
-    ? { ...ran, command: detection.command, autoDetected: true, output: `Auto-detected: ${detection.reason}\n$ ${detection.command}\n${ran.output}` }
-    : ran;
+    ? { ...ran, command: detection.command, autoDetected: true, ...(provisioned ? { provisioned } : {}), output: `${setupNote}Auto-detected: ${detection.reason}\n$ ${detection.command}\n${ran.output}` }
+    : { ...ran, ...(provisioned ? { provisioned } : {}) };
 
   // What the agent's test files assert right now, and (if executed and passing) whether
   // that still matches the original instruction. Recorded on every iteration so the
