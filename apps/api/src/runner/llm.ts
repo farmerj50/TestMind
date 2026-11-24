@@ -180,7 +180,7 @@ function loadBackendEnv() {
 
 const OPENAI_SECRET_KEYS = ["OPENAI_API_KEY", "OPEN_API_KEY"] as const;
 
-async function resolveOpenAiKey(projectId?: string) {
+export async function resolveOpenAiKey(projectId?: string) {
   loadBackendEnv();
   if (!projectId) {
     return process.env.OPENAI_API_KEY ?? "";

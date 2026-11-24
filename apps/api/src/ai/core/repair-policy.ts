@@ -266,6 +266,55 @@ function extractFailingLocatorExpression(message?: string | null): string | null
   return quoted?.[1] || expr;
 }
 
+export function validateAssertionIntent(before: string, after: string): string | null {
+  // A green rerun is not verification if the repair removed or weakened what the
+  // test checks. Locator changes remain eligible; matcher/expectation changes and
+  // new control flow that bypasses assertions require review instead of repair.
+  const assertionContract = (source: string) => {
+    const file = ts.createSourceFile('intent.spec.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const assertions: string[] = [], flow: string[] = [];
+    const compact = (node: ts.Node) => node.getText(file).replace(/\s+/g, ' ');
+    const declarations = new Map<string, ts.Expression>();
+    const collect = (node: ts.Node) => { if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) declarations.set(node.name.text, node.initializer); ts.forEachChild(node, collect); };
+    collect(file);
+    const locatorMethods = new Set(['locator', 'getByRole', 'getByText', 'getByLabel', 'getByTestId', 'getByPlaceholder', 'getByAltText', 'getByTitle', 'frameLocator']);
+    const shape = (node: ts.Node, seen = new Set<string>()): string => {
+      if (ts.isIdentifier(node) && declarations.has(node.text) && !seen.has(node.text)) return shape(declarations.get(node.text)!, new Set([...seen, node.text]));
+      if (ts.isCallExpression(node)) {
+        if (ts.isPropertyAccessExpression(node.expression)) {
+          const receiver = shape(node.expression.expression, seen), method = node.expression.name.text;
+          if ((receiver === 'page' || receiver === '<locator>') && locatorMethods.has(method)) return '<locator>';
+          if (receiver === '<locator>' && ['first', 'last', 'nth', 'filter'].includes(method)) return '<locator>';
+        }
+        return `${shape(node.expression, seen)}(${node.arguments.map(arg => shape(arg, seen)).join(',')})`;
+      }
+      if (ts.isPropertyAccessExpression(node)) return `${shape(node.expression, seen)}.${node.name.text}`;
+      if (ts.isAwaitExpression(node)) return `await(${shape(node.expression, seen)})`;
+      return compact(node);
+    };
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        let receiver: ts.Expression = node.expression.expression;
+        const modifiers: string[] = [];
+        while (ts.isPropertyAccessExpression(receiver)) { modifiers.push(receiver.name.text); receiver = receiver.expression; }
+        if (ts.isCallExpression(receiver) && /^(expect|expect\.soft|expect\.poll)$/.test(compact(receiver.expression))) {
+          assertions.push(JSON.stringify({ matcher: node.expression.name.text, modifiers, expect: compact(receiver.expression), actual: receiver.arguments.map(arg => shape(arg)), args: node.arguments.map(arg => shape(arg)), awaited: ts.isAwaitExpression(node.parent) }));
+        }
+      }
+      if (ts.isIfStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node)) flow.push(`${node.kind}:${compact(node.expression)}`);
+      if (ts.isReturnStatement(node) || ts.isThrowStatement(node)) flow.push(`${node.kind}:${node.expression ? compact(node.expression) : ''}`);
+      if (ts.isCatchClause(node)) flow.push(`catch:${compact(node.block)}`);
+      ts.forEachChild(node, visit);
+    };
+    visit(file); return { assertions, flow };
+  };
+  const originalIntent = assertionContract(before), patchedIntent = assertionContract(after);
+  if (JSON.stringify(originalIntent.assertions) !== JSON.stringify(patchedIntent.assertions)) return 'Patched spec changed required assertions or their expectations.';
+  if (originalIntent.assertions.length && JSON.stringify(originalIntent.flow) !== JSON.stringify(patchedIntent.flow)) return 'Patched spec changed assertion control flow; manual review is required.';
+
+  return null;
+}
+
 export function validatePatchedSpec(
   before: string,
   after: string,
@@ -318,6 +367,9 @@ export function validatePatchedSpec(
     return `Patched spec has TypeScript syntax errors: ${ts.flattenDiagnosticMessageText(first.messageText, "\n")}`;
   }
   const parsed = ts.createSourceFile("patched.spec.ts", cleaned, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  const intentError = validateAssertionIntent(before, cleaned);
+  if (intentError) return intentError;
 
   const beforeTitles = extractInlineTestTitles(before);
   const afterTitles = extractInlineTestTitles(cleaned);

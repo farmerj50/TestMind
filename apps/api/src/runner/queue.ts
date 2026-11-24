@@ -4,6 +4,7 @@ import { createQueueRedisConnection } from './redis.js';
 
 // What the worker expects to receive:
 export type RunPayload = {
+  workflowRunId?: string;
   projectId: string;
   adapterId?: string;
   mode?: "regular" | "ai";
@@ -16,6 +17,10 @@ export type RunPayload = {
   envName?: string;
   trace?: 'on' | 'off' | 'retain-on-failure' | 'on-first-retry';
   grep?: string;
+  /** Exclude tests whose title matches (Playwright --grep-invert). */
+  grepInvert?: string;
+  /** B4: approved test credentials BY REFERENCE (ProjectSecret keys only - never values). */
+  credentialRef?: { emailKey: string; passwordKey: string; loginPath?: string };
   file?: string;
   suiteId?: string;
   baseUrl?: string;
@@ -100,26 +105,28 @@ export type SecurityResumeCtx = {
 
 /** Checkpoint stored in BullMQ job data so a re-queued job can resume without re-running from scratch. */
 export type ResumePhase =
+  | { kind: 'workflow_graph' }
   | { kind: 'wait_run'; runId: string; taskId: string; deadline: number }
   | { kind: 'approval_security'; approvalId: string; taskId: string; deadline: number; securityCtx: SecurityResumeCtx }
   | { kind: 'wait_scan'; scanId: string; taskId: string; deadline: number }
   | { kind: 'wait_repairs'; remaining: string[]; taskMap: Record<string, string>; deadline: number }
-  | { kind: 'autonomous_qa'; state: Record<string, any> };
+  | { kind: 'autonomous_qa'; state: Record<string, any> }
+  | { kind: 'dev_agent_iterate'; devAgentRunId: string };
 
 export type OperatorJobPayload = {
   operatorJobId: string;
   resumePhase?: ResumePhase;
 };
 
-export async function enqueueOperatorJob(operatorJobId: string) {
+export async function enqueueOperatorJob(operatorJobId: string, options?: { durable?: boolean }) {
   return operatorQueue.add(
     'execute',
     { operatorJobId } satisfies OperatorJobPayload,
     {
       jobId: operatorJobId,
-      removeOnComplete: true,
+      removeOnComplete: options?.durable ? false : true,
       removeOnFail: false,
-      attempts: 2,
+      attempts: options?.durable ? 1 : 2,
       backoff: { type: 'exponential', delay: 15_000 },
     }
   );
@@ -132,9 +139,9 @@ export async function enqueueRun(runId: string, payload: RunPayload) {
     { runId, payload },
     {
       jobId: runId,
-      removeOnComplete: true,
+      removeOnComplete: payload.workflowRunId ? false : true,
       removeOnFail: false,
-      attempts: 3,
+      attempts: payload.workflowRunId ? 1 : 3,
       backoff: { type: 'exponential', delay: 30_000 },
     }
   );
@@ -176,6 +183,7 @@ export async function enqueueAllureGenerate(payload: AllureGeneratePayload) {
 // ── API Testing queue (functional validation — separate from security scans) ──
 
 export type ApiTestRunPayload = {
+  workflowRunId?: string;
   runId: string;
   collectionId: string;
   projectId: string;
@@ -186,6 +194,25 @@ export const apiTestQueue = createQueue<ApiTestRunPayload>('api-tests');
 
 export async function enqueueApiTestRun(payload: ApiTestRunPayload) {
   return apiTestQueue.add('api-test-run', payload, {
+    jobId: payload.runId,
+    removeOnComplete: payload.workflowRunId ? false : true,
+    removeOnFail: false,
+    attempts: 1,
+  });
+}
+
+// ── Evaluation Engine queue (apps/eval-service RAG/LLM metrics) — Phase 1 ──
+
+export type EvaluationRunPayload = {
+  runId: string;
+  projectId: string;
+};
+
+export const evaluationQueue = createQueue<EvaluationRunPayload>('evaluation-runs');
+
+export async function enqueueEvaluationRun(payload: EvaluationRunPayload) {
+  return evaluationQueue.add('evaluation-run', payload, {
+    jobId: payload.runId,
     removeOnComplete: true,
     removeOnFail: false,
     attempts: 1,

@@ -31,6 +31,7 @@ import MarketingLayout from "../components/layout/MarketingLayout";
 import ProjectSuite from "../pages/ProjectSuite";
 import QaAgentPage from "../pages/QaAgentPage";
 import OperatorPage from "../pages/OperatorPage";
+import AutonomousQePage from "../pages/AutonomousQePage";
 import SecurityScanPage from "../pages/SecurityScanPage";
 import LiveSecurityTestPage from "../pages/LiveSecurityTestPage";
 import ResearchAgentPage from "../pages/ResearchAgentPage";
@@ -41,6 +42,8 @@ import SuiteRedirectPage from "../pages/SuiteRedirectPage";
 import OrganizationsPage from "../pages/OrganizationsPage";
 import OrganizationDetailPage from "../pages/OrganizationDetailPage";
 import ApiTestingPage from "../pages/ApiTestingPage";
+import EvaluationsPage from "../pages/EvaluationsPage";
+import DevAgentPage from "../pages/DevAgentPage";
 import UrlBuilderPage from "../pages/UrlBuilderPage";
 
 function NotFound() {
@@ -194,6 +197,22 @@ export default function AppRoutes() {
           }
         />
         <Route
+          path="/operator/qe"
+          element={
+            <ProtectedRoute>
+              <AutonomousQePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/operator/qe/:id"
+          element={
+            <ProtectedRoute>
+              <AutonomousQePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/workflows"
           element={
             <ProtectedRoute>
@@ -206,6 +225,22 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <ApiTestingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/evaluations"
+          element={
+            <ProtectedRoute>
+              <EvaluationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dev-agent"
+          element={
+            <ProtectedRoute>
+              <DevAgentPage />
             </ProtectedRoute>
           }
         />

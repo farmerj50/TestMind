@@ -13,10 +13,11 @@ export default async function schedulesRoutes(app: FastifyInstance) {
     const { userId } = getAuth(req);
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
-    const { projectId, cron, contextJson = {} } = (req.body ?? {}) as {
+    const { projectId, cron, contextJson = {}, timezone } = (req.body ?? {}) as {
       projectId?: string;
       cron?: string;
       contextJson?: object;
+      timezone?: string;
     };
 
     if (!projectId) return reply.code(400).send({ error: "projectId required" });
@@ -28,10 +29,10 @@ export default async function schedulesRoutes(app: FastifyInstance) {
     if (project.ownerId !== userId) return reply.code(403).send({ error: "Forbidden" });
 
     const schedule = await prisma.operatorSchedule.create({
-      data: { projectId, cron: cron.trim(), enabled: true, contextJson: contextJson as any },
+      data: { projectId, cron: cron.trim(), enabled: true, contextJson: contextJson as any, timezone },
     });
 
-    await registerScheduleJob(schedule.id, schedule.projectId, schedule.cron);
+    await registerScheduleJob(schedule.id, schedule.projectId, schedule.cron, schedule.timezone ?? undefined);
 
     return reply.code(201).send({ schedule });
   });
@@ -60,7 +61,7 @@ export default async function schedulesRoutes(app: FastifyInstance) {
     if (!userId) return reply.code(401).send({ error: "Unauthorized" });
 
     const { id } = req.params as { id: string };
-    const { enabled, cron } = (req.body ?? {}) as { enabled?: boolean; cron?: string };
+    const { enabled, cron, timezone } = (req.body ?? {}) as { enabled?: boolean; cron?: string; timezone?: string | null };
 
     const schedule = await prisma.operatorSchedule.findUnique({
       where: { id },
@@ -81,12 +82,13 @@ export default async function schedulesRoutes(app: FastifyInstance) {
       data: {
         ...(enabled !== undefined ? { enabled } : {}),
         ...(cron !== undefined ? { cron: cron.trim() } : {}),
+        ...(timezone !== undefined ? { timezone } : {}),
       },
     });
 
     // Re-register if still enabled
     if (updated.enabled) {
-      await registerScheduleJob(updated.id, updated.projectId, updated.cron);
+      await registerScheduleJob(updated.id, updated.projectId, updated.cron, updated.timezone ?? undefined);
     }
 
     return reply.send({ schedule: updated });

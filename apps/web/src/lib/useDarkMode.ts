@@ -21,7 +21,7 @@ export function useDarkMode() {
 
   useEffect(() => {
     applyDark(dark);
-    try { localStorage.setItem(KEY, String(dark)); } catch {}
+    try { localStorage.setItem(KEY, String(dark)); } catch { /* storage unavailable (private mode): theme still applies */ }
   }, [dark]);
 
   // Apply on first mount before paint

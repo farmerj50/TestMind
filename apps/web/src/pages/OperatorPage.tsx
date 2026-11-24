@@ -93,6 +93,9 @@ const STATUS_COLORS: Record<string, string> = {
   failed:    "bg-rose-100 text-rose-700",
   canceled:  "bg-amber-100 text-amber-700",
   blocked:   "bg-orange-100 text-orange-700",
+  paused:    "bg-violet-100 text-violet-700",
+  partial:   "bg-amber-100 text-amber-800",
+  unverified: "bg-amber-100 text-amber-800",
   pending:   "bg-slate-100 text-slate-500",
   skipped:   "bg-slate-100 text-slate-400",
 };
@@ -320,7 +323,7 @@ export default function OperatorPage() {
         .then(({ job: j }) => {
           if (!mounted) return;
           setJob(j);
-          if (!["succeeded", "failed", "canceled"].includes(j.status)) {
+          if (!["succeeded", "failed", "canceled", "partial", "unverified"].includes(j.status)) {
             startPolling(j.id);
           }
         })
@@ -390,7 +393,7 @@ export default function OperatorPage() {
         setJob(res.job);
         // update the same row in history if present
         setHistory((prev) => prev.map((j) => j.id === res.job.id ? res.job : j));
-        if (["succeeded", "failed", "canceled"].includes(res.job.status)) {
+        if (["succeeded", "failed", "canceled", "partial", "unverified"].includes(res.job.status)) {
           stopPolling();
           fetchHistory();
         }
@@ -462,13 +465,13 @@ export default function OperatorPage() {
 
   const viewJob = (j: OperatorJob) => {
     setJob(j);
-    if (!["succeeded", "failed", "canceled"].includes(j.status)) {
+    if (!["succeeded", "failed", "canceled", "partial", "unverified"].includes(j.status)) {
       startPolling(j.id);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const isTerminal = job && ["succeeded", "failed", "canceled"].includes(job.status);
+  const isTerminal = job && ["succeeded", "failed", "canceled", "partial", "unverified"].includes(job.status);
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -480,6 +483,7 @@ export default function OperatorPage() {
         <p className="text-sm text-slate-600">
           Create and monitor autonomous operator jobs. Jobs orchestrate tasks and link back to test runs.
         </p>
+        <a href="/operator/qe" className="mt-2 inline-block rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">Autonomous QE runs →</a>
       </div>
 
       {error && (
@@ -999,6 +1003,9 @@ export default function OperatorPage() {
                       >
                         View run →
                       </a>
+                    )}
+                    {j.contextJson?.qe && (
+                      <a href={`/operator/qe/${j.id}`} className="text-blue-600 hover:underline text-xs">Run view →</a>
                     )}
                     <button
                       onClick={() => viewJob(j)}

@@ -8,6 +8,8 @@ import { redis } from './redis.js';
 import { makeWorkdir, rmrf } from './workdir.js';
 import { cloneRepo } from './git.js';
 import { detectFramework, installDeps, runTests } from './node-test-exec.js';
+import { resolveCredentialEnv } from '../lib/qe-credentials.js';
+import { QE_AUTH_ENV } from '../testmind/pipeline/qe-codegen.js';
 import { parseResults, type ParsedCase } from './result-parsers.js';
 import { normalizeSpecFileKey } from './persist-run-results.js';
 import { scheduleSelfHealingForRun } from './self-heal.js';
@@ -18,10 +20,13 @@ import type { RunPayload } from './queue.js';
 import { analyzeFailure } from './ai-analysis.js';
 import type { LocatorBucket } from '../testmind/runtime/locator-store.js';
 import { REPORT_ROOT } from '../lib/storageRoots.js';
+import { authorizedWorkflowContext } from '../lib/workflow-execution-policy.js';
+import { validateWorkflowTarget } from '../lib/workflow-http.js';
 import { decryptSecret } from '../lib/crypto.js';
 import { runAdapter } from '../testmind/service.js';
 import { DEFAULT_FRAMEWORK_ID } from '@testmind/core/framework';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
+import { finalizeRepairVerification } from '../lib/repair-verification.js';
 
 const SELF_HEAL_POLICY = readSelfHealPolicy();
 
@@ -508,7 +513,10 @@ export const worker = new Worker(
       throw new Error('Run not found');
     }
 
-    await prisma.testRun.update({
+    if (payload?.workflowRunId) {
+      const { claimWorkflowChildRun } = await import('../lib/workflow-execution-policy.js');
+      if (!await claimWorkflowChildRun(prisma.testRun, runId)) return;
+    } else await prisma.testRun.update({
       where: { id: runId },
       data: {
         status: TestRunStatus.running,
@@ -561,6 +569,7 @@ export const worker = new Worker(
     const cancelKey = `cancel:run:${runId}`;
     const abortController = new AbortController();
     const cancelTimer = setInterval(() => {
+      if (payload?.workflowRunId) authorizedWorkflowContext(payload.workflowRunId, payload.projectId).catch(() => abortController.abort());
       redis
         .get(cancelKey)
         .then((value) => {
@@ -740,8 +749,18 @@ export const worker = new Worker(
         DEFAULT_BASE_URL;
       const timeoutMs = payload?.timeoutMs ?? runParams?.timeoutMs ?? 30_000;
       const extraEnv: Record<string, string> = {};
+      if (payload?.workflowRunId) {
+        const context = await authorizedWorkflowContext(payload.workflowRunId, payload.projectId);
+        await validateWorkflowTarget(jobBaseUrl, context.environment);
+        extraEnv.TM_WORKFLOW_ORIGIN = new URL(jobBaseUrl).origin;
+      }
       extraEnv.PW_BASE_URL = jobBaseUrl;
       extraEnv.TM_BASE_URL = jobBaseUrl;
+      // B4: approved test credentials travel only as ProjectSecret keys; values are decrypted here,
+      // for this one test process. Never logged (spawn debug prints args only, not env).
+      if (payload?.credentialRef && payload?.projectId) {
+        Object.assign(extraEnv, await resolveCredentialEnv(payload.projectId, payload.credentialRef, QE_AUTH_ENV));
+      }
       if (aiMode) {
         extraEnv.TM_AI_MODE = "1";
         extraEnv.TM_AI_ACTION_SHOTS = process.env.TM_AI_ACTION_SHOTS ?? "1";
@@ -876,10 +895,12 @@ export const worker = new Worker(
             jsonOutPath: resultsPath,
             headed: payload?.headed,
             grep,
+            grepInvert: typeof payload?.grepInvert === "string" && payload.grepInvert ? payload.grepInvert : undefined,
             extraGlobs,
             baseUrl: jobBaseUrl,
             runTimeout: timeoutMs,
             abortSignal: abortController.signal,
+            trace: payload?.trace,
             extraEnv,
             configPath: aiMode ? path.join(work, "tm-ai.playwright.config.mjs") : undefined,
           });
@@ -1135,6 +1156,13 @@ export const worker = new Worker(
         console.error(`[worker] finalizeLatestTestState failed for run ${runId}`, err);
       });
 
+      // A self-heal attempt only succeeds if this verification rerun passed (else repair_failed).
+      if (runRecord?.trigger === "self-heal" && runRecord.rerunOfId) {
+        finalizeSelfHealRerun(runRecord.rerunOfId, runParams?.requestedGrep, { passed, failed, total: parsedCount }, ok).catch((err) => {
+          console.error(`[worker] self-heal verification finalize failed for run ${runId}`, err);
+        });
+      }
+
       if (!ok && failed > 0 && !Boolean((runParams as any)?.disableAutoSelfHeal)) {
         scheduleSelfHealingForRun(runId).catch((err) => {
           console.error(`[worker] failed to schedule self-heal for run ${runId}`, err);
@@ -1207,3 +1235,16 @@ worker.on('completed', (job) => {
 });
 
 
+
+/** Finalizes the self-heal attempts verified by a standalone self-heal rerun of `originalRunId`. */
+async function finalizeSelfHealRerun(originalRunId: string, grep: unknown, summary: { passed: number; failed: number; total: number }, runOk: boolean) {
+  const candidates = await prisma.testHealingAttempt.findMany({
+    where: { runId: originalRunId, status: { in: ["succeeded", "needs_review"] } },
+    select: { id: true, executionAfter: true, response: true },
+  });
+  const ids = candidates
+    .filter((a) => a.executionAfter == null && (a.response as any)?.rerunQueued === true)
+    .filter((a) => typeof grep !== "string" || !grep || (a.response as any)?.testTitle == null || (a.response as any).testTitle === grep)
+    .map((a) => a.id);
+  if (ids.length) await finalizeRepairVerification(prisma, ids, summary, { runSucceeded: runOk });
+}

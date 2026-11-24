@@ -1,3 +1,4 @@
+import { publicArtifactReferences } from "../lib/artifact-references.js";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import fs from "node:fs/promises";
@@ -30,7 +31,7 @@ const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/
 
 const toAbsoluteUrl = (base: string, relOrAbs: string) => {
   if (!relOrAbs) return "";
-  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  if (/^https?:\/\//i.test(relOrAbs)) return ""; // external artifact stores are not authorized/sanitized
   const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
   return base ? new URL(rel, `${base}/`).toString() : rel;
 };
@@ -136,6 +137,7 @@ const withReportsRunContract = <T extends { id: string; status: string; error?: 
   run: T
 ) => ({
   ...run,
+  artifactsJson: publicArtifactReferences(run.artifactsJson),
   lifecycleStatus: toLifecycleStatus(run.status),
   artifactsState: toArtifactsState(run.artifactsJson),
   errors: toStructuredErrors(run),

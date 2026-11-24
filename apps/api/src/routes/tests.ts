@@ -1,5 +1,6 @@
 // apps/api/src/routes/tests.ts
 import type { FastifyInstance } from "fastify";
+import { publicArtifactReferences } from '../lib/artifact-references.js';
 import type { Prisma } from "@prisma/client";
 import { getAuth } from "@clerk/fastify";
 import { prisma } from "../prisma.js";
@@ -90,7 +91,7 @@ const normalizePathLike = (value: string) => value.replace(/\\/g, "/").replace(/
 
 const toAbsoluteUrl = (base: string, relOrAbs: string) => {
   if (!relOrAbs) return "";
-  if (/^https?:\/\//i.test(relOrAbs)) return relOrAbs;
+  if (/^https?:\/\//i.test(relOrAbs)) return ""; // external artifact stores are not authorized/sanitized
   const rel = relOrAbs.startsWith("/") ? relOrAbs : `/${relOrAbs}`;
   return base ? new URL(rel, `${base}/`).toString() : rel;
 };
@@ -224,6 +225,7 @@ const withRunContract = <
   const { paramsJson: _ignored, ...rest } = run as any;
   return {
     ...rest,
+    artifactsJson: publicArtifactReferences(run.artifactsJson),
     lifecycleStatus: toLifecycleStatus(run.status),
     artifactsState: toArtifactsState(run.artifactsJson),
     errors: toStructuredErrors(run),

@@ -311,14 +311,14 @@ function TestCasePanel({
           <label className="block text-xs font-medium mb-1">Headers (JSON)</label>
           <textarea className="w-full border rounded px-2 py-1 text-sm font-mono dark:bg-slate-800 dark:border-slate-700" rows={3}
             defaultValue={headersText}
-            onBlur={(e) => { try { setForm({ ...form, headers: JSON.parse(e.target.value) }); } catch {} }}
+            onBlur={(e) => { try { setForm({ ...form, headers: JSON.parse(e.target.value) }); } catch { /* invalid JSON: keep the previous value */ } }}
           />
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">Query params (JSON)</label>
           <textarea className="w-full border rounded px-2 py-1 text-sm font-mono dark:bg-slate-800 dark:border-slate-700" rows={2}
             defaultValue={queryText}
-            onBlur={(e) => { try { setForm({ ...form, queryParams: JSON.parse(e.target.value) }); } catch {} }}
+            onBlur={(e) => { try { setForm({ ...form, queryParams: JSON.parse(e.target.value) }); } catch { /* invalid JSON: keep the previous value */ } }}
           />
         </div>
         <div>
@@ -637,7 +637,7 @@ export default function ApiTestingPage() {
                         className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                         onClick={() => setExpandedResults((prev) => {
                           const next = new Set(prev);
-                          next.has(r.id) ? next.delete(r.id) : next.add(r.id);
+                          if (next.has(r.id)) next.delete(r.id); else next.add(r.id);
                           return next;
                         })}
                       >

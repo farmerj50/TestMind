@@ -1072,7 +1072,7 @@ export default function SecurityScanPage() {
     if (liveWsRef.current) {
       try {
         liveWsRef.current.close();
-      } catch {}
+      } catch { /* socket already closed */ }
       liveWsRef.current = null;
     }
     setLiveViewOpen(false);

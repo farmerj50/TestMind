@@ -70,7 +70,7 @@ export async function secretsRoutes(app: FastifyInstance) {
     if (parsed.data.value) data.value = encryptSecret(parsed.data.value);
 
     const secret = await prisma.projectSecret.update({
-      where: { id },
+      where: { id, projectId },
       data,
       select: { id: true, name: true, key: true, createdAt: true, updatedAt: true },
     });
@@ -83,7 +83,7 @@ export async function secretsRoutes(app: FastifyInstance) {
     const { projectId, id } = req.params as { projectId: string; id: string };
     if (!(await isProjectOwner(projectId, userId))) return reply.code(403).send({ error: "Forbidden" });
 
-    await prisma.projectSecret.delete({ where: { id } });
+    await prisma.projectSecret.deleteMany({ where: { id, projectId } });
     return reply.code(204).send();
   });
 }
