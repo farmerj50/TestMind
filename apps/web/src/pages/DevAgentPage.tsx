@@ -85,6 +85,7 @@ export default function DevAgentPage() {
   const [mode, setMode] = useState<DevAgentMode>("assigned");
   const [targetRepo, setTargetRepo] = useState("");
   const [confirmExternalRepo, setConfirmExternalRepo] = useState(false);
+  const [accountRepos, setAccountRepos] = useState<Array<{ name: string; url: string; private: boolean }>>([]);
   const [instructionText, setInstructionText] = useState("");
   const [budgetUsd, setBudgetUsd] = useState("");
   const [maxIterations, setMaxIterations] = useState("5");
@@ -101,6 +102,11 @@ export default function DevAgentPage() {
     apiFetch<{ projects: Project[] }>("/projects")
       .then((d) => { setProjects(d.projects); if (d.projects[0]) setProjectId(d.projects[0].id); })
       .catch((e) => setError(String(e)));
+    // Repositories the connected GitHub account can read (same list as the Dashboard picker);
+    // without a connection the page keeps the manual repository URL field.
+    apiFetch<{ repos: Array<{ name: string; url: string; private: boolean }> }>("/github/repos")
+      .then((d) => setAccountRepos(d.repos ?? []))
+      .catch(() => setAccountRepos([]));
   }, []);
 
   useEffect(() => {
@@ -229,7 +235,14 @@ export default function DevAgentPage() {
             onChange={(e) => setInstructionText(e.target.value)}
           />
           <div className="flex items-center gap-2 text-sm">
-            <input className="border rounded-md px-2 py-1 flex-1" placeholder="Repository to modify (e.g. https://github.com/org/repo)" value={targetRepo} onChange={(e) => setTargetRepo(e.target.value)} />
+            {accountRepos.length > 0 ? (
+              <select className="border rounded-md px-2 py-1 flex-1" value={targetRepo} onChange={(e) => setTargetRepo(e.target.value)}>
+                <option value="">Repository to modify...</option>
+                {accountRepos.map((r) => <option key={r.name} value={r.url}>{r.name}{r.private ? " (private)" : ""}</option>)}
+              </select>
+            ) : (
+              <input className="border rounded-md px-2 py-1 flex-1" placeholder="Connect GitHub on the Dashboard, or enter https://github.com/org/repo" value={targetRepo} onChange={(e) => setTargetRepo(e.target.value)} />
+            )}
             {targetRepo.trim() !== "" && targetRepo !== "testmind" && (
               <label className="flex items-center gap-1 text-xs">
                 <input type="checkbox" checked={confirmExternalRepo} onChange={(e) => setConfirmExternalRepo(e.target.checked)} /> I authorize access to this external repo
