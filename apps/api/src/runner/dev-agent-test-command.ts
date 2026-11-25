@@ -79,14 +79,21 @@ export function describeTestSetup(worktreePath: string, baseUrl: string | null =
   const raw = readText(path.join(worktreePath, "package.json"));
   let deps: Record<string, string> = {};
   try { const pkg = raw ? JSON.parse(raw) : {}; deps = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) }; } catch { /* treated as no framework */ }
-  const noUrl = 'No application URL is configured for this run: do not write browser/website tests. If the instruction requires testing a website, respond with ONLY {"blocked": true, "reason": "No application URL is configured"}.';
+  // No live application: a repository task (website-test instructions never get this far
+  // without a URL). Verification comes from the repository's own tests, not a live site.
+  if (!baseUrl) {
+    return [
+      "No live application is associated with this run: this is a repository task.",
+      "Make the requested change in the repository and, where tests are relevant, add or update repository-level tests (unit/integration) with the repository's existing test tooling.",
+      "Do not write browser or end-to-end tests that need a running site. A missing live site is not a reason to report blocked.",
+    ].join(" ");
+  }
   if (deps["@playwright/test"] || deps.playwright) {
     return [
       'This repository already uses Playwright. Write end-to-end tests as Playwright specs (*.spec.ts) in its existing test folder, importing from "@playwright/test", and follow its existing Playwright configuration.',
-      baseUrl ? `The application under test is at ${baseUrl}.` : "No application URL is configured for this run; rely only on the repository's own Playwright configuration.",
+      `The application under test is at ${baseUrl}.`,
     ].join(" ");
   }
-  if (!baseUrl) return noUrl;
   const other = deps.vitest ? "Vitest" : deps.jest ? "Jest" : null;
   return [
     other ? `This repository uses ${other} for unit tests but has no end-to-end test framework.` : "This repository has no test framework.",

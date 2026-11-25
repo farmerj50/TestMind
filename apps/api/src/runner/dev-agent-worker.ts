@@ -116,6 +116,7 @@ const CODE_PHASE_SYSTEM_PROMPT = [
   "Preserve the original objective: when repairing a failing test you may fix selectors, waits, navigation, or implementation errors, but you must NOT change which feature, element, text, or behavior is asserted, and must not skip, negate, or delete the test.",
   "In Playwright tests prefer resilient, accessible locators (getByRole with a name, getByLabel, getByText, getByPlaceholder) over guessed tag or CSS selectors.",
   'If the requested feature or element does not exist on the target (per the site context or the failure output), do not substitute a different one - respond with ONLY {"blocked": true, "reason": "..."} instead of file operations.',
+  "Never report blocked only because no live site is configured: repository tasks are completed and verified from the repository itself.",
 ].join(" ");
 
 // The model's explicit "the requested thing doesn't exist" signal - returns the reason, or
@@ -320,7 +321,7 @@ export function buildCodePhasePrompt(opts: {
       lines.push(`- ${r.path} -> ${r.status}, headings: [${headings}], forms: ${r.formCount}${fields}, buttons: [${buttons}]`);
     }
   } else if (opts.discoveryUnavailableReason === "no-base-url") {
-    lines.push("No live site is associated with this run (general code-maintenance task) - live grounding was not attempted.");
+    lines.push("No live site is associated with this run: it is a repository task, so live grounding is not needed. Work from the repository itself.");
   } else {
     lines.push(
       `Live site grounding was NOT available for this run (reason: ${opts.discoveryUnavailableReason ?? "unknown"}). ` +

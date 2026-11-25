@@ -477,6 +477,10 @@ test("buildCodePhasePrompt: includes real site context, states an honest reason 
   assert.match(repair, /Prior iteration 1 result/);
   assert.match(repair, /TimeoutError: \.foo not found/);
   assert.match(repair, /tests\/a\.spec\.ts/);
+
+  // No live site = a repository task: stated as such, never framed as a missing prerequisite.
+  assert.match(repair, /No live site is associated with this run: it is a repository task/);
+  assert.doesNotMatch(repair, /live grounding was not attempted/);
 });
 
 test("listRepoTestFiles finds test files, skips node_modules/.git, and respects maxFiles/maxDepth", async (t) => {

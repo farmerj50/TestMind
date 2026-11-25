@@ -50,7 +50,18 @@ test("code-phase guidance: no framework -> Playwright specs under e2e/; existing
   const has = repo({ "package.json": JSON.stringify({ devDependencies: { "@playwright/test": "1" } }) });
   t.after(() => [none, has].forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
   assert.match(describeTestSetup(none, "https://app.example.com"), /no test framework.*e2e\/.*@playwright\/test/);
-  assert.match(describeTestSetup(has), /already uses Playwright/);
+  assert.match(describeTestSetup(has, "https://app.example.com"), /already uses Playwright/);
+});
+
+test("repository tasks (no live site) are not steered to browser tests and are never blocked for lacking a site - even when the repo uses Playwright", (t) => {
+  // Shape of farmerj50/TestMind: @playwright/test declared at the root.
+  const pw = repo({ "package.json": JSON.stringify({ devDependencies: { "@playwright/test": "1.58.2" }, scripts: { "test:workflow": "node --test" } }) });
+  t.after(() => fs.rmSync(pw, { recursive: true, force: true }));
+  const g = describeTestSetup(pw, null);
+  assert.match(g, /repository task/);
+  assert.match(g, /repository-level tests/);
+  assert.match(g, /missing live site is not a reason to report blocked/);
+  assert.doesNotMatch(g, /Write end-to-end tests|Playwright specs|respond with ONLY \{"blocked"/);
 });
 
 test("provisioned config: testDir is the specs' common folder and baseURL the authorized URL", () => {
@@ -96,7 +107,7 @@ test("the prompt only claims a configured baseURL when one exists", (t) => {
   assert.match(describeTestSetup(dir, "https://app.example.com"), /baseURL is configured to https:\/\/app\.example\.com/);
   const none = describeTestSetup(dir, null);
   assert.doesNotMatch(none, /baseURL is configured/);
-  assert.match(none, /No application URL is configured.*blocked/);
+  assert.match(none, /No live application/);
 });
 
 test("summarizeTestFailure extracts the real Playwright error (navigation, assertion, browser launch)", () => {
