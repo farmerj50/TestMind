@@ -156,12 +156,17 @@ test("provisionWorktreeDependencies: a real zero-dependency pnpm-lock.yaml insta
   const result = await provisionWorktreeDependencies(dir);
   assert.deepEqual(result, { ok: true, packageManager: "pnpm" });
 
-  // A real, separate node_modules now exists in this worktree's own directory, not a
-  // symlink/junction pointing elsewhere.
+  // pnpm may omit node_modules entirely for a zero-dependency project on Linux. If it
+  // creates one, it must be local storage rather than a link to another checkout.
   const nodeModulesPath = path.join(dir, "node_modules");
-  const stat = await fs.lstat(nodeModulesPath);
-  assert.ok(stat.isDirectory(), "node_modules must be a real directory");
-  assert.ok(!stat.isSymbolicLink(), "node_modules must never be a symlink/junction");
+  const stat = await fs.lstat(nodeModulesPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (stat) {
+    assert.ok(stat.isDirectory(), "node_modules must be a real directory");
+    assert.ok(!stat.isSymbolicLink(), "node_modules must never be a symlink/junction");
+  }
 });
 
 test("provisionWorktreeDependencies: an unparseable/corrupt lockfile fails closed with the real package-manager error surfaced, not a crash", async (t) => {
