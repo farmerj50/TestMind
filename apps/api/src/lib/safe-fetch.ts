@@ -80,7 +80,9 @@ export async function validateUrl(rawUrl: string, policy: SafeFetchPolicy = {}):
     throw new Error("Outbound URL protocol is not allowed.");
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  // WHATWG URL retains brackets around IPv6 literals in `hostname` on supported Node
+  // versions. Strip them before `isIP`/private-range checks so ::1 cannot fall through to DNS.
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
   const allowPrivateHosts = policy.allowPrivateHosts ?? parseBoolean(process.env.TM_ALLOW_PRIVATE_OUTBOUND, false);
   if (!allowPrivateHosts && isLocalHost(hostname)) {
     throw new Error("Outbound URL host is not allowed.");

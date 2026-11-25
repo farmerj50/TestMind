@@ -115,10 +115,10 @@ test("finalizeQeRun closes unreached stages as skipped and writes the truthful j
   await startStage(job.id, "repair");
   await finishStage(job.id, "repair", "blocked", "failures need human review");
   const overall = await finalizeQeRun(job.id);
-  assert.equal(overall.status, "partial");
+  assert.equal(overall.status, "unverified");
   const after = await prisma.operatorJob.findUnique({ where: { id: job.id } });
-  assert.equal(after?.status, "partial");
-  assert.match(after?.error ?? "", /repair/);
+  assert.equal(after?.status, "unverified");
+  assert.match(after?.error ?? "", /coverage evidence is missing/i);
   const review = (await getStages(job.id)).find((s) => s.stageKey === "review");
   assert.equal(review?.outcome, "skipped");
 });

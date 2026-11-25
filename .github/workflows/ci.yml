@@ -66,6 +66,9 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
 
+      - name: Install Patchright browser
+        run: pnpm --filter api exec patchright install --with-deps chromium
+
       - name: Set up Python for eval-service
         uses: actions/setup-python@v5
         with:

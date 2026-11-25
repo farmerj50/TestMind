@@ -735,7 +735,7 @@ test("a failed Playwright provisioning ends 'unverified' with the reason and nev
   assert.match(run?.error ?? "", /Provisioning a Playwright setup failed: npm install exited 1/);
 });
 
-test("website-test instruction with no authorized URL: unverified immediately - no approval, workspace, LLM call or retry", async (t) => {
+test("website-test instruction with no URL uses repository-level generation and source verification", async (t) => {
   const ctx = await setupRun({ status: "queued" });
   t.after(ctx.cleanup);
   await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { instructionText: "Write tests that verify the signup page form works" } });
@@ -747,11 +747,11 @@ test("website-test instruction with no authorized URL: unverified immediately - 
   });
   const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
   assert.equal(run?.status, "unverified");
-  assert.match(run?.error ?? "", /No authorized application URL/);
-  assert.equal(approval, false);
-  assert.equal(code, false);
-  assert.equal(run?.worktreePath, null, "no workspace is created");
-  assert.equal(await prisma.devAgentIteration.count({ where: { devAgentRunId: ctx.run.id } }), 0);
+  assert.match(run?.error ?? "", /No package\.json or affected test files/);
+  assert.equal(approval, true);
+  assert.equal(code, true);
+  assert.ok(run?.worktreePath, "repository-only verification uses the isolated workspace");
+  assert.equal(await prisma.devAgentIteration.count({ where: { devAgentRunId: ctx.run.id } }), 1);
 });
 
 test("repository-only tasks proceed without an application URL", async (t) => {

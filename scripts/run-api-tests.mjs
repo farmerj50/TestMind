@@ -52,7 +52,11 @@ const tapFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tm-api-tests-")
 // leak into suites that spawn real package managers.
 const pathKey = Object.keys(process.env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
 const childEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)));
-childEnv[pathKey] = String(process.env[pathKey] ?? "").split(path.delimiter).filter((p) => !/node_modules[\\/]\.bin/i.test(p)).join(path.delimiter);
+const pnpmHome = process.env.PNPM_HOME ? path.resolve(process.env.PNPM_HOME) : null;
+childEnv[pathKey] = String(process.env[pathKey] ?? "").split(path.delimiter).filter((p) => {
+  if (!/node_modules[\\/]\.bin/i.test(p)) return true;
+  return !!pnpmHome && path.resolve(p) === pnpmHome;
+}).join(path.delimiter);
 childEnv.TM_QE_RECOVERY = "0";
 console.log(`[api-tests] ${files.length} file(s), concurrency ${concurrency}`);
 const result = spawnSync(process.execPath, [

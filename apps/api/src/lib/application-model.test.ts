@@ -21,6 +21,7 @@ import {
 const EMPTY_V2: ApplicationModelStore = {
   version: 2,
   pages: {},
+  authenticatedPages: {},
   apis: {},
   identities: {},
   resources: {},
@@ -113,6 +114,7 @@ test("normalizeApplicationModel upgrades pre-Brain v1 data (pages only) to v2, p
   const result = normalizeApplicationModel(v1Shaped);
   assert.equal(result.version, 2);
   assert.deepEqual(result.pages, v1Shaped.pages);
+  assert.deepEqual(result.authenticatedPages, {});
   assert.deepEqual(result.apis, {});
   assert.deepEqual(result.identities, {});
   assert.deepEqual(result.resources, {});
