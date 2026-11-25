@@ -136,9 +136,15 @@ export function createOperatorHarness({ enabled = true, type = 'qa', context = {
     '../config/env.js': { validatedEnv: { TM_AUTONOMOUS_QA_ENABLED: enabled } },
     '../lib/security-approval-policy.js': securityPolicy,
     '../security/open-source-tools.js': { normalizeOpenSourceToolIds: value => value ?? [] },
-    // Autonomous QE (B1) dependencies. These harness jobs carry no context.qe, so the real
-    // qeContextOf keeps them on the legacy autonomous path; every QE side effect must stay unused.
+    // Autonomous QE (B1) dependencies. These fixtures exercise resumable legacy worker
+    // phases; the routing integration suites separately cover conversion into B1-B7.
     '../lib/safe-fetch.js': { validateUrl: async () => { throw new Error('Unexpected QE URL validation'); } },
+    // This harness exercises the resumable legacy worker phases. Routing into B1-B7 is
+    // covered by the autonomous routing/API integration suites, so keep these fixtures on
+    // their original path while still satisfying the worker's explicit dependency graph.
+    '../lib/autonomous-routing.js': { qeContextForLegacyRequest: legacyContext => legacyContext },
+    './dev-agent-suite.js': { writeRunnableBundle: () => { throw new Error('Unexpected QE suite bundle on a legacy autonomous job'); } },
+    '../lib/qe-coverage.js': { scenarioCoverage: () => { throw new Error('Unexpected QE coverage accounting on a legacy autonomous job'); } },
     // B2 knowledge: identity merge on the legacy path (the harness crawl has no scans/APIs).
     '../lib/app-knowledge.js': {
       computeCrawlKnowledgeUpdate: store => ({ next: store, diff: { pagesObserved: [], newPages: [], accessChanges: [], authRequired: [], unreachable: [], redirected: [], apisObserved: [], newApis: [], missingApis: [], thirdPartyHosts: [] } }),

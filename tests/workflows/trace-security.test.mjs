@@ -15,6 +15,7 @@ const { tsImport } = rootRequire('tsx/esm/api');
 const sourceExport = await tsImport(pathToFileURL(path.resolve('apps/api/src/lib/source-export.ts')).href, import.meta.url);
 const capturePolicy = await tsImport(pathToFileURL(path.resolve('apps/api/src/lib/trace-capture.ts')).href, import.meta.url);
 const references = await tsImport(pathToFileURL(path.resolve('apps/api/src/lib/artifact-references.ts')).href, import.meta.url);
+await fs.mkdir(path.resolve('tests/workflows/.scratch'), { recursive: true });
 const canaries = ['bearer-fixture-921', 'apikey-fixture-732', 'session-fixture-447', 'password-fixture-852', 'url-user-fixture-918', 'url-pass-fixture-301', 'state-fixture-593', 'response-fixture-928', 'custom-fixture-327', 'snapshot-fixture-632', 'metadata-fixture-428'];
 export function traceFixture() {
   const events = [
