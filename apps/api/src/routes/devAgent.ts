@@ -337,9 +337,25 @@ export async function devAgentRoutes(app: FastifyInstance) {
     }
     const latest = iterations[iterations.length - 1] ?? null;
 
+    // Generation, execution and repair are reported separately: failing tests never hide that
+    // tests were generated and saved, and saved tests never imply they passed.
+    const codeIts = iterations.filter((i) => i.phase === "code");
+    const results = codeIts.map((i) => (i.testResult ?? {}) as any);
+    const savedSpecs = [...new Set(results.flatMap((r) => (Array.isArray(r.savedSpecs) ? r.savedSpecs : []) as string[]))];
+    const lastExecuted = [...results].reverse().find((r) => Array.isArray(r.tests) || r.command);
+    const phases = {
+      generation: { status: savedSpecs.length ? "saved" : codeIts.length ? "no_tests" : "pending", savedSpecs, suite: savedSpecs.length ? "Generated (playwright-ts)" : null },
+      execution: {
+        status: !lastExecuted ? "not_executed" : lastExecuted.passed ? "passed" : "failed",
+        tests: Array.isArray(lastExecuted?.tests) ? lastExecuted.tests : [],
+      },
+      repair: { attempts: Math.max(0, codeIts.length - 1), status: codeIts.length <= 1 ? "none" : lastExecuted?.passed ? "repaired" : "unresolved" },
+    };
+
     return reply.send({
       summary: {
         status: run.status,
+        phases,
         iterationCount: iterations.length,
         filesChanged: [...filesChanged],
         latestTestResult: latest?.testResult ?? null,

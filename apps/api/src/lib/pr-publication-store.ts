@@ -124,8 +124,8 @@ async function resolveSource(kind: PrKind, source: PrSource): Promise<Resolved> 
       verificationInput: {
         fixStatus: view?.status,
         testsPassed: run.status === "succeeded" ? 1 : 0,
-        testsFailed: run.status === "failed" ? 1 : 0,
-        testsNotRun: run.status === "succeeded" || run.status === "failed" ? 0 : 1,
+        testsFailed: run.status === "failed" || run.status === "partial" ? 1 : 0,
+        testsNotRun: run.status === "succeeded" || run.status === "failed" || run.status === "partial" ? 0 : 1,
       },
       subject: (qeMeta?.testTitle ?? run.instructionText ?? run.id).split("\n")[0].slice(0, 120),
       repoHint: run.targetRepo,

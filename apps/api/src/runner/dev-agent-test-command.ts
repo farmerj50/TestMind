@@ -100,7 +100,7 @@ const FAILURE_START = /^\s*(\w*Error\b.*:|Error:|Test timeout of|No tests found|
 const FAILING_TEST = /^\s*(✘|\d+\)\s+\[|\d+\)\s+\S+\.(spec|test)\.)/;
 /** The actual error from a failed test run (first error and its key detail lines), for display. */
 export function summarizeTestFailure(output: string | null | undefined): string | null {
-  const lines = String(output ?? "").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").split(/\r?\n/);
+  const lines = String(output ?? "").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").split(/\r?\n/).map((l) => l.replace(/\s*─{3,}\s*$/, ""));
   const start = lines.findIndex((l) => FAILURE_START.test(l));
   const title = lines.find((l) => FAILING_TEST.test(l))?.trim();
   const body = start >= 0
