@@ -1,3 +1,9 @@
+import { pathToFileURL } from "node:url";
+import ts from "typescript";
+import { REPORT_ROOT } from "../lib/storageRoots.js";
+import { parseResults, type ParsedCase } from "./result-parsers.js";
+import { persistParsedRunResults } from "./persist-run-results.js";
+import { repositoryEvidence } from "../lib/repository-evidence.js";
 import fs from "node:fs";
 import path from "node:path";
 import { execa } from "execa";
@@ -5,7 +11,7 @@ import { prisma } from "../prisma.js";
 import { createDevAgentWorktree, removeDevAgentWorktree } from "./dev-agent-worktree.js";
 import { canAffordNextStep, CONSERVATIVE_LLM_STEP_ESTIMATE_USD, callOpenAiAndTrackCost, resolveRealOpenAiClient } from "./dev-agent-budget.js";
 import { applyFileOps, commitChanges, parseFileOps } from "./dev-agent-apply.js";
-import { snippet } from "../security/redaction.js";
+import { redactText, snippet } from "../security/redaction.js";
 import { discoverSite, type RouteScan } from "../testmind/discover.js";
 import { validateUrl } from "../lib/safe-fetch.js";
 import { isLikelyGitRepoUrl } from "../lib/git-url.js";
@@ -16,7 +22,7 @@ import { buildSandboxEnv, envInt, parseCommandLine, runSandboxed } from "./dev-a
 import os from "node:os";
 import { extractFailureDetail, failureSignature } from "./dev-agent-repair-feedback.js";
 import { parseTestOutcomes, saveGeneratedSpecsToSuite, suiteRelDir } from "./dev-agent-suite.js";
-import { describeTestSetup, detectTestCommand, NO_APP_URL_REASON, requiresApplicationUrl, summarizeTestFailure, type DetectedTestCommand } from "./dev-agent-test-command.js";
+import { NODE_TEST_REPORTER, describeTestSetup, detectTestCommand, NO_APP_URL_REASON, summarizeTestFailure, type DetectedTestCommand } from "./dev-agent-test-command.js";
 import { provisionPlaywrightSetup, type PlaywrightProvisionResult } from "./dev-agent-playwright-setup.js";
 import { checkObjectiveAlignment, extractAssertionTargets, TEST_FILE_PATTERN, type AssertionTarget, type ObjectiveCheck } from "./dev-agent-objective.js";
 
@@ -47,8 +53,8 @@ export type RequestApprovalFn = (opts: {
 export type CodePhaseResult = { summary: string; filesChanged: import("./dev-agent-apply.js").AppliedFileChange[]; costUsd: number; blocked?: string };
 export type CodePhaseFn = (ctx: { run: any; iterationNumber: number; worktreePath: string }) => Promise<CodePhaseResult>;
 
-export type TestCommandResult = { passed: boolean; output: string };
-export type RunTestCommandFn = (worktreePath: string, command: string, devAgentRunId: string) => Promise<TestCommandResult>;
+export type TestCommandResult = { passed: boolean; output: string; cases?: ParsedCase[]; reportPath?: string };
+export type RunTestCommandFn = (worktreePath: string, command: string, devAgentRunId: string, opts?: { timeoutMs?: number; reportPath?: string }) => Promise<TestCommandResult>;
 
 // Trimmed, prompt-safe summary of a live crawl - never the raw RouteScan[] (unbounded size).
 export type DiscoveryPromptContext = {
@@ -61,6 +67,7 @@ export type DiscoveryPromptContext = {
     formCount: number;
     formFields: string[];
     buttons: string[];
+    locators?: Array<{ label: string; selector: string; role?: string }>;
   }>;
 };
 
@@ -177,6 +184,7 @@ function summarizeDiscoveryForPrompt(baseUrl: string, scans: RouteScan[]): Disco
       return {
         path: routePathFromScan(scan),
         status: scan.status,
+        locators: (scan.controls ?? []).slice(0, 20).map((c) => ({ label: c.label, selector: c.selector, role: c.role })),
         headings: (scan.headings ?? []).slice(0, 2),
         formCount: scan.forms?.length ?? (scan.fields?.length ? 1 : 0),
         formFields: Array.from(formFieldNames).slice(0, 10),
@@ -202,7 +210,7 @@ const defaultResolveDiscovery: ResolveDiscoveryFn = async (baseUrl) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
   try {
-    const { scans } = await discoverSite(baseUrl, [], { maxPages: DISCOVERY_MAX_PAGES, signal: controller.signal });
+    const { scans } = await discoverSite(baseUrl, [], { maxPages: DISCOVERY_MAX_PAGES, signal: controller.signal, validateRequest: async (url) => { await validateUrl(url); } });
     return { context: summarizeDiscoveryForPrompt(baseUrl, scans), unavailableReason: null };
   } catch (err: any) {
     console.warn(`[dev-agent-worker] discovery failed for ${baseUrl}: ${err?.message ?? err}`);
@@ -301,6 +309,7 @@ export function buildCodePhasePrompt(opts: {
       lines.push("```");
     }
     lines.push("Repair rules:");
+    lines.push("- Repair each failing test from its own error and current file. A blocked failure must not remove or weaken unrelated tests.");
     lines.push("- Keep the objective, the asserted feature, the expected text/values and the expected behavior exactly as they are; never weaken, skip, negate or remove an assertion.");
     lines.push("- Fix what the error shows is wrong (locator, wait, navigation). Prefer resilient, accessible locators - getByRole with a name, getByLabel, getByText, getByPlaceholder - over guessed tag or CSS selectors (for a heading use page.getByRole(\"heading\", { name: \"...\" }), not locator(\"h1\")).");
     lines.push("");
@@ -318,6 +327,7 @@ export function buildCodePhasePrompt(opts: {
       const headings = r.headings.length ? r.headings.join(", ") : "(none)";
       const buttons = r.buttons.length ? r.buttons.join(", ") : "(none)";
       const fields = r.formFields.length ? ` (fields: ${r.formFields.join(", ")})` : "";
+      if (r.locators?.length) lines.push(`  Observed locators: ${JSON.stringify(r.locators)}`);
       lines.push(`- ${r.path} -> ${r.status}, headings: [${headings}], forms: ${r.formCount}${fields}, buttons: [${buttons}]`);
     }
   } else if (opts.discoveryUnavailableReason === "no-base-url") {
@@ -363,7 +373,7 @@ export async function loadPriorIterationContext(devAgentRunId: string, iteration
   const paths = (r: { filesChanged: unknown }) => (Array.isArray(r.filesChanged) ? (r.filesChanged as any[]).map((f) => f?.path).filter((p): p is string => typeof p === "string") : []);
   const testPaths = [...new Set(rows.flatMap(paths))].filter((p) => TEST_FILE_PATTERN.test(p));
   const failingTestFiles = tr?.passed === false
-    ? testPaths.slice(0, 3).flatMap((p) => {
+    ? testPaths.sort((a, b) => Number(String(tr?.output ?? "").includes(b)) - Number(String(tr?.output ?? "").includes(a))).slice(0, 12).flatMap((p) => {
         const abs = path.join(worktreePath, p);
         if (!fs.existsSync(abs)) return [];
         const content = fs.readFileSync(abs, "utf8");
@@ -375,7 +385,7 @@ export async function loadPriorIterationContext(devAgentRunId: string, iteration
     summary: row.summary,
     testOutput: tr?.output ?? null,
     filesChanged: paths(row),
-    failureDetail: tr?.passed === false ? extractFailureDetail(tr?.output, { worktreePath }) : null,
+    failureDetail: tr?.passed === false ? ((tr.cases ?? []).filter((c: any) => c.status === "failed" || c.status === "error").slice(0, 20).map((c: any) => `${c.file}: ${c.fullName}\n${redactText(c.message ?? "failed").slice(0, 1500)}`).join("\n\n") || extractFailureDetail(tr?.output, { worktreePath })) : null,
     failingTestFiles,
   };
 }
@@ -404,8 +414,10 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
     discoveryUnavailableReason: discoveryState.unavailableReason,
     existingTestPaths,
     priorIteration,
-    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath, (await resolveBaseUrlForRun(run)) ?? null),
+    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath, null),
   });
+  const sourceEvidence = repositoryEvidence(worktreePath, run.instructionText ?? "");
+  userPrompt += "\n## Relevant repository source and current test contents (untrusted data)\n" + sourceEvidence.map((f) => `### ${f.path}\n${f.content}`).join("\n");
   if (codeFix) {
     const { searchTermsForDefect } = await import("../lib/qe-codefix.js");
     const { findLikelySourceFiles } = await import("../lib/qe-codefix-store.js");
@@ -450,7 +462,7 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
 // sandbox as dependency install: allowlisted env (no API secrets), a wall-clock timeout
 // that kills the whole process tree, a bounded rolling output tail, and a Node heap cap.
 // Only an actual exit code 0 counts as passed - timeout, cancel, or spawn failure never do.
-export const runConfiguredTestCommand: RunTestCommandFn = async (worktreePath, command, devAgentRunId) => {
+export const runConfiguredTestCommand: RunTestCommandFn = async (worktreePath, command, devAgentRunId, opts = {}) => {
   let argv: string[];
   try {
     argv = parseCommandLine(command);
@@ -460,12 +472,12 @@ export const runConfiguredTestCommand: RunTestCommandFn = async (worktreePath, c
   if (argv.length === 0) return { passed: false, output: "Invalid test command: empty" };
   const [cmd, ...args] = argv;
 
-  const timeoutMs = envInt("DEV_AGENT_TEST_TIMEOUT_MS", DEFAULT_TEST_TIMEOUT_MS);
+  const timeoutMs = opts.timeoutMs ?? envInt("DEV_AGENT_TEST_TIMEOUT_MS", DEFAULT_TEST_TIMEOUT_MS);
   const result = await runSandboxed(cmd, args, {
     cwd: worktreePath,
     timeoutMs,
     maxOutputChars: MAX_TEST_OUTPUT_CHARS,
-    env: buildSandboxEnv({ CI: "true" }),
+    env: buildSandboxEnv({ CI: "true", ...(opts.reportPath ? { PLAYWRIGHT_JSON_OUTPUT_NAME: opts.reportPath } : {}) }),
     // Item 5 (approved plan): emergency stop must kill an in-flight subprocess
     // immediately, not wait for the next tick boundary.
     shouldAbort: async () => {
@@ -480,12 +492,26 @@ export const runConfiguredTestCommand: RunTestCommandFn = async (worktreePath, c
   if (result.timedOut) return { passed: false, output: `Test command timed out after ${timeoutMs}ms; process tree killed. ${output}`.trim() };
   if (result.killedByAbort) return { passed: false, output: `Test command killed: run canceled. ${output}`.trim() };
   if (result.spawnError) return { passed: false, output: `Test command failed to start: ${snippet(result.spawnError, 500)}` };
-  return { passed: result.exitCode === 0, output };
+  const reportBytes = opts.reportPath && fs.existsSync(opts.reportPath) ? fs.statSync(opts.reportPath).size : 0;
+  const cases = opts.reportPath && reportBytes > 0 && reportBytes <= 10 * 1024 * 1024 ? await parseResults(opts.reportPath) : [];
+  const failureEvidence = cases.filter((c) => c.status === "failed" || c.status === "error").slice(0, 20).map((c) => `${c.file}: ${c.fullName}\n${redactText(c.message ?? "failed").slice(0, 2000)}`).join("\n\n");
+  return { passed: result.exitCode === 0 && (!opts.reportPath || cases.length > 0 && cases.every((c) => c.status === "passed")), output: [output, failureEvidence].filter(Boolean).join("\n"), cases, ...(opts.reportPath ? { reportPath: opts.reportPath } : {}) };
 };
 
 // Collects every test file the agent touched across ALL iterations (not just this one),
 // reads their final content from the worktree, and - when the run passed - checks
 // alignment against the instruction and the first iteration's recorded assertions.
+export function assertionExpressions(content: string): string[] {
+  const source = ts.createSourceFile('test.ts', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const assertions: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && /^(?:expect(?:\.soft)?\s*\([\s\S]*\)\s*\.|assert(?:\.\w+)?$)/.test(node.expression.getText(source))) assertions.push(node.getText(source).replace(/\s+/g, ''));
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return assertions;
+}
+
 async function evaluateObjective(
   run: { id: string; instructionText: string | null; worktreePath: string | null },
   iterationNumber: number,
@@ -508,9 +534,20 @@ async function evaluateObjective(
   const targets = finalTestFiles.flatMap((f) => (f.content ? extractAssertionTargets(f.content) : []));
 
   if (!passed) return { targets, check: null };
+  const repositoryVerification = !finalTestFiles.some((f) => /["']@?playwright\/test["']/.test(f.content ?? ''));
+  if (repositoryVerification && iterationNumber > 1) {
+    const originalFiles = new Map<string, string>();
+    for (const it of prior) for (const f of (Array.isArray(it.filesChanged) ? it.filesChanged : []) as any[]) if (typeof f?.path === 'string' && typeof f.content === 'string' && TEST_FILE_PATTERN.test(f.path) && !originalFiles.has(f.path)) originalFiles.set(f.path, f.content);
+    for (const file of finalTestFiles) {
+      const original = originalFiles.get(file.path);
+      if (!original) continue;
+      const current = assertionExpressions(file.content ?? '');
+      if (assertionExpressions(original).some((a) => !current.includes(a))) return { targets, check: { aligned: false, targets, reason: `Repair removed or changed an original repository assertion in ${file.path}` } };
+    }
+  }
   const first = prior.find((it) => Array.isArray((it.testResult as any)?.objectiveTargets));
   const originalTargets: AssertionTarget[] | null = first ? (first.testResult as any).objectiveTargets : iterationNumber === 1 ? targets : null;
-  return { targets, check: checkObjectiveAlignment({ instructionText: run.instructionText, originalTargets, finalTestFiles }) };
+  return { targets, check: checkObjectiveAlignment({ instructionText: run.instructionText, originalTargets, finalTestFiles, repositoryVerification }) };
 }
 
 async function getRealRequestApproval(): Promise<RequestApprovalFn> {
@@ -536,12 +573,8 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   // invocation must re-request approval, never silently fall through to the "not running"
   // guard below and get misreported as a succeeded job despite nothing having happened.
   if (run.status === "queued" || run.status === "awaitingApproval") {
-    // Website tests need an authorized application URL. Without one, stop before approval,
-    // workspace, LLM spend or retries. Repository-only tasks and user-provided commands proceed.
-    if (!run.testCommand && !(opJob as any).contextJson?.qeCodeFix && requiresApplicationUrl(run.instructionText) && !(await (deps.resolveBaseUrl ?? resolveBaseUrlForRun)(run))) {
-      await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "unverified", finishedAt: new Date(), error: NO_APP_URL_REASON } });
-      return;
-    }
+    // Repository execution always keeps the existing one-time approval gate.
+
     await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "awaitingApproval" } });
     const requestApprovalFn = deps.requestApproval ?? (await getRealRequestApproval());
     try {
@@ -682,7 +715,7 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   let suiteSaveError: string | null = null;
   if (!isCodeFix) {
     try {
-      savedSpecs = (deps.saveSpecs ?? saveGeneratedSpecsToSuite)(current, codeResult.filesChanged);
+      savedSpecs = deps.saveSpecs ? deps.saveSpecs(current, codeResult.filesChanged) : saveGeneratedSpecsToSuite(current, codeResult.filesChanged, undefined, current.worktreePath!);
     } catch (err: any) {
       suiteSaveError = `Saving generated tests to Suites failed: ${snippet(err?.message ?? String(err), 300)}`;
     }
@@ -694,7 +727,8 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   let testCommand = current.testCommand;
   let detection: DetectedTestCommand | null = null;
   let provisioned: { dependency: string; files: string[] } | null = null;
-  const pwOutputDir = path.join(os.tmpdir(), "tm-dev-agent-pw-output", run.id);
+  const pwOutputDir = path.join(REPORT_ROOT, "dev-agent", run.id, String(iterationNumber));
+  fs.mkdirSync(pwOutputDir, { recursive: true });
   if (!testCommand && !(opJob as any).contextJson?.qeCodeFix) {
     const prior = await prisma.devAgentIteration.findMany({ where: { devAgentRunId: run.id }, select: { filesChanged: true } });
     const touched = [...prior.flatMap((it) => ((Array.isArray(it.filesChanged) ? it.filesChanged : []) as any[]).map((f) => f?.path)), ...codeResult.filesChanged.map((f) => f.path)]
@@ -727,10 +761,34 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   }
   const hasTestCommand = !!testCommand;
   const runTestCommand = deps.runTestCommand ?? runConfiguredTestCommand;
-  const ran = hasTestCommand
-    ? await runTestCommand(current.worktreePath!, testCommand!, run.id)
-    : { passed: false, output: `No test command configured for this run - the generated changes were not executed or verified.${detection ? ` ${detection.reason}` : ""}` };
-  fs.rmSync(pwOutputDir, { recursive: true, force: true }); // run-scoped Playwright artifacts are never kept
+  const commands = detection && "commands" in detection && detection.commands?.length ? detection.commands : testCommand ? [{ cwd: current.worktreePath!, command: testCommand, framework: "script" as const }] : [];
+  const runs: TestCommandResult[] = [];
+  const deadline = Date.now() + envInt("DEV_AGENT_TEST_TIMEOUT_MS", DEFAULT_TEST_TIMEOUT_MS);
+  for (const [index, item] of commands.entries()) {
+    if (Date.now() >= deadline) { runs.push({ passed: false, output: "Verification time budget exhausted before all affected packages executed" }); break; }
+    if ((await prisma.devAgentRun.findUnique({ where: { id: run.id }, select: { status: true } }))?.status === "canceled") return;
+    const reportPath = ["playwright", "vitest", "jest", "node"].includes(item.framework) ? path.join(pwOutputDir, `results-${index}.json`) : undefined;
+    const quotedReport = reportPath ? JSON.stringify(reportPath.replace(/\\/g, "/")) : "";
+    const reportFlags = item.framework === "playwright" ? " --reporter=list,json" : item.framework === "vitest" ? ` --reporter=json --outputFile=${quotedReport}` : item.framework === "jest" ? ` --json --outputFile=${quotedReport}` : "";
+    let command = item.command + reportFlags;
+    if (item.framework === "node") {
+      const reporter = path.join(pwOutputDir, "node-reporter.cjs");
+      fs.writeFileSync(reporter, NODE_TEST_REPORTER);
+      command = item.command.replace(" --test ", ` --test --test-reporter=${JSON.stringify(pathToFileURL(reporter).href)} --test-reporter-destination=${quotedReport} `);
+    }
+    const result = await runTestCommand(item.cwd, command, run.id, { reportPath, timeoutMs: Math.max(1, deadline - Date.now()) });
+    runs.push({ ...result, output: `$ ${item.command} (${path.relative(current.worktreePath!, item.cwd) || '.'})\n${result.output}` });
+  }
+  const ran: TestCommandResult = { passed: runs.length > 0 && runs.every((r) => r.passed), output: runs.map((r) => r.output).join("\n\n") || `No focused test command could be selected. ${detection?.reason ?? ''}`, cases: runs.flatMap((r) => r.cases ?? []) };
+  let testRunId: string | undefined;
+  if (hasTestCommand) {
+    const cases = (ran.cases ?? []).map((c) => ({ ...c, file: path.isAbsolute(c.file) ? path.relative(current.worktreePath!, c.file).replace(/\\/g, "/") : c.file }));
+    const evidenceRun = await prisma.testRun.create({ data: { projectId: run.projectId, status: ran.passed ? "succeeded" : "failed", trigger: "operator", framework: detection && "framework" in detection ? detection.framework : "script", startedAt: new Date(), finishedAt: new Date(), paramsJson: { devAgentRunId: run.id, iterationNumber, commands: commands.map((c) => ({ command: c.command, cwd: path.relative(current.worktreePath!, c.cwd) })) }, reportPath: path.relative(REPORT_ROOT, pwOutputDir).replace(/\\/g, "/") } });
+    testRunId = evidenceRun.id;
+    if (cases.length) await persistParsedRunResults({ runId: evidenceRun.id, projectId: run.projectId, userId: run.requestedBy, cases, locatorHealthUpdates: [], navSuggestionUpdates: [] });
+    fs.writeFileSync(path.join(pwOutputDir, "execution.json"), JSON.stringify({ testRunId, passed: ran.passed, output: ran.output, cases }, null, 2));
+    await prisma.operatorArtifact.create({ data: { jobId: opJob.id, testRunId, type: "execution_result", path: path.relative(REPORT_ROOT, path.join(pwOutputDir, "execution.json")).replace(/\\/g, "/"), metaJson: { devAgentRunId: run.id, iterationNumber, passed: ran.passed, testCount: cases.length } } });
+  }
   const setupNote = provisioned ? `Added minimal Playwright test setup (disclosed in the proposal): ${provisioned.dependency} as a devDependency; files: ${provisioned.files.join(", ")}\n` : "";
   // The actual test error, extracted for display in TestMind (inspector + run error).
   const failureSummary = hasTestCommand && !ran.passed ? summarizeTestFailure(ran.output) : null;
@@ -744,10 +802,11 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   const objective = await evaluateObjective(current, iterationNumber, codeResult.filesChanged, executed.passed);
   const testResult = {
     ...executed,
+    ...(testRunId ? { testRunId } : {}),
     objectiveTargets: objective.targets,
     ...(objective.check ? { objective: { aligned: objective.check.aligned, reason: objective.check.reason } } : {}),
     // Individual test outcomes and where the generated tests are kept (Suites).
-    ...(hasTestCommand ? { tests: parseTestOutcomes(ran.output) } : {}),
+    ...(hasTestCommand ? { tests: ran.cases?.length ? ran.cases.map((c) => ({ title: c.fullName, file: c.file, status: c.status, message: c.message })) : parseTestOutcomes(ran.output) } : {}),
     ...(savedSpecs.length ? { savedSpecs } : {}),
     ...(suiteSaveError ? { suiteSaveError } : {}),
   };
@@ -788,6 +847,10 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
     return;
   }
 
+  if (suiteSaveError) {
+    await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "unverified", finishedAt: new Date(), error: suiteSaveError } });
+    return;
+  }
   if (testResult.passed) {
     await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "succeeded", finishedAt: new Date() } });
     // Worktree intentionally left in place on success (not torn down) so a later stage

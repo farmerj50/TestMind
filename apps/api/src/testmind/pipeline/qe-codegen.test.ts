@@ -100,13 +100,16 @@ test("blocked scenarios are reported, never fabricated or passed", () => {
 
 test("approved credentials: authenticated tests use an isolated session, referenced by env NAME only, without traces", () => {
   const store = besStore();
+  const blocked = generateQeSuite(plan(store), store, { hasCredentials: true });
+  assert.ok(!blocked.tests.some((t) => t.requiresAuth), "credentials alone never invent protected functionality");
+  store.authenticatedPages = computeCrawlKnowledgeUpdate(normalizeApplicationModel(null), { scans: [{ url: "https://www.bes-app.com/profile", status: 200, headings: ["Profile"] }], apiCalls: [], observedAt: T0 }).next.pages;
   const r = generateQeSuite(plan(store), store, { hasCredentials: true });
-  const auth = r.tests.find((t) => t.title === "Exercise /profile as a signed-in user")!;
+  const auth = r.tests.find((t) => t.title === "Observed content of /profile is available after sign-in")!;
   assert.equal(auth.requiresAuth, true);
   const spec = file(r, auth.file);
-  assert.match(spec, /async \(\{ authPage \}\)/);
+  assert.match(spec, /async \(\{ authPage: page \}\)/);
   assert.match(spec, /qe\.use\(\{ trace: 'off', video: 'off' \}\)/);
-  assert.match(spec, /expect\(authPage\)\.toHaveURL/);
+  assert.match(spec, /expect\(page\)\.toHaveURL/);
   const fx = file(r, "qe/fixtures.ts");
   assert.ok(fx.includes(`process.env.${QE_AUTH_ENV.email}`) && fx.includes(`process.env.${QE_AUTH_ENV.password}`));
   assert.match(fx, /chromium\.launch\(\)/, "sign-in happens in a separate, untraced browser");
@@ -127,14 +130,17 @@ test("generated tests stay behind the side-effect approval gate", () => {
 });
 
 test("credentials resolve from encrypted project secrets by reference, only for the test process", async (t) => {
-  const project = await prisma.project.findFirst({ orderBy: { createdAt: "asc" } });
-  assert.ok(project, "requires a local project row");
+  const project = { id: "isolated-credential-fixture" };
   const keys = { emailKey: `QE_B4_TEST_EMAIL_${Date.now()}`, passwordKey: `QE_B4_TEST_PASSWORD_${Date.now()}` };
-  await prisma.projectSecret.createMany({ data: [
-    { projectId: project!.id, name: "qe email", key: keys.emailKey, value: encryptSecret("qa@example.test") },
-    { projectId: project!.id, name: "qe password", key: keys.passwordKey, value: encryptSecret("qe-secret-value") },
-  ] });
-  t.after(() => prisma.projectSecret.deleteMany({ where: { projectId: project!.id, key: { in: [keys.emailKey, keys.passwordKey] } } }));
+  const rows = [
+    { key: keys.emailKey, value: encryptSecret("qa@example.test") },
+    { key: keys.passwordKey, value: encryptSecret("qe-secret-value") },
+  ];
+  const findMany = prisma.projectSecret.findMany;
+  const count = prisma.projectSecret.count;
+  (prisma.projectSecret as any).findMany = async ({ where }: any) => rows.filter((r) => where.key.in.includes(r.key));
+  (prisma.projectSecret as any).count = async ({ where }: any) => rows.filter((r) => where.key.in.includes(r.key)).length;
+  t.after(() => { prisma.projectSecret.findMany = findMany; prisma.projectSecret.count = count; });
 
   assert.equal(isCredentialRef(keys), true);
   assert.equal(isCredentialRef({ emailKey: "a", passwordKey: "b", loginPath: "https://evil" }), false, "login path must be relative");

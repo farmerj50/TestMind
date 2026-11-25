@@ -1,3 +1,4 @@
+import { useNavigate, useSearchParams } from "react-router-dom";
 // Autonomous Development Mode (Stage F). The message-bubble/input-box UX here is modeled on
 // CopilotPanel.tsx's presentational pattern, not imported directly - CopilotPanel is tightly
 // coupled to CopilotContext's in-memory, route-aware quick-action state, which doesn't fit a
@@ -78,10 +79,12 @@ function Bubble({ message }: { message: DevAgentMessage }) {
 
 export default function DevAgentPage() {
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string>("");
   const [runs, setRuns] = useState<DevAgentRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get("runId"));
   const [run, setRun] = useState<DevAgentRun | null>(null);
   const [messages, setMessages] = useState<DevAgentMessage[]>([]);
   const [summary, setSummary] = useState<DevAgentSummary | null>(null);
@@ -165,7 +168,8 @@ export default function DevAgentPage() {
         timezone: timezone || undefined,
       };
       if (scheduledStartAt) body.scheduledStartAt = new Date(scheduledStartAt).toISOString();
-      const data = await apiFetch<{ run: DevAgentRun }>("/dev-agent/runs", { method: "POST", body: JSON.stringify(body) });
+      const data = await apiFetch<{ run: DevAgentRun; autonomousQeUrl?: string }>("/dev-agent/runs", { method: "POST", body: JSON.stringify(body) });
+      if (data.autonomousQeUrl) { navigate(data.autonomousQeUrl); return; }
       setInstructionText("");
       loadRuns();
       setSelectedRunId(data.run.id);
@@ -285,7 +289,7 @@ export default function DevAgentPage() {
             <input type="datetime-local" className="border rounded-md px-2 py-1" value={scheduledStartAt} onChange={(e) => setScheduledStartAt(e.target.value)} />
             <input className="border rounded-md px-2 py-1" placeholder="Timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           </div>
-          <button className="w-full rounded-md bg-[color:var(--tm-accent)] text-white py-1.5 text-sm" onClick={createRun} disabled={!projectId || !targetRepo.trim()}>
+          <button className="w-full rounded-md bg-[color:var(--tm-accent)] text-white py-1.5 text-sm" onClick={createRun} disabled={!projectId || (!targetRepo.trim() && !baseUrl.trim() && !environmentId)}>
             {scheduledStartAt ? "Schedule run" : "Start run"}
           </button>
         </div>

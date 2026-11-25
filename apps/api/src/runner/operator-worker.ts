@@ -1,3 +1,6 @@
+import { qeContextForLegacyRequest } from "../lib/autonomous-routing.js";
+import { writeRunnableBundle } from "./dev-agent-suite.js";
+import { scenarioCoverage } from "../lib/qe-coverage.js";
 import { Worker, Job, DelayedError } from 'bullmq';
 import path from 'path';
 import fsSync from 'fs';
@@ -10,7 +13,7 @@ import { GENERATED_ROOT } from '../lib/storageRoots.js';
 import type { OperatorJobPayload, ResumePhase, SecurityResumeCtx } from './queue.js';
 import { createStepRunner } from './step-executor.js';
 import { runBrowserCapability } from './capabilities/browser-cap.js';
-import { discoverSite, buildLocatorStoreFromScans } from '../testmind/discover.js';
+import { discoverSiteWithAuth, discoverSite, buildLocatorStoreFromScans } from '../testmind/discover.js';
 import { generatePlan } from '../testmind/pipeline/generate-plan.js';
 import { writeSpecsFromPlan } from '../testmind/pipeline/codegen.js';
 import { isLikelyGitRepoUrl } from '../lib/git-url.js';
@@ -42,8 +45,8 @@ import { computeCrawlKnowledgeUpdate, refreshStoryEvidence, incrementalSeedRoute
 import { getProjectKnowledge, loadKnowledgeInputs, loadPlanInputs, recordUserStory, inspectRepository, resolveLocalRepository, recordDeclaredRoutes, recordFailureInvestigations, recordRepairOutcome } from '../lib/app-knowledge-store.js';
 import { finalizeRepairVerification, describeVerification, REPAIR_FAILED } from '../lib/repair-verification.js';
 import { buildQePlan, gateSuiteTests, grepInvertFor, testTitlesInSpec, type QePlan } from '../lib/qe-plan.js';
-import { generateQeSuite } from '../testmind/pipeline/qe-codegen.js';
-import { isCredentialRef } from '../lib/qe-credentials.js';
+import { QE_AUTH_ENV, generateQeSuite } from '../testmind/pipeline/qe-codegen.js';
+import { resolveCredentialEnv, isCredentialRef } from '../lib/qe-credentials.js';
 import { classifyFailure, decideRepair, repairPreservesObjective, type FailureInvestigation } from '../lib/failure-intel.js';
 import { investigateFailure } from '../lib/investigator.js';
 import { eligibleForCodeFix, isCodeFixConfig, appCodeFixEnabled, APP_CODE_FIX_DISABLED_REASON } from '../lib/qe-codefix.js';
@@ -107,6 +110,15 @@ export const operatorWorker = new Worker(
 
     if (!opJob) throw new Error(`OperatorJob ${operatorJobId} not found`);
     if (opJob.status === 'canceled' || opJob.status === 'succeeded') return;
+    // Newly queued legacy entry points join B1?B7. Existing in-flight checkpoints
+    // finish on their original handler so a repair is never restarted mid-run.
+    const legacyContext = (opJob.contextJson ?? {}) as Record<string, any>;
+    if (opJob.type === 'qa' && legacyContext.autonomous === true && !qeContextOf(legacyContext) && !resumePhase && opJob.status === 'queued' && !legacyContext.workflowParentId) {
+      const { baseUrl } = await resolveAutonomousContext(opJob);
+      const contextJson = qeContextForLegacyRequest(legacyContext, baseUrl);
+      await prisma.operatorJob.update({ where: { id: opJob.id }, data: { contextJson: contextJson as any } });
+      opJob.contextJson = contextJson as any;
+    }
     const isQe = !!qeContextOf(opJob.contextJson);
     if (isQe && ['failed', 'partial', 'unverified', 'blocked'].includes(opJob.status)) return; // QE terminal states
 
@@ -1284,7 +1296,7 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
     const repo = qe.targetRepo ?? qe.input;
     await finishStage(jobId, 'input', 'succeeded', `Repository input accepted: ${repo}${qe.baseUrl ? ` (application URL ${qe.baseUrl})` : ''}`, { inputKind: qe.inputKind, targetRepo: repo, ...(qe.baseUrl ? { baseUrl: qe.baseUrl } : {}) });
     await startStage(jobId, 'discovery');
-    repositoryNote = await qeInspectRunRepository(opJob, { url: repo });
+    try { repositoryNote = await qeInspectRunRepository(opJob, { url: repo }); } catch { repositoryNote = 'Optional repository unavailable; continuing authorized URL discovery.'; }
     if (!qe.baseUrl) {
       await finishStage(jobId, 'discovery', 'succeeded', `${repositoryNote}. Declared routes are recorded as source facts, not runtime observations.`);
       await startStage(jobId, 'plan');
@@ -1304,7 +1316,12 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
 
   if (qe.inputKind !== 'repository') await startStage(jobId, 'discovery');
   // Repository-enabled URL runs: inspect the authorized repository's source as extra evidence.
-  if (qe.inputKind !== 'repository' && qe.repository) repositoryNote = await qeInspectRunRepository(opJob, qe.repository);
+  if (qe.inputKind !== 'repository' && qe.repository) {
+    try { repositoryNote = await qeInspectRunRepository(opJob, qe.repository); }
+    catch { repositoryNote = 'Optional repository unavailable; continuing authorized URL discovery.'; }
+  }
+  if (qe.repositoryWarning) repositoryNote = qe.repositoryWarning;
+  if (repositoryNote) await recordQeArtifact({ jobId, stage: 'discovery', type: 'report', path: `qe/${jobId}/repository-access.json`, meta: { kind: 'repository-access', message: repositoryNote } });
   // Incremental, bounded discovery: revisit known pages that are missing, uncovered, or stale
   // first (never more than half the page budget), then let the crawler explore the rest.
   const before = await loadKnowledgeInputs(opJob.projectId);
@@ -1313,7 +1330,7 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
   // revisiting them lets the crawl ground them in a real observation (bounded with the rest).
   const seedBudget = Math.floor(maxPages / 2);
   const failingClaims = routeClaimsFromTitles((before.testTitles ?? []).map((t) => t.title));
-  const testedButUnobserved = [...new Set([...failingClaims, ...before.qaFailures.map((f) => f.routeHint), ...before.coverage.map((c) => c.routeHint), ...(before.testRouteClaims ?? [])])]
+  const testedButUnobserved = [...new Set([...failingClaims, ...before.qaFailures.map((f) => f.routeHint), ...before.coverage.map((c) => c.routeHint), ...(before.testRouteClaims ?? []), ...(before.store.declared?.uiRoutes ?? []).map((r) => r.path)])]
     .filter((r) => r.startsWith('/') && !before.store.pages[r]);
   const seedRoutes = scoped ? [] : [...new Set([
     ...incrementalSeedRoutes(before.store, new Set(before.coverage.map((c) => c.routeHint)), new Date().toISOString(), seedBudget),
@@ -1386,8 +1403,20 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
   // B3: the risk-prioritized, evidence-mapped plan. Persisted (DB artifact + file) so
   // generation, execution and repair can reference each test's original objective.
   const planInputs = await loadPlanInputs(opJob.projectId);
+  let planningStore = { ...(planState.modelSnapshot ?? planInputs.store), stories: planInputs.store.stories };
+  if (scoped) {
+    const route = normalizeRouteHint(new URL(baseUrl).pathname);
+    planningStore = { ...planningStore,
+      pages: Object.fromEntries(Object.entries(planningStore.pages).filter(([key]) => key === route)),
+      authenticatedPages: Object.fromEntries(Object.entries(planningStore.authenticatedPages ?? {}).filter(([key]) => key === route)),
+      declared: planningStore.declared ? { ...planningStore.declared, uiRoutes: planningStore.declared.uiRoutes.filter((r) => r.path === route), apiRoutes: [] } : undefined,
+      stories: {}, apis: Object.fromEntries(Object.entries(planningStore.apis).filter(([, api]) => api.observedOnRoutes?.includes(route))),
+    };
+    planInputs.failing = planInputs.failing.filter((f) => f.route === route);
+  }
   const qePlan = buildQePlan({
     jobId, projectId: opJob.projectId, baseUrl, now: new Date().toISOString(), ...planInputs,
+    store: planningStore,
     generatorCases: cases.map((c: any) => ({ title: (c.title ?? c.name ?? 'Unnamed test') as string, page: (c.group?.page ?? '/') as string })),
   });
   await fs.writeFile(qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json'), JSON.stringify(qePlan));
@@ -1400,7 +1429,7 @@ async function qeStart(opJob: OpJobCtx, qe: QeContext, qReDelay: ReDelayFn) {
       qePlan,
     } as any,
   });
-  if (cases.length === 0) throw new QeStageError('plan', 'unverified', 'The planner produced no test cases from the discovered pages');
+  if (qePlan.scenarios.length === 0) throw new QeStageError('plan', 'unverified', 'The planner produced no test cases from the discovered pages');
   const ps = qePlan.summary;
   const planReason = `${ps.total} scenario(s): ${ps.byStatus.ready} ready (${ps.tiers.P1} P1), ${ps.byStatus.blocked_auth} blocked by authentication, ${ps.byStatus.blocked_unverifiable} unverifiable; ${ps.coverage.missing} missing vs ${ps.coverage.existing} existing coverage; ${ps.risk.destructive + ps.risk.sensitive} with side effects (${ps.needsApproval} executable now need approval)`;
 
@@ -1509,7 +1538,8 @@ async function qeGenerateScenarioSuite(opJob: OpJobCtx, generatedDir: string) {
   if (!qePlan) return null;
   const qe = qeContextOf(opJob.contextJson);
   const project = await prisma.project.findUnique({ where: { id: opJob.projectId }, select: { applicationModel: true } });
-  const store = normalizeApplicationModel(project?.applicationModel);
+  const discovery: DiscoveryPlanState = JSON.parse(await fs.readFile(qePlanFile(jobId), 'utf8'));
+  const store = discovery.modelSnapshot ?? normalizeApplicationModel(project?.applicationModel);
   const hasCredentials = isCredentialRef(qe && (qe as any).credentialRef);
   const result = generateQeSuite(qePlan, store, { hasCredentials });
 
@@ -1524,6 +1554,42 @@ async function qeGenerateScenarioSuite(opJob: OpJobCtx, generatedDir: string) {
     await fs.writeFile(abs, file.content, 'utf8');
   }
 
+  // Reuse existing regressions with their dependencies. Missing implementations remain explicit.
+  const available = new Set<string>();
+  for (const file of await collectSpecFiles(generatedDir)) for (const title of testTitlesInSpec(await fs.readFile(file, 'utf8'))) available.add(title);
+  const pending = qePlan.scenarios.filter((s) => s.kind === 'reverify' && s.execution.testTitle && !available.has(s.execution.testTitle));
+  if (pending.length) {
+    const projectRoot = path.resolve(GENERATED_ROOT, `playwright-ts-${(await prisma.project.findUnique({ where: { id: opJob.projectId }, select: { ownerId: true } }))!.ownerId}`, opJob.projectId);
+    const candidates = (await collectSpecFiles(projectRoot)).filter((file) => !isPathWithinOrEqual(generatedDir, file));
+    const copied = new Map<string, string>();
+    for (const scenario of pending.slice(0, 50)) {
+      const original = scenario.execution.testTitle!;
+      let found = false;
+      for (const file of candidates) {
+        const content = await fs.readFile(file, 'utf8');
+        if (!testTitlesInSpec(content).includes(original)) continue;
+        try {
+          const relative = path.relative(projectRoot, file).replace(/\\/g, '/');
+          let destination = copied.get(file);
+          if (!destination) {
+            destination = path.join(generatedDir, 'existing', scenario.id);
+            const bundle = writeRunnableBundle(destination, [{ path: relative, content }], projectRoot);
+            for (const support of bundle) result.files.push({ path: path.relative(generatedDir, path.join(destination, support)).replace(/\\/g, '/'), content: await fs.readFile(path.join(destination, support), 'utf8') });
+            copied.set(file, destination);
+          }
+          result.tests.push({ scenarioId: scenario.id, title: scenario.title, testTitle: original, file: path.relative(generatedDir, path.join(destination, relative)).replace(/\\/g, '/'), kind: scenario.kind, criteria: scenario.criteria, requiresAuth: !!scenario.requiresAuth });
+          found = true;
+        } catch {
+          const incomplete = path.join(generatedDir, 'existing', scenario.id);
+          if (isPathWithinOrEqual(generatedDir, incomplete)) await fs.rm(incomplete, { recursive: true, force: true });
+        }
+        break;
+      }
+      if (!found) result.notGenerated.push({ scenarioId: scenario.id, title: scenario.title, reason: 'Existing regression or its complete supporting files could not be located' });
+    }
+  }
+  await fs.writeFile(path.join(qeDir, 'qe-manifest.json'), JSON.stringify({ planJobId: jobId, tests: result.tests, notGenerated: result.notGenerated }, null, 2));
+
   // The plan now points each generated scenario at its executable test (objectives preserved).
   const byScenario = new Map(result.tests.map((t) => [t.scenarioId, t]));
   qePlan.scenarios = qePlan.scenarios.map((s) => {
@@ -1532,9 +1598,12 @@ async function qeGenerateScenarioSuite(opJob: OpJobCtx, generatedDir: string) {
     return { ...s, status: s.status === 'blocked_auth' ? 'ready' : s.status, execution: { mode: 'generated_now', testTitle: t.testTitle } };
   });
   await fs.writeFile(planPath, JSON.stringify(qePlan));
+  const availableTitles: string[] = [];
+  for (const file of await collectSpecFiles(generatedDir)) availableTitles.push(...testTitlesInSpec(await fs.readFile(file, 'utf8')));
+  const coverage = scenarioCoverage(qePlan, { ...result, availableTitles });
   await recordQeArtifact({
     jobId, stage: 'generate', type: 'report', path: `qe/${jobId}/qe-generation.json`,
-    meta: { kind: 'qe-generation', hasCredentials, tests: result.tests, notGenerated: result.notGenerated, files: result.files.map((f) => f.path) },
+    meta: { kind: 'qe-generation', coverage, availableTitles, hasCredentials, tests: result.tests, notGenerated: result.notGenerated, files: result.files.map((f) => f.path) },
   });
   return { tests: result.tests, notGenerated: result.notGenerated, specFiles: result.files.filter((f) => f.path.endsWith('.spec.ts')).length };
 }
@@ -1545,17 +1614,9 @@ async function qeScenarioOutcomes(jobId: string, runId: string, excludedTests: s
   const meta = gen?.metaJson as any;
   if (!meta) return {};
   const results = await prisma.testResult.findMany({ where: { runId }, select: { status: true, message: true, testCase: { select: { title: true } } } });
-  const outcomeFor = (testTitle: string) => {
-    const id = /\[qe:([0-9a-f]+)\]/.exec(testTitle)?.[1];
-    const r = results.find((x) => id && x.testCase.title.includes(`[qe:${id}]`));
-    if (excludedTests.includes(testTitle)) return { status: 'not_run', message: 'side effects not approved' };
-    if (!r) return { status: 'not_run', message: 'no result recorded for this test' };
-    return { status: r.status, message: r.message ? r.message.slice(0, 500) : null };
-  };
-  return {
-    scenarioOutcomes: (meta.tests ?? []).map((t: any) => ({ scenarioId: t.scenarioId, title: t.title, testTitle: t.testTitle, criteria: t.criteria, ...outcomeFor(t.testTitle) })),
-    blockedScenarios: (meta.notGenerated ?? []).map((n: any) => ({ ...n, status: 'blocked' })),
-  };
+  const plan: QePlan = JSON.parse(await fs.readFile(qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json'), 'utf8'));
+  const coverage = scenarioCoverage(plan, meta, results.map((r) => ({ title: r.testCase.title, status: r.status, message: r.message })), excludedTests);
+  return { coverage, scenarioOutcomes: coverage.scenarios, blockedScenarios: coverage.scenarios.filter((s) => s.status === 'blocked' || s.status === 'unimplemented') };
 }
 
 /**
@@ -2387,6 +2448,7 @@ type DiscoveryPlanState = {
   /** B2: what this crawl added to / changed in the Application Brain. */
   knowledgeDiff?: KnowledgeDiff;
   observedAt?: string;
+  modelSnapshot?: import("../lib/application-model.js").ApplicationModelStore;
 };
 
 async function discoverAndPlan(opJob: OpJobCtx, opts: {
@@ -2424,7 +2486,7 @@ async function discoverAndPlan(opJob: OpJobCtx, opts: {
   });
 
   // ── Step 1: Playwright crawl ───────────────────────────────────────────────
-  let graphOptions = {};
+  let graphOptions = { signal: AbortSignal.timeout(AUTONOMOUS_RUN_TIMEOUT_MS), validateRequest: async (url: string) => { await validateUrl(url); } };
   if (ctx.workflowParentId) {
     const { authorizedWorkflowContext } = await import('../lib/workflow-execution-policy.js');
     const { validateWorkflowTarget } = await import('../lib/workflow-http.js');
@@ -2432,7 +2494,7 @@ async function discoverAndPlan(opJob: OpJobCtx, opts: {
     await validateWorkflowTarget(baseUrl, scope.environment);
     graphOptions = { signal: AbortSignal.timeout(AUTONOMOUS_RUN_TIMEOUT_MS), validateRequest: async (url: string) => { await validateWorkflowTarget(url, scope.environment ?? { baseUrl }); } };
   }
-  const { routes, forms, scans, apis: observedApiCalls, thirdPartyHosts, redirects, attempted } = await discoverSite(baseUrl, opts.seedRoutes ?? [], { cookieString, maxPages, ...graphOptions });
+  const { routes, forms, scans, apis: observedApiCalls, thirdPartyHosts, redirects, attempted } = await discoverSite(baseUrl, opts.seedRoutes ?? [], { cookieString, maxPages: isCredentialRef(ctx.qe?.credentialRef) ? Math.max(1, Math.ceil(maxPages / 2)) : maxPages, ...graphOptions });
 
   // ── Project Memory: read prior application-model facts, diff against this cycle's forms.
   // Forms without a routeHint can't be attributed to a page and are skipped. Log/diff only -
@@ -2462,6 +2524,25 @@ async function discoverAndPlan(opJob: OpJobCtx, opts: {
     if (!opts.scoped && requested.has(route)) continue; // requested but not seen: a real miss
     const prior = priorModel.pages[route];
     if (prior && knowledge.next.pages[route]) knowledge.next.pages[route] = { ...knowledge.next.pages[route], consecutiveMisses: prior.consecutiveMisses };
+  }
+  // Keep authenticated observations separate from anonymous access-control evidence.
+  knowledge.next.authenticatedPages = {};
+  if (isCredentialRef(ctx.qe?.credentialRef)) {
+    const authEnv = await resolveCredentialEnv(opJob.projectId, ctx.qe.credentialRef, QE_AUTH_ENV);
+    if (authEnv[QE_AUTH_ENV.email] && authEnv[QE_AUTH_ENV.password]) {
+      try {
+        const auth = await discoverSiteWithAuth(baseUrl, { username: authEnv[QE_AUTH_ENV.email], password: authEnv[QE_AUTH_ENV.password] }, opts.seedRoutes ?? [], { maxPages: Math.max(1, maxPages - scans.length), loginPath: authEnv[QE_AUTH_ENV.loginPath], ...graphOptions });
+        if (auth.loginOutcome === 'success') {
+          const authForms: typeof formsByRoute = {};
+          for (const form of auth.forms) if (form.routeHint) (authForms[normalizeRouteHint(form.routeHint)] ??= []).push(form);
+          const authModel = computeApplicationModelUpdate(normalizeApplicationModel({}), authForms, observedAt).next;
+          knowledge.next.authenticatedPages = computeCrawlKnowledgeUpdate(authModel, { scans: auth.scans, apiCalls: [], observedAt, runId: opJob.id }).next.pages;
+        }
+        await recordQeArtifact({ jobId: opJob.id, stage: 'discovery', type: 'report', path: `qe/${opJob.id}/authenticated-discovery.json`, meta: { kind: 'authenticated-discovery', outcome: auth.loginOutcome, reason: auth.authFailureReason ?? null, pages: Object.keys(knowledge.next.authenticatedPages) } });
+      } catch {
+        await recordQeArtifact({ jobId: opJob.id, stage: 'discovery', type: 'report', path: `qe/${opJob.id}/authenticated-discovery.json`, meta: { kind: 'authenticated-discovery', outcome: 'blocked', reason: 'Authenticated discovery could not complete within the authorized scope and resource limits' } });
+      }
+    }
   }
   const nextApplicationModel = refreshStoryEvidence(knowledge.next, observedAt);
   console.log(
@@ -2515,8 +2596,8 @@ async function discoverAndPlan(opJob: OpJobCtx, opts: {
     const existingPage = mergedPages[pagePath] ?? {};
     mergedPages[pagePath] = {
       ...existingPage,
-      fields: { ...bucket.fields, ...(existingPage.fields ?? {}) },
-      buttons: { ...bucket.buttons, ...(existingPage.buttons ?? {}) },
+      fields: { ...(existingPage.fields ?? {}), ...bucket.fields },
+      buttons: { ...(existingPage.buttons ?? {}), ...bucket.buttons },
     };
   }
   const mergedSharedSteps = { ...existingShared, pages: mergedPages };
@@ -2539,6 +2620,7 @@ async function discoverAndPlan(opJob: OpJobCtx, opts: {
     applicationModelDiff: applicationModelUpdate.diff,
     knowledgeDiff: knowledge.diff,
     observedAt,
+    modelSnapshot: nextApplicationModel,
   };
 }
 
@@ -2551,19 +2633,11 @@ async function generateFromPlan(opJob: OpJobCtx, s: DiscoveryPlanState) {
 
   // ── Step 4: Write spec files to disk (with the seeded store active) ───────
   const ownerId = s.ownerId;
-  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId, ...(ctx.workflowParentId ? [String(ctx.generatedScope).replace(/[^a-zA-Z0-9_-]/g, '_')] : []));
+  const outDir = path.join(GENERATED_ROOT, `playwright-ts-${ownerId}`, opJob.projectId, ...(ctx.workflowParentId ? [String(ctx.generatedScope).replace(/[^a-zA-Z0-9_-]/g, '_')] : ctx.qe ? ['qe-runs', opJob.id] : []));
   fsSync.mkdirSync(outDir, { recursive: true });
 
-  const prevSharedStepsEnv = process.env.TM_PROJECT_SHARED_STEPS;
-  process.env.TM_PROJECT_SHARED_STEPS = JSON.stringify(mergedSharedSteps);
-  let specCount = 0;
-  try {
-    const result = await writeSpecsFromPlan(outDir, plan, 'playwright-ts');
-    specCount = result.total;
-  } finally {
-    if (prevSharedStepsEnv === undefined) delete process.env.TM_PROJECT_SHARED_STEPS;
-    else process.env.TM_PROJECT_SHARED_STEPS = prevSharedStepsEnv;
-  }
+  const result = await writeSpecsFromPlan(outDir, plan, 'playwright-ts', { locatorStore: mergedSharedSteps, baseUrl });
+  const specCount = result.total;
 
   // ── Step 5: Upsert test cases to DB ───────────────────────────────────────
   let savedCount = 0;

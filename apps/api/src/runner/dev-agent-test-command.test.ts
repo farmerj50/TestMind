@@ -73,7 +73,7 @@ test("provisioned config: testDir is the specs' common folder and baseURL the au
   assert.match(testmindPlaywrightVersion(), /^\d+\.\d+\.\d+$/);
 });
 
-test("vitest / jest run only the changed tests; otherwise the package.json test script; npm placeholder is ignored", (t) => {
+test("vitest / jest run only affected tests; a broad test script is never selected automatically", (t) => {
   const v = repo({ "package.json": JSON.stringify({ devDependencies: { vitest: "^2" } }), "yarn.lock": "", "src/a.test.ts": "import { it } from 'vitest';" });
   const j = repo({ "package.json": JSON.stringify({ devDependencies: { jest: "^29" } }), "src/a.test.js": "test('x',()=>{})" });
   const s = repo({ "package.json": JSON.stringify({ scripts: { test: "node --test" } }), "pnpm-lock.yaml": "" });
@@ -81,7 +81,7 @@ test("vitest / jest run only the changed tests; otherwise the package.json test 
   t.after(() => [v, j, s, ph].forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
   assert.equal(detectTestCommand(v, ["src/a.test.ts"]).command, "yarn vitest run src/a.test.ts");
   assert.equal(detectTestCommand(j, ["src/a.test.js"]).command, "npx --no-install jest src/a.test.js");
-  assert.equal(detectTestCommand(s, ["src/x.ts"]).command, "pnpm test");
+  assert.equal(detectTestCommand(s, ["src/x.ts"]).command, null);
   assert.equal(detectTestCommand(ph, []).command, null);
 });
 

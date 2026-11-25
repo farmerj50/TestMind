@@ -1,3 +1,4 @@
+import type { ScenarioCoverage } from "../lib/qe-coverage.js";
 // Autonomous QE orchestration foundation (B1).
 //
 // An Autonomous QE run IS an existing OperatorJob (type 'qa', context.autonomous = true)
@@ -26,6 +27,7 @@ export type QeContext = {
   targetRepo?: string;
   /** Optional repository access for this run (authorized GitHub integration; never a token). */
   repository?: { url: string; branch?: string };
+  repositoryWarning?: string;
 };
 
 export type QeRunStatus = "succeeded" | "partial" | "unverified" | "failed" | "canceled" | "blocked";
@@ -165,7 +167,7 @@ export type StageSnapshot = { key: QeStageKey; outcome: QeStageOutcome | null; r
  * unverified - tests never executed, or nothing testable/verifiable was produced.
  * failed / canceled / blocked keep their usual meaning.
  */
-export function computeOverallStatus(stages: StageSnapshot[]): { status: QeRunStatus; reason: string } {
+export function computeOverallStatus(stages: StageSnapshot[], coverage?: ScenarioCoverage | null): { status: QeRunStatus; reason: string } {
   const by = new Map(stages.map((s) => [s.key, s]));
   const o = (k: QeStageKey) => by.get(k)?.outcome ?? null;
   const why = (k: QeStageKey) => `${k}: ${by.get(k)?.reason ?? o(k) ?? "not reached"}`;
@@ -184,6 +186,10 @@ export function computeOverallStatus(stages: StageSnapshot[]): { status: QeRunSt
   const exec = o("execute");
   if (exec === "unverified" || exec === null || exec === "pending" || exec === "skipped") {
     return { status: "unverified", reason: why("execute") };
+  }
+  if (coverage !== undefined && !coverage?.complete) {
+    const passed = coverage?.counts.passed ?? 0;
+    return { status: passed ? "partial" : "unverified", reason: coverage ? `Verified ${passed}/${coverage.total} planned scenarios; ${coverage.counts.blocked} blocked, ${coverage.counts.unimplemented} unimplemented, ${coverage.counts.failed} failed` : "Scenario coverage evidence is missing" };
   }
   if (exec === "succeeded") {
     if (o("repair") === "skipped" || o("repair") === null || o("repair") === "pending") return { status: "succeeded", reason: "All generated tests executed and passed" };
@@ -210,7 +216,9 @@ export async function finalizeQeRun(jobId: string, opts: { error?: string } = {}
     }
   }
   const final = await getStages(jobId);
-  const overall = computeOverallStatus(final.map((s) => ({ key: s.stageKey as QeStageKey, outcome: s.outcome, reason: s.outcomeReason })));
+  const evidence = await prisma.operatorArtifact.findMany({ where: { jobId, type: { in: ["execution_result", "report"] } }, orderBy: { createdAt: "desc" }, select: { metaJson: true } });
+  const coverage = evidence.map((a) => (a.metaJson as any)?.coverage).find((c) => c?.scenarios) as ScenarioCoverage | undefined;
+  const overall = computeOverallStatus(final.map((s) => ({ key: s.stageKey as QeStageKey, outcome: s.outcome, reason: s.outcomeReason })), coverage ?? null);
   await prisma.operatorJob.updateMany({
     where: { id: jobId, status: { not: "canceled" } },
     data: { status: overall.status === "blocked" ? "blocked" : overall.status, finishedAt: new Date(), error: overall.status === "succeeded" ? null : overall.reason },

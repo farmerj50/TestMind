@@ -9,7 +9,7 @@ export type CredentialRef = { emailKey: string; passwordKey: string; loginPath?:
 export function isCredentialRef(v: unknown): v is CredentialRef {
   const r = v as CredentialRef;
   return !!r && typeof r === "object" && typeof r.emailKey === "string" && !!r.emailKey && typeof r.passwordKey === "string" && !!r.passwordKey
-    && (r.loginPath === undefined || (typeof r.loginPath === "string" && r.loginPath.startsWith("/")));
+    && (r.loginPath === undefined || (typeof r.loginPath === "string" && r.loginPath.startsWith("/") && !r.loginPath.startsWith("//") && !r.loginPath.includes("\\")));
 }
 
 /** Verifies both referenced secrets exist for the project (without decrypting them). */

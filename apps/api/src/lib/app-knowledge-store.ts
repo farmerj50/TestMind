@@ -1,3 +1,4 @@
+import { repositoryEvidence } from "./repository-evidence.js";
 // B2: I/O around lib/app-knowledge.ts. Reads the existing Application Brain snapshot
 // (coverage, execution history, defects), API Testing inventory, and repository sources;
 // writes through applyApplicationModelMerge (CAS) so concurrent writers never clobber facts.
@@ -132,7 +133,7 @@ export async function inspectRepository(root: string, label: string): Promise<De
     }
   }
   const { uiRoutes, apiRoutes } = extractDeclaredRoutes(sources);
-  return { repo: label, inspectedAt: new Date().toISOString(), source: "repository", uiRoutes, apiRoutes, testFiles: testFiles.sort().slice(0, 2000), truncated };
+  return { repo: label, inspectedAt: new Date().toISOString(), source: "repository", evidence: repositoryEvidence(root, [...uiRoutes.map((r) => r.path), ...apiRoutes.map((r) => r.path)].join(" ")), uiRoutes, apiRoutes, testFiles: testFiles.sort().slice(0, 2000), truncated };
 }
 
 export function resolveLocalRepository(targetRepo: string): string | null {

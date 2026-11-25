@@ -39,7 +39,7 @@ export type CrawlScan = {
   headings?: string[];
   fields?: Array<{ name?: string; label?: string; placeholder?: string; type?: string }>;
   forms?: Array<{ fields: Array<{ name?: string; label?: string; placeholder?: string; type?: string }> }>;
-  controls?: Array<{ label?: string }>;
+  controls?: Array<{ label?: string; selector?: string }>;
 };
 export type CrawlApiCall = { method: string; origin: string; path: string; status: number; route: string };
 
@@ -152,6 +152,7 @@ export function observePage(scan: CrawlScan, observedAt: string, runId?: string)
     headings: uniq((scan.headings ?? []).map(clean)),
     actions: uniq([...(scan.controls ?? []).map((c) => c.label ?? ""), ...(scan.buttons ?? [])].map(visibleTextOf)),
     fields: uniq(fields),
+    controls: (scan.controls ?? []).filter((c) => c.label && c.selector).slice(0, 100).map((c) => ({ label: c.label!, selector: c.selector! })),
     source: "crawl",
     observedAt,
     ...(runId ? { runId } : {}),
@@ -319,7 +320,7 @@ export function mapCriterionToEvidence(text: string, pages: Record<string, Appli
 export function buildStoryRecord(text: string, store: ApplicationModelStore, now: string, runId?: string, prior?: ApplicationModelStory): ApplicationModelStory {
   const parsed = parseUserStory(text);
   const criteria: StoryCriterion[] = parsed.criteria.map((c, i) => {
-    const evidence = mapCriterionToEvidence(c, store.pages);
+    const evidence = mapCriterionToEvidence(c, { ...store.pages, ...store.authenticatedPages });
     return { id: `ac${i + 1}`, text: c, status: evidence.length ? "elements_observed" : "no_evidence", evidence };
   });
   return {
@@ -338,7 +339,7 @@ export function refreshStoryEvidence(store: ApplicationModelStore, now: string):
   if (!store.stories) return store;
   const stories = Object.fromEntries(Object.entries(store.stories).map(([k, s]) => [k, {
     ...s,
-    criteria: s.criteria.map((c) => { const evidence = mapCriterionToEvidence(c.text, store.pages); return { ...c, evidence, status: evidence.length ? "elements_observed" as const : "no_evidence" as const }; }),
+    criteria: s.criteria.map((c) => { const evidence = mapCriterionToEvidence(c.text, { ...store.pages, ...store.authenticatedPages }); return { ...c, evidence, status: evidence.length ? "elements_observed" as const : "no_evidence" as const }; }),
     updatedAt: now,
   }]));
   return { ...store, stories };

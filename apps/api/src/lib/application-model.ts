@@ -21,6 +21,8 @@ export type ApplicationModelFieldMeta = {
   required?: boolean;
   pattern?: string;
   label?: string;
+  selector?: string;
+  placeholder?: string;
 };
 
 export type ApplicationModelForm = {
@@ -91,6 +93,7 @@ export type PageObservation = {
   headings: string[];
   actions: string[];
   fields: string[];
+  controls?: Array<{ label: string; selector: string }>;
   source: "crawl";
   observedAt: string;
   runId?: string;
@@ -173,6 +176,8 @@ export type ApplicationModelTestLink = {
 export type ApplicationModelStore = {
   version: 2;
   pages: Record<string, ApplicationModelPage>;
+  /** Latest authenticated crawl, kept separate from signed-out access evidence. */
+  authenticatedPages?: Record<string, ApplicationModelPage>;
   apis: Record<string, ApplicationModelApi>;
   identities: Record<string, ApplicationModelIdentity>;
   resources: Record<string, ApplicationModelResource>;
@@ -237,6 +242,7 @@ export type ApplicationModelStory = {
 };
 
 export type DeclaredRoutes = {
+  evidence?: Array<{ path: string; content: string }>;
   repo: string;
   inspectedAt: string;
   source: "repository";
@@ -271,6 +277,7 @@ export function normalizeApplicationModel(raw: unknown): ApplicationModelStore {
   return {
     version: 2,
     pages: asRecord(candidate.pages) as Record<string, ApplicationModelPage>,
+    authenticatedPages: asRecord(candidate.authenticatedPages) as Record<string, ApplicationModelPage>,
     apis: asRecord(candidate.apis) as Record<string, ApplicationModelApi>,
     identities: asRecord(candidate.identities) as Record<string, ApplicationModelIdentity>,
     resources: asRecord(candidate.resources) as Record<string, ApplicationModelResource>,

@@ -96,6 +96,7 @@ type DiscoveryOptions = {
   validateRequest?: (url: string) => Promise<void>;
   maxPages?: number;
   cookieString?: string;
+  loginPath?: string;
   routeAdvisor?: RouteDiscoveryAdvisor;
 };
 
@@ -1112,15 +1113,30 @@ export async function discoverSiteWithAuth(
   const browser = await chromium.launch({
     args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
   });
+  const abort = () => { void browser.close(); };
+  options.signal?.addEventListener('abort', abort, { once: true });
   try {
+    options.signal?.throwIfAborted();
+    const loginUrl = new URL(options.loginPath || baseUrl, baseUrl);
+    if (loginUrl.origin !== new URL(baseUrl).origin) throw new Error('Login URL must remain on the authorized origin');
+    await options.validateRequest?.(loginUrl.toString());
     const context = await browser.newContext({
+      serviceWorkers: 'block',
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
       extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
     });
     try {
+      await context.route('**/*', async route => {
+        try {
+          const request = route.request();
+          if ((request.isNavigationRequest() || !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) && new URL(request.url()).origin !== new URL(baseUrl).origin) throw new Error('Credential origin rejected');
+          await options.validateRequest?.(request.url());
+          await route.continue();
+        } catch { await route.abort('blockedbyclient'); }
+      });
       const page = await context.newPage();
-      const auth = await authenticatePage(page, baseUrl, creds);
+      const auth = await authenticatePage(page, loginUrl.toString(), creds);
       const currentUrl = page.url() || baseUrl;
       const firstScan = await extractRouteScan(page, currentUrl, 200);
 
@@ -1134,6 +1150,7 @@ export async function discoverSiteWithAuth(
       await context.close();
     }
   } finally {
+    options.signal?.removeEventListener('abort', abort);
     await browser.close();
   }
 }

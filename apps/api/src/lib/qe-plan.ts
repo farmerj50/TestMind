@@ -29,6 +29,7 @@ export type PlanScenario = {
   id: string;
   /** Which objective template this scenario is (drives B4 code generation). */
   kind: ScenarioKind;
+  requiresAuth?: boolean;
   title: string;
   category: ScenarioCategory;
   route: string;
@@ -209,7 +210,7 @@ export function buildQePlan(input: PlanInputs): QePlan {
         coverage: findExisting(input.existingTests, route, ["anonymous"]).length ? "existing" : "missing", existingTests: findExisting(input.existingTests, route, ["anonymous"]),
         status: "ready", execution: { mode: "to_generate" },
       });
-      if (coverageRoutes.has(route) || store.declared?.uiRoutes.some((r) => r.path === route)) {
+      if (!store.authenticatedPages?.[route] || store.authenticatedPages[route].access?.state !== "public") {
         add({
           kind: "auth_access", title: `Exercise ${route} as a signed-in user`, category: "positive", route,
           objective: `Unknown until observed with approved test credentials - functionality behind ${route} is not assumed`,
@@ -275,7 +276,7 @@ export function buildQePlan(input: PlanInputs): QePlan {
         });
       }
     }
-    if (observedFields.length && (access === "public" || access === "login_page")) {
+    if (observedFields.some((f) => !/password/i.test(f)) && (access === "public" || access === "login_page")) {
       add({
         kind: "xss_reflection", title: `Script/markup input on ${route} is not reflected unescaped`, category: "security", route,
         objective: `Entering an HTML/script payload into ${route}'s inputs never executes or renders it as markup`,
@@ -317,7 +318,7 @@ export function buildQePlan(input: PlanInputs): QePlan {
         kind: "criterion", title: `AC: ${c.text}`, category, route,
         objective: c.text,
         evidence: [{ source: "user_story", detail: `${story.title} / ${c.id}` }, ...c.evidence.map((e) => ({ source: "crawl" as const, detail: `${e.routeHint}: ${e.matched.join(", ")}`, observedAt: e.observedAt }))],
-        criteria: crit, coverage: "missing", existingTests: [], status: "ready",
+        criteria: crit, requiresAuth: c.evidence.some((e) => !!store.authenticatedPages?.[e.routeHint] && !["public", "login_page"].includes(pages[e.routeHint]?.access?.state ?? "")), coverage: "missing", existingTests: [], status: "ready",
         execution: { mode: "to_generate" }, acts: category !== "positive" || routes.length > 1,
       });
     }
@@ -349,6 +350,19 @@ export function buildQePlan(input: PlanInputs): QePlan {
     });
   }
 
+  for (const route of store.declared?.uiRoutes ?? []) {
+    if (pages[route.path] && pages[route.path].consecutiveMisses === 0) continue;
+    add({ kind: "auth_access", title: `Verify declared route ${route.path}`, category: "positive", route: route.path, objective: `Observe and verify the behavior declared for ${route.path}`, evidence: [{ source: "repository", detail: `${route.file}: ${route.path}` }], criteria: [], coverage: "missing", existingTests: [], status: "blocked_unverifiable", blockedReason: "Declared in source but not observed within the discovery scope or resource limit", execution: { mode: "not_executable" } });
+  }
+  const protectedPages = Object.fromEntries(Object.entries(store.authenticatedPages ?? {}).filter(([r, p]) => p.access?.state === "public" && !["public", "login_page"].includes(pages[r]?.access?.state ?? "")));
+  if (Object.keys(protectedPages).length) {
+    const authenticated = buildQePlan({ ...input, store: { ...store, pages: protectedPages, authenticatedPages: {}, declared: undefined, apis: {}, stories: {} }, generatorCases: [], failing: [] });
+    for (const s of authenticated.scenarios) scenarios.push({ ...s, id: sid(s.category, s.route, s.title + " (authenticated)"), requiresAuth: true, title: s.title + " (authenticated)" });
+    for (const [route, p] of Object.entries(protectedPages)) {
+      add({ kind: "auth_access", title: `Observed content of ${route} is available after sign-in`, category: "positive", route, requiresAuth: true,
+        objective: `A signed-in user reaches ${route} and sees the content observed during authenticated discovery`, evidence: [crawlEvidence(p, "authenticated page content observed")], criteria: [], coverage: "missing", existingTests: [], status: "ready", execution: { mode: "to_generate" } });
+    }
+  }
   scenarios.sort((a, b) => (a.status === "ready" ? 0 : 1) - (b.status === "ready" ? 0 : 1) || b.priority.score - a.priority.score || a.title.localeCompare(b.title));
   const count = <K extends string>(keys: K[], pick: (s: PlanScenario) => K) => Object.fromEntries(keys.map((k) => [k, scenarios.filter((s) => pick(s) === k).length])) as Record<K, number>;
   return {

@@ -3,6 +3,7 @@ import path from "node:path";
 import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { generatedSpecDir } from "../lib/generatedSpecs.js";
 import { TEST_FILE_PATTERN } from "./dev-agent-objective.js";
+import ts from "typescript";
 
 // Generated Dev Agent tests are project artifacts: saved to the project's Suites storage
 // ("Generated (playwright-ts)") as soon as they are generated - before execution - so they stay
@@ -28,18 +29,57 @@ export function suiteDirForRun(run: RunScope, root?: string): string {
 }
 
 /** Writes generated test files (with content) to Suites; returns their Suites-relative paths. */
-export function saveGeneratedSpecsToSuite(run: RunScope, files: Array<{ path: string; content?: string }>, root?: string): string[] {
-  const dir = path.resolve(suiteDirForRun(run, root));
+export function saveGeneratedSpecsToSuite(run: RunScope, files: Array<{ path: string; content?: string }>, root?: string, worktreePath?: string): string[] {
+  return writeRunnableBundle(suiteDirForRun(run, root), files, worktreePath, suiteHeader(run)).map((file) => `${suiteRelDir(run.id)}/${file}`);
+}
+
+/** Shared bounded bundle writer for generated Dev tests and existing QE regressions. */
+export function writeRunnableBundle(destination: string, files: Array<{ path: string; content?: string }>, worktreePath?: string, header = ""): string[] {
+  const dir = path.resolve(destination);
   const saved: string[] = [];
-  for (const f of files) {
+  const supplied = new Map(files.filter((f) => typeof f.content === "string").map((f) => [f.path.replace(/\\/g, "/"), f.content!]));
+  const pending = files.filter((f) => TEST_FILE_PATTERN.test(f.path));
+  const seen = new Set<string>();
+  const unresolved: string[] = [];
+  const dependencies = new Set<string>();
+  let bytes = 0;
+  const read = (relative: string) => {
+    if (supplied.has(relative)) return supplied.get(relative);
+    if (!worktreePath) return undefined;
+    const sourceRoot = fs.realpathSync(worktreePath);
+    const absolute = path.resolve(sourceRoot, relative);
+    if (!absolute.startsWith(sourceRoot + path.sep) || !fs.existsSync(absolute)) return undefined;
+    const real = fs.realpathSync(absolute);
+    if (!real.startsWith(sourceRoot + path.sep) || !fs.statSync(real).isFile() || fs.statSync(real).size > 512 * 1024) return undefined;
+    return fs.readFileSync(real, "utf8");
+  };
+  while (pending.length) {
+    const f = pending.shift()!;
     const rel = f.path.replace(/\\/g, "/").replace(/^\.?\/+/, "");
-    if (typeof f.content !== "string" || !TEST_FILE_PATTERN.test(rel)) continue;
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    if (/(^|\/)(\.env(?:\.|$)|\.git|node_modules)|\.(pem|key)$/i.test(rel)) { unresolved.push(rel); continue; }
     const abs = path.resolve(dir, rel);
-    if (!abs.startsWith(dir + path.sep)) continue; // never outside this run's suite folder
+    if (!abs.startsWith(dir + path.sep)) { unresolved.push(rel); continue; }
+    const content = f.content ?? read(rel);
+    if (content === undefined) { unresolved.push(rel); continue; }
+    bytes += Buffer.byteLength(content);
+    if (seen.size > 100 || bytes > 2 * 1024 * 1024) { unresolved.push("Bundle exceeded the 100-file/2-MiB limit"); break; }
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, `${suiteHeader(run)}${f.content}`, "utf8");
-    saved.push(`${suiteRelDir(run.id)}/${rel}`);
+    fs.writeFileSync(abs, `${TEST_FILE_PATTERN.test(rel) ? header : ""}${content}`, "utf8");
+    saved.push(rel);
+    for (const imported of ts.preProcessFile(content, true, true).importedFiles) {
+      if (!imported.fileName.startsWith(".")) { dependencies.add(imported.fileName); continue; }
+      const base = path.posix.normalize(path.posix.join(path.posix.dirname(rel), imported.fileName));
+      const candidates = [base, base.replace(/\.js$/, ".ts"), ...[".ts", ".tsx", ".js", ".mjs", ".json", "/index.ts", "/index.js"].map((ext) => base + ext)];
+      const dependency = candidates.find((p) => read(p) !== undefined);
+      if (dependency) pending.push({ path: dependency, content: read(dependency) });
+      else unresolved.push(`${rel}: ${imported.fileName}`);
+    }
   }
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "bundle.json"), JSON.stringify({ files: saved, dependencies: [...dependencies].sort(), unresolved, complete: unresolved.length === 0 }, null, 2));
+  if (unresolved.length) throw new Error(`Suite bundle is incomplete: ${unresolved.join(", ")}`);
   return saved;
 }
 

@@ -2,6 +2,7 @@
 // Autonomous Development Mode (Stage E). Cloned from routes/evaluations.ts's shape - a run +
 // nested history, ownership-checked on every route.
 
+import { autonomousPipeline } from "../lib/autonomous-routing.js";
 import type { FastifyInstance } from "fastify";
 import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
@@ -36,7 +37,9 @@ const CreateRunBody = z.object({
   mode: z.enum(["assigned", "selfImprovement", "both"]).default("assigned"),
   // No implicit external-repo access: anything other than the default "testmind" requires
   // the caller to explicitly set confirmExternalRepo: true in the same request.
-  targetRepo: z.string().min(1).default("testmind"),
+  targetRepo: z.string().default("testmind").transform((value) => value.trim() || "testmind"),
+  taskKind: z.enum(["auto", "test_generation", "code_edit"]).optional(),
+  scope: z.enum(["app_url", "page", "user_story"]).optional(),
   confirmExternalRepo: z.boolean().optional(),
   instructionText: z.string().max(20000).optional(),
   budgetUsd: z.number().positive().optional(),
@@ -112,89 +115,7 @@ export async function devAgentRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (!userId) return;
 
-    const parsed = CreateRunBody.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const body = parsed.data;
-
-    if (!(await isProjectOwner(body.projectId, userId))) return reply.code(403).send({ error: "Forbidden" });
-
-    // Autonomous Dev edits code in a Git repository. "testmind" is only valid where a real local
-    // checkout exists (not in production containers); website test generation belongs in Autonomous QE.
-    if (body.targetRepo === "testmind" && !localTestmindRepoPath()) {
-      return reply.code(409).send({ error: NO_LOCAL_TESTMIND_REPO_MESSAGE, code: "DEV_AGENT_NO_LOCAL_REPO", autonomousQeUrl: "/operator/qe" });
-    }
-
-    const repoProblem = devAgentRepoProblem(body.targetRepo);
-    if (repoProblem) return reply.code(400).send({ error: repoProblem, code: "DEV_AGENT_INVALID_REPO" });
-
-    if (requiresExternalRepoConfirmation(body.targetRepo, body.confirmExternalRepo)) {
-      return reply.code(400).send({
-        error: "Targeting a repository other than 'testmind' requires explicit confirmExternalRepo: true in the request - there is no implicit external-repo access.",
-      });
-    }
-
-    if (body.environmentId) {
-      const env = await prisma.environment.findFirst({ where: { id: body.environmentId, projectId: body.projectId }, select: { id: true } });
-      if (!env) return reply.code(400).send({ error: "environmentId does not belong to this project." });
-    }
-
-    if (body.baseUrl && !(await isAuthorizedBaseUrl(body.projectId, body.baseUrl))) {
-      return reply.code(400).send({
-        error: "baseUrl is not a known/authorized URL for this project - it must match an existing Environment or a base URL this project has already established.",
-      });
-    }
-
-    // A future scheduledStartAt is meant to register a one-shot-template OperatorSchedule that
-    // the scheduler's worker later fires (see scheduler.ts / routes/schedules.ts). That wiring
-    // does not exist yet here - this route never creates that OperatorSchedule row - so a
-    // DevAgentRun created with scheduledStartAt would stay 'queued' forever with no operatorJobId
-    // and no way to ever be picked up. Reject it up front rather than silently accepting a
-    // request that can never run. Anything at/near "now" (including a stale/default
-    // datetime-local value) is treated as an immediate run, not a schedule.
-    const scheduledAtMs = body.scheduledStartAt ? new Date(body.scheduledStartAt).getTime() : null;
-    const isMeaningfullyFuture = scheduledAtMs !== null && scheduledAtMs - Date.now() > 60_000;
-    if (isMeaningfullyFuture) {
-      return reply.code(400).send({
-        error: "Scheduling a future Dev Agent run is not implemented yet - use /schedules with a devAgentTemplate, or submit without a scheduled time to run now.",
-      });
-    }
-
-    const instructionText = await buildInstructionText(body.mode, body.projectId, body.instructionText ?? null);
-
-    const run = await prisma.devAgentRun.create({
-      data: {
-        projectId: body.projectId,
-        mode: body.mode,
-        targetRepo: body.targetRepo,
-        instructionText,
-        budgetUsd: body.budgetUsd,
-        maxIterations: body.maxIterations ?? undefined,
-        testCommand: body.testCommand,
-        baseUrl: body.baseUrl,
-        environmentId: body.environmentId,
-        timezone: body.timezone,
-        requestedBy: userId,
-      },
-    });
-
-    if (body.instructionText) {
-      await prisma.devAgentMessage.create({
-        data: { devAgentRunId: run.id, role: "user", content: body.instructionText },
-      });
-    }
-
-    const operatorJob = await prisma.operatorJob.create({
-      data: {
-        projectId: body.projectId,
-        type: "autonomousDev",
-        objective: `Autonomous Dev Mode (${body.mode}): ${body.targetRepo}`,
-        requestedBy: userId,
-        contextJson: { devAgentRunId: run.id },
-      },
-    });
-    await prisma.devAgentRun.update({ where: { id: run.id }, data: { operatorJobId: operatorJob.id } });
-    await enqueueOperatorJob(operatorJob.id, { durable: true });
-    return reply.code(202).send({ run: { ...run, operatorJobId: operatorJob.id } });
+    return createDevAgentRun(req.body, userId, reply);
   });
 
   app.get("/dev-agent/runs", async (req, reply) => {
@@ -414,3 +335,103 @@ export async function devAgentRoutes(app: FastifyInstance) {
 }
 
 export default devAgentRoutes;
+
+export async function createDevAgentRun(bodyInput: unknown, userId: string, reply: any) {
+    const parsed = CreateRunBody.safeParse(bodyInput);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const body = parsed.data;
+
+    if (!(await isProjectOwner(body.projectId, userId))) return reply.code(403).send({ error: "Forbidden" });
+
+    const environment = body.environmentId ? await prisma.environment.findFirst({ where: { id: body.environmentId, projectId: body.projectId }, select: { baseUrl: true } }) : null;
+    if (body.environmentId && !environment) return reply.code(400).send({ error: "environmentId does not belong to this project." });
+    const project = await prisma.project.findUnique({ where: { id: body.projectId }, select: { sharedSteps: true, repoUrl: true } });
+    const knownUrl = (project?.sharedSteps as any)?.baseUrl || (project?.repoUrl && !isLikelyGitRepoUrl(project.repoUrl) ? project.repoUrl : undefined);
+    const baseUrl = body.baseUrl || environment?.baseUrl || knownUrl;
+    if (baseUrl && !(await isAuthorizedBaseUrl(body.projectId, baseUrl))) return reply.code(400).send({ error: "baseUrl is not a known/authorized URL for this project." });
+    if (autonomousPipeline({ ...body, baseUrl }) === "qe") {
+      if (body.scheduledStartAt && new Date(body.scheduledStartAt).getTime() - Date.now() > 60_000) return reply.code(400).send({ error: "Future scheduling is not implemented for this entry point." });
+      const { createQeRun } = await import("./operatorQe.js");
+      const inputKind = body.scope ?? (/\b(user story|as an? |acceptance criteria|given .+ when )/i.test(body.instructionText ?? "") ? "user_story" : /\b(this|single|one) page\b/i.test(body.instructionText ?? "") ? "page" : "app_url");
+      return createQeRun({ projectId: body.projectId, inputKind, input: inputKind === "user_story" ? body.instructionText : baseUrl, baseUrl, environmentId: body.environmentId,
+        ...(body.targetRepo !== "testmind" && body.confirmExternalRepo ? { repository: { url: body.targetRepo } } : {}) }, userId, reply);
+    }
+
+    // Autonomous Dev edits code in a Git repository. "testmind" is only valid where a real local
+    // checkout exists (not in production containers); website test generation belongs in Autonomous QE.
+    if (body.targetRepo === "testmind" && !localTestmindRepoPath()) {
+      return reply.code(409).send({ error: NO_LOCAL_TESTMIND_REPO_MESSAGE, code: "DEV_AGENT_NO_LOCAL_REPO", autonomousQeUrl: "/operator/qe" });
+    }
+
+    const repoProblem = devAgentRepoProblem(body.targetRepo);
+    if (repoProblem) return reply.code(400).send({ error: repoProblem, code: "DEV_AGENT_INVALID_REPO" });
+
+    if (requiresExternalRepoConfirmation(body.targetRepo, body.confirmExternalRepo)) {
+      return reply.code(400).send({
+        error: "Targeting a repository other than 'testmind' requires explicit confirmExternalRepo: true in the request - there is no implicit external-repo access.",
+      });
+    }
+
+    if (body.environmentId) {
+      const env = await prisma.environment.findFirst({ where: { id: body.environmentId, projectId: body.projectId }, select: { id: true } });
+      if (!env) return reply.code(400).send({ error: "environmentId does not belong to this project." });
+    }
+
+    if (body.baseUrl && !(await isAuthorizedBaseUrl(body.projectId, body.baseUrl))) {
+      return reply.code(400).send({
+        error: "baseUrl is not a known/authorized URL for this project - it must match an existing Environment or a base URL this project has already established.",
+      });
+    }
+
+    // A future scheduledStartAt is meant to register a one-shot-template OperatorSchedule that
+    // the scheduler's worker later fires (see scheduler.ts / routes/schedules.ts). That wiring
+    // does not exist yet here - this route never creates that OperatorSchedule row - so a
+    // DevAgentRun created with scheduledStartAt would stay 'queued' forever with no operatorJobId
+    // and no way to ever be picked up. Reject it up front rather than silently accepting a
+    // request that can never run. Anything at/near "now" (including a stale/default
+    // datetime-local value) is treated as an immediate run, not a schedule.
+    const scheduledAtMs = body.scheduledStartAt ? new Date(body.scheduledStartAt).getTime() : null;
+    const isMeaningfullyFuture = scheduledAtMs !== null && scheduledAtMs - Date.now() > 60_000;
+    if (isMeaningfullyFuture) {
+      return reply.code(400).send({
+        error: "Scheduling a future Dev Agent run is not implemented yet - use /schedules with a devAgentTemplate, or submit without a scheduled time to run now.",
+      });
+    }
+
+    const instructionText = await buildInstructionText(body.mode, body.projectId, body.instructionText ?? null);
+
+    const run = await prisma.devAgentRun.create({
+      data: {
+        projectId: body.projectId,
+        mode: body.mode,
+        targetRepo: body.targetRepo,
+        instructionText,
+        budgetUsd: body.budgetUsd,
+        maxIterations: body.maxIterations ?? undefined,
+        testCommand: body.testCommand,
+        baseUrl: body.baseUrl,
+        environmentId: body.environmentId,
+        timezone: body.timezone,
+        requestedBy: userId,
+      },
+    });
+
+    if (body.instructionText) {
+      await prisma.devAgentMessage.create({
+        data: { devAgentRunId: run.id, role: "user", content: body.instructionText },
+      });
+    }
+
+    const operatorJob = await prisma.operatorJob.create({
+      data: {
+        projectId: body.projectId,
+        type: "autonomousDev",
+        objective: `Autonomous Dev Mode (${body.mode}): ${body.targetRepo}`,
+        requestedBy: userId,
+        contextJson: { devAgentRunId: run.id },
+      },
+    });
+    await prisma.devAgentRun.update({ where: { id: run.id }, data: { operatorJobId: operatorJob.id } });
+    await enqueueOperatorJob(operatorJob.id, { durable: true });
+    return reply.code(202).send({ pipeline: "dev", devAgentUrl: `/dev-agent?runId=${run.id}`, run: { ...run, operatorJobId: operatorJob.id } });
+}

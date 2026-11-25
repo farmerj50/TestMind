@@ -29,6 +29,7 @@ const CreateQeRunBody = z.object({
   inputKind: z.enum(QE_INPUT_KINDS),
   input: z.string().trim().min(1).max(20_000),
   baseUrl: z.string().trim().url().optional(),
+  instructionText: z.string().trim().max(20_000).optional(),
   planReview: z.boolean().optional(),
   maxPages: z.number().int().min(1).max(50).optional(),
   environmentId: z.string().optional(),
@@ -36,9 +37,9 @@ const CreateQeRunBody = z.object({
   // B4: approved test credentials BY REFERENCE - ProjectSecret keys, never values.
   // B6: authorize code-fix PROPOSALS for suspected product defects (never applied or merged automatically).
   codeFix: z.object({ targetRepo: z.string().trim().min(1).max(500), testCommand: z.string().trim().min(1).max(500).optional(), budgetUsd: z.number().positive().max(20).optional(), maxIterations: z.number().int().min(1).max(10).optional(), confirmExternalRepo: z.boolean().optional() }).strict().optional(),
-  credentials: z.object({ emailKey: z.string().min(1).max(200), passwordKey: z.string().min(1).max(200), loginPath: z.string().startsWith("/").max(300).optional() }).strict().optional(),
+  credentials: z.object({ emailKey: z.string().min(1).max(200), passwordKey: z.string().min(1).max(200), loginPath: z.string().startsWith("/").max(300).refine((p) => !p.startsWith("//") && !p.includes("\\"), "Login path must stay on the application origin").optional() }).strict().optional(),
   // Credentials supplied for THIS run only: stored encrypted under temporary keys, deleted when the run ends.
-  runCredentials: z.object({ email: z.string().min(1).max(320), password: z.string().min(1).max(500), loginPath: z.string().startsWith("/").max(300).optional() }).strict().optional(),
+  runCredentials: z.object({ email: z.string().min(1).max(320), password: z.string().min(1).max(500), loginPath: z.string().startsWith("/").max(300).refine((p) => !p.startsWith("//") && !p.includes("\\"), "Login path must stay on the application origin").optional() }).strict().optional(),
   // Optional repository access for this run, through the project's authorized GitHub integration.
   repository: z.object({ url: z.string().trim().min(1).max(500), branch: z.string().trim().max(200).optional() }).strict().optional(),
 });
@@ -160,97 +161,7 @@ export default async function operatorQeRoutes(app: FastifyInstance) {
   app.post("/operator/qe/runs", async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return;
-    const parsed = CreateQeRunBody.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const body = parsed.data;
-
-    if (!validatedEnv.TM_AUTONOMOUS_QA_ENABLED) return reply.code(409).send({ error: "Autonomous QA is not enabled on this server (TM_AUTONOMOUS_QA_ENABLED)" });
-
-    const project = await prisma.project.findUnique({ where: { id: body.projectId }, select: { ownerId: true } });
-    if (!project || project.ownerId !== userId) return reply.code(404).send({ error: "Project not found" });
-
-    if (body.environmentId) {
-      const env = await prisma.environment.findFirst({ where: { id: body.environmentId, projectId: body.projectId }, select: { id: true } });
-      if (!env) return reply.code(400).send({ error: "environmentId does not belong to this project" });
-    }
-
-    if (body.codeFix && requiresExternalRepoConfirmation(body.codeFix.targetRepo!, body.codeFix.confirmExternalRepo)) {
-      return reply.code(400).send({ error: "Proposing code fixes in a repository other than testmind requires codeFix.confirmExternalRepo: true" });
-    }
-    if (body.credentials && !(await credentialRefExists(body.projectId, body.credentials as CredentialRef))) {
-      return reply.code(400).send({ error: "credentials must reference existing project secrets (by key)" });
-    }
-    if (body.credentials && body.runCredentials) return reply.code(400).send({ error: "Use either saved credentials or credentials for this run, not both" });
-    let repository: { url: string; branch: string } | undefined;
-    if (body.repository) {
-      const auth = await authorizeRunRepository(body.projectId, body.repository.url, body.repository.branch);
-      if (!auth.ok) return reply.code(400).send({ error: (auth as { reason: string }).reason });
-      repository = { url: auth.access.url, branch: auth.access.branch }; // never the token
-      if (body.codeFix && parseGitHubRepo(body.codeFix.targetRepo)?.repo.toLowerCase() !== auth.access.repo.toLowerCase()) {
-        return reply.code(400).send({ error: "Code-fix proposals must target the repository authorized for this run" });
-      }
-    }
-
-    let baseUrl: string | undefined;
-    let targetRepo: string | undefined;
-    if (body.inputKind === "app_url" || body.inputKind === "page") {
-      baseUrl = body.input;
-    } else if (body.inputKind === "user_story") {
-      if (!body.baseUrl) return reply.code(400).send({ error: "A user story run requires baseUrl (the application to test)" });
-      baseUrl = body.baseUrl;
-    } else {
-      targetRepo = body.input;
-      baseUrl = body.baseUrl; // optional: also discover and test the running application
-      if (requiresExternalRepoConfirmation(targetRepo, body.confirmExternalRepo)) {
-        return reply.code(400).send({ error: "Targeting a repository other than testmind requires confirmExternalRepo: true" });
-      }
-    }
-    if (baseUrl) {
-      try {
-        await validateUrl(baseUrl);
-      } catch (err: any) {
-        return reply.code(400).send({ error: `Target URL rejected: ${err?.message ?? String(err)}` });
-      }
-    }
-
-    const label = body.inputKind === "user_story" ? body.input.split("\n")[0].slice(0, 120) : body.input.slice(0, 200);
-    const runCreds = body.runCredentials ? await storeRunCredentials(body.projectId, body.runCredentials as { email: string; password: string; loginPath?: string }) : null;
-    const credentialRef = runCreds?.ref ?? body.credentials;
-    let job;
-    try {
-    job = await prisma.operatorJob.create({
-      data: {
-        projectId: body.projectId,
-        type: "qa",
-        objective: `Autonomous QE (${body.inputKind}): ${label}`,
-        requestedBy: userId,
-        environmentId: body.environmentId ?? null,
-        contextJson: {
-          autonomous: true,
-          ...(baseUrl ? { baseUrl } : {}),
-          ...(body.environmentId ? { environmentId: body.environmentId } : {}),
-          qe: {
-            inputKind: body.inputKind,
-            input: body.input,
-            ...(baseUrl ? { baseUrl } : {}),
-            ...(targetRepo ? { targetRepo } : {}),
-            planReview: body.planReview === true,
-            ...(body.maxPages ? { maxPages: body.maxPages } : {}),
-            ...(credentialRef ? { credentialRef } : {}),
-            ...(runCreds ? { runCredentialKeys: runCreds.keys } : {}),
-            ...(repository ? { repository } : {}),
-            ...(body.codeFix ? { codeFix: { targetRepo: body.codeFix.targetRepo, ...(body.codeFix.testCommand ? { testCommand: body.codeFix.testCommand } : {}), ...(body.codeFix.budgetUsd ? { budgetUsd: body.codeFix.budgetUsd } : {}), ...(body.codeFix.maxIterations ? { maxIterations: body.codeFix.maxIterations } : {}) } } : {}),
-          },
-        } as Prisma.InputJsonValue,
-      },
-    });
-    } catch (err) {
-      // Never leave temporary credentials behind for a run that was not created.
-      if (runCreds) await prisma.projectSecret.deleteMany({ where: { projectId: body.projectId, key: { in: runCreds.keys } } }).catch(() => {});
-      throw err;
-    }
-    await enqueueOperatorJob(job.id);
-    return reply.code(201).send({ run: { id: job.id, status: job.status } });
+    return createQeRun(req.body, userId, reply);
   });
 
   // What the unified run form can offer for this project (no secret values are ever returned).
@@ -413,4 +324,108 @@ export default async function operatorQeRoutes(app: FastifyInstance) {
     if (!result.canceled) return reply.code(409).send({ error: `Cannot cancel a run that is ${job.status}` });
     return reply.send({ ok: true, status: "canceled", stoppedTestRuns: result.stoppedRunIds });
   });
+}
+
+export async function createQeRun(bodyInput: unknown, userId: string, reply: any) {
+    const parsed = CreateQeRunBody.safeParse(bodyInput);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const body = parsed.data;
+
+    if (body.inputKind === "repository" && !body.baseUrl) {
+      const { createDevAgentRun } = await import("./devAgent.js");
+      return createDevAgentRun({ projectId: body.projectId, targetRepo: body.input, confirmExternalRepo: body.confirmExternalRepo, taskKind: "code_edit", environmentId: body.environmentId,
+        instructionText: body.instructionText || "Inspect the repository and its existing tests. Plan relevant source-based verification, add missing unit or integration tests using the existing tooling, and run the affected tests. Preserve objectives and assertions; report any unimplemented or blocked coverage. Do not require a running website." }, userId, reply);
+    }
+    if (!validatedEnv.TM_AUTONOMOUS_QA_ENABLED) return reply.code(409).send({ error: "Autonomous QA is not enabled on this server (TM_AUTONOMOUS_QA_ENABLED)" });
+
+    const project = await prisma.project.findUnique({ where: { id: body.projectId }, select: { ownerId: true } });
+    if (!project || project.ownerId !== userId) return reply.code(404).send({ error: "Project not found" });
+
+    if (body.environmentId) {
+      const env = await prisma.environment.findFirst({ where: { id: body.environmentId, projectId: body.projectId }, select: { id: true } });
+      if (!env) return reply.code(400).send({ error: "environmentId does not belong to this project" });
+    }
+
+    if (body.codeFix && requiresExternalRepoConfirmation(body.codeFix.targetRepo!, body.codeFix.confirmExternalRepo)) {
+      return reply.code(400).send({ error: "Proposing code fixes in a repository other than testmind requires codeFix.confirmExternalRepo: true" });
+    }
+    if (body.credentials && !(await credentialRefExists(body.projectId, body.credentials as CredentialRef))) {
+      return reply.code(400).send({ error: "credentials must reference existing project secrets (by key)" });
+    }
+    if (body.credentials && body.runCredentials) return reply.code(400).send({ error: "Use either saved credentials or credentials for this run, not both" });
+    let repository: { url: string; branch: string } | undefined;
+    let repositoryWarning: string | undefined;
+    if (body.repository) {
+      const auth = await authorizeRunRepository(body.projectId, body.repository.url, body.repository.branch).catch(() => ({ ok: false as const, reason: "Repository access could not be verified." }));
+      if (!auth.ok) {
+        repositoryWarning = (auth as { reason: string }).reason;
+      } else {
+        repository = { url: auth.access.url, branch: auth.access.branch }; // never the token
+        if (body.codeFix && parseGitHubRepo(body.codeFix.targetRepo)?.repo.toLowerCase() !== auth.access.repo.toLowerCase()) {
+          return reply.code(400).send({ error: "Code-fix proposals must target the repository authorized for this run" });
+        }
+      }
+    }
+
+    let baseUrl: string | undefined;
+    let targetRepo: string | undefined;
+    if (body.inputKind === "app_url" || body.inputKind === "page") {
+      baseUrl = body.input;
+    } else if (body.inputKind === "user_story") {
+      if (!body.baseUrl) return reply.code(400).send({ error: "A user story run requires baseUrl (the application to test)" });
+      baseUrl = body.baseUrl;
+    } else {
+      targetRepo = body.input;
+      baseUrl = body.baseUrl; // optional: also discover and test the running application
+      if (requiresExternalRepoConfirmation(targetRepo, body.confirmExternalRepo)) {
+        return reply.code(400).send({ error: "Targeting a repository other than testmind requires confirmExternalRepo: true" });
+      }
+    }
+    if (baseUrl) {
+      try {
+        await validateUrl(baseUrl);
+      } catch (err: any) {
+        return reply.code(400).send({ error: `Target URL rejected: ${err?.message ?? String(err)}` });
+      }
+    }
+
+    const label = body.inputKind === "user_story" ? body.input.split("\n")[0].slice(0, 120) : body.input.slice(0, 200);
+    const runCreds = body.runCredentials ? await storeRunCredentials(body.projectId, body.runCredentials as { email: string; password: string; loginPath?: string }) : null;
+    const credentialRef = runCreds?.ref ?? body.credentials;
+    let job;
+    try {
+    job = await prisma.operatorJob.create({
+      data: {
+        projectId: body.projectId,
+        type: "qa",
+        objective: `Autonomous QE (${body.inputKind}): ${label}`,
+        requestedBy: userId,
+        environmentId: body.environmentId ?? null,
+        contextJson: {
+          autonomous: true,
+          ...(baseUrl ? { baseUrl } : {}),
+          ...(body.environmentId ? { environmentId: body.environmentId } : {}),
+          qe: {
+            inputKind: body.inputKind,
+            input: body.input,
+            ...(baseUrl ? { baseUrl } : {}),
+            ...(targetRepo ? { targetRepo } : {}),
+            planReview: body.planReview === true,
+            ...(body.maxPages ? { maxPages: body.maxPages } : {}),
+            ...(credentialRef ? { credentialRef } : {}),
+            ...(runCreds ? { runCredentialKeys: runCreds.keys } : {}),
+            ...(repository ? { repository } : {}),
+            ...(repositoryWarning ? { repositoryWarning } : {}),
+            ...(body.codeFix && !repositoryWarning ? { codeFix: { targetRepo: body.codeFix.targetRepo, ...(body.codeFix.testCommand ? { testCommand: body.codeFix.testCommand } : {}), ...(body.codeFix.budgetUsd ? { budgetUsd: body.codeFix.budgetUsd } : {}), ...(body.codeFix.maxIterations ? { maxIterations: body.codeFix.maxIterations } : {}) } } : {}),
+          },
+        } as Prisma.InputJsonValue,
+      },
+    });
+    } catch (err) {
+      // Never leave temporary credentials behind for a run that was not created.
+      if (runCreds) await prisma.projectSecret.deleteMany({ where: { projectId: body.projectId, key: { in: runCreds.keys } } }).catch(() => {});
+      throw err;
+    }
+    await enqueueOperatorJob(job.id);
+    return reply.code(201).send({ pipeline: "qe", autonomousQeUrl: `/operator/qe/${job.id}`, run: { id: job.id, status: job.status } });
 }

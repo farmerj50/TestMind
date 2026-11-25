@@ -137,9 +137,10 @@ export default function AutonomousQePage() {
     try {
       const url = appUrl.trim();
       const goal = objective.trim();
-      const inputKind: InputKind = goal ? "user_story" : singlePage ? "page" : "app_url";
-      const body: Record<string, unknown> = { projectId, inputKind, input: goal || url, planReview };
-      if (goal) body.baseUrl = url;
+      const inputKind: InputKind = !url && repoUrl.trim() ? "repository" : goal ? "user_story" : singlePage ? "page" : "app_url";
+      const body: Record<string, unknown> = { projectId, inputKind, input: inputKind === "repository" ? repoUrl.trim() : goal || url, planReview };
+      if (url && goal) body.baseUrl = url;
+      if (inputKind === "repository") { body.confirmExternalRepo = true; body.instructionText = goal || undefined; }
       if (inputKind !== "page") body.maxPages = Number(maxPages) || undefined;
       const lp = loginPath.trim() || undefined;
       if (credMode === "saved") body.credentials = { emailKey: savedEmailKey, passwordKey: savedPasswordKey, ...(lp ? { loginPath: lp } : {}) };
@@ -148,11 +149,11 @@ export default function AutonomousQePage() {
         body.repository = { url: repoUrl.trim(), ...(repoBranch.trim() ? { branch: repoBranch.trim() } : {}) };
         if (allowCodeFix) body.codeFix = { targetRepo: repoUrl.trim(), confirmExternalRepo: true, ...(testCommand.trim() ? { testCommand: testCommand.trim() } : {}) };
       }
-      const res = await apiFetch<{ run: { id: string } }>("/operator/qe/runs", { method: "POST", body: JSON.stringify(body) });
+      const res = await apiFetch<{ run: { id: string }; devAgentUrl?: string }>("/operator/qe/runs", { method: "POST", body: JSON.stringify(body) });
       setObjective("");
       setRunPassword("");
       loadRuns();
-      navigate(`/operator/qe/${res.run.id}`);
+      navigate(res.devAgentUrl ?? `/operator/qe/${res.run.id}`);
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -183,10 +184,10 @@ export default function AutonomousQePage() {
   }
 
   const credsReady = credMode === "none" || (credMode === "saved" ? !!savedEmailKey && !!savedPasswordKey : !!runEmail.trim() && !!runPassword);
-  const canStart = !!projectId && /^https?:\/\//i.test(appUrl.trim()) && credsReady && !busy;
+  const canStart = !!projectId && (/^https?:\/\//i.test(appUrl.trim()) || (!appUrl.trim() && !!repoUrl.trim())) && credsReady && !busy;
   // What this run will be able to do (shown before starting).
   const modes = [
-    { key: "url", label: "URL-only", on: true, detail: "Discover, generate, execute, investigate; results saved to Suites. No Git needed." },
+    { key: "url", label: "URL testing", on: !!appUrl.trim(), detail: "Discover, generate, execute, investigate; results saved to Suites. No Git needed." },
     { key: "auth", label: "Authenticated", on: credMode !== "none", detail: "Isolated signed-in browser sessions; credentials never enter tests, prompts, logs or artifacts." },
     { key: "repo", label: "Repository-enabled", on: !!repoUrl.trim(), detail: "Source inspection from a temporary checkout (deleted after use); draft PRs only after your approval." },
   ];

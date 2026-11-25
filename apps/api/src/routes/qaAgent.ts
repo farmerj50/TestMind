@@ -3,6 +3,8 @@ import { getAuth } from "@clerk/fastify";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { enqueueOperatorJob } from "../runner/queue.js";
+import { validateUrl } from "../lib/safe-fetch.js";
+import { isLikelyGitRepoUrl } from "../lib/git-url.js";
 import { validatedEnv } from "../config/env.js";
 
 export default async function qaAgentRoutes(app: FastifyInstance) {
@@ -34,7 +36,8 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() });
     }
 
-    const { projectId: rawProjectId, suiteId, baseUrl } = parsed.data;
+    const { projectId: rawProjectId, suiteId } = parsed.data;
+    let baseUrl = parsed.data.baseUrl;
     const autonomous = parsed.data.autonomous === true;
     const enableGitHubWriteback = parsed.data.enableGitHubWriteback === true;
 
@@ -46,7 +49,7 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
 
       const project = await prisma.project.findFirst({
         where: { id: rawProjectId, ownerId: userId },
-        select: { id: true },
+        select: { id: true, sharedSteps: true, repoUrl: true },
       });
       if (!project) return reply.code(404).send({ error: "Project not found" });
 
@@ -58,6 +61,9 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
         if (!suite) return reply.code(404).send({ error: "Suite not found" });
       }
       projectId = project.id;
+      baseUrl ||= (project.sharedSteps as any)?.baseUrl || (project.repoUrl && !isLikelyGitRepoUrl(project.repoUrl) ? project.repoUrl : undefined);
+      if (!baseUrl) return reply.code(400).send({ error: "URL-based testing requires an application URL. Use Autonomous Dev for repository-only verification." });
+      try { await validateUrl(baseUrl); } catch { return reply.code(400).send({ error: "Target URL rejected" }); }
     } else {
       if (!suiteId) {
         return reply.code(422).send({ error: { fieldErrors: { suiteId: ["suiteId is required"] } } });
@@ -86,6 +92,7 @@ export default async function qaAgentRoutes(app: FastifyInstance) {
           baseUrl: baseUrl ?? null,
           parallel: parsed.data.parallel ?? false,
           autonomous,
+          ...(autonomous ? { qe: { inputKind: "app_url", input: baseUrl!, baseUrl: baseUrl! } } : {}),
           ...(parsed.data.autonomyLevel ? { autonomyLevel: parsed.data.autonomyLevel } : {}),
           enableGitHubWriteback: autonomous ? enableGitHubWriteback : true,
           disableAutoSelfHeal: autonomous,

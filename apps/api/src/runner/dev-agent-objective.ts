@@ -142,6 +142,7 @@ export function checkObjectiveAlignment(opts: {
   originalTargets: AssertionTarget[] | null;
   // Final contents of every test file the agent created/modified; null content = deleted.
   finalTestFiles: Array<{ path: string; content: string | null }>;
+  repositoryVerification?: boolean;
 }): ObjectiveCheck {
   if (opts.finalTestFiles.length === 0) {
     return { aligned: true, reason: "No test files were created or modified by the agent; the configured test command is the verification.", targets: [] };
@@ -164,6 +165,14 @@ export function checkObjectiveAlignment(opts: {
   if (dropped.length) {
     const now = positive.map((t) => `"${t.text}"`).join(", ") || "(none)";
     return { aligned: false, reason: `Repair changed the test objective: originally asserted ${dropped.map((d) => `"${d}"`).join(", ")}, final test asserts ${now}. The requested element may not exist on the target - reported as unable to verify rather than substituting another feature.`, targets };
+  }
+
+  // Source tests commonly assert values and exceptions rather than visible UI text.
+  // Deletion/skip and original-target checks still apply; assertion preservation is also
+  // checked against the first source snapshot by the worker.
+  if (opts.repositoryVerification) {
+    const assertions = opts.finalTestFiles.every((f) => /\b(?:expect\s*\(|assert(?:\.[\w]+)?\s*\()/m.test(stripComments(f.content!)));
+    return { aligned: assertions, reason: assertions ? "Repository tests contain executable assertions; original assertions are preserved." : "A repository test contains no executable assertion.", targets };
   }
 
   if (instruction) {
