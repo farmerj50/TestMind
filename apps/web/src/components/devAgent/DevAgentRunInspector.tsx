@@ -21,6 +21,10 @@ export type InspectorIteration = {
     objective?: { aligned: boolean; reason: string };
     /** The actual test error extracted from the output (failed executions only). */
     failureSummary?: string;
+    /** Individual test results of this execution. */
+    tests?: Array<{ title: string; file: string | null; status: string }>;
+    /** Where this iteration's generated tests were saved in Suites. */
+    savedSpecs?: string[];
   } | null;
   costUsd: number;
   createdAt: string;
@@ -84,6 +88,9 @@ export default function DevAgentRunInspector({ iterations, runStatus, runError }
     <div className="space-y-3">
       {runStatus === "unverified" && runError && (
         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{runError}</div>
+      )}
+      {runStatus === "partial" && runError && (
+        <div className="whitespace-pre-wrap rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{runError}</div>
       )}
       {runStatus === "failed" && runError && (
         <div className="whitespace-pre-wrap rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900">{runError}</div>
@@ -183,6 +190,18 @@ export default function DevAgentRunInspector({ iterations, runStatus, runError }
                   )}
                 </div>
               </>
+            ) : null}
+
+            {(tr?.tests?.length || tr?.savedSpecs?.length) ? (
+              <div className="space-y-1 text-xs">
+                {tr?.savedSpecs?.length ? <div className="opacity-80">Saved to Suites: {tr.savedSpecs.join(", ")}</div> : null}
+                {tr?.tests?.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Badge tone={t.status === "passed" ? "ok" : t.status === "failed" ? "bad" : "muted"}>{t.status}</Badge>
+                    <span>{t.file ? `${t.file} › ` : ""}{t.title}</span>
+                  </div>
+                ))}
+              </div>
             ) : null}
 
             {tr?.failureSummary && (

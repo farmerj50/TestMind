@@ -14,6 +14,8 @@ import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { provisionWorktreeDependencies, type DependencyProvisionResult } from "./dev-agent-dependencies.js";
 import { buildSandboxEnv, envInt, parseCommandLine, runSandboxed } from "./dev-agent-sandbox.js";
 import os from "node:os";
+import { extractFailureDetail, failureSignature } from "./dev-agent-repair-feedback.js";
+import { parseTestOutcomes, saveGeneratedSpecsToSuite, suiteRelDir } from "./dev-agent-suite.js";
 import { describeTestSetup, detectTestCommand, NO_APP_URL_REASON, requiresApplicationUrl, summarizeTestFailure, type DetectedTestCommand } from "./dev-agent-test-command.js";
 import { provisionPlaywrightSetup, type PlaywrightProvisionResult } from "./dev-agent-playwright-setup.js";
 import { checkObjectiveAlignment, extractAssertionTargets, TEST_FILE_PATTERN, type AssertionTarget, type ObjectiveCheck } from "./dev-agent-objective.js";
@@ -78,7 +80,13 @@ export type PriorIterationContext = {
   summary: string | null;
   testOutput: string | null;
   filesChanged: string[];
+  /** The actual test failure block (error, locator, expected/received, location, stack), cleaned. */
+  failureDetail?: string | null;
+  /** Current content of the test files under repair, so the repair edits what actually failed. */
+  failingTestFiles?: Array<{ path: string; content: string }>;
 };
+
+const MAX_REPAIR_FILE_CHARS = 6000;
 
 export type ProvisionDependenciesFn = (worktreePath: string) => Promise<DependencyProvisionResult>;
 
@@ -91,6 +99,7 @@ export type DevAgentDeps = {
   detectTestCommand?: (worktreePath: string, changedFiles: string[], opts?: { outputDir?: string }) => DetectedTestCommand;
   provisionPlaywright?: (worktreePath: string, opts: { baseUrl: string | null; specs: string[] }) => Promise<PlaywrightProvisionResult>;
   resolveBaseUrl?: (run: { baseUrl: string | null; environmentId: string | null; projectId: string }) => Promise<string | undefined>;
+  saveSpecs?: (run: { id: string; projectId: string; requestedBy: string; instructionText?: string | null }, files: Array<{ path: string; content?: string }>) => string[];
 };
 
 // Default "code" phase: a real LLM call via the budget-tracked path, whose response is
@@ -105,6 +114,7 @@ const CODE_PHASE_SYSTEM_PROMPT = [
   'Respond with ONLY a JSON array of file operations, no prose, no markdown fence: [{"path":"relative/path.ts","action":"create"|"modify"|"delete","content":"...full file content, required for create/modify..."}]',
   "Paths must be relative to the repo root and must never contain '..' or start with '/'.",
   "Preserve the original objective: when repairing a failing test you may fix selectors, waits, navigation, or implementation errors, but you must NOT change which feature, element, text, or behavior is asserted, and must not skip, negate, or delete the test.",
+  "In Playwright tests prefer resilient, accessible locators (getByRole with a name, getByLabel, getByText, getByPlaceholder) over guessed tag or CSS selectors.",
   'If the requested feature or element does not exist on the target (per the site context or the failure output), do not substitute a different one - respond with ONLY {"blocked": true, "reason": "..."} instead of file operations.',
 ].join(" ");
 
@@ -276,6 +286,24 @@ export function buildCodePhasePrompt(opts: {
   lines.push(`Instruction: ${opts.instructionText ?? "(self-improvement mode: find and fix an issue)"}`);
   lines.push(`Iteration: ${opts.iterationNumber}`);
   lines.push("");
+  // Repairs: the actual failure comes first, before any other context.
+  const prior = opts.iterationNumber > 1 ? opts.priorIteration : null;
+  if (prior?.failureDetail) {
+    lines.push(`## Repair required: iteration ${prior.iterationNumber} failed with this actual test error (fix exactly this)`);
+    lines.push("```");
+    lines.push(prior.failureDetail);
+    lines.push("```");
+    for (const f of prior.failingTestFiles ?? []) {
+      lines.push(`Current ${f.path}:`);
+      lines.push("```");
+      lines.push(f.content);
+      lines.push("```");
+    }
+    lines.push("Repair rules:");
+    lines.push("- Keep the objective, the asserted feature, the expected text/values and the expected behavior exactly as they are; never weaken, skip, negate or remove an assertion.");
+    lines.push("- Fix what the error shows is wrong (locator, wait, navigation). Prefer resilient, accessible locators - getByRole with a name, getByLabel, getByText, getByPlaceholder - over guessed tag or CSS selectors (for a heading use page.getByRole(\"heading\", { name: \"...\" }), not locator(\"h1\")).");
+    lines.push("");
+  }
   if (opts.testSetup) {
     lines.push("## Test framework");
     lines.push(opts.testSetup);
@@ -314,10 +342,41 @@ export function buildCodePhasePrompt(opts: {
     lines.push("");
     lines.push(`## Prior iteration ${opts.priorIteration.iterationNumber} result (repair this, don't repeat the same mistake)`);
     if (opts.priorIteration.summary) lines.push(`Summary: ${snippet(opts.priorIteration.summary, 500)}`);
-    if (opts.priorIteration.testOutput) lines.push(`Test result: FAILED - ${snippet(opts.priorIteration.testOutput, 800)}`);
+    if (opts.priorIteration.failureDetail) lines.push("Test result: FAILED - see the actual test error at the top.");
+    else if (opts.priorIteration.testOutput) lines.push(`Test result: FAILED - ${snippet(opts.priorIteration.testOutput, 800)}`);
     if (opts.priorIteration.filesChanged.length) lines.push(`Files changed: ${opts.priorIteration.filesChanged.slice(0, 20).join(", ")}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * The previous iteration's result for the repair prompt: the actual failure block (cleaned of
+ * setup notices and temporary paths) and the current content of the test files this run wrote.
+ */
+export async function loadPriorIterationContext(devAgentRunId: string, iterationNumber: number, worktreePath: string): Promise<PriorIterationContext | null> {
+  if (iterationNumber <= 1) return null;
+  const rows = await prisma.devAgentIteration.findMany({ where: { devAgentRunId, phase: { not: "baseline" } }, orderBy: { iterationNumber: "asc" }, select: { iterationNumber: true, summary: true, filesChanged: true, testResult: true } });
+  const row = rows[rows.length - 1];
+  if (!row) return null;
+  const tr = row.testResult as any;
+  const paths = (r: { filesChanged: unknown }) => (Array.isArray(r.filesChanged) ? (r.filesChanged as any[]).map((f) => f?.path).filter((p): p is string => typeof p === "string") : []);
+  const testPaths = [...new Set(rows.flatMap(paths))].filter((p) => TEST_FILE_PATTERN.test(p));
+  const failingTestFiles = tr?.passed === false
+    ? testPaths.slice(0, 3).flatMap((p) => {
+        const abs = path.join(worktreePath, p);
+        if (!fs.existsSync(abs)) return [];
+        const content = fs.readFileSync(abs, "utf8");
+        return [{ path: p, content: content.length > MAX_REPAIR_FILE_CHARS ? `${content.slice(0, MAX_REPAIR_FILE_CHARS)}\n...[truncated]` : content }];
+      })
+    : [];
+  return {
+    iterationNumber: row.iterationNumber,
+    summary: row.summary,
+    testOutput: tr?.output ?? null,
+    filesChanged: paths(row),
+    failureDetail: tr?.passed === false ? extractFailureDetail(tr?.output, { worktreePath }) : null,
+    failingTestFiles,
+  };
 }
 
 const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePath }) => {
@@ -329,19 +388,7 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
   const repoTests = listRepoTestFiles(worktreePath);
   const existingTestPaths = Array.from(new Set([...generatedSpecs, ...repoTests]));
 
-  const priorIterationRow = iterationNumber > 1
-    ? await prisma.devAgentIteration.findFirst({ where: { devAgentRunId: run.id }, orderBy: { iterationNumber: "desc" } })
-    : null;
-  const priorIteration: PriorIterationContext | null = priorIterationRow
-    ? {
-        iterationNumber: priorIterationRow.iterationNumber,
-        summary: priorIterationRow.summary,
-        testOutput: (priorIterationRow.testResult as any)?.output ?? null,
-        filesChanged: Array.isArray(priorIterationRow.filesChanged)
-          ? (priorIterationRow.filesChanged as any[]).map((f) => f?.path).filter(Boolean)
-          : [],
-      }
-    : null;
+  const priorIteration = await loadPriorIterationContext(run.id, iterationNumber, worktreePath);
 
   // B6 code-fix proposals: inspect the repository for the defect's likely source and show the
   // baseline failure, under a prompt that fixes application code and never touches tests.
@@ -561,8 +608,10 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   const current = await prisma.devAgentRun.findUnique({ where: { id: run.id } });
   if (!current || current.status !== "running") return;
 
+  const isCodeFix = !!(opJob as any).contextJson?.qeCodeFix;
   const iterationCount = await prisma.devAgentIteration.count({ where: { devAgentRunId: run.id, phase: { not: "baseline" } } });
   if (iterationCount >= current.maxIterations) {
+    if (await endAsPartialIfTestsSaved(current, isCodeFix, `all ${current.maxIterations} iteration(s) were used`)) return;
     const last = await prisma.devAgentIteration.findFirst({ where: { devAgentRunId: run.id, phase: { not: "baseline" } }, orderBy: { iterationNumber: "desc" }, select: { iterationNumber: true, testResult: true } });
     const lastFailure = (last?.testResult as any)?.failureSummary ?? summarizeTestFailure((last?.testResult as any)?.output);
     const error = `Max iterations reached without passing tests${lastFailure ? `. Last failure (iteration ${last!.iterationNumber}): ${lastFailure}` : ""}`;
@@ -580,6 +629,7 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
 
   // Correction #2: budget checked BEFORE the expensive operation, not only after.
   if (!canAffordNextStep(current, CONSERVATIVE_LLM_STEP_ESTIMATE_USD)) {
+    if (await endAsPartialIfTestsSaved(current, isCodeFix, "the budget was exhausted before another repair")) return;
     const error = "Budget exceeded before next iteration";
     await prisma.devAgentRun.update({
       where: { id: run.id },
@@ -623,6 +673,18 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
       data: { status: "unverified", finishedAt: new Date(), error: `Blocked - requested objective could not be verified: ${codeResult.blocked}` },
     });
     return;
+  }
+
+  // Generated tests are project artifacts: save them to Suites now, before execution, so they
+  // stay available (and rerunnable) whatever the execution outcome. Code-fix runs never write tests.
+  let savedSpecs: string[] = [];
+  let suiteSaveError: string | null = null;
+  if (!isCodeFix) {
+    try {
+      savedSpecs = (deps.saveSpecs ?? saveGeneratedSpecsToSuite)(current, codeResult.filesChanged);
+    } catch (err: any) {
+      suiteSaveError = `Saving generated tests to Suites failed: ${snippet(err?.message ?? String(err), 300)}`;
+    }
   }
 
   // A user-provided command always wins. Otherwise (not for B6 code-fix runs, whose regression
@@ -679,7 +741,15 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   // that still matches the original instruction. Recorded on every iteration so the
   // FIRST version's assertions are the baseline later repairs are held to.
   const objective = await evaluateObjective(current, iterationNumber, codeResult.filesChanged, executed.passed);
-  const testResult = { ...executed, objectiveTargets: objective.targets, ...(objective.check ? { objective: { aligned: objective.check.aligned, reason: objective.check.reason } } : {}) };
+  const testResult = {
+    ...executed,
+    objectiveTargets: objective.targets,
+    ...(objective.check ? { objective: { aligned: objective.check.aligned, reason: objective.check.reason } } : {}),
+    // Individual test outcomes and where the generated tests are kept (Suites).
+    ...(hasTestCommand ? { tests: parseTestOutcomes(ran.output) } : {}),
+    ...(savedSpecs.length ? { savedSpecs } : {}),
+    ...(suiteSaveError ? { suiteSaveError } : {}),
+  };
 
   await prisma.devAgentIteration.create({
     data: {
@@ -724,5 +794,46 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
     return;
   }
 
+  // A failure identical to the previous iteration's means repairs are not changing the outcome:
+  // stop now with an actionable explanation instead of spending the remaining iterations.
+  const signature = failureSignature(ran.output);
+  if (signature && iterationNumber > 1) {
+    const prev = await prisma.devAgentIteration.findFirst({ where: { devAgentRunId: run.id, iterationNumber: iterationNumber - 1, phase: "code" }, select: { testResult: true } });
+    if (prev && failureSignature((prev.testResult as any)?.output) === signature) {
+      const reason = `the same failure repeated in iterations ${iterationNumber - 1} and ${iterationNumber}, so further repairs were stopped`;
+      if (await endAsPartialIfTestsSaved(current, isCodeFix, reason)) return;
+      const error = `Stopped: ${reason}.${failureSummary ? ` Failure: ${failureSummary}` : ""}`;
+      await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "failed", finishedAt: new Date(), error } });
+      await removeDevAgentWorktree(current);
+      throw new Error(error);
+    }
+  }
+
   await reDelay(TICK_DELAY_MS, { kind: "dev_agent_iterate", devAgentRunId: run.id });
+}
+
+/**
+ * Generated tests that still fail are a partial result, not an engine failure: they stay saved
+ * in Suites with their full failure and repair history, and the run ends 'partial' with what is
+ * failing and why. Returns false when nothing usable was generated (the caller fails the run).
+ * Never used for code-fix runs, whose outcome is the fix itself.
+ */
+async function endAsPartialIfTestsSaved(current: { id: string; projectId: string; worktreePath: string | null; targetRepo: string }, isCodeFix: boolean, reason: string): Promise<boolean> {
+  if (isCodeFix) return false;
+  const its = await prisma.devAgentIteration.findMany({ where: { devAgentRunId: current.id, phase: { not: "baseline" } }, orderBy: { iterationNumber: "asc" }, select: { iterationNumber: true, testResult: true } });
+  const saved = [...new Set(its.flatMap((it) => (((it.testResult as any)?.savedSpecs ?? []) as unknown[]).filter((p): p is string => typeof p === "string")))];
+  if (!saved.length) return false;
+  const last = its[its.length - 1];
+  const tr = last?.testResult as any;
+  const lastFailure = tr?.failureSummary ?? summarizeTestFailure(tr?.output);
+  const tests: Array<{ status: string }> = Array.isArray(tr?.tests) ? tr.tests : [];
+  const counts = tests.length ? ` Last run: ${tests.filter((t) => t.status === "passed").length} passed, ${tests.filter((t) => t.status === "failed").length} failed.` : "";
+  const error = [
+    `Partial: ${saved.length} generated test file(s) are saved in Suites (Generated (playwright-ts) > ${suiteRelDir(current.id)}), but the tests did not pass - ${reason}.${counts}`,
+    lastFailure ? `Last failure (iteration ${last.iterationNumber}): ${lastFailure}` : "",
+    "Review the failing test in Suites against what the page actually renders, then rerun it there or adjust the instruction.",
+  ].filter(Boolean).join(" ");
+  await prisma.devAgentRun.update({ where: { id: current.id }, data: { status: "partial", finishedAt: new Date(), error } });
+  await removeDevAgentWorktree(current as any);
+  return true;
 }

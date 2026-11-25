@@ -1448,6 +1448,9 @@ enum DevAgentRunStatus {
   // Terminal, distinct from `succeeded`: the run completed an iteration but no testCommand
   // was configured, so nothing was actually executed/verified. Never report this as success.
   unverified
+  // Terminal: usable tests were generated and saved to Suites, but they did not pass after
+  // bounded repairs. Never success; never a verified fix.
+  partial
   failed
   canceled
 }

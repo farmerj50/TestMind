@@ -170,10 +170,11 @@ export const operatorWorker = new Worker(
       // blocked) must never surface as a 'succeeded' operator job.
       if (opJob.type === 'autonomousDev') {
         const devRun = await prisma.devAgentRun.findFirst({ where: { operatorJobId }, select: { status: true, error: true } });
-        if (devRun?.status === 'unverified') {
+        // 'partial': generated tests were saved to Suites but did not pass - never 'succeeded'.
+        if (devRun?.status === 'unverified' || devRun?.status === 'partial') {
           await prisma.operatorJob.updateMany({
             where: { id: operatorJobId, status: { not: 'canceled' } },
-            data: { status: 'unverified', finishedAt: new Date(), error: devRun.error ?? 'Dev Agent run ended unverified - no executed, objective-aligned verification' },
+            data: { status: devRun.status, finishedAt: new Date(), error: devRun.error ?? 'Dev Agent run ended unverified - no executed, objective-aligned verification' },
           });
           await writeJobRollup(operatorJobId);
           return;

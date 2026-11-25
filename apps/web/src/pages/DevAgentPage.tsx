@@ -47,6 +47,12 @@ type DevAgentSummary = {
   prUrl: string | null;
   awaitingReview: boolean;
   iterations: DevAgentIterationSummary[];
+  /** Generation, execution and repair reported separately (older API responses omit it). */
+  phases?: {
+    generation: { status: "saved" | "no_tests" | "pending"; savedSpecs: string[]; suite: string | null };
+    execution: { status: "passed" | "failed" | "not_executed"; tests: Array<{ title: string; file: string | null; status: string }> };
+    repair: { attempts: number; status: "none" | "repaired" | "unresolved" };
+  };
 };
 
 const IN_FLIGHT_STATUSES = new Set(["queued", "running", "paused", "awaitingApproval"]);
@@ -325,6 +331,9 @@ export default function DevAgentPage() {
                 {run.status === "unverified" && run.error && (
                   <div className="mt-1 text-xs font-normal text-amber-800">{run.error}</div>
                 )}
+                {run.status === "partial" && (
+                  <span className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-800">Tests generated and saved; not all passing</span>
+                )}
               </div>
               <div className="flex gap-1">
                 {run.status === "running" && <button className="text-xs border rounded px-2 py-1" onClick={() => control("pause")}>Pause</button>}
@@ -338,7 +347,20 @@ export default function DevAgentPage() {
                 <div className="text-sm">Iterations: {summary.iterationCount}</div>
                 <div className="text-sm">Cost: ${summary.spentUsd.toFixed(2)}{summary.budgetUsd ? ` / $${summary.budgetUsd.toFixed(2)}` : ""}</div>
                 <div className="text-sm">Files changed: {summary.filesChanged.length ? summary.filesChanged.join(", ") : "none yet"}</div>
-                {summary.latestTestResult && (
+                {summary.phases ? (
+                  <div className="space-y-0.5 text-sm">
+                    <div>
+                      Generation: {summary.phases.generation.status === "saved"
+                        ? <>saved to <a className="underline text-[color:var(--tm-accent)]" href="/suite">Suites</a> ({summary.phases.generation.suite} › {summary.phases.generation.savedSpecs.join(", ")})</>
+                        : summary.phases.generation.status === "no_tests" ? "no test files generated" : "pending"}
+                    </div>
+                    <div>
+                      Execution: {summary.phases.execution.status === "not_executed" ? "not executed" : summary.phases.execution.status}
+                      {summary.phases.execution.tests.length > 0 && ` (${summary.phases.execution.tests.filter((t) => t.status === "passed").length} passed, ${summary.phases.execution.tests.filter((t) => t.status === "failed").length} failed)`}
+                    </div>
+                    <div>Repair: {summary.phases.repair.attempts === 0 ? "none" : `${summary.phases.repair.attempts} attempt(s), ${summary.phases.repair.status}`}</div>
+                  </div>
+                ) : summary.latestTestResult && (
                   <div className="text-sm">Latest test: {summary.latestTestResult.passed ? "passed" : "failed"}</div>
                 )}
                 {summary.prUrl ? (
