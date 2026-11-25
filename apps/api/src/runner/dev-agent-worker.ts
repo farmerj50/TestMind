@@ -14,7 +14,7 @@ import { DEFAULT_FRAMEWORK_ID } from "@testmind/core/framework";
 import { provisionWorktreeDependencies, type DependencyProvisionResult } from "./dev-agent-dependencies.js";
 import { buildSandboxEnv, envInt, parseCommandLine, runSandboxed } from "./dev-agent-sandbox.js";
 import os from "node:os";
-import { describeTestSetup, detectTestCommand, type DetectedTestCommand } from "./dev-agent-test-command.js";
+import { describeTestSetup, detectTestCommand, NO_APP_URL_REASON, requiresApplicationUrl, summarizeTestFailure, type DetectedTestCommand } from "./dev-agent-test-command.js";
 import { provisionPlaywrightSetup, type PlaywrightProvisionResult } from "./dev-agent-playwright-setup.js";
 import { checkObjectiveAlignment, extractAssertionTargets, TEST_FILE_PATTERN, type AssertionTarget, type ObjectiveCheck } from "./dev-agent-objective.js";
 
@@ -90,6 +90,7 @@ export type DevAgentDeps = {
   provisionDependencies?: ProvisionDependenciesFn;
   detectTestCommand?: (worktreePath: string, changedFiles: string[], opts?: { outputDir?: string }) => DetectedTestCommand;
   provisionPlaywright?: (worktreePath: string, opts: { baseUrl: string | null; specs: string[] }) => Promise<PlaywrightProvisionResult>;
+  resolveBaseUrl?: (run: { baseUrl: string | null; environmentId: string | null; projectId: string }) => Promise<string | undefined>;
 };
 
 // Default "code" phase: a real LLM call via the budget-tracked path, whose response is
@@ -355,7 +356,7 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
     discoveryUnavailableReason: discoveryState.unavailableReason,
     existingTestPaths,
     priorIteration,
-    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath),
+    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath, (await resolveBaseUrlForRun(run)) ?? null),
   });
   if (codeFix) {
     const { searchTermsForDefect } = await import("../lib/qe-codefix.js");
@@ -487,6 +488,12 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   // invocation must re-request approval, never silently fall through to the "not running"
   // guard below and get misreported as a succeeded job despite nothing having happened.
   if (run.status === "queued" || run.status === "awaitingApproval") {
+    // Website tests need an authorized application URL. Without one, stop before approval,
+    // workspace, LLM spend or retries. Repository-only tasks and user-provided commands proceed.
+    if (!run.testCommand && !(opJob as any).contextJson?.qeCodeFix && requiresApplicationUrl(run.instructionText) && !(await (deps.resolveBaseUrl ?? resolveBaseUrlForRun)(run))) {
+      await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "unverified", finishedAt: new Date(), error: NO_APP_URL_REASON } });
+      return;
+    }
     await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "awaitingApproval" } });
     const requestApprovalFn = deps.requestApproval ?? (await getRealRequestApproval());
     try {
@@ -556,7 +563,9 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
 
   const iterationCount = await prisma.devAgentIteration.count({ where: { devAgentRunId: run.id, phase: { not: "baseline" } } });
   if (iterationCount >= current.maxIterations) {
-    const error = "Max iterations reached without passing tests";
+    const last = await prisma.devAgentIteration.findFirst({ where: { devAgentRunId: run.id, phase: { not: "baseline" } }, orderBy: { iterationNumber: "desc" }, select: { iterationNumber: true, testResult: true } });
+    const lastFailure = (last?.testResult as any)?.failureSummary ?? summarizeTestFailure((last?.testResult as any)?.output);
+    const error = `Max iterations reached without passing tests${lastFailure ? `. Last failure (iteration ${last!.iterationNumber}): ${lastFailure}` : ""}`;
     await prisma.devAgentRun.update({
       where: { id: run.id },
       data: { status: "failed", finishedAt: new Date(), error },
@@ -633,9 +642,14 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
     // Playwright setup in this temporary worktree, commit it on the run branch (it becomes part
     // of the disclosed proposal), then detect again. A failed setup is reported, never hidden.
     const needs = "provisionPlaywright" in detection ? detection.provisionPlaywright : undefined;
-    if (needs) {
+    const appUrl = needs ? (await (deps.resolveBaseUrl ?? resolveBaseUrlForRun)(current)) ?? null : null;
+    if (needs && !appUrl) {
+      // Browser specs were generated but there is no authorized URL to run them against:
+      // never provision, execute or retry - end unverified with the reason.
+      detection = { command: null, reason: NO_APP_URL_REASON };
+    } else if (needs) {
       const provision = await (deps.provisionPlaywright ?? provisionPlaywrightSetup)(current.worktreePath!, {
-        baseUrl: (await resolveBaseUrlForRun(current)) ?? null,
+        baseUrl: appUrl,
         specs: needs.specs,
       });
       if (provision.ok) {
@@ -655,9 +669,11 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
     : { passed: false, output: `No test command configured for this run - the generated changes were not executed or verified.${detection ? ` ${detection.reason}` : ""}` };
   fs.rmSync(pwOutputDir, { recursive: true, force: true }); // run-scoped Playwright artifacts are never kept
   const setupNote = provisioned ? `Added minimal Playwright test setup (disclosed in the proposal): ${provisioned.dependency} as a devDependency; files: ${provisioned.files.join(", ")}\n` : "";
+  // The actual test error, extracted for display in TestMind (inspector + run error).
+  const failureSummary = hasTestCommand && !ran.passed ? summarizeTestFailure(ran.output) : null;
   const executed = detection?.command
-    ? { ...ran, command: detection.command, autoDetected: true, ...(provisioned ? { provisioned } : {}), output: `${setupNote}Auto-detected: ${detection.reason}\n$ ${detection.command}\n${ran.output}` }
-    : { ...ran, ...(provisioned ? { provisioned } : {}) };
+    ? { ...ran, command: detection.command, autoDetected: true, ...(provisioned ? { provisioned } : {}), ...(failureSummary ? { failureSummary } : {}), output: `${setupNote}Auto-detected: ${detection.reason}\n$ ${detection.command}\n${ran.output}` }
+    : { ...ran, ...(provisioned ? { provisioned } : {}), ...(failureSummary ? { failureSummary } : {}) };
 
   // What the agent's test files assert right now, and (if executed and passing) whether
   // that still matches the original instruction. Recorded on every iteration so the

@@ -716,6 +716,7 @@ test("a failed Playwright provisioning ends 'unverified' with the reason and nev
   t.after(ctx.cleanup);
   let ran = false;
   await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    resolveBaseUrl: async () => "http://127.0.0.1:9",
     requestApproval: async () => "approved",
     codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "src/a.ts", content: "x" }], costUsd: 0.001 }),
     detectTestCommand: () => ({ command: null, provisionPlaywright: { specs: ["e2e/a.spec.ts"] }, reason: "no Playwright test setup." }),
@@ -726,4 +727,85 @@ test("a failed Playwright provisioning ends 'unverified' with the reason and nev
   const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
   assert.equal(run?.status, "unverified");
   assert.match(run?.error ?? "", /Provisioning a Playwright setup failed: npm install exited 1/);
+});
+
+test("website-test instruction with no authorized URL: unverified immediately - no approval, workspace, LLM call or retry", async (t) => {
+  const ctx = await setupRun({ status: "queued" });
+  t.after(ctx.cleanup);
+  await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { instructionText: "Write tests that verify the signup page form works" } });
+  let approval = false, code = false;
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    resolveBaseUrl: async () => undefined,
+    requestApproval: async () => { approval = true; return "approved"; },
+    codePhase: async () => { code = true; return { summary: "", filesChanged: [], costUsd: 0 }; },
+  });
+  const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(run?.status, "unverified");
+  assert.match(run?.error ?? "", /No authorized application URL/);
+  assert.equal(approval, false);
+  assert.equal(code, false);
+  assert.equal(run?.worktreePath, null, "no workspace is created");
+  assert.equal(await prisma.devAgentIteration.count({ where: { devAgentRunId: ctx.run.id } }), 0);
+});
+
+test("repository-only tasks proceed without an application URL", async (t) => {
+  const ctx = await setupRun({ status: "queued" });
+  t.after(ctx.cleanup);
+  await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { instructionText: "Refactor the date utilities into a single module" } });
+  let code = false;
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    resolveBaseUrl: async () => undefined,
+    requestApproval: async () => "approved",
+    codePhase: async () => { code = true; return { summary: "refactor", filesChanged: [{ path: "src/a.ts", content: "x" }], costUsd: 0 }; },
+    detectTestCommand: () => ({ command: null, reason: "No executable test configuration was found." }),
+  });
+  assert.equal(code, true, "the code phase runs");
+  const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(run?.status, "unverified");
+  assert.doesNotMatch(run?.error ?? "", /application URL/);
+});
+
+test("generated browser specs with no URL are never provisioned, executed or retried", async (t) => {
+  const ctx = await setupRun({ status: "queued" });
+  t.after(ctx.cleanup);
+  let provisioned = false, ran = false;
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    resolveBaseUrl: async () => undefined,
+    requestApproval: async () => "approved",
+    codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "e2e/a.spec.ts", content: "x" }], costUsd: 0 }),
+    detectTestCommand: () => ({ command: null, provisionPlaywright: { specs: ["e2e/a.spec.ts"] }, reason: "no Playwright test setup." }),
+    provisionPlaywright: async () => { provisioned = true; return { ok: true, dependency: "x", files: [], output: "" }; },
+    runTestCommand: async () => { ran = true; return { passed: true, output: "" }; },
+  });
+  assert.equal(provisioned, false);
+  assert.equal(ran, false);
+  const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(run?.status, "unverified");
+  assert.match(run?.error ?? "", /No authorized application URL/);
+});
+
+test("the actual Playwright error is recorded per iteration and shown in the max-iterations failure", async (t) => {
+  const ctx = await setupRun({ status: "queued", maxIterations: 1 });
+  await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { testCommand: "npx playwright test" } });
+  t.after(ctx.cleanup);
+  const pwOutput = [
+    "Running 1 test using 1 worker",
+    "  ✘  1 [chromium] › e2e/signup.spec.ts:3:5 › signup works (1.2s)",
+    "  1) [chromium] › e2e/signup.spec.ts:3:5 › signup works",
+    "    Error: page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL",
+    "    Call log:",
+    "      - navigating to \"/\", waiting until \"load\"",
+    "  1 failed",
+  ].join("\n");
+  await assert.rejects(advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {
+    requestApproval: async () => "approved",
+    codePhase: async () => ({ summary: "spec", filesChanged: [{ path: "src/a.ts", content: "x" }], costUsd: 0 }),
+    runTestCommand: async () => ({ passed: false, output: pwOutput }),
+  }), StopTick);
+  const [it] = await prisma.devAgentIteration.findMany({ where: { devAgentRunId: ctx.run.id } });
+  assert.match((it.testResult as any).failureSummary, /Cannot navigate to invalid URL/);
+  await assert.rejects(advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, {}), /Max iterations reached without passing tests\. Last failure \(iteration 1\):[\s\S]*Cannot navigate to invalid URL/);
+  const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
+  assert.equal(run?.status, "failed");
+  assert.match(run?.error ?? "", /Cannot navigate to invalid URL/);
 });
