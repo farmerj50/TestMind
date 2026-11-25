@@ -64,10 +64,24 @@ const result = spawnSync(process.execPath, [
   "--test-reporter=spec", "--test-reporter-destination=stdout",
   "--test-reporter=tap", `--test-reporter-destination=${tapFile}`,
   ...files,
-], { cwd: apiDir, stdio: "inherit", env: childEnv });
+], {
+  cwd: apiDir,
+  env: childEnv,
+  encoding: "utf8",
+  maxBuffer: 64 * 1024 * 1024,
+});
+process.stdout.write(result.stdout ?? "");
+process.stderr.write(result.stderr ?? "");
 
 const tap = fs.existsSync(tapFile) ? fs.readFileSync(tapFile, "utf8") : "";
-const count = (k) => Number(new RegExp(`^# ${k} (\\d+)`, "m").exec(tap)?.[1] ?? 0);
+// With --test-force-exit, Node 22 can finish a large run before the secondary TAP
+// destination writes its summary. The primary spec reporter has already emitted the same
+// terminal counts, so use it as a truthful fallback rather than reporting zero tests.
+const summaryOutput = `${tap}\n${result.stdout ?? ""}`;
+const count = (k) => {
+  const matches = [...summaryOutput.matchAll(new RegExp(`(?:^|\\n)(?:#|ℹ) ${k} (\\d+)`, "g"))];
+  return Number(matches.at(-1)?.[1] ?? 0);
+};
 const summary = { tests: count("tests"), pass: count("pass"), fail: count("fail"), cancelled: count("cancelled"), skipped: count("skipped"), todo: count("todo") };
 console.log(`[api-tests] summary: ${JSON.stringify(summary)}`);
 const ok = result.status === 0 && summary.tests > 0 && !summary.fail && !summary.cancelled && !summary.skipped && !summary.todo;
