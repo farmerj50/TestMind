@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describeTestSetup, detectTestCommand } from "./dev-agent-test-command.js";
+import { describeTestSetup, detectTestCommand, requiresApplicationUrl, summarizeTestFailure } from "./dev-agent-test-command.js";
 import { commonSpecDir, playwrightConfigSource, testmindPlaywrightVersion } from "./dev-agent-playwright-setup.js";
 
 function repo(files: Record<string, string>): string {
@@ -49,7 +49,7 @@ test("code-phase guidance: no framework -> Playwright specs under e2e/; existing
   const none = repo({ "package.json": JSON.stringify({ scripts: { dev: "vite" } }) });
   const has = repo({ "package.json": JSON.stringify({ devDependencies: { "@playwright/test": "1" } }) });
   t.after(() => [none, has].forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
-  assert.match(describeTestSetup(none), /no test framework.*e2e\/.*@playwright\/test/);
+  assert.match(describeTestSetup(none, "https://app.example.com"), /no test framework.*e2e\/.*@playwright\/test/);
   assert.match(describeTestSetup(has), /already uses Playwright/);
 });
 
@@ -80,4 +80,30 @@ test("no package.json -> no command", (t) => {
   const d = detectTestCommand(dir, []);
   assert.equal(d.command, null);
   assert.match(d.reason, /No package\.json/);
+});
+
+test("website-test instructions need an application URL; repository-only tasks do not", () => {
+  assert.equal(requiresApplicationUrl("Write tests that verify the signup page form works"), true);
+  assert.equal(requiresApplicationUrl("Add an e2e test for login"), true);
+  assert.equal(requiresApplicationUrl("Refactor the date utilities into a single module"), false);
+  assert.equal(requiresApplicationUrl("Add unit tests for the tax calculator"), false);
+  assert.equal(requiresApplicationUrl(null), false);
+});
+
+test("the prompt only claims a configured baseURL when one exists", (t) => {
+  const dir = repo({ "package.json": JSON.stringify({ scripts: { dev: "vite" } }) });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  assert.match(describeTestSetup(dir, "https://app.example.com"), /baseURL is configured to https:\/\/app\.example\.com/);
+  const none = describeTestSetup(dir, null);
+  assert.doesNotMatch(none, /baseURL is configured/);
+  assert.match(none, /No application URL is configured.*blocked/);
+});
+
+test("summarizeTestFailure extracts the real Playwright error (navigation, assertion, browser launch)", () => {
+  const nav = summarizeTestFailure("Running 1 test\n  1) [chromium] › e2e/a.spec.ts:3:5 › a\n    Error: page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL\n    Call log:\n  1 failed");
+  assert.match(nav ?? "", /1\) \[chromium\][\s\S]*Cannot navigate to invalid URL/);
+  const assertion = summarizeTestFailure("    Error: expect(locator).toBeVisible() failed\n\n    Locator: getByRole('button', { name: 'Get Started' })\n    Expected: visible\n    Received: <element(s) not found>\n    Timeout: 5000ms");
+  assert.match(assertion ?? "", /toBeVisible\(\) failed[\s\S]*Get Started[\s\S]*not found/);
+  assert.match(summarizeTestFailure("Error: browserType.launch: Executable doesn't exist at /ms-playwright/chromium-1200/chrome") ?? "", /Executable doesn't exist/);
+  assert.equal(summarizeTestFailure(""), null);
 });

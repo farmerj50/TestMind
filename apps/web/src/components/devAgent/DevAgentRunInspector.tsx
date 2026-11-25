@@ -19,6 +19,8 @@ export type InspectorIteration = {
     output?: string;
     objectiveTargets?: Target[];
     objective?: { aligned: boolean; reason: string };
+    /** The actual test error extracted from the output (failed executions only). */
+    failureSummary?: string;
   } | null;
   costUsd: number;
   createdAt: string;
@@ -82,6 +84,9 @@ export default function DevAgentRunInspector({ iterations, runStatus, runError }
     <div className="space-y-3">
       {runStatus === "unverified" && runError && (
         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{runError}</div>
+      )}
+      {runStatus === "failed" && runError && (
+        <div className="whitespace-pre-wrap rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900">{runError}</div>
       )}
 
       {/* Iteration timeline */}
@@ -179,6 +184,13 @@ export default function DevAgentRunInspector({ iterations, runStatus, runError }
                 </div>
               </>
             ) : null}
+
+            {tr?.failureSummary && (
+              <div>
+                <div className="mb-1 text-xs font-semibold uppercase opacity-70">Test error</div>
+                <pre className="overflow-auto whitespace-pre-wrap rounded border border-red-300 bg-red-50 p-2 text-xs text-red-900">{stripAnsi(tr.failureSummary)}</pre>
+              </div>
+            )}
 
             <div>
               <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase opacity-70">
