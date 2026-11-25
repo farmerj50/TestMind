@@ -99,7 +99,7 @@ export type DevAgentDeps = {
   detectTestCommand?: (worktreePath: string, changedFiles: string[], opts?: { outputDir?: string }) => DetectedTestCommand;
   provisionPlaywright?: (worktreePath: string, opts: { baseUrl: string | null; specs: string[] }) => Promise<PlaywrightProvisionResult>;
   resolveBaseUrl?: (run: { baseUrl: string | null; environmentId: string | null; projectId: string }) => Promise<string | undefined>;
-  saveSpecs?: (run: { id: string; projectId: string; requestedBy: string }, files: Array<{ path: string; content?: string }>) => string[];
+  saveSpecs?: (run: { id: string; projectId: string; requestedBy: string; instructionText?: string | null }, files: Array<{ path: string; content?: string }>) => string[];
 };
 
 // Default "code" phase: a real LLM call via the budget-tracked path, whose response is
