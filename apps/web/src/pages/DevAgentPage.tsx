@@ -240,7 +240,7 @@ export default function DevAgentPage() {
           <textarea
             className="w-full border rounded-md px-2 py-1.5 text-sm"
             rows={3}
-            placeholder="What should TestMind build, fix, test, or improve?"
+            placeholder={mode === "assigned" ? "Required for repository work: what should TestMind build, fix, or verify?" : "What should TestMind build, fix, test, or improve?"}
             value={instructionText}
             onChange={(e) => setInstructionText(e.target.value)}
           />
