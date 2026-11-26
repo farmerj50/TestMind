@@ -95,6 +95,16 @@ test("repository-only QE request reaches Dev without a live application URL", as
   assert.equal(s.runs[0].baseUrl, undefined);
 });
 
+test("assigned repository runs require a concrete objective instead of inventing work", async () => {
+  const s = services();
+  const result = await s.invoke("dev", { projectId: "p", targetRepo: "org/repo", confirmExternalRepo: true, taskKind: "code_edit" });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.code, "DEV_AGENT_INSTRUCTION_REQUIRED");
+  assert.match(result.body.error, /concrete instruction/);
+  assert.equal(s.jobs.length, 0);
+  assert.equal(s.runs.length, 0);
+});
+
 test("ownership, external repository approval and project URL authorization still fail closed", async () => {
   assert.equal((await services({ owner: false }).invoke("dev", { projectId: "p", baseUrl: "https://app.example" })).status, 403);
   assert.equal((await services().invoke("qe", { projectId: "p", inputKind: "repository", input: "org/repo" })).status, 400);

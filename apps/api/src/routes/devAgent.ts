@@ -41,7 +41,7 @@ const CreateRunBody = z.object({
   taskKind: z.enum(["auto", "test_generation", "code_edit"]).optional(),
   scope: z.enum(["app_url", "page", "user_story"]).optional(),
   confirmExternalRepo: z.boolean().optional(),
-  instructionText: z.string().max(20000).optional(),
+  instructionText: z.string().trim().max(20000).optional(),
   budgetUsd: z.number().positive().optional(),
   maxIterations: z.number().int().min(1).max(50).optional(),
   testCommand: z.string().max(2000).optional(),
@@ -357,6 +357,13 @@ export async function createDevAgentRun(bodyInput: unknown, userId: string, repl
         ...(body.targetRepo !== "testmind" && body.confirmExternalRepo ? { repository: { url: body.targetRepo } } : {}) }, userId, reply);
     }
 
+    if (body.mode === "assigned" && !body.instructionText) {
+      return reply.code(400).send({
+        error: "Assigned repository runs require a concrete instruction describing what to build, fix, or verify. For full-application test generation, provide the authorized application URL so the request can use Autonomous QE.",
+        code: "DEV_AGENT_INSTRUCTION_REQUIRED",
+      });
+    }
+
     // Autonomous Dev edits code in a Git repository. "testmind" is only valid where a real local
     // checkout exists (not in production containers); website test generation belongs in Autonomous QE.
     if (body.targetRepo === "testmind" && !localTestmindRepoPath()) {
@@ -426,7 +433,7 @@ export async function createDevAgentRun(bodyInput: unknown, userId: string, repl
       data: {
         projectId: body.projectId,
         type: "autonomousDev",
-        objective: `Autonomous Dev Mode (${body.mode}): ${body.targetRepo}`,
+        objective: `Autonomous Dev Mode (${body.mode}): ${instructionText ?? body.targetRepo}`.slice(0, 1000),
         requestedBy: userId,
         contextJson: { devAgentRunId: run.id },
       },

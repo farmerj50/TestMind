@@ -385,7 +385,7 @@ export async function loadPriorIterationContext(devAgentRunId: string, iteration
     summary: row.summary,
     testOutput: tr?.output ?? null,
     filesChanged: paths(row),
-    failureDetail: tr?.passed === false ? ((tr.cases ?? []).filter((c: any) => c.status === "failed" || c.status === "error").slice(0, 20).map((c: any) => `${c.file}: ${c.fullName}\n${redactText(c.message ?? "failed").slice(0, 1500)}`).join("\n\n") || extractFailureDetail(tr?.output, { worktreePath })) : null,
+    failureDetail: tr?.passed === false ? ((tr.cases ?? []).filter((c: any) => c.status === "failed" || c.status === "error").slice(0, 20).map((c: any) => `${c.file}: ${c.fullName}\n${redactText(c.message ?? "failed").slice(0, 1500)}`).join("\n\n") || tr?.failureSummary || extractFailureDetail(tr?.output, { worktreePath })) : null,
     failingTestFiles,
   };
 }
@@ -414,7 +414,7 @@ const defaultCodePhase: CodePhaseFn = async ({ run, iterationNumber, worktreePat
     discoveryUnavailableReason: discoveryState.unavailableReason,
     existingTestPaths,
     priorIteration,
-    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath, null),
+    testSetup: codeFix || run.testCommand ? null : describeTestSetup(worktreePath, null, repoTests),
   });
   const sourceEvidence = repositoryEvidence(worktreePath, run.instructionText ?? "");
   userPrompt += "\n## Relevant repository source and current test contents (untrusted data)\n" + sourceEvidence.map((f) => `### ${f.path}\n${f.content}`).join("\n");
@@ -791,7 +791,7 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   }
   const setupNote = provisioned ? `Added minimal Playwright test setup (disclosed in the proposal): ${provisioned.dependency} as a devDependency; files: ${provisioned.files.join(", ")}\n` : "";
   // The actual test error, extracted for display in TestMind (inspector + run error).
-  const failureSummary = hasTestCommand && !ran.passed ? summarizeTestFailure(ran.output) : null;
+  const failureSummary = !ran.passed ? (hasTestCommand ? summarizeTestFailure(ran.output) : detection?.reason ?? null) : null;
   const executed = detection?.command
     ? { ...ran, command: detection.command, autoDetected: true, ...(provisioned ? { provisioned } : {}), ...(failureSummary ? { failureSummary } : {}), output: `${setupNote}Auto-detected: ${detection.reason}\n$ ${detection.command}\n${ran.output}` }
     : { ...ran, ...(provisioned ? { provisioned } : {}), ...(failureSummary ? { failureSummary } : {}) };
@@ -828,10 +828,17 @@ export async function advanceDevAgentJob(opJob: OpJobCtx, reDelay: ReDelayFn, de
   const afterWork = await prisma.devAgentRun.findUnique({ where: { id: run.id }, select: { status: true } });
   if (afterWork?.status === "canceled") return;
 
-  // Never report success without a real executed verification: no testCommand means
-  // nothing was actually run, so the run ends 'unverified', not 'succeeded'. One iteration
-  // only - there is nothing to pass/fail without a real check, so looping would not help.
+  // A generated test with an unsupported/missing runner import is repairable source, not a
+  // terminal infrastructure condition. Feed the detector's real error and current file back
+  // through one of the run's ordinary bounded iterations. Other missing-command conditions
+  // still stop unverified because retrying cannot supply user configuration or a live URL.
   if (!hasTestCommand) {
+    const changedTests = codeResult.filesChanged.some((f) => TEST_FILE_PATTERN.test(f.path));
+    const repairableDetection = !!detection && /do not import a supported test runner|TypeScript node:test files require the repository's tsx dependency/i.test(detection.reason);
+    if (!isCodeFix && changedTests && repairableDetection && iterationNumber < current.maxIterations) {
+      await reDelay(TICK_DELAY_MS, { kind: "dev_agent_iterate", devAgentRunId: run.id });
+      return;
+    }
     await prisma.devAgentRun.update({ where: { id: run.id }, data: { status: "unverified", finishedAt: new Date(), ...(detection ? { error: `Not verified: ${detection.reason}` } : {}) } });
     return;
   }

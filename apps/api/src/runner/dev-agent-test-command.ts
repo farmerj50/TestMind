@@ -79,7 +79,11 @@ function detectPackageTestCommand(worktreePath: string, changedFiles: string[], 
     return { command: `${exec} jest ${specs.map(quote).join(" ")}`, framework: "jest", packageManager: pm, reason: `Jest via ${pmLabel}, running the changed tests` };
   }
   const script = typeof pkg?.scripts?.test === "string" ? pkg.scripts.test.trim() : "";
-  return { command: null, reason: script && !NPM_PLACEHOLDER_TEST.test(script) ? "A test script exists but its scope is unknown. Provide a focused test command; the full regression suite is not selected automatically." : "No supported test framework was found for the affected tests." };
+  return { command: null, reason: script && !NPM_PLACEHOLDER_TEST.test(script)
+    ? "A test script exists but its scope is unknown. Provide a focused test command; the full regression suite is not selected automatically."
+    : specs.length
+      ? `Affected test files (${specs.join(", ")}) do not import a supported test runner. Use the nearest package's existing Node, Vitest, Jest, or Playwright convention with explicit imports.`
+      : "No supported test framework was found for the affected tests." };
 }
 
 /** Resolve each affected test to its nearest package, preserving workspace configuration. */
@@ -126,16 +130,27 @@ export function requiresApplicationUrl(instructionText: string | null | undefine
 }
 
 /** One instruction for the code phase: which test framework generated tests must use, and the real app URL (if any). */
-export function describeTestSetup(worktreePath: string, baseUrl: string | null = null): string {
+export function describeTestSetup(worktreePath: string, baseUrl: string | null = null, existingTestPaths: string[] = []): string {
   const raw = readText(path.join(worktreePath, "package.json"));
   let deps: Record<string, string> = {};
   try { const pkg = raw ? JSON.parse(raw) : {}; deps = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) }; } catch { /* treated as no framework */ }
   // No live application: a repository task (website-test instructions never get this far
   // without a URL). Verification comes from the repository's own tests, not a live site.
   if (!baseUrl) {
+    const samples = existingTestPaths.slice(0, 80).map((p) => readText(path.join(worktreePath, p)) ?? "");
+    const conventions: string[] = [];
+    if (samples.some((source) => /["']node:test["']/.test(source))) conventions.push('Node test runner (import test from "node:test" and assertions from "node:assert/strict")');
+    if (samples.some((source) => /["']vitest["']/.test(source))) conventions.push('Vitest (import test APIs from "vitest")');
+    if (samples.some((source) => /["'](?:@jest\/globals|jest)["']/.test(source))) conventions.push('Jest (import test APIs from "@jest/globals" when the package does not provide globals)');
+    const hasBrowserTests = samples.some((source) => PLAYWRIGHT_IMPORT.test(source));
     return [
       "No live application is associated with this run: this is a repository task.",
       "Make the requested change in the repository and, where tests are relevant, add or update repository-level tests (unit/integration) with the repository's existing test tooling.",
+      conventions.length
+        ? `Observed repository test conventions: ${conventions.join("; ")}. Use the convention already present in the nearest package.`
+        : "No source-level test convention was observed. Inspect the nearest package and an existing test before creating a new test file.",
+      "Every test file must explicitly import its runner APIs. Do not invent Jest/Mocha globals such as describe, it, beforeEach, or page when that package does not configure them.",
+      ...(hasBrowserTests ? ["Playwright/browser suites exist elsewhere in the repository, but this run has no authorized live URL; do not create or modify browser tests for this repository-only task."] : []),
       "Do not write browser or end-to-end tests that need a running site. A missing live site is not a reason to report blocked.",
     ].join(" ");
   }

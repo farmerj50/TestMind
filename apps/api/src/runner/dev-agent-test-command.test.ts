@@ -64,6 +64,24 @@ test("repository tasks (no live site) are not steered to browser tests and are n
   assert.doesNotMatch(g, /Write end-to-end tests|Playwright specs|respond with ONLY \{"blocked"/);
 });
 
+test("repository guidance names observed source-test conventions and rejects invented runner globals", (t) => {
+  const dir = repo({
+    "package.json": JSON.stringify({}),
+    "apps/api/package.json": JSON.stringify({ devDependencies: { tsx: "^4" } }),
+    "apps/api/existing.test.ts": `import test from "node:test";\nimport assert from "node:assert/strict";\ntest("existing", () => assert.ok(true));`,
+    "apps/api/generated.test.ts": `describe("invented globals", () => { it("x", () => expect(1).toBe(1)); });`,
+  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const guidance = describeTestSetup(dir, null, ["apps/api/existing.test.ts"]);
+  assert.match(guidance, /Observed repository test conventions: Node test runner/);
+  assert.match(guidance, /explicitly import its runner APIs/);
+  assert.match(guidance, /Do not invent Jest\/Mocha globals/);
+  const detected = detectTestCommand(dir, ["apps/api/generated.test.ts"]);
+  assert.equal(detected.command, null);
+  assert.match(detected.reason, /do not import a supported test runner/);
+  assert.match(detected.reason, /explicit imports/);
+});
+
 test("provisioned config: testDir is the specs' common folder and baseURL the authorized URL", () => {
   assert.equal(commonSpecDir(["e2e/a.spec.ts", "e2e/sub/b.spec.ts"]), "./e2e");
   assert.equal(commonSpecDir(["a.spec.ts"]), ".");

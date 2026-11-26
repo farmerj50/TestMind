@@ -54,6 +54,7 @@ async function setupRun(overrides: Partial<{ status: string; spentUsd: number; b
     process.env.TM_LOCAL_REPO_ROOT = prevRoot;
     await prisma.devAgentIteration.deleteMany({ where: { devAgentRunId: run.id } }).catch(() => {});
     await prisma.devAgentRun.delete({ where: { id: run.id } }).catch(() => {});
+    await prisma.operatorArtifact.deleteMany({ where: { jobId: operatorJob.id } }).catch(() => {});
     await prisma.operatorJob.delete({ where: { id: operatorJob.id } }).catch(() => {});
     await execa("git", ["worktree", "prune"], { cwd: repo }).catch(() => {});
     await fs.rm(repo, { recursive: true, force: true }).catch(() => {});
@@ -769,6 +770,40 @@ test("repository-only tasks proceed without an application URL", async (t) => {
   const run = await prisma.devAgentRun.findUnique({ where: { id: ctx.run.id } });
   assert.equal(run?.status, "unverified");
   assert.doesNotMatch(run?.error ?? "", /application URL/);
+});
+
+test("unsupported generated test imports are repaired from detector evidence within the bounded iteration budget", async (t) => {
+  const ctx = await setupRun({ status: "queued", maxIterations: 2 });
+  await prisma.devAgentRun.update({ where: { id: ctx.run.id }, data: { instructionText: "Add a focused repository regression test" } });
+  t.after(ctx.cleanup);
+  let iteration = 0;
+  const reason = "Affected test files (src/generated.test.ts) do not import a supported test runner. Use the nearest package's existing Node convention with explicit imports.";
+  const deps = {
+    requestApproval: async () => "approved" as const,
+    codePhase: async ({ worktreePath }: { worktreePath: string }) => {
+      iteration++;
+      const content = iteration === 1
+        ? `const assert = require("node:assert/strict");\ndescribe("generated", () => { it("works", () => assert.equal(1 + 1, 2)); });\n`
+        : `import test from "node:test";\nimport assert from "node:assert/strict";\ntest("generated", () => assert.equal(1 + 1, 2));\n`;
+      await fs.mkdir(path.join(worktreePath, "src"), { recursive: true });
+      await fs.writeFile(path.join(worktreePath, "src/generated.test.ts"), content);
+      return { summary: iteration === 1 ? "generated an unsupported test" : "used the observed Node test convention", filesChanged: [{ path: "src/generated.test.ts", content }], costUsd: 0 };
+    },
+    detectTestCommand: () => iteration === 1
+      ? { command: null, reason }
+      : { command: "node --test src/generated.test.ts", framework: "node" as const, packageManager: null, reason: "Node test runner, running the affected tests" },
+    runTestCommand: async () => ({ passed: true, output: "1 passed" }),
+  };
+
+  await assert.rejects(advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, deps), StopTick);
+  const first = await prisma.devAgentIteration.findFirstOrThrow({ where: { devAgentRunId: ctx.run.id, iterationNumber: 1 } });
+  assert.equal((first.testResult as any).failureSummary, reason);
+  assert.equal((await prisma.devAgentRun.findUniqueOrThrow({ where: { id: ctx.run.id } })).status, "running");
+
+  await advanceDevAgentJob(ctx.opJobCtx, fakeReDelay, deps);
+  const run = await prisma.devAgentRun.findUniqueOrThrow({ where: { id: ctx.run.id } });
+  assert.equal(run.status, "succeeded", run.error ?? "");
+  assert.equal(await prisma.devAgentIteration.count({ where: { devAgentRunId: ctx.run.id } }), 2);
 });
 
 test("generated browser specs with no URL are never provisioned, executed or retried", async (t) => {
