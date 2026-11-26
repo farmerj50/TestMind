@@ -25,6 +25,7 @@ import {
 import { GENERATED_ROOT } from "../lib/storageRoots.js";
 import { readExportSource, sourceBundleFiles, assertSourceExportConfidential } from '../lib/source-export.js';
 import { artifactSecurityResponse, artifactIdSafe, projectArtifactSecrets } from '../lib/artifact-service.js';
+import { logicalProjectIdFromGeneratedPath } from './generated-suite-access.js';
 
 type GenerateCommon = {
   repoPath?: string;
@@ -304,6 +305,12 @@ const VISIBLE_SUITE_FILE_GLOBS = [
   "**/*.spec.{ts,js,mjs,cjs}",
   "**/*.test.{ts,js,mjs,cjs}",
   "**/*.feature",
+  // Autonomous QE runnable dependencies are part of the generated suite, not hidden runner
+  // internals. Keep the scope narrow so reports, traces and credentials never enter Suites.
+  "**/qe/fixtures.{ts,js,mjs,cjs}",
+  "**/qe/pages/**/*.page.{ts,js,mjs,cjs}",
+  "**/qe/qe-manifest.json",
+  "**/existing/**/*.{ts,tsx,js,jsx,mjs,cjs,json,feature}",
 ];
 
 function suiteSyncFileGlobs(adapterId: string) {
@@ -1338,7 +1345,26 @@ export default async function testmindRoutes(app: FastifyInstance): Promise<void
         if (!projectId.endsWith(userId)) {
           return reply.code(403).send({ error: "Forbidden" });
         }
-        return artifactSecurityResponse(reply); // Legacy folder ID has no project secret scope.
+        // A generated-suite path starts with its owning logical project id. Resolve that DB
+        // project before reading so the generic adapter/owner suite cannot cross project
+        // boundaries, and apply the same source/confidentiality checks as curated exports.
+        const generatedPath = logicalProjectIdFromGeneratedPath(relPath);
+        if (!generatedPath) return artifactSecurityResponse(reply);
+        const { projectId: logicalProjectId, normalized } = generatedPath;
+        if (!artifactIdSafe(logicalProjectId)) return artifactSecurityResponse(reply);
+        const generatedProject = await prisma.project.findUnique({
+          where: { id: logicalProjectId },
+          select: { ownerId: true },
+        });
+        if (!generatedProject || generatedProject.ownerId !== userId) {
+          return reply.code(403).send({ error: "Forbidden" });
+        }
+        const generatedRoot = path.resolve(GENERATED_ROOT, projectId);
+        const generatedFile = path.resolve(generatedRoot, normalized);
+        ensureWithin(generatedRoot, generatedFile);
+        const bytes = await readExportSource(generatedRoot, generatedFile);
+        assertSourceExportConfidential(bytes, await projectArtifactSecrets(logicalProjectId));
+        return { content: bytes.toString("utf8") };
       }
       const found = findCuratedFile(curatedSuite, relPath);
       if (!found) {

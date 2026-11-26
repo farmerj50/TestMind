@@ -17,6 +17,7 @@ import { finalizeLatestTestState } from './finalize-latest-test-state.js';
 import { readSelfHealPolicy } from '../ai/core/policy.js';
 import { promoteVerifiedLiveSelectors } from '../lib/locator-promotion.js';
 import type { RunPayload } from './queue.js';
+import { resolveAiGeneratedDir, resolveExistingAiTarget } from './ai-run-target.js';
 import { analyzeFailure } from './ai-analysis.js';
 import type { LocatorBucket } from '../testmind/runtime/locator-store.js';
 import { REPORT_ROOT } from '../lib/storageRoots.js';
@@ -648,14 +649,18 @@ export const worker = new Worker(
       let specPath = normalizedFileTarget;
       let absSpecPath: string | undefined;
       let aiGenDirOverride: string | undefined;
+      const explicitAiGeneratedDir = resolveAiGeneratedDir(payload?.genDir, runParams?.generatedDir);
       if (specPath?.startsWith("apps/web/")) {
         specPath = specPath.slice("apps/web/".length);
       }
       if (specPath) {
         const isAbs = path.isAbsolute(specPath);
         const isWebGenerated = /[\\/]+apps[\\/]+web[\\/]+testmind-generated[\\/]+/i.test(specPath);
-        let abs = isAbs ? specPath : path.join(runWorkdir, specPath);
-        if (aiMode) {
+        const exactAiTarget = aiMode ? resolveExistingAiTarget(specPath, explicitAiGeneratedDir) : null;
+        let abs = exactAiTarget?.target ?? (isAbs ? specPath : path.join(runWorkdir, specPath));
+        if (exactAiTarget) {
+          aiGenDirOverride = exactAiTarget.testDir;
+        } else if (aiMode) {
           const posix = specPath.replace(/\\/g, "/");
           const marker = "testmind-generated/";
           if (posix.includes(marker)) {
@@ -687,7 +692,7 @@ export const worker = new Worker(
           }
         }
         absSpecPath = abs;
-        if (aiMode && adapterId === "playwright-ts") {
+        if (aiMode && adapterId === "playwright-ts" && !exactAiTarget) {
           const posix = specPath.replace(/\\/g, "/");
           const marker = "testmind-generated/";
           const markerIdx = posix.indexOf(marker);
@@ -767,7 +772,7 @@ export const worker = new Worker(
         const generatedRoot = process.env.TM_GENERATED_ROOT
           ? path.resolve(process.env.TM_GENERATED_ROOT)
           : path.join(work, "testmind-generated");
-        let genDir = payload?.genDir;
+        let genDir = explicitAiGeneratedDir;
         if (!genDir && specPath) {
           const normalized = specPath.replace(/\\/g, "/");
           // Handle both "/testmind-generated/..." and "testmind-generated/..." (relative paths)
