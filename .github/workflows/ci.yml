@@ -109,6 +109,7 @@ jobs:
 
       - name: Playwright smoke tests
         env:
+          PORT: "8787"
           START_WORKERS: "false"
           START_RECORDER_HELPER: "false"
           VITE_API_URL: http://127.0.0.1:8787
