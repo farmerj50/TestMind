@@ -5,11 +5,8 @@ const PORT = Number(process.env.TM_PORT ?? 5173);
 const BASE = process.env.TM_BASE_URL ?? `http://localhost:${PORT}`;
 
 export default defineConfig({
-  testDir: "testmind-generated",
-  testMatch: [
-    "**/playwright-ts*/**/*.spec.ts",
-    "**/playwright-ts*/**/*.test.ts",
-  ],
+  testDir: "tests/ci",
+  testMatch: ["**/*.spec.ts"],
   timeout: 30_000,
   expect: { timeout: 10_000 },
 
@@ -17,7 +14,6 @@ export default defineConfig({
     "**/node_modules/**",
     "**/dist/**",
     "**/build/**",
-    "**/.*/**",
     "**/testmind-generated/appium-js/**",
   ],
 
