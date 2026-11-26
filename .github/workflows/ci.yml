@@ -29,8 +29,8 @@ jobs:
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       VITE_API_URL: http://localhost:8787
-      CLERK_PUBLISHABLE_KEY: test-publishable-key
-      CLERK_SECRET_KEY: test-secret-key
+      CLERK_PUBLISHABLE_KEY: pk_test_Y2ktY2xlcmsuaW52YWxpZCQ=
+      CLERK_SECRET_KEY: sk_test_ci_fixture
       DATABASE_URL: postgres://user:pass@localhost:5432/testmind
       REDIS_URL: redis://localhost:6379
       SECRET_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
