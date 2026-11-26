@@ -66,3 +66,16 @@ test("normalizeOpTypes still applies known type aliases (unrelated to the wrappe
   const normalized = JSON.parse(normalizeOpTypes(raw));
   assert.equal(normalized.operations[0].type, "replace_literal");
 });
+
+test("normalizeOpTypes accepts the captured string-keyed literal replacement", () => {
+  const raw = JSON.stringify({
+    summary: "fix",
+    operations: [{ replace_literal: "test.step('submit', async () => {", replace: "await submit();" }],
+  });
+  const normalized = JSON.parse(normalizeOpTypes(raw));
+  assert.deepEqual(normalized.operations[0], {
+    type: "replace_literal",
+    find: "test.step('submit', async () => {",
+    replace: "await submit();",
+  });
+});

@@ -168,6 +168,16 @@ function taskTargetId(task: OperatorTask) {
   );
 }
 
+function primaryTestRunId(job: OperatorJob) {
+  const linked = job.tasks.filter((task) => task.testRunId);
+  return (
+    linked.find((task) => task.inputJson?.phase === "initial-generated-suite")?.testRunId ??
+    linked.find((task) => task.type === "execute")?.testRunId ??
+    [...linked].sort((a, b) => Date.parse(a.createdAt ?? "") - Date.parse(b.createdAt ?? ""))[0]?.testRunId ??
+    null
+  );
+}
+
 function taskOutcome(task: OperatorTask) {
   const output = task.outputJson ?? {};
   const finalStatus =
@@ -994,9 +1004,9 @@ export default function OperatorPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0 ml-3">
-                    {j.tasks.some((t) => t.testRunId) && (
+                    {primaryTestRunId(j) && (
                       <a
-                        href={`/test-runs/${j.tasks.find((t) => t.testRunId)!.testRunId}`}
+                        href={`/test-runs/${primaryTestRunId(j)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="text-blue-600 hover:underline text-xs"

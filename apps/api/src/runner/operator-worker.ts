@@ -614,6 +614,7 @@ async function createAutonomousRun(
     baseUrl: opts.baseUrl,
     mode: 'ai',
     file: opts.file,
+    genDir: opts.generatedDir,
     grep: opts.grep ?? undefined,
     ...(isCredentialRef(ctx.qe?.credentialRef) ? { credentialRef: ctx.qe.credentialRef } : {}),
     ...(opts.grepInvert ? { grepInvert: opts.grepInvert } : {}),
@@ -1467,6 +1468,26 @@ async function qeGenerateAndExecute(opJob: OpJobCtx, qReDelay: ReDelayFn, given?
       meta: { file: path.relative(generatedDir, file).replace(/\\/g, '/'), bytes: st?.size ?? null, writtenThisRun: fresh },
     });
   }
+  const suiteId = `playwright-ts-${planState.ownerId}`;
+  const suiteRoot = path.join(GENERATED_ROOT, suiteId);
+  const suiteSpecs = specs.map((file) => path.relative(suiteRoot, file).replace(/\\/g, '/'));
+  await recordQeArtifact({
+    jobId,
+    stage: 'generate',
+    type: 'report',
+    path: `qe/${jobId}/generated-suite.json`,
+    meta: {
+      kind: 'generated-suite',
+      suiteId,
+      projectId: opJob.projectId,
+      autonomousRunId: jobId,
+      rootRel: path.relative(suiteRoot, generatedDir).replace(/\\/g, '/'),
+      specs: suiteSpecs,
+      dependencies: qeGen?.files
+        .filter((file) => !/\.spec\.[cm]?[jt]sx?$/i.test(file))
+        .map((file) => path.posix.join(path.relative(suiteRoot, generatedDir).replace(/\\/g, '/'), file)) ?? [],
+    },
+  });
   const qeNote = qeGen ? `; ${qeGen.tests.length} scenario test(s) generated in ${qeGen.specFiles} QE spec file(s), ${qeGen.notGenerated.length} scenario(s) not generated (blocked or no honest assertion)` : '';
   await finishStage(jobId, 'generate', 'succeeded', `${writtenThisRun} spec file(s) written this run, ${out.generatedTestCount} new test case(s); suite under test: ${specs.length} spec file(s)${qeNote}`, { generatedDir, specFileCount: specs.length, writtenThisRun, newTestCases: out.generatedTestCount, ...(qeGen ? { qeTests: qeGen.tests.length, qeNotGenerated: qeGen.notGenerated.length } : {}) });
 
@@ -1605,7 +1626,12 @@ async function qeGenerateScenarioSuite(opJob: OpJobCtx, generatedDir: string) {
     jobId, stage: 'generate', type: 'report', path: `qe/${jobId}/qe-generation.json`,
     meta: { kind: 'qe-generation', coverage, availableTitles, hasCredentials, tests: result.tests, notGenerated: result.notGenerated, files: result.files.map((f) => f.path) },
   });
-  return { tests: result.tests, notGenerated: result.notGenerated, specFiles: result.files.filter((f) => f.path.endsWith('.spec.ts')).length };
+  return {
+    tests: result.tests,
+    notGenerated: result.notGenerated,
+    specFiles: result.files.filter((f) => f.path.endsWith('.spec.ts')).length,
+    files: result.files.map((f) => f.path),
+  };
 }
 
 /** Individual outcomes per generated scenario test ([qe:<id>] in the title), plus scenarios that did not run. */
@@ -1613,10 +1639,24 @@ async function qeScenarioOutcomes(jobId: string, runId: string, excludedTests: s
   const gen = await prisma.operatorArtifact.findFirst({ where: { jobId, type: 'report', metaJson: { path: ['kind'], equals: 'qe-generation' } }, orderBy: { createdAt: 'desc' }, select: { metaJson: true } });
   const meta = gen?.metaJson as any;
   if (!meta) return {};
-  const results = await prisma.testResult.findMany({ where: { runId }, select: { status: true, message: true, testCase: { select: { title: true } } } });
+  const results = await prisma.testResult.findMany({ where: { runId }, select: { id: true, status: true, message: true, testCase: { select: { title: true } } } });
   const plan: QePlan = JSON.parse(await fs.readFile(qePlanFile(jobId).replace(/plan\.json$/, 'qe-plan.json'), 'utf8'));
   const coverage = scenarioCoverage(plan, meta, results.map((r) => ({ title: r.testCase.title, status: r.status, message: r.message })), excludedTests);
-  return { coverage, scenarioOutcomes: coverage.scenarios, blockedScenarios: coverage.scenarios.filter((s) => s.status === 'blocked' || s.status === 'unimplemented') };
+  const generatedByScenario = new Map<string, any>((meta.tests ?? []).map((test: any) => [test.scenarioId, test]));
+  const scenarioOutcomes = coverage.scenarios.map((scenario) => {
+    const generated = generatedByScenario.get(scenario.scenarioId);
+    const result = generated?.testTitle
+      ? results.find((row) => row.testCase.title === generated.testTitle || row.testCase.title.endsWith(` ${generated.testTitle}`))
+      : undefined;
+    return {
+      ...scenario,
+      runId,
+      spec: generated?.file ?? null,
+      testTitle: generated?.testTitle ?? null,
+      testResultId: result?.id ?? null,
+    };
+  });
+  return { coverage, scenarioOutcomes, blockedScenarios: scenarioOutcomes.filter((s) => s.status === 'blocked' || s.status === 'unimplemented') };
 }
 
 /**
@@ -2637,7 +2677,7 @@ async function generateFromPlan(opJob: OpJobCtx, s: DiscoveryPlanState) {
   fsSync.mkdirSync(outDir, { recursive: true });
 
   const result = await writeSpecsFromPlan(outDir, plan, 'playwright-ts', { locatorStore: mergedSharedSteps, baseUrl });
-  const specCount = result.total;
+  const specCount = result.pages;
 
   // ── Step 5: Upsert test cases to DB ───────────────────────────────────────
   let savedCount = 0;
@@ -2690,6 +2730,7 @@ async function generateFromPlan(opJob: OpJobCtx, s: DiscoveryPlanState) {
     uncoveredRoutes: uncovered,
     existingTestCount: existingTests.length,
     generatedTestCount: savedCount,
+    plannedTestCount: result.total,
     specFileCount: specCount,
     outDir,
     summary: `Discovered ${checkedRoutes.length} routes; generated ${savedCount} new tests across ${specCount} spec files`,

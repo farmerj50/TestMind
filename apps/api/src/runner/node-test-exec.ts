@@ -112,6 +112,18 @@ export type RunExecResult = {
   framework: "playwright" | "vitest" | "jest" | "none";
 };
 
+export function shouldSkipLocalWebServer(baseUrl?: string | null): boolean {
+  if (!baseUrl) return false;
+  try {
+    const url = new URL(baseUrl);
+    if (!/^https?:$/.test(url.protocol)) return false;
+    const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host);
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeForSpawnArg(value?: string | null): string | undefined {
   if (!value) return undefined;
   let s = String(value);
@@ -354,6 +366,10 @@ export async function runTests(req: RunExecRequest): Promise<RunExecResult> {
       PWTEST_CACHE_DIR: path.join(path.dirname(req.jsonOutPath), ".pw-cache"),
       ...(req.extraEnv || {}),
     };
+    // A live, externally authorized target is already the application under test. Starting a
+    // cloned repository's local webServer in that case is both unnecessary and wrong: it can
+    // replace the intended target with localhost and require build-only tools such as Vite.
+    if (shouldSkipLocalWebServer(req.baseUrl)) env.TM_SKIP_SERVER = "1";
     const nodePathParts = new Set<string>();
     const addNodePath = (p: string | undefined) => {
       if (!p) return;

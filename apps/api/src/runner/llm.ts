@@ -67,6 +67,15 @@ export function normalizeOpTypes(raw: string): string {
         op.type = canonical;
         return;
       }
+      // Captured production variant: the operation key itself contains the literal to find,
+      // while `replace` remains a sibling. Normalize only the unambiguous literal-replace
+      // form; every other malformed shape still reaches strict schema validation unchanged.
+      if (canonical === "replace_literal" && typeof inner === "string" && typeof op.replace === "string") {
+        delete op[key];
+        op.type = canonical;
+        op.find = inner;
+        return;
+      }
     }
   };
 

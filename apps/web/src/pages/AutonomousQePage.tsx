@@ -622,12 +622,17 @@ function FailureIntelPanel({ meta }: { meta: any }) {
   );
 }
 
-function GenerationPanel({ meta }: { meta: any }) {
+function GenerationPanel({ meta, suite }: { meta: any; suite?: any }) {
+  const firstSpec = suite?.specs?.[0] as string | undefined;
+  const suiteHref = suite?.suiteId
+    ? `/suite/${encodeURIComponent(suite.suiteId)}${firstSpec ? `?spec=${encodeURIComponent(firstSpec)}` : ""}`
+    : null;
   return (
     <div className="space-y-2 text-xs">
       <div className="font-semibold uppercase text-slate-500">
         Scenario tests generated: {meta.tests?.length ?? 0} · not generated: {meta.notGenerated?.length ?? 0}
         <span className="ml-2 font-normal normal-case text-slate-400">{meta.hasCredentials ? "approved credentials referenced (values never stored)" : "no credentials - signed-in scenarios stay blocked"}</span>
+        {suiteHref && <a className="ml-2 font-normal normal-case text-blue-600 hover:underline" href={suiteHref}>Open this generated suite in Suites →</a>}
       </div>
       <div className="max-h-56 overflow-auto rounded border">
         <table className="w-full"><tbody>
@@ -660,7 +665,10 @@ function ScenarioOutcomes({ meta }: { meta: any }) {
           {rows.map((r) => (
             <tr key={r.scenarioId} className="border-b last:border-0 align-top">
               <td className="px-2 py-1"><Badge value={tone(r.status)} /> <span className="text-slate-400">{r.status === "not_run" ? "not run" : ""}</span></td>
-              <td className="px-2 py-1">{r.title}{r.message && r.status !== "passed" && <div className="mt-0.5 line-clamp-2 font-mono text-[11px] text-rose-700">{r.message}</div>}</td>
+              <td className="px-2 py-1">{r.title}
+                {(r.scenarioId || r.spec || r.testResultId) && <div className="mt-0.5 font-mono text-[11px] text-slate-400">scenario {r.scenarioId}{r.spec ? ` · ${r.spec}` : ""}{r.testResultId ? ` · result ${r.testResultId}` : ""}</div>}
+                {r.message && r.status !== "passed" && <div className="mt-0.5 line-clamp-2 font-mono text-[11px] text-rose-700">{r.message}</div>}
+              </td>
             </tr>
           ))}
           {(meta.blockedScenarios ?? []).map((b: any) => (
@@ -767,6 +775,7 @@ function StageBody({ stage, runId, testRuns, apiFetch, onRefresh, repairStage }:
   const knowledge = stage.stage === "discovery" ? stage.artifacts.find((a) => a.type === "report" && a.meta?.kind === "knowledge") : undefined;
   const repository = stage.stage === "discovery" ? stage.artifacts.find((a) => a.type === "report" && a.meta?.kind === "repository") : undefined;
   const generation = stage.stage === "generate" ? stage.artifacts.find((a) => a.type === "report" && a.meta?.kind === "qe-generation") : undefined;
+  const generatedSuite = stage.stage === "generate" ? stage.artifacts.find((a) => a.type === "report" && a.meta?.kind === "generated-suite") : undefined;
   const intel = stage.stage === "repair" ? stage.artifacts.filter((a) => a.type === "report" && a.meta?.kind === "failure-intel") : [];
   const proposals = stage.stage === "repair" ? stage.artifacts.filter((a) => a.type === "pr_proposal" && a.meta?.kind !== "pr") : [];
   const prProposals = stage.stage === "review" ? stage.artifacts.filter((a) => a.type === "pr_proposal" && a.meta?.kind === "pr") : [];
@@ -805,7 +814,7 @@ function StageBody({ stage, runId, testRuns, apiFetch, onRefresh, repairStage }:
       )}
 
       {repository && <RepositoryPanel meta={repository.meta} />}
-      {generation && <GenerationPanel meta={generation.meta} />}
+      {generation && <GenerationPanel meta={generation.meta} suite={generatedSuite?.meta} />}
       {intel.map((a) => <FailureIntelPanel key={a.id} meta={a.meta} />)}
       {proposals.map((a) => <CodeFixProposal key={a.id} meta={a.meta} proposal={a.proposal} />)}
       {knowledge && <KnowledgePanel meta={knowledge.meta} />}

@@ -178,6 +178,7 @@ test('generated file, bundle, legacy export and curated content HTTP routes cann
     '@testmind/core/framework': { DEFAULT_FRAMEWORK_ID: 'playwright-ts', FRAMEWORK_IDS: ['playwright-ts'] }, '@testmind/core/framework-registry': {}, './service.js': {},
     './curated-store.js': { CURATED_ROOT: curated, getCuratedProject: () => null, slugify: () => 'owned-suite', ensureWithin: (base, file) => { assert.ok(service.within(base, file)); } },
     './generated-files.js': { adapterDir, adapterProjectDir, listGeneratedSpecFiles },
+    './generated-suite-access.js': { logicalProjectIdFromGeneratedPath: () => null },
     '../lib/storageRoots.js': { GENERATED_ROOT: generated }, '../lib/source-export.js': sourceExport, '../lib/artifact-service.js': service,
   });
   const app = require('fastify')(); await app.register(routes.default, { prefix: '/tm' });

@@ -52,6 +52,7 @@ test('actual UI worker exits duplicate delivery before preparing files or launch
   loadTs('apps/api/src/runner/worker.ts', {
     bullmq: { Worker }, 'fs/promises': {}, fs: {}, execa: {}, '../prisma.js': { prisma: { testRun: model } }, './redis.js': { redis: {} },
     './workdir.js': {}, './git.js': {}, './node-test-exec.js': { runTests: () => launched++ }, '../lib/qe-credentials.js': {}, '../lib/repair-verification.js': {}, '../testmind/pipeline/qe-codegen.js': { QE_AUTH_ENV: { email: 'TM_QE_AUTH_EMAIL', password: 'TM_QE_AUTH_PASSWORD', loginPath: 'TM_QE_LOGIN_PATH' } }, './result-parsers.js': {}, './persist-run-results.js': {}, './self-heal.js': {}, './finalize-latest-test-state.js': {},
+    './ai-run-target.js': { resolveAiGeneratedDir: () => undefined, resolveExistingAiTarget: () => null },
     '../ai/core/policy.js': { readSelfHealPolicy: () => ({}) }, '../lib/locator-promotion.js': {}, './ai-analysis.js': {}, '../lib/storageRoots.js': {}, '../lib/workflow-execution-policy.js': policy, '../lib/workflow-http.js': {}, '../lib/crypto.js': {}, '../testmind/service.js': {}, '@testmind/core/framework': {}, '../lib/git-url.js': {},
   });
   await callback({ data: { runId: 'completed', payload: { projectId: 'project', workflowRunId: 'parent' } } });
