@@ -107,27 +107,30 @@ jobs:
       - name: Run workflow sandbox tests
         run: pnpm test:workflows:sandbox
 
-      - name: Start API server
+      - name: Playwright smoke tests
+        env:
+          START_WORKERS: "false"
+          START_RECORDER_HELPER: "false"
+          VITE_API_URL: http://127.0.0.1:8787
         run: |
           pnpm --filter api start > api.log 2>&1 &
-          echo "API_PID=$!" >> $GITHUB_ENV
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+
+          api_ready=false
           for i in {1..30}; do
-            if curl -s http://localhost:8787 >/dev/null 2>&1; then
-              echo "API ready"
+            if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then
+              api_ready=true
               break
             fi
             sleep 1
           done
-
-      - name: Playwright smoke tests
-        run: pnpm exec playwright test -c tm-ci.playwright.config.ts --project=chromium
-
-      - name: Stop API server
-        if: ${{ always() }}
-        run: |
-          if [ -n "$API_PID" ]; then
-            kill "$API_PID" || true
+          if [ "$api_ready" != "true" ]; then
+            cat api.log
+            exit 1
           fi
+
+          pnpm exec playwright test -c tm-ci.playwright.config.ts --project=chromium
 
   deploy:
     needs: build-and-test
